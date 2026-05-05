@@ -95,20 +95,22 @@ class AcceleratorBackend(ABC):
     ) -> PlacementGroup:
         pass
 
-    def get_placement_group_labels(
+    def get_placement_group_bundle_label_selector(
         self, accelerator_type_str: Optional[str] = None
     ) -> Optional[Dict[str, str]]:
         """Returns labels to be applied to the placement group bundles."""
         return None
 
-    def apply_placement_group_bundle_labels(
+    def apply_placement_group_bundle_label_selector(
         self,
         deployment_options: Dict[str, Any],
         accelerator_type_str: Optional[str],
         num_bundles: int,
     ) -> None:
         """Safely applies hardware-specific labels to the deployment options."""
-        accel_labels = self.get_placement_group_labels(accelerator_type_str)
+        accel_labels = self.get_placement_group_bundle_label_selector(
+            accelerator_type_str
+        )
         if not accel_labels:
             return
 
@@ -279,7 +281,7 @@ class TPUAccelerator(AcceleratorBackend):
         )
         return self._slice_pg_wrapper.placement_group
 
-    def get_placement_group_labels(
+    def get_placement_group_bundle_label_selector(
         self, accelerator_type_str: Optional[str] = None
     ) -> Optional[Dict[str, str]]:
         if self._config.topology and accelerator_type_str:

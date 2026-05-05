@@ -401,13 +401,18 @@ class TestAcceleratorConfigLogic:
         assert isinstance(engine_config.accelerator, TPUAccelerator)
         assert engine_config.accelerator_type == "TPU-V6E"
 
-    def test_tpu_accelerator_get_placement_group_labels(self):
+    def test_tpu_accelerator_get_placement_group_bundle_label_selector(self):
         """Test that TPUAccelerator correctly generates topology labels for Serve."""
         tpu_accel_no_topology = TPUAccelerator(TPUConfig(kind="tpu"))
-        assert tpu_accel_no_topology.get_placement_group_labels("TPU-V6E") is None
+        assert (
+            tpu_accel_no_topology.get_placement_group_bundle_label_selector("TPU-V6E")
+            is None
+        )
 
         tpu_accel_with_topology = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
-        assert tpu_accel_with_topology.get_placement_group_labels("TPU-V6E") == {
+        assert tpu_accel_with_topology.get_placement_group_bundle_label_selector(
+            "TPU-V6E"
+        ) == {
             "ray.io/tpu-topology": "4x4",
             "ray.io/accelerator-type": "TPU-V6E",
         }

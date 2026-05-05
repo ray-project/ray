@@ -735,7 +735,7 @@ class LLMServer(LLMServerProtocol):
             if llm_config.accelerator_type
             else None
         )
-        engine_config.accelerator.apply_placement_group_bundle_labels(
+        engine_config.accelerator.apply_placement_group_bundle_label_selector(
             deployment_options=deployment_options,
             accelerator_type_str=accelerator_type_str,
             num_bundles=len(pg_bundles),

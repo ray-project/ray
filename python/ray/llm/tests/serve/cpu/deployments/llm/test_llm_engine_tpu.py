@@ -176,8 +176,8 @@ def test_tpu_deployment_options_bundle_selector_injection():
 
 def test_tpu_slice_kwargs_ignores_cpu_driver_bundle():
     """
-    Verifies that resolve_tpu_slice_kwargs correctly ignores the merged CPU 
-    resources from the replica actor in the first bundle, and extracts the 
+    Verifies that resolve_tpu_slice_kwargs correctly ignores the merged CPU
+    resources from the replica actor in the first bundle, and extracts the
     TPU requirement from the remaining bundles.
     """
     labels = [{"ray.io/tpu-topology": "4x4", "ray.io/accelerator-type": "TPU-V6E"}]
