@@ -18,8 +18,8 @@ steps:
       - k8sbuild
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
-      - ray-core-build(*)
+      - raycpubase(python=3.10)
+      - ray-core-build(python=3.10)
       - ray-dashboard-build
 
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
@@ -46,6 +46,6 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
-      - ray-core-build(*)
+      - raycpubase(python=3.10)
+      - ray-core-build(python=3.10)
       - ray-dashboard-build
