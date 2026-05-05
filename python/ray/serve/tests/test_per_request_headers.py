@@ -8,7 +8,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
 )
@@ -91,12 +91,12 @@ async def test_http_request_timeout_disconnect_headers(
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    reason="RAY_SERVE_ENABLE_DIRECT_INGRESS not set.",
+    not RAY_SERVE_ENABLE_HA_PROXY,
+    reason="RAY_SERVE_ENABLE_HA_PROXY not set.",
 )
-def test_direct_ingress_default_host_is_all_interfaces(ray_shutdown):
-    """When direct ingress is enabled, the default HTTPOptions.host is
-    0.0.0.0 so HAProxy on other nodes can reach the backend ports.
+def test_haproxy_default_host_is_all_interfaces(ray_shutdown):
+    """When HAProxy is enabled, the default HTTPOptions.host is 0.0.0.0
+    so HAProxy on other nodes can reach the replica backend ports.
     """
     serve.start(http_options=HTTPOptions())
 
