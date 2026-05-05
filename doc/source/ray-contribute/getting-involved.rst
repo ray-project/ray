@@ -17,6 +17,7 @@ Getting Involved / Contributing
     testing-tips
     debugging
     profiling
+    agent-development
 
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning.
