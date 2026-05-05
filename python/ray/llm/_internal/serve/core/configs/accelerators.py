@@ -250,7 +250,8 @@ class TPUAccelerator(AcceleratorBackend):
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}
             else:
-                worker_bundle = tpu_bundles[0]
+                # Use the last bundle to avoid picking up merged CPU driver resources
+                worker_bundle = tpu_bundles[-1]
 
                 # Ensure all TPU bundles are homogeneous
                 if any(b != worker_bundle for b in tpu_bundles):

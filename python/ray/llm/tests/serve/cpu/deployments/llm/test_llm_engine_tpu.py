@@ -176,17 +176,19 @@ def test_tpu_deployment_options_bundle_selector_injection():
 
 def test_tpu_slice_kwargs_ignores_cpu_driver_bundle():
     """
-    Verifies that CPU-only driver bundles are safely ignored by the Serve helper
-    if subsequent TPU bundles are homogeneous.
+    Verifies that resolve_tpu_slice_kwargs correctly ignores the merged CPU 
+    resources from the replica actor in the first bundle, and extracts the 
+    TPU requirement from the remaining bundles.
     """
     labels = [{"ray.io/tpu-topology": "4x4", "ray.io/accelerator-type": "TPU-V6E"}]
-    bundles = [{"CPU": 1}, {"TPU": 4}, {"TPU": 4, "CPU": 1}]
+    bundles = [{"TPU": 4, "CPU": 1}, {"TPU": 4}, {"TPU": 4}, {"TPU": 4}]
 
     topology, version, worker_bundle = resolve_tpu_slice_kwargs(labels, bundles)
 
     assert topology == "4x4"
     assert version == "v6e"
-    assert worker_bundle.get("TPU") == 4
+    assert worker_bundle == {"TPU": 4}
+    assert "CPU" not in worker_bundle
 
 
 def test_tpu_slice_kwargs_rejects_heterogeneous_bundles():

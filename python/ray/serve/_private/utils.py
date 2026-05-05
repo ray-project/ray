@@ -874,7 +874,7 @@ def resolve_tpu_slice_kwargs(
     if bundles:
         tpu_bundles = [b for b in bundles if b.get("TPU", 0) > 0]
         if tpu_bundles:
-            worker_bundle = tpu_bundles[0]
+            worker_bundle = tpu_bundles[-1].copy()
             if any(b.get("TPU") != worker_bundle.get("TPU") for b in tpu_bundles):
                 raise ValueError(
                     "Heterogeneous TPU bundles are not supported when a TPU topology is requested. "
