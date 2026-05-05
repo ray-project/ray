@@ -171,7 +171,7 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
-    "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error UNKNOWN \\(HTTP status 503\\)",
     "AWS Error SERVICE_UNAVAILABLE",
 )
 
@@ -592,7 +592,7 @@ class DataContext:
             tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
-        retried_io_errors: A list of substrings of error messages that should
+        retried_io_errors: A list of string regex patterns of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
         lance_config: Configuration for Lance datasource and datasink operations
