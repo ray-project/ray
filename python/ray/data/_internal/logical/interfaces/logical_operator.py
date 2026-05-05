@@ -100,12 +100,11 @@ class LogicalOperator(Operator, ABC):
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
         args: Dict[str, Any] = {}
-        for key, value in vars(self).items():
-            if key.startswith("_"):
-                args[key] = value
-            else:
-                # Keep underscore-prefixed keys to preserve legacy export schema.
-                args[f"_{key}"] = value
+        for dataclass_field in fields(self):
+            key = dataclass_field.name
+            value = getattr(self, key)
+            # Keep underscore-prefixed keys to preserve legacy export schema.
+            args[key if key.startswith("_") else f"_{key}"] = value
         args["_name"] = self.name
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
