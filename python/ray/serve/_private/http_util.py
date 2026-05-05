@@ -12,6 +12,7 @@ from typing import (
     AsyncGenerator,
     Awaitable,
     Callable,
+    Dict,
     List,
     Optional,
     Tuple,
@@ -37,8 +38,11 @@ from ray.serve._private.constants import (
     RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+    SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
@@ -762,14 +766,70 @@ async def start_asgi_http_server(
     return event_loop.create_task(server.serve(sockets=[sock]))
 
 
+def parse_request_timeout_header(
+    headers: Dict[bytes, bytes],
+    default_timeout_s: Optional[float],
+) -> Optional[float]:
+    """Parse the per-request timeout from the ``x-request-timeout-seconds`` header.
+
+    Returns the header value when valid and positive, ``None`` when the header is
+    present but non-positive (meaning "disable the timeout"), or ``default_timeout_s``
+    when the header is absent or malformed.
+    """
+    header_name = SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER.encode("utf-8")
+    if header_name not in headers:
+        return default_timeout_s
+
+    value = headers[header_name].decode("utf-8")
+    try:
+        timeout = float(value)
+        if timeout > 0:
+            return timeout
+        return None  # non-positive → disable timeout
+    except ValueError:
+        return default_timeout_s
+
+
+def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
+    """Return True if the ``x-request-disconnect-disabled`` header equals ``?1``.
+
+    When True, the caller should not monitor for client disconnects.
+    """
+    return (
+        headers.get(
+            SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER.encode("utf-8"), b"?0"
+        ).decode("utf-8")
+        == "?1"
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the SERVE_SESSION_ID header value, or '' if absent.
+
+    Accepts both the underscored constant form (``x_session_id``) and the
+    canonical hyphenated form (``x-session-id``) because intermediate proxies
+    (HAProxy, nginx, AWS API Gateway) canonicalize underscored header names
+    to the hyphenated form. ASGI lowercases header names per spec, so
+    case-folding is not needed here.
+    """
+    for form in (SERVE_SESSION_ID, SERVE_SESSION_ID.replace("_", "-")):
+        value = headers.get(form.encode("utf-8"))
+        if value is not None:
+            return value.decode("utf-8")
+    return ""
+
+
 def get_http_response_status(
-    exc: BaseException, request_timeout_s: float, request_id: str
+    exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
     if isinstance(exc, TimeoutError):
+        timeout_str = (
+            f"after {request_timeout_s}s" if request_timeout_s is not None else ""
+        )
         return ResponseStatus(
             code=408,
             is_error=True,
-            message=f"Request {request_id} timed out after {request_timeout_s}s.",
+            message=f"Request {request_id} timed out {timeout_str}.".strip(),
         )
 
     elif isinstance(exc, asyncio.CancelledError):
