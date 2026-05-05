@@ -9,7 +9,7 @@ import pytest
 
 from ray._private.test_utils import client_test_enabled
 from ray._private.worker import _wait_and_fetch, _wait_generators_bulk
-from ray.exceptions import ObjectRefStreamEndOfStreamError
+from ray.exceptions import ObjectRefStreamEndOfStreamError, RayTaskError
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -289,13 +289,11 @@ def test__wait_generators_bulk_after_eof(ray_start_regular):
             yield 1
 
     gen = empty_gen.remote()
-    ray.get(gen._generator_ref)
 
     ready = _wait_generators_bulk([(gen, [True, True, True])], timeout=1)
     assert len(ready) == 1
     ready_gen, refs = ready[0]
     assert ready_gen is gen
-    assert len(refs) == 3
     assert len(set(refs)) == 3
     for ref in refs:
         with pytest.raises(ObjectRefStreamEndOfStreamError):
@@ -309,18 +307,38 @@ def test__wait_generators_bulk_after_partial_eof(ray_start_regular):
         yield 1
 
     gen = one_item_gen.remote()
-    ray.get(gen._generator_ref)
 
     ready = _wait_generators_bulk([(gen, [False, False, False])], timeout=1)
     assert len(ready) == 1
     ready_gen, refs = ready[0]
     assert ready_gen is gen
-    assert len(refs) == 3
     assert len(set(refs)) == 3
     assert ray.get(refs[0]) == 1
     for ref in refs[1:]:
         with pytest.raises(ObjectRefStreamEndOfStreamError):
             ray.get(ref)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__wait_generators_bulk_after_partial_error(ray_start_regular):
+    @ray.remote
+    def one_item_then_error_gen():
+        yield 1
+        raise ValueError("expected test error")
+
+    gen = one_item_then_error_gen.remote()
+
+    ready = _wait_generators_bulk([(gen, [False, False, False])], timeout=1)
+    assert len(ready) == 1
+    ready_gen, refs = ready[0]
+    assert ready_gen is gen
+    assert len(set(refs)) == 3
+    assert ray.get(refs[0]) == 1
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(refs[1])
+    assert isinstance(exc_info.value.as_instanceof_cause(), ValueError)
+    with pytest.raises(ObjectRefStreamEndOfStreamError):
+        ray.get(refs[2])
 
 
 if __name__ == "__main__":
