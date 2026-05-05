@@ -57,7 +57,10 @@ class BlockRefCounter:
 
         Sets ref_count = 1 on the first call. Duplicate calls for the same
         ObjectRef (e.g. from_pandas_refs([ref, ref])) increment ref_count and
-        queue_holds without double-counting size_bytes.
+        queue_holds without double-counting size_bytes:
+            queue: [bundle_A(ref), bundle_B(ref)]
+            on_block_produced(ref) x2 => qh=2, rc=2
+        Each bundle is a separate queue slot, so both tasks will consume ref.
         """
         with self._lock:
             if block_ref in self._entries:
@@ -88,6 +91,25 @@ class BlockRefCounter:
                 entry.queue_holds -= 1
             else:
                 entry.ref_count += 1
+
+    def on_block_queue_slot_added(self, block_ref: "ray.ObjectRef") -> None:
+        """Called when an existing block gains an additional queue slot.
+
+        Used when RebundleQueue slices a block across two task inputs, putting
+        the same ObjectRef into both the dispatched bundle and the remaining
+        pending bundle. Unlike on_block_produced, the extra slot is created
+        internally by the bundler without a second production event:
+            on_block_produced(ref) => qh=1, rc=1
+            slice: ready(ref: rows 0-99), pending(ref: rows 100-149)
+            on_block_queue_slot_added(ref) => qh=2, rc=2
+        No-op if the entry has already been freed.
+        """
+        with self._lock:
+            entry = self._entries.get(block_ref)
+            if entry is None:
+                return
+            entry.queue_holds += 1
+            entry.ref_count += 1
 
     def on_task_completed(self, block_ref: "ray.ObjectRef") -> None:
         """Called when a task that held block_ref completes, or when an inline

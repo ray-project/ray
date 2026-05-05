@@ -444,6 +444,16 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle, input_index=0)
 
+            # A block that was sliced across a bundle boundary shares its ObjectRef
+            # with the remaining bundle still in the bundler.  Register the extra
+            # queue slot so the counter keeps the entry alive until both tasks finish.
+            if self._block_ref_counter is not None:
+                dispatched_refs = {ref for ref, _ in bundled_input.blocks}
+                for pending_bundle in self._block_ref_bundler:
+                    for ref, _ in pending_bundle.blocks:
+                        if ref in dispatched_refs:
+                            self._block_ref_counter.on_block_queue_slot_added(ref)
+
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
             #
