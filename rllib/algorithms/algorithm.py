@@ -1464,6 +1464,12 @@ class Algorithm(Checkpointable, Trainable):
             env_steps = agent_steps = 0
             batches = []
 
+            # If `evaluation_parallel_to_training=True` and *all* eval
+            # EnvRunners are currently unhealthy, falling back to the local
+            # eval EnvRunner is unsafe (it raises). Optionally poll for
+            # recovery before deciding what to do.
+            self._maybe_wait_for_eval_env_runner_recovery()
+
             # We will use a user provided evaluation function.
             if self.config.custom_evaluation_function:
                 if self.config.enable_env_runner_and_connector_v2:
@@ -1482,14 +1488,33 @@ class Algorithm(Checkpointable, Trainable):
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.env_runner)
-            # There is only a local eval EnvRunner -> Run on that.
-            elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
+            # No healthy remote eval workers and we *can* fall back to the
+            # local eval EnvRunner (i.e. not running parallel to training).
+            elif (
+                self.eval_env_runner_group.num_healthy_remote_workers() == 0
+                and not self.config.evaluation_parallel_to_training
+            ):
                 (
                     eval_results,
                     env_steps,
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
+            # No healthy remote eval workers and `evaluation_parallel_to_training=True`,
+            # so local fallback would raise. User asked us to fail loudly.
+            elif (
+                self.eval_env_runner_group.num_healthy_remote_workers() == 0
+                and self.config.evaluation_error_on_no_workers
+            ):
+                raise RuntimeError(
+                    "All evaluation EnvRunners are unhealthy and "
+                    "`evaluation_parallel_to_training=True`, so RLlib can't "
+                    "fall back to the local eval EnvRunner. Set "
+                    "`evaluation_error_on_no_workers=False` (default) to "
+                    "skip evaluation for this iteration instead of raising, "
+                    "and/or `evaluation_unhealthy_workers_timeout_s` > 0 to "
+                    "wait for recovery before deciding."
+                )
             # There are healthy remote evaluation workers -> Run on these.
             elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
                 # Running in automatic duration mode (parallel with training step).
@@ -1615,6 +1640,54 @@ class Algorithm(Checkpointable, Trainable):
             [results],
             key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
         )
+
+    def _maybe_wait_for_eval_env_runner_recovery(self) -> None:
+        """Poll for at least one healthy eval EnvRunner if the user asked to.
+
+        When `evaluation_parallel_to_training=True` and *all* remote eval
+        EnvRunners are unhealthy, the only "run eval" branch falls back to
+        the local eval EnvRunner, which raises in this mode. Before deciding
+        to skip / raise, wait up to
+        `evaluation_unhealthy_workers_timeout_s` seconds for recovery.
+        """
+        timeout_s = self.config.evaluation_unhealthy_workers_timeout_s
+        if not timeout_s or timeout_s <= 0:
+            return
+        if (
+            self.eval_env_runner_group is None
+            or not self.config.evaluation_parallel_to_training
+        ):
+            return
+        if self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+            return
+
+        start = time.monotonic()
+        deadline = start + timeout_s
+        # Heartbeat every 60s so long waits show up in logs without spamming.
+        next_log = start + 60.0
+        logger.warning(
+            "All %d remote eval EnvRunner(s) are unhealthy; waiting up to "
+            "%.0fs for at least one to recover before "
+            "deciding to skip evaluation or raise (controlled by "
+            "`evaluation_error_on_no_workers`).",
+            self.eval_env_runner_group.num_remote_env_runners(),
+            timeout_s,
+        )
+        while (
+            self.eval_env_runner_group.num_healthy_remote_workers() == 0
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.01)
+            now = time.monotonic()
+            if now >= next_log:
+                logger.warning(
+                    "Still 0/%d eval EnvRunners healthy after %.0fs "
+                    "(timeout %.0fs).",
+                    self.eval_env_runner_group.num_remote_env_runners(),
+                    now - start,
+                    timeout_s,
+                )
+                next_log = now + 60.0
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:

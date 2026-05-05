@@ -520,6 +520,15 @@ class AlgorithmConfig(_Config):
         self.evaluation_auto_duration_min_env_steps_per_sample = 100
         self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
+        # How long to wait for at least one remote eval EnvRunner to recover
+        # when *all* of them are unhealthy at the start of an evaluation step
+        # (and `evaluation_parallel_to_training=True`, so the local-eval
+        # fallback isn't usable). Default 0: don't wait.
+        self.evaluation_unhealthy_workers_timeout_s = 0.0
+        # If still no eval EnvRunners are healthy after the wait above,
+        # raise a clear `RuntimeError` (True) or skip evaluation for this
+        # iteration (False, default).
+        self.evaluation_error_on_no_workers = False
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
@@ -2744,6 +2753,8 @@ class AlgorithmConfig(_Config):
         evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_unhealthy_workers_timeout_s: Optional[float] = NotProvided,
+        evaluation_error_on_no_workers: Optional[bool] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -2827,6 +2838,20 @@ class AlgorithmConfig(_Config):
                 reports a good evaluation `episode_return_mean`, be aware that these
                 results were achieved on the weights trained in iteration 41, so you
                 should probably pick the iteration 41 checkpoint instead.
+            evaluation_unhealthy_workers_timeout_s: How long (in seconds) to
+                wait for at least one remote eval EnvRunner to recover when
+                *all* of them are unhealthy at the start of an evaluation
+                step and `evaluation_parallel_to_training=True` (so the
+                local-eval fallback isn't usable). Default 0: don't wait.
+                Combine with `evaluation_error_on_no_workers` to choose what
+                happens if recovery doesn't arrive in time.
+            evaluation_error_on_no_workers: If still no remote eval
+                EnvRunners are healthy after waiting
+                `evaluation_unhealthy_workers_timeout_s` seconds, raise a
+                clear `RuntimeError` (True) or skip evaluation for this
+                iteration (False, default). Only takes effect when
+                `evaluation_parallel_to_training=True` (in non-parallel
+                mode the local-eval fallback handles this case).
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
@@ -3000,6 +3025,12 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_unhealthy_workers_timeout_s is not NotProvided:
+            self.evaluation_unhealthy_workers_timeout_s = (
+                evaluation_unhealthy_workers_timeout_s
+            )
+        if evaluation_error_on_no_workers is not NotProvided:
+            self.evaluation_error_on_no_workers = evaluation_error_on_no_workers
         if evaluation_force_reset_envs_before_iteration is not NotProvided:
             self.evaluation_force_reset_envs_before_iteration = (
                 evaluation_force_reset_envs_before_iteration
