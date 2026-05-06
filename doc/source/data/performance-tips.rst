@@ -264,11 +264,11 @@ However, too-large blocks are still possible, and they can lead to out-of-memory
 To avoid these issues:
 
 1. Make sure no single item in your dataset is too large. Aim for rows that are <10 MB each.
-2. Always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with a batch size small enough such that the output batch can comfortably fit into heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
+2. Call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with ``batch_size="auto"`` to let Ray Data automatically pick an appropriate batch size, or specify an explicit integer batch size small enough that the output batch fits comfortably in heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
 3. If neither of these is sufficient, manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
 
 As an example of tuning batch size, the following code uses one task to load a 1 GB :class:`~ray.data.Dataset` with 1000 1 MB rows and applies an identity function using :func:`~ray.data.Dataset.map_batches`.
-Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 1024 rows, this code produces only one very large batch, causing the heap memory usage to increase to 4 GB.
+Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is ``None``, this code passes entire blocks as batches to the UDF, causing the heap memory usage to increase significantly.
 
 .. testcode::
     :hide:
@@ -284,7 +284,7 @@ Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 
 
     # Force Ray Data to use one task to show the memory issue.
     ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
-    # The default batch size is 1024 rows.
+    # The default batch_size=None passes entire blocks as batches.
     ds = ds.map_batches(lambda batch: batch)
     print(ds.materialize().stats())
 

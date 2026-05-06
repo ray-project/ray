@@ -44,6 +44,8 @@ class WorkerKillingPolicyInterface {
                       const SystemMemorySnapshot &system_memory) = 0;
 
   virtual ~WorkerKillingPolicyInterface() = default;
+
+  static constexpr double kDefaultKillMemoryBufferProportion = 0.05;
 };
 
 }  // namespace raylet

@@ -3,7 +3,7 @@ steps:
   - name: k8sbuild
     wanda: ci/docker/k8s.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build-multipy
+      - oss-ci-base_build-multipy(python=3.10)
     tags: cibase
 
   - label: ":kubernetes: operator"
@@ -18,8 +18,8 @@ steps:
       - k8sbuild
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
-      - ray-core-build(*)
+      - raycpubase(python=3.10)
+      - ray-core-build(python=3.10)
       - ray-dashboard-build
 
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
@@ -46,6 +46,6 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
-      - ray-core-build(*)
+      - raycpubase(python=3.10)
+      - ray-core-build(python=3.10)
       - ray-dashboard-build

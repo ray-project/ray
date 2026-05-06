@@ -537,7 +537,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
             # Skip coercing tensors to null-type to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(col.dtype, TensorDtype):
+            if isinstance(col.dtype, (TensorDtype, pd.ArrowDtype)):
                 continue
 
             if not col.notna().any():

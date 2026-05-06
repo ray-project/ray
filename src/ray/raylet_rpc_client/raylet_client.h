@@ -48,11 +48,8 @@ class RayletClient : public RayletClientInterface {
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size,
-      const bool is_selected_based_on_locality) override;
+      rpc::RequestWorkerLeaseRequest &&request,
+      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override;
 
   void ReturnWorkerLease(int worker_port,
                          const LeaseID &lease_id,
