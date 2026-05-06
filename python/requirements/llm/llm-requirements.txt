@@ -1,9 +1,10 @@
-# Keep this in sync with the definition in setup.py for ray[llm], unless
-# constraining to a maximum version (i.e. <=) to temporarily work around a bug.
-# Those pins for the sake of workarounds should not be advertised as constraints
-# on future releases in setup.py.
-vllm[audio]>=0.19.0
-nixl>=1.0.0
+# Keep this in sync with the definition in setup.py for ray[llm]
+vllm[audio]==0.20.0
+# Keep NIXL in sync with vLLM's kv_connectors requirements.
+# https://github.com/vllm-project/vllm/blob/v0.20.0/requirements/kv_connectors.txt#L2
+nixl[cu13]==0.10.1
+nixl-cu12==0.10.1
+nixl-cu13==0.10.1
 anyio>=4.5.0
 # For json mode
 jsonref>=1.1.0
