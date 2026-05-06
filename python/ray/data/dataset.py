@@ -6633,7 +6633,17 @@ class Dataset:
         # `PandasBlockBuilder` creates a dataframe with internal extension types like
         # 'TensorDtype'. We use the `to_pandas` method to convert these extension
         # types to regular types.
-        return BlockAccessor.for_block(block).to_pandas()
+        result = BlockAccessor.for_block(block).to_pandas()
+
+        # If the result is empty and has no columns, try to preserve
+        # column names from the dataset schema.
+        if len(result) == 0 and len(result.columns) == 0:
+            schema = self.schema()
+            if schema is not None and schema.names:
+                import pandas as pd
+
+                result = pd.DataFrame(columns=schema.names)
+        return result
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
