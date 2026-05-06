@@ -474,9 +474,15 @@ def test_schema_partial_execution(
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
     assert not ds.has_computed_output()
-    assert ds._plan._logical_plan.dag.dag_str == (
-        "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
-    )
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        assert ds._plan._logical_plan.dag.dag_str == (
+            "ListFiles[ListFiles] -> ReadFiles[ReadFilesParquetV2] -> "
+            "MapBatches[MapBatches(<lambda>)]"
+        )
+    else:
+        assert ds._plan._logical_plan.dag.dag_str == (
+            "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
+        )
 
 
 @pytest.mark.parametrize(
