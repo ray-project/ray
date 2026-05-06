@@ -1847,7 +1847,7 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
     #   strictyaml
-python-dotenv==1.2.1
+python-dotenv==1.2.2
     # via testcontainers
 python-json-logger==2.0.7
     # via jupyter-events
