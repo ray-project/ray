@@ -67,6 +67,9 @@ class InputDataBuffer(PhysicalOperator):
         # references, and Ray won't be able to reconstruct downstream objects.
         bundle = self._input_data[self._input_data_index]
         self._input_data_index += 1
+        # Track for lifecycle correctness: downstream ``on_task_completed`` calls
+        # require the block to be registered. Memory usage attributed to
+        # InputDataBuffer is excluded from resource manager calculations.
         self._track_bundle_produced(bundle)
         return bundle
 
