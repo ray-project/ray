@@ -33,7 +33,6 @@ import grpc
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
-from starlette.applications import Starlette
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
@@ -187,6 +186,8 @@ from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
 
 def _wrap_grpc_call(f):
@@ -2533,6 +2534,28 @@ class Replica:
             )
             return
 
+        if self._user_callable_asgi_app is not None:
+            # TODO(eicherseiji): Reuse the normal HTTP request lifecycle here so
+            # direct ASGI serving preserves backpressure, timeouts, cancellation,
+            # tracing, request context, and per-route status metrics.
+            req_meta = RequestMetadata(
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
+                call_method="__call__",
+                route=route,
+                app_name=self._deployment_id.app_name,
+                multiplexed_model_id="",
+                is_streaming=True,
+                _request_protocol=RequestProtocol.HTTP,
+                is_direct_ingress=True,
+            )
+            self._metrics_manager.inc_num_ongoing_requests(req_meta)
+            try:
+                await self._user_callable_asgi_app(scope, receive, send)
+            finally:
+                self._metrics_manager.dec_num_ongoing_requests(req_meta)
+            return
+
         # If the HTTP path does not match the deployment route prefix,
         # it is invalid and we should not serve it.
         if not route.startswith(self._route_prefix):
@@ -3229,17 +3252,31 @@ class UserCallableWrapper:
     async def _initialize_asgi_callable(self) -> None:
         self._callable: ASGIAppReplicaWrapper
 
-        app: Starlette = self._callable.app
+        build_asgi_app = getattr(self._callable, SERVE_BUILD_ASGI_APP_METHOD, None)
+        if build_asgi_app is not None:
+            app, _ = await self._call_func_or_gen(
+                build_asgi_app,
+                run_sync_methods_in_threadpool_override=False,
+            )
+            if app is None:
+                raise TypeError(
+                    f"`{SERVE_BUILD_ASGI_APP_METHOD}` must return an ASGI app."
+                )
+            self._callable._set_asgi_app(app)
 
-        # The reason we need to do this is because BackPressureError is a serve internal exception
-        # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-        # With same reasoning, we are not handling TimeoutError because it's a generic exception
-        # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
-        def handle_exception(_: Request, exc: Exception):
-            return self.handle_exception(exc)
+        app: ASGIApp = self._callable.app
 
-        for exc in self.service_unavailable_exceptions:
-            app.add_exception_handler(exc, handle_exception)
+        if hasattr(app, "add_exception_handler"):
+            # The reason we need to do this is because BackPressureError is a serve
+            # internal exception and FastAPI doesn't know how to handle it, so it
+            # treats it as a 500 error. With same reasoning, we are not handling
+            # TimeoutError because it's a generic exception the FastAPI knows how
+            # to handle. See https://www.starlette.io/exceptions/
+            def handle_exception(_: Request, exc: Exception):
+                return self.handle_exception(exc)
+
+            for exc in self.service_unavailable_exceptions:
+                app.add_exception_handler(exc, handle_exception)
 
         await self._callable._run_asgi_lifespan_startup()
 

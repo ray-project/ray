@@ -62,6 +62,13 @@ RAYLLM_GUIDED_DECODING_BACKEND = os.environ.get(
     "RAYLLM_GUIDED_DECODING_BACKEND", "xgrammar"
 )
 
+# LLM-only feature flag for HAProxy-based direct streaming. This is
+# intentionally captured at import time, so it should be set before the Ray
+# cluster / Serve application workers start.
+RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING = (
+    os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING", "0") == "1"
+)
+
 MAX_NUM_STOPPING_SEQUENCES = int(os.getenv("RAYLLM_MAX_NUM_STOPPING_SEQUENCES", "8"))
 ENV_VARS_TO_PROPAGATE = {
     "HUGGING_FACE_HUB_TOKEN",
