@@ -227,10 +227,6 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
-DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
-    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
-)
-
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
@@ -553,8 +549,6 @@ class DataContext:
         actor_init_max_retries: Maximum number of consecutive retries for actor
             initialization failures. The counter resets when an actor successfully
             initializes. Default is 3. Set to -1 for infinite retries.
-        op_resource_reservation_enabled: Whether to enable resource reservation for
-            operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
@@ -756,7 +750,6 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
-    op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
     log_internal_stack_trace_to_stdout: bool = (

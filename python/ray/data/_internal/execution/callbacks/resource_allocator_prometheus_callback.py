@@ -105,11 +105,10 @@ class ResourceAllocatorPrometheusCallback(ExecutionCallback):
         tags: Dict[str, str],
         resource_manager: ResourceManager,
     ):
-        if resource_manager.op_resource_allocator_enabled():
-            resource_allocator = resource_manager.op_resource_allocator
-            output_budget_bytes = resource_allocator.get_output_budget(op)
-            if output_budget_bytes is not None:
-                if math.isinf(output_budget_bytes):
-                    # Convert inf to -1 to represent unlimited bytes to read
-                    output_budget_bytes = -1
-                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags=tags)
+        resource_allocator = resource_manager.op_resource_allocator
+        output_budget_bytes = resource_allocator.get_output_budget(op)
+        if output_budget_bytes is not None:
+            if math.isinf(output_budget_bytes):
+                # Convert inf to -1 to represent unlimited bytes to read
+                output_budget_bytes = -1
+            self._max_bytes_to_read_gauge.set(output_budget_bytes, tags=tags)

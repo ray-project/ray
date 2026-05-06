@@ -80,17 +80,9 @@ class ResourceManager:
     # The interval in seconds at which the global resource limits are refreshed.
     GLOBAL_LIMITS_UPDATE_INTERVAL_S = 1
 
-    # The fraction of the object store capacity that will be used as the default object
-    # store memory limit for the streaming executor,
-    # when `OpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
         "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
     )
-
-    # The fraction of the object store capacity that will be used as the default object
-    # store memory limit for the streaming executor,
-    # when `OpResourceAllocator` is not enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION = 0.25
 
     def __init__(
         self,
@@ -130,18 +122,14 @@ class ResourceManager:
         # operator's output usage.
         self._output_operator = terminal_operator_from_topology(topology)
 
-        self._op_resource_allocator: Optional[
-            "OpResourceAllocator"
-        ] = create_resource_allocator(self, data_context)
+        self._op_resource_allocator: "OpResourceAllocator" = create_resource_allocator(
+            self, data_context
+        )
 
         self._object_store_memory_limit_fraction = (
             data_context.override_object_store_memory_limit_fraction
             if data_context.override_object_store_memory_limit_fraction is not None
-            else (
-                self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
-                if self.op_resource_allocator_enabled()
-                else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION
-            )
+            else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
         )
 
     @property
@@ -260,8 +248,7 @@ class ResourceManager:
             # DatasetStats and updated on the Ray Data dashboard.
             op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
-        if self._op_resource_allocator is not None:
-            self._update_allocated_budgets()
+        self._update_allocated_budgets()
 
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
@@ -384,52 +371,42 @@ class ResourceManager:
                 f" (in={memory_string(self.get_mem_op_internal(op))},"
                 f"out={memory_string(self.get_mem_op_outputs(op))})"
             )
-            if self._op_resource_allocator is not None:
-                allocation = self._op_resource_allocator.get_allocation(op)
-                if allocation:
-                    usage_str += f", alloc=(cpu={allocation.cpu:.1f}"
-                    usage_str += f",gpu={allocation.gpu:.1f}"
-                    usage_str += f",obj_store={allocation.object_store_memory_str()})"
+            allocation = self._op_resource_allocator.get_allocation(op)
+            if allocation:
+                usage_str += f", alloc=(cpu={allocation.cpu:.1f}"
+                usage_str += f",gpu={allocation.gpu:.1f}"
+                usage_str += f",obj_store={allocation.object_store_memory_str()})"
 
-                budget = self._op_resource_allocator.get_budget(op)
-                if budget:
-                    usage_str += f", budget=(cpu={budget.cpu:.1f}"
-                    usage_str += f",gpu={budget.gpu:.1f}"
-                    usage_str += f",obj_store={budget.object_store_memory_str()}"
+            budget = self._op_resource_allocator.get_budget(op)
+            if budget:
+                usage_str += f", budget=(cpu={budget.cpu:.1f}"
+                usage_str += f",gpu={budget.gpu:.1f}"
+                usage_str += f",obj_store={budget.object_store_memory_str()}"
 
-                    # Remaining memory budget for producing new task outputs.
-                    if isinstance(
-                        self._op_resource_allocator, ReservationOpResourceAllocator
-                    ):
-                        reserved_for_output = memory_string(
-                            self._op_resource_allocator._output_budgets.get(op, 0)
-                        )
-                        usage_str += f",out={reserved_for_output})"
+                # Remaining memory budget for producing new task outputs.
+                if isinstance(
+                    self._op_resource_allocator, ReservationOpResourceAllocator
+                ):
+                    reserved_for_output = memory_string(
+                        self._op_resource_allocator._output_budgets.get(op, 0)
+                    )
+                    usage_str += f",out={reserved_for_output})"
 
         return usage_str
-
-    def op_resource_allocator_enabled(self) -> bool:
-        """Return whether OpResourceAllocator is enabled."""
-        return self._op_resource_allocator is not None
 
     @property
     def op_resource_allocator(self) -> "OpResourceAllocator":
         """Return the OpResourceAllocator."""
-        assert self._op_resource_allocator is not None
         return self._op_resource_allocator
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Return the budget for the given operator, or None if the operator
         has unlimited budget."""
-        if self._op_resource_allocator is None:
-            return None
         return self._op_resource_allocator.get_budget(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Return the allocation of the given operator, or None if the operator
         doesn't have a designated allocation."""
-        if self._op_resource_allocator is None:
-            return None
         return self._op_resource_allocator.get_allocation(op)
 
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
@@ -475,9 +452,7 @@ class ResourceManager:
                 yield from self.get_downstream_eligible_ops(next_op)
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        if self._op_resource_allocator is not None:
-            return self._op_resource_allocator.max_task_output_bytes_to_read(op)
-        return None
+        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
         """
