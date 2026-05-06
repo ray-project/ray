@@ -905,6 +905,11 @@ class ActorReplicaWrapper:
         return self.deployment_config.health_check_timeout_s
 
     @property
+    def replica_health_check_rpc_timeout_s(self) -> float:
+        """How long the controller waits for ``check_health.remote()`` to complete."""
+        return self.deployment_config.health_check_timeout_s
+
+    @property
     def http_port(self) -> Optional[int]:
         return self._http_port
 
@@ -1484,12 +1489,15 @@ class ActorReplicaWrapper:
                 logger.warning(f"Health check for {self._replica_id} failed: {e}")
                 response = ReplicaHealthCheckResponse.APP_FAILURE
                 self._last_health_check_failed = True
-        elif time.time() - self._last_health_check_time > self.health_check_timeout_s:
+        elif (
+            time.time() - self._last_health_check_time
+            > self.replica_health_check_rpc_timeout_s
+        ):
             # Health check hasn't returned and the timeout is up, consider it failed.
             logger.warning(
                 "Didn't receive health check response for replica "
                 f"{self._replica_id} after "
-                f"{self.health_check_timeout_s}s, marking it unhealthy."
+                f"{self.replica_health_check_rpc_timeout_s}s, marking it unhealthy."
             )
             response = ReplicaHealthCheckResponse.APP_FAILURE
             # Calculate latency for timeout case.

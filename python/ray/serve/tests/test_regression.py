@@ -296,6 +296,11 @@ def test_healthcheck_timeout(serve_instance):
         health_check_timeout_s=2,
         health_check_period_s=1,
         graceful_shutdown_timeout_s=0,
+        ray_actor_options={
+            "runtime_env": {
+                "env_vars": {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
+            }
+        },
     )
     class A:
         def __call__(self):

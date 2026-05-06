@@ -4079,6 +4079,24 @@ class TestActorReplicaWrapper:
         assert actor_replica.max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
+        assert (
+            actor_replica.replica_health_check_rpc_timeout_s
+            == DEFAULT_HEALTH_CHECK_TIMEOUT_S
+        )
+
+    def test_replica_health_check_rpc_timeout_uses_health_check_timeout_s(self):
+        cfg = DeploymentConfig(
+            health_check_timeout_s=5.0,
+        )
+        v = DeploymentVersion("1", cfg, {})
+        actor_replica = ActorReplicaWrapper(
+            version=v,
+            replica_id=ReplicaID(
+                "abc123",
+                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+            ),
+        )
+        assert actor_replica.replica_health_check_rpc_timeout_s == 5.0
 
     def test_max_concurrency_override(self):
         actor_replica = ActorReplicaWrapper(

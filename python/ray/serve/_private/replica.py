@@ -93,6 +93,9 @@ from ray.serve._private.constants import (
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    USER_HEALTH_CHECK_PROBE_INTERVAL_S,
+    USER_HEALTH_CHECK_PROBE_MAX_FAIL,
+    USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
 )
 from ray.serve._private.default_impl import (
     create_replica_impl,
@@ -1744,6 +1747,9 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._user_callable_wrapper.start_user_loop_watchdog(
+                        self._event_loop
+                    )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
                             self._user_callable_wrapper._callable.docs_path
@@ -1897,6 +1903,7 @@ class Replica:
 
     async def shutdown(self):
         try:
+            self._user_callable_wrapper.stop_user_loop_watchdog()
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
@@ -1944,8 +1951,10 @@ class Replica:
 
     async def check_health(self):
         try:
-            # If there's no user-defined health check, nothing runs on the user code event
-            # loop and no future is returned.
+            # Always run health check on the user execution path (user method or
+            # no-op probe). So if the user code / event loop is blocked, this
+            # will not complete and the controller will see a timeout and mark
+            # the replica unhealthy.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -2979,6 +2988,9 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._user_health_check: Optional[Callable] = None
+        self._user_loop_probe_consecutive_fail_count: int = 0
+        self._user_loop_probe_task: Optional[asyncio.Task] = None
         self._deployment_config = deployment_config
         self._ray_actor_options = ray_actor_options or {}
         self._user_code_threadpool: Optional[
@@ -3027,6 +3039,74 @@ class UserCallableWrapper:
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
+
+    def _user_loop_probe_watchdog_applies(self) -> bool:
+        """Whether we run the optional background user-loop probe (and may fast-fail HC)."""
+        return (
+            self._run_user_code_in_separate_thread
+            and self._user_health_check is None
+            and USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0
+        )
+
+    def start_user_loop_watchdog(self, main_loop: asyncio.AbstractEventLoop) -> None:
+        """Periodically probe the user code loop from the replica main loop (opt-in).
+
+        With user code on a separate thread, a wedged asyncio loop can queue health
+        probes indefinitely. If ``RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL`` > 0,
+        repeated timeouts fail ``check_health`` without waiting for the controller
+        RPC timeout. Applies even when ``RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1``: async
+        work on that loop stays observable regardless of sync thread-pool idle/busy mix.
+        """
+        if not self._user_loop_probe_watchdog_applies():
+            return
+        if self._user_loop_probe_task is not None:
+            return
+        self._user_loop_probe_task = main_loop.create_task(self._user_loop_probe_loop())
+
+    def stop_user_loop_watchdog(self) -> None:
+        if self._user_loop_probe_task is not None:
+            self._user_loop_probe_task.cancel()
+            self._user_loop_probe_task = None
+
+    async def _user_loop_probe_loop(self) -> None:
+        while True:
+            try:
+                await asyncio.sleep(USER_HEALTH_CHECK_PROBE_INTERVAL_S)
+            except asyncio.CancelledError:
+                return
+
+            fut = asyncio.run_coroutine_threadsafe(
+                asyncio.sleep(0), self._user_code_event_loop
+            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.wrap_future(fut),
+                    timeout=USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe timed out "
+                    f"(failed {self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL} before health check fails). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+            except Exception as e:
+                if not fut.done():
+                    fut.cancel()
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe failed: "
+                    f"{e} ({self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL}). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+
+            self._user_loop_probe_consecutive_fail_count = 0
 
     def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
         num_cpus = self._ray_actor_options.get("num_cpus")
@@ -3306,12 +3386,24 @@ class UserCallableWrapper:
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
-        # To avoid this issue for basic cases without a user-defined health check, skip
-        # interacting with the user callable entirely.
+        # When there is no user-defined health check, we still run a no-op probe on the
+        # user execution path. This ensures that replicas blocked in the request-
+        # handling path (e.g. stuck user code) fail health check and get restarted
+        # (see https://github.com/ray-project/ray/issues/61263).
+        if (
+            self._user_loop_probe_watchdog_applies()
+            and self._user_loop_probe_consecutive_fail_count
+            >= USER_HEALTH_CHECK_PROBE_MAX_FAIL
+        ):
+            raise RuntimeError(
+                "User event loop unresponsive: probe failed "
+                f"{self._user_loop_probe_consecutive_fail_count} consecutive times "
+                f"(limit {USER_HEALTH_CHECK_PROBE_MAX_FAIL})."
+            )
+
         if self._user_health_check is not None:
             return self._call_user_health_check()
-
-        return None
+        return self._call_user_health_probe()
 
     @property
     def has_user_routing_stats_method(self) -> bool:
@@ -3337,6 +3429,16 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
+
+    @_run_user_code
+    async def _call_user_health_probe(self):
+        """No-op that runs on the user code event loop.
+
+        Used when there is no user-defined health check. If the loop is blocked
+        (e.g. by a stuck request), this will not complete and the health check
+        will timeout, allowing the controller to mark the replica unhealthy.
+        """
+        await asyncio.sleep(0)
 
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
@@ -3744,8 +3846,7 @@ class UserCallableWrapper:
         """
         if self._callable is None:
             logger.debug(
-                "This replica has not yet started running user code. "
-                "Skipping __del__."
+                "This replica has not yet started running user code. Skipping __del__."
             )
             return
 
