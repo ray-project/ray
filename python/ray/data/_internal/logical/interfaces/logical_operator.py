@@ -1,4 +1,5 @@
 import copy
+import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields, replace
 from enum import Enum
@@ -20,21 +21,11 @@ class LogicalOperator(Operator, ABC):
     physical operator.
     """
 
-    _name: Optional[str] = field(init=False, default=None, repr=False)
-    _input_dependencies: List["LogicalOperator"] = field(
-        init=False, default_factory=list, repr=False
+    input_dependencies: List["LogicalOperator"] = field(
+        default_factory=list, repr=False, kw_only=True
     )
-    _num_outputs: Optional[int] = field(default=None, repr=False)
-
-    @property
-    def name(self) -> str:
-        return self._name or self.__class__.__name__
-
-    @property
-    @abstractmethod
-    def num_outputs(self) -> Optional[int]:
-        """Expected number of output blocks, if known."""
-        ...
+    name: str = field(init=False, repr=False)
+    num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -51,20 +42,10 @@ class LogicalOperator(Operator, ABC):
             return self.input_dependencies[0].estimated_num_outputs()
         return None
 
-    # Override the following 3 methods to correct type hints.
-
-    @property
-    def input_dependencies(self) -> List["LogicalOperator"]:
-        value = self._input_dependencies
-        for x in value:
-            assert isinstance(x, LogicalOperator), x
-        return value
-
-    @input_dependencies.setter
-    def input_dependencies(self, value: List["LogicalOperator"]) -> None:
-        for x in value:
-            assert isinstance(x, LogicalOperator), x
-        object.__setattr__(self, "_input_dependencies", value)
+    def __post_init__(self):
+        for input_dependency in self.input_dependencies:
+            assert isinstance(input_dependency, LogicalOperator), input_dependency
+        object.__setattr__(self, "name", self.__class__.__name__)
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
@@ -90,11 +71,18 @@ class LogicalOperator(Operator, ABC):
     def _with_new_input_dependencies(
         self, input_dependencies: List["LogicalOperator"]
     ) -> "LogicalOperator":
-        if "input_dependencies" in {field.name for field in fields(self)}:
-            return replace(self, input_dependencies=input_dependencies)
-
-        target = copy.copy(self)
-        object.__setattr__(target, "_input_dependencies", input_dependencies)
+        init_parameters = inspect.signature(type(self)).parameters
+        accepts_input_dependencies = "input_dependencies" in init_parameters or any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in init_parameters.values()
+        )
+        if accepts_input_dependencies:
+            target = replace(self, input_dependencies=input_dependencies)
+        else:
+            target = copy.copy(self)
+            object.__setattr__(target, "input_dependencies", input_dependencies)
+        object.__setattr__(target, "name", self.name)
+        object.__setattr__(target, "num_outputs", self.num_outputs)
         return target
 
     def _get_args(self) -> Dict[str, Any]:
