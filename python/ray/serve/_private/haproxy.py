@@ -707,11 +707,8 @@ class HAProxyApi(ProxyApi):
 
         proc = await asyncio.create_subprocess_exec(
             *args,
-            # Do not pipe long-running HAProxy logs unless they are actively
-            # drained. A full stderr pipe can block HAProxy and stall both the
-            # data plane and admin socket.
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
         try:
@@ -791,16 +788,15 @@ class HAProxyApi(ProxyApi):
     def _write_ingress_request_router_lua(
         self,
         backends: List[BackendConfig],
-    ) -> Tuple[Optional[str], bool]:
+    ) -> Optional[str]:
         """Render the ingress-request-router Lua action and write it to disk.
 
-        Returns the script path and whether the rendered script changed. If no
-        backend has both ingress request routers and replicas with replica IDs,
-        the script path is None and changed is False.
+        Returns the script path, or None if no backend has both ingress
+        request routers AND replicas with replica IDs.
         """
         routers, targets = _routers_and_targets_by_backend(backends)
         if not routers:
-            return None, False
+            return None
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
@@ -811,10 +807,9 @@ class HAProxyApi(ProxyApi):
         lua_path = os.path.join(
             os.path.dirname(self.config_file_path), "ingress_request_router.lua"
         )
-        changed = _write_if_changed(lua_path, content)
-        if changed:
+        if _write_if_changed(lua_path, content):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
-        return lua_path, changed
+        return lua_path
 
     def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
@@ -831,10 +826,9 @@ class HAProxyApi(ProxyApi):
 
             # Derive from the write result: returns None when no backend has
             # both routers and replicas with IDs (transient during scaling).
-            (
-                ingress_request_router_lua_path,
-                ingress_request_router_lua_changed,
-            ) = self._write_ingress_request_router_lua(backends)
+            ingress_request_router_lua_path = self._write_ingress_request_router_lua(
+                backends
+            )
             has_ingress_request_router = ingress_request_router_lua_path is not None
 
             # Enrich backends with precomputed health check configuration strings
@@ -887,25 +881,17 @@ class HAProxyApi(ProxyApi):
             import fcntl
 
             lock_file_path = self.config_file_path + ".lock"
-            config_changed = False
             with open(lock_file_path, "w") as lock_f:
                 fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
                 try:
-                    config_changed = _write_if_changed(
-                        self.config_file_path, config_content
-                    )
+                    with open(self.config_file_path, "w") as f:
+                        f.write(config_content)
                 finally:
                     fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
-            changed = config_changed or ingress_request_router_lua_changed
-            logger.info(
-                "Generated HAProxy configuration: %s "
-                "(config_changed=%s, ingress_router_lua_changed=%s).",
-                self.config_file_path,
-                config_changed,
-                ingress_request_router_lua_changed,
+            logger.debug(
+                f"Succesfully generated HAProxy configuration: {self.config_file_path}."
             )
-            return changed
         except Exception as e:
             logger.error(f"Failed to create HAProxy configuration files: {e}")
             raise
@@ -1072,11 +1058,8 @@ class HAProxyApi(ProxyApi):
 
     async def reload(self) -> None:
         try:
-            changed = self._generate_config_file_internal()
-            if changed:
-                await self._graceful_reload()
-            else:
-                logger.info("Skipping HAProxy reload because config is unchanged.")
+            self._generate_config_file_internal()
+            await self._graceful_reload()
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
@@ -1330,16 +1313,11 @@ class HAProxyManager(ProxyActorInterface):
 
     async def check_health(self) -> bool:
         # If haproxy is already shutdown, return False.
-        if not self._haproxy or not self._haproxy._is_running():
-            logger.warning(
-                "HAProxy health check failed because the HAProxy process is "
-                "not running.",
-                extra={"log_to_stderr": False},
-            )
+        if not self._haproxy or not self._haproxy._proc:
             return False
 
         logger.debug("Received health check.", extra={"log_to_stderr": False})
-        return True
+        return await self._haproxy.is_running()
 
     def pong(self) -> str:
         pass
