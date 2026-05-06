@@ -167,8 +167,7 @@ class LoggingConfig(BaseModel):
     def valid_encoding_format(cls, v):
         if v not in list(EncodingType):
             raise ValueError(
-                f"Got '{v}' for encoding. Encoding must be one "
-                f"of {set(EncodingType)}."
+                f"Got '{v}' for encoding. Encoding must be one of {set(EncodingType)}."
             )
 
         return v
@@ -221,6 +220,8 @@ class LoggingConfig(BaseModel):
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
+
+    model_config = ConfigDict(extra="forbid")
 
     runtime_env: dict = Field(
         default={},
@@ -303,9 +304,29 @@ class RayActorOptionsSchema(BaseModel):
         return v
 
 
+def _check_extra_fields(data: dict, model_cls: type) -> None:
+    """Raise ValueError if data contains keys not in the model's fields.
+
+    This is a lightweight alternative to constructing the model instance,
+    which avoids side effects from custom __init__ methods (e.g. module
+    imports and serialization in RequestRouterConfig/AutoscalingPolicy).
+    """
+    valid_fields = set(model_cls.model_fields)
+    extra = set(data) - valid_fields
+    # Ignore private attributes (underscore-prefixed), they are handled
+    # by model __init__ methods that pop them before validation.
+    extra = {k for k in extra if not k.startswith("_")}
+    if extra:
+        raise ValueError(
+            f"Extra inputs are not permitted for {model_cls.__name__}: "
+            f"{', '.join(sorted(extra))}. "
+            f"Valid fields are: {', '.join(sorted(valid_fields))}."
+        )
+
+
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
     """
     Specifies options for one deployment within a Serve application. For each deployment
     this can optionally be included in `ServeApplicationSchema` to override deployment
@@ -501,7 +522,27 @@ class DeploymentSchema(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_gang_scheduling_config(cls, values):
+    def validate_and_convert_config_dicts(cls, values):
+        if not isinstance(values, dict):
+            return values
+
+        # Validate dict keys against their typed model fields to catch
+        # unknown fields early (e.g. max_ongoing_requests mistakenly placed
+        # inside autoscaling_config). We check keys directly rather than
+        # constructing model instances to avoid side effects from __init__
+        # overrides (e.g. serialization in RequestRouterConfig). The dicts
+        # are intentionally NOT replaced because downstream code relies on
+        # isinstance(field, dict) checks (see deploy_utils.py and
+        # application_state.py).
+        autoscaling_config = values.get("autoscaling_config", None)
+        if isinstance(autoscaling_config, dict):
+            _check_extra_fields(autoscaling_config, AutoscalingConfig)
+
+        request_router_config = values.get("request_router_config", None)
+        if isinstance(request_router_config, dict):
+            _check_extra_fields(request_router_config, RequestRouterConfig)
+
+        # Gang scheduling: convert dict and validate constraints.
         gang_config = values.get("gang_scheduling_config", None)
         if gang_config in [None, DEFAULT.VALUE]:
             return values
@@ -514,7 +555,6 @@ class DeploymentSchema(BaseModel):
 
         if num_replicas == "auto":
             # Validate autoscaling bounds are multiples of gang_size
-            autoscaling_config = values.get("autoscaling_config", None)
             if autoscaling_config not in [None, DEFAULT.VALUE]:
                 min_replicas = autoscaling_config.get("min_replicas")
                 if min_replicas is not None and min_replicas == 0:
@@ -694,6 +734,10 @@ class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters).
     """
 
     name: str = Field(
@@ -888,6 +932,8 @@ class ServeApplicationSchema(BaseModel):
 @PublicAPI(stability="alpha")
 class gRPCOptionsSchema(BaseModel):
     """Options to start the gRPC Proxy with."""
+
+    model_config = ConfigDict(extra="forbid")
 
     port: int = Field(
         default=DEFAULT_GRPC_PORT,

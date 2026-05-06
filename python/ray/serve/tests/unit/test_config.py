@@ -56,8 +56,7 @@ def fake_policy():
     return fake_policy_return_value
 
 
-class FakeRequestRouter:
-    ...
+class FakeRequestRouter: ...
 
 
 @ray.remote
@@ -143,8 +142,7 @@ def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
     with pytest.warns(DeprecationWarning):
 
         @serve.deployment(autoscaling_config={"metrics_interval_s": 5})
-        class Foo:
-            ...
+        class Foo: ...
 
     # ... or if it is deserialized from proto as part of a DeploymentConfig (presumably in the Serve Controller)
     deployment_config_proto_bytes = DeploymentConfig(
@@ -1548,6 +1546,26 @@ class TestProtoToDict:
 
         # Optional field should not be filled.
         assert "initial_replicas" not in result
+
+
+class TestStrictConfigValidation:
+    def test_autoscaling_config_rejects_extra_fields(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            AutoscalingConfig(min_replicas=1, max_replicas=10, max_ongoing_requests=100)
+
+    def test_autoscaling_config_rejects_typo(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            AutoscalingConfig(
+                min_replicas=1, max_replicas=10, target_ongoing_request=5.0
+            )
+
+    def test_gang_scheduling_config_rejects_extra_fields(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            GangSchedulingConfig(gang_size=2, unknown_field="value")
+
+    def test_request_router_config_rejects_extra_fields(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            RequestRouterConfig(unknown_field="value")
 
 
 if __name__ == "__main__":

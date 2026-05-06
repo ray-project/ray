@@ -219,6 +219,8 @@ class RequestRouterConfig(BaseModel):
             )
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     _serialized_request_router_cls: bytes = PrivateAttr(default=b"")
 
     request_router_class: Union[str, Callable] = Field(
@@ -267,14 +269,14 @@ class RequestRouterConfig(BaseModel):
     backoff_multiplier: PositiveFloat = Field(
         default=RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         description=(
-            "Multiplier applied to the backoff time after each retry. " "Defaults to 2."
+            "Multiplier applied to the backoff time after each retry. Defaults to 2."
         ),
     )
 
     max_backoff_s: PositiveFloat = Field(
         default=RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
         description=(
-            "Maximum backoff time (in seconds) between retries. " "Defaults to 0.5."
+            "Maximum backoff time (in seconds) between retries. Defaults to 0.5."
         ),
     )
 
@@ -550,6 +552,8 @@ class AutoscalingPolicy(BaseModel):
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
+
+    model_config = ConfigDict(extra="forbid")
 
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
@@ -1080,12 +1084,13 @@ class DeploymentActorConfig(BaseModel):
 class GangSchedulingConfig(BaseModel):
     """Configuration for gang scheduling of deployment replicas."""
 
+    model_config = ConfigDict(extra="forbid")
+
     # Please keep these options in sync with those in `src/ray/protobuf/serve.proto`.
 
     gang_size: int = Field(
         description=(
-            "Number of replicas per gang. "
-            "num_replicas must be a multiple of gang_size."
+            "Number of replicas per gang. num_replicas must be a multiple of gang_size."
         ),
         ge=1,
     )
