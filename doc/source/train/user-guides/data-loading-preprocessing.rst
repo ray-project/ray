@@ -689,3 +689,14 @@ tuning the following:
       )
 
 See :ref:`data_performance_tips` for more info on how to tune Ray Data.
+
+Training ingest with Ray Data
+-----------------------------
+
+See the user guides below for detailed examples of how to use Ray Data features for training data ingest.
+
+.. toctree::
+    :maxdepth: 1
+
+    dataset-mixing
+    scaling-collation-functions
