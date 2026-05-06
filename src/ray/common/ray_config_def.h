@@ -357,6 +357,9 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
