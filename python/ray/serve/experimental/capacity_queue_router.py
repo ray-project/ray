@@ -2,12 +2,13 @@
 
 import asyncio
 import logging
+import time
 from typing import Dict, List, Optional
-
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
 )
@@ -22,6 +23,7 @@ from ray.serve.request_router import (
     RequestRouter,
     RunningReplica,
 )
+from ray.util import metrics
 
 logger = logging.getLogger("ray.serve")
 
@@ -60,6 +62,41 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         # Reverse index: unique_id string -> ReplicaID for O(1) lookup.
         # Rebuilt by update_replicas whenever the replica set changes.
         self._uid_to_replica_id: Dict[str, ReplicaID] = {}
+        # --- CQ-specific metrics ---
+        _default_tags = {
+            "deployment": self._deployment_id.name,
+            "application": self._deployment_id.app_name,
+        }
+
+        self._cq_routing_requests_counter = metrics.Counter(
+            "serve_cq_routing_requests_total",
+            description=(
+                "Total requests routed by CapacityQueueRouter, tagged by "
+                "the path taken: 'cq' for normal token based routing, "
+                "'pow2_fallback' when falling back to power-of-two-choices."
+            ),
+            tag_keys=("deployment", "application", "route"),
+        ).set_default_tags(_default_tags)
+
+        self._cq_acquire_duration_histogram = metrics.Histogram(
+            "serve_cq_acquire_duration_ms",
+            description=(
+                "Time in milliseconds for a single attempt to acquire a capacity token "
+                "from the CQ actor."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
+        ).set_default_tags(_default_tags)
+
+        self._cq_retry_counter = metrics.Counter(
+            "serve_cq_retry_total",
+            description=(
+                "Number of retry attempts in CapacityQueueRouter, tagged by "
+                "reason: 'fault' for CQ actor errors and 'capacity_depleted' "
+                "when no capacity is available."
+            ),
+            tag_keys=("deployment", "application", "reason"),
+        ).set_default_tags(_default_tags)
 
     def initialize_state(self, **kwargs):
         if "capacity_queue_actor_name" not in kwargs:
@@ -159,6 +196,9 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             while True:
                 # Too many consecutive faults — fall back to Pow2.
                 if fault_attempt >= self._max_fault_retries:
+                    self._cq_routing_requests_counter.inc(
+                        tags={"route": "pow2_fallback"}
+                    )
                     return await super()._choose_replica_for_request(
                         pending_request, is_retry=is_retry
                     )
@@ -166,15 +206,19 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 # Discover the CQ actor if we don't have a handle.
                 if self._capacity_queue is None:
                     if not self._try_discover_capacity_queue():
+                        self._cq_retry_counter.inc(tags={"reason": "fault"})
                         await self._backoff(fault_attempt)
                         fault_attempt += 1
                         continue
 
                 # Acquire a token from the CQ.
                 acquire_ref = None
+                acquire_start = time.monotonic()
                 try:
                     acquire_ref = self._capacity_queue.acquire.remote()
                     acquired_replica_id = await acquire_ref
+                    acquire_duration_ms = (time.monotonic() - acquire_start) * 1000.0
+                    self._cq_acquire_duration_histogram.observe(acquire_duration_ms)
                 except asyncio.CancelledError:
                     if acquire_ref is not None:
                         ray.cancel(acquire_ref)
@@ -185,6 +229,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         f"{self._capacity_queue_full_name}."
                     )
                     self._capacity_queue = None
+                    self._cq_retry_counter.inc(tags={"reason": "fault"})
                     await self._backoff(fault_attempt)
                     fault_attempt += 1
                     continue
@@ -194,6 +239,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         f"{self._capacity_queue_full_name}.",
                         exc_info=True,
                     )
+                    self._cq_retry_counter.inc(tags={"reason": "fault"})
                     await self._backoff(fault_attempt)
                     fault_attempt += 1
                     continue
@@ -203,6 +249,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 # fault_attempt or trigger Pow2 fallback. Apply backoff
                 # to avoid a hot loop when acquire_timeout_s is low.
                 if acquired_replica_id is None:
+                    self._cq_retry_counter.inc(tags={"reason": "capacity_depleted"})
                     await self._backoff(capacity_depleted_attempt)
                     capacity_depleted_attempt += 1
                     continue
@@ -215,6 +262,8 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     # acceptance. If the replica rejects, the token is
                     # intentionally NOT released.
                     self._pending_tokens[internal_request_id] = acquired_replica_id
+                    self._cq_routing_requests_counter.inc(tags={"route": "cq"})
+                    self._record_queue_wait_time(pending_request)
                     acquired_replica_id = None
                     fault_attempt = 0
                     capacity_depleted_attempt = 0
