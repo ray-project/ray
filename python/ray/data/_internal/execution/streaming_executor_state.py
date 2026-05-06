@@ -27,6 +27,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    TaskExecDriverStats,
     Waitable,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -428,6 +429,109 @@ def build_streaming_topology(
     return topology
 
 
+def _detect_and_finish_orphaned_tasks(
+    not_ready: List[Waitable],
+    active_tasks: Dict[Waitable, Tuple["OpState", OpTask]],
+    num_errored_blocks: int,
+    max_errored_blocks: int,
+) -> int:
+    """Detect tasks whose Ray Core task completed but whose stream didn't end.
+
+    This can happen if a task vanishes from Ray Core (e.g., worker crash during
+    startup, task lost from scheduler) without the stream receiving an
+    end-of-stream marker. We batch the completion-ref checks into a single
+    ``ray.wait`` call to avoid O(N) Ray Core RPCs per scheduling tick.
+
+    Args:
+        not_ready: Waitables that ``ray.wait`` reported as not ready.
+        active_tasks: Mapping from waitable to (OpState, OpTask).
+        num_errored_blocks: Running count of errored blocks so far.
+        max_errored_blocks: Max errored blocks to tolerate (-1 = unlimited).
+
+    Returns:
+        Updated ``num_errored_blocks`` count.
+    """
+    orphaned_candidates: Dict["ray.ObjectRef", Tuple["OpState", DataOpTask]] = {}
+    for waitable in not_ready:
+        state, task = active_tasks[waitable]
+        if isinstance(task, DataOpTask) and not task.has_finished:
+            orphaned_candidates[task._streaming_gen.completed()] = (
+                state,
+                task,
+            )
+
+    if not orphaned_candidates:
+        return num_errored_blocks
+
+    # fetch_local=True (default) ensures that when a ref is returned as
+    # ready the object is already local, so the subsequent ray.get is instant.
+    # Refs whose object exists remotely but hasn't been pulled yet are returned
+    # as not-ready and will be picked up on the next scheduling tick.
+    ready_completed, _ = ray.wait(
+        list(orphaned_candidates.keys()),
+        timeout=0,
+    )
+    for completed_ref in ready_completed:
+        state, task = orphaned_candidates[completed_ref]
+
+        # Task has completed in Ray Core but stream didn't end.
+        # Force-finish the task.
+        exception = None
+        try:
+            ray.get(completed_ref)
+        except Exception as ex:
+            exception = ex
+
+        completion_msg = (
+            f"Detected completed Ray task for operator "
+            f"'{state.op.name}' whose output stream didn't "
+            f"terminate. Forcing task completion."
+            + (f" Error: {exception}" if exception else "")
+        )
+        if exception is not None:
+            logger.warning(completion_msg)
+        else:
+            logger.info(completion_msg)
+        task._task_done_callback(
+            exception,
+            None,  # TaskExecWorkerStats
+            TaskExecDriverStats(
+                task_output_backpressure_s=task._total_output_backpressure_s,
+            ),
+        )
+        task._has_finished = True
+
+        if exception is not None:
+            num_errored_blocks += 1
+            should_ignore = (
+                max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
+            )
+            error_message = (
+                "An exception was raised from a task of " f'operator "{state.op.name}".'
+            )
+            if should_ignore:
+                remaining = (
+                    max_errored_blocks - num_errored_blocks
+                    if max_errored_blocks >= 0
+                    else "unlimited"
+                )
+                error_message += (
+                    " Ignoring this exception with remaining"
+                    f" max_errored_blocks={remaining}."
+                )
+                logger.error(error_message, exc_info=exception)
+            else:
+                error_message += (
+                    " Dataset execution will now abort."
+                    " To ignore this exception and continue, set"
+                    " DataContext.max_errored_blocks."
+                )
+                logger.error(error_message, exc_info=exception)
+                raise exception from None
+
+    return num_errored_blocks
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
@@ -481,7 +585,7 @@ def process_completed_tasks(
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
     if active_tasks:
-        ready, _ = ray.wait(
+        ready, not_ready = ray.wait(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
@@ -544,6 +648,10 @@ def process_completed_tasks(
                 else:
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
+
+        num_errored_blocks = _detect_and_finish_orphaned_tasks(
+            not_ready, active_tasks, num_errored_blocks, max_errored_blocks
+        )
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
