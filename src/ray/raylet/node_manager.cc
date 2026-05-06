@@ -254,6 +254,16 @@ NodeManager::NodeManager(
       socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
+  // Initialize memory manager worker eviction metrics to 0 so that the metric
+  // exists from startup. This ensures Prometheus rate() correctly captures the
+  // first eviction event instead of treating it as a transition from null.
+  for (const auto &type : {"MemoryManager.DriverEviction.Total",
+                           "MemoryManager.IdleWorkerEviction.Total",
+                           "MemoryManager.TaskEviction.Total",
+                           "MemoryManager.ActorEviction.Total"}) {
+    memory_manager_worker_eviction_total_count_.Record(0, {{"Type", type}, {"Name", ""}});
+  }
+
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),

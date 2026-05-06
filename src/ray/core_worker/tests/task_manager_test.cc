@@ -230,12 +230,15 @@ class TaskManagerTest : public ::testing::Test {
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
+  // These must be declared before manager_ because C++ initializes members in
+  // declaration order, and the TaskManager constructor records initial metric
+  // values via the reference it receives.
+  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
-  ray::observability::FakeGauge fake_task_by_state_counter_;
-  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -249,11 +252,41 @@ TEST_F(TaskManagerTest, TestRecordMetrics) {
   manager_.AddPendingTask(caller_address, spec, "");
   manager_.RecordMetrics();
   auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
-  ASSERT_EQ(tag_to_value.size(), 1);  // one task state data point
-  ASSERT_EQ(tag_to_value.begin()->first.at("State"),
-            rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL));
-  ASSERT_EQ(tag_to_value.begin()->second, 1);  // one task in the PENDING_ARGS_AVAIL state
+  // Find the specific entry for PENDING_ARGS_AVAIL (may coexist with
+  // zero-initialized entries for other states).
+  bool found = false;
+  for (const auto &[tags, value] : tag_to_value) {
+    if (tags.at("State") == rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL) &&
+        value == 1) {
+      found = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(found);
   manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
+TEST_F(TaskManagerTest, TestInitialMetricValues) {
+  // Verify that the TaskManager initializes task metrics to 0 for each state
+  // at construction time, so Prometheus rate() captures the first transition.
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  for (const auto &state : {rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                            rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
+                            rpc::TaskStatus::SUBMITTED_TO_WORKER,
+                            rpc::TaskStatus::RUNNING,
+                            rpc::TaskStatus::FINISHED,
+                            rpc::TaskStatus::FAILED}) {
+    absl::flat_hash_map<std::string, std::string> expected_tags = {
+        {"State", rpc::TaskStatus_Name(state)},
+        {"Name", ""},
+        {"IsRetry", "0"},
+        {"Source", "owner"}};
+    auto it = tag_to_value.find(expected_tags);
+    ASSERT_NE(it, tag_to_value.end())
+        << "Missing initial metric for state " << rpc::TaskStatus_Name(state);
+    ASSERT_EQ(it->second, 0) << "Expected 0 for initial metric of state "
+                             << rpc::TaskStatus_Name(state);
+  }
 }
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
