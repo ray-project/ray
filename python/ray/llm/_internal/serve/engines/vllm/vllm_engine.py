@@ -265,6 +265,14 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_scores: Optional["ServingScores"] = None
         self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
 
+    @property
+    def vllm_args(self):
+        return self._vllm_args
+
+    @property
+    def engine_client(self):
+        return self._engine_client
+
     async def start(self) -> None:
         """Start the vLLM engine.
 

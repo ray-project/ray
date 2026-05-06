@@ -200,14 +200,15 @@ class LLMServer(LLMServerProtocol):
         from vllm.entrypoints.openai.api_server import build_app, init_app_state
 
         engine = self.engine
-        args = engine._vllm_args
+        args = engine.vllm_args
+        engine_client = engine.engine_client
         supported_tasks = ("generate",)
-        if hasattr(engine._engine_client, "get_supported_tasks"):
-            supported_tasks = await engine._engine_client.get_supported_tasks()
+        if hasattr(engine_client, "get_supported_tasks"):
+            supported_tasks = await engine_client.get_supported_tasks()
 
         app = build_app(args, supported_tasks=supported_tasks)
         await init_app_state(
-            engine._engine_client,
+            engine_client,
             app.state,
             args,
             supported_tasks=supported_tasks,

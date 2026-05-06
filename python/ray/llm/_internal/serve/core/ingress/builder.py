@@ -193,7 +193,7 @@ def build_openai_app(builder_config: dict) -> Application:
         )
         return direct_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
-                llm_deployment_name=direct_deployment._bound_deployment.name,
+                llm_deployment_name=direct_deployment.name,
             )
         )
 

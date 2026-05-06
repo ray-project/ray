@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -14,9 +14,9 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 # short enough that a wedged replica fails the constructor and Serve retries.
 _HANDLE_PRIMING_TIMEOUT_S = 60.0
 
-# Cache key for `_ready_replicas`. ``id`` discriminates dict reassignment
-# (Serve's ``update_replicas`` rebinds), ``len`` discriminates in-place pop.
-_ReplicaCacheSignature = Tuple[int, int]
+# Cache key for `_ready_replicas`: the set of current replica IDs. Detects
+# add/remove and in-place swap; insensitive to dict identity / iteration order.
+_ReplicaCacheSignature = FrozenSet[ReplicaID]
 
 router_app = FastAPI()
 
@@ -108,7 +108,7 @@ class LLMRouter:
         changes. Hot-path call (per /internal/route request).
         """
         curr_replicas: Dict[ReplicaID, RunningReplica] = request_router.curr_replicas
-        signature = (id(curr_replicas), len(curr_replicas))
+        signature = frozenset(curr_replicas.keys())
         if signature != self._cached_replica_signature:
             self._cached_replica_signature = signature
             self._cached_sorted_replicas = sorted(
