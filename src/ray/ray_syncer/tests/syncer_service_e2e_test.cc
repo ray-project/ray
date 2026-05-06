@@ -26,7 +26,7 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/util/network_util.h"

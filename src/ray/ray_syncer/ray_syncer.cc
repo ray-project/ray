@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer_client.h"

@@ -58,7 +58,7 @@ ray_cc_library(
     hdrs = ["task_submission_util.h"],
     visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/gcs_rpc_client:gcs_client",
     ],
@@ -77,7 +77,6 @@ ray_cc_library(
         ":out_of_order_actor_submit_queue",
         ":sequential_actor_submit_queue",
         ":task_submission_util",
-        "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker:reference_counter_interface",

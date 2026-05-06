@@ -19,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"

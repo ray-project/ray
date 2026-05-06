@@ -18,7 +18,7 @@
 #include <memory>
 #include <thread>
 
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {

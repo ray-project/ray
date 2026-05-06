@@ -20,7 +20,8 @@ ray_cc_library(
     deps = [
         ":metrics",
         ":rpc_callback_types",
-        "//src/ray/common:asio",
+        "//src/ray/asio:asio_chaos",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
@@ -109,7 +110,8 @@ ray_cc_library(
     deps = [
         ":metrics",
         ":rpc_callback_types",
-        "//src/ray/common:asio",
+        "//src/ray/asio:asio_chaos",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -131,7 +133,7 @@ ray_cc_library(
     deps = [
         ":common",
         ":server_call",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/rpc/authentication:authentication_token_loader",
@@ -164,7 +166,7 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/object_manager:object_manager_grpc_client_manager",
         "//src/ray/protobuf:object_manager_cc_grpc",
         "//src/ray/rpc:grpc_server",

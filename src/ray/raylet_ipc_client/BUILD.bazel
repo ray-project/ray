@@ -29,7 +29,7 @@ ray_cc_library(
     visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         ":client_connection",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:buffer",
         "//src/ray/common:flatbuf_utils",
         "//src/ray/common:id",
@@ -52,7 +52,7 @@ ray_cc_library(
         "client_connection.h",
     ],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:event_stats",
         "//src/ray/common:id",
         "//src/ray/common:status",

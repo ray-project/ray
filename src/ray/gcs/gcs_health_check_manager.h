@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/thread_checker.h"

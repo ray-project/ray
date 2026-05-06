@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client_kv.h"

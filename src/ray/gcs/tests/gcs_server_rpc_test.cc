@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"

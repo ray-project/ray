@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"

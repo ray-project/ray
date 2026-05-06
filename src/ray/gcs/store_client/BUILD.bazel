@@ -4,7 +4,7 @@ ray_cc_library(
     name = "store_client",
     hdrs = ["store_client.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:io_service_pool",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/gcs/postable",
@@ -27,7 +27,7 @@ ray_cc_library(
     deps = [
         ":store_client",
         "//:hiredis",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/gcs/postable",
@@ -47,7 +47,6 @@ ray_cc_library(
     hdrs = ["in_memory_store_client.h"],
     deps = [
         ":store_client",
-        "//src/ray/common:asio",
         "//src/ray/util:concurrent_flat_map",
         "@com_google_absl//absl/container:node_hash_map",
     ],

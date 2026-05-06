@@ -46,6 +46,8 @@ ray_cc_library(
     deps = [
         ":stats_metric",
         ":tag_defs",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:io_service_pool",
         "//src/ray/observability:metric_interface",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/util:network_util",

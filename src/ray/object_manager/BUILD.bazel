@@ -13,7 +13,7 @@ ray_cc_library(
         ":pull_manager",
         ":push_manager",
         ":spilled_object_reader",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
@@ -67,7 +67,7 @@ ray_cc_library(
     hdrs = ["ownership_object_directory.h"],
     deps = [
         ":object_directory",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -81,7 +81,7 @@ ray_cc_library(
     hdrs = ["object_directory.h"],
     deps = [
         ":object_manager_common",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/gcs_rpc_client:gcs_client",

@@ -17,7 +17,7 @@
 #include <memory>
 #include <utility>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 

@@ -20,7 +20,7 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 

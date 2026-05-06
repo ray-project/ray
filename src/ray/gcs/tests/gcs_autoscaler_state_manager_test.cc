@@ -30,7 +30,7 @@
 #include "mock/ray/gcs/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_init_data.h"

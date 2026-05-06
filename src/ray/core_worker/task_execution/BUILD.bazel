@@ -16,7 +16,7 @@ ray_cc_library(
         ":ordered_actor_task_execution_queue",
         ":thread_pool",
         ":unordered_actor_task_execution_queue",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",

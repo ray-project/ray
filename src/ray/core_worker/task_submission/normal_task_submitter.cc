@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"

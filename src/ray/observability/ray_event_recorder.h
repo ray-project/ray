@@ -17,7 +17,7 @@
 #include <boost/circular_buffer.hpp>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
