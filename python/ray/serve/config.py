@@ -913,6 +913,11 @@ class gRPCOptions(BaseModel):
         return callables
 
 
+# Re-exported here so callers can import DnsAidConfig from ray.serve.config
+# alongside HTTPOptions and gRPCOptions without knowing the internal module.
+from ray.serve.dns_aid import DnsAidConfig  # noqa: E402,F401
+
+
 @PublicAPI(stability="alpha")
 class GangPlacementStrategy(str, Enum):
     """Placement strategy for replicas within a gang."""

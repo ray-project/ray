@@ -24,6 +24,7 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
+    DeploymentStatus,
     HandleMetricReport,
     NodeId,
     ReplicaMetricReport,
@@ -85,6 +86,7 @@ from ray.serve._private.utils import (
     is_grpc_enabled,
 )
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.dns_aid import DnsAidConfig, DnsAidManager
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -154,6 +156,7 @@ class ServeController:
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        dns_aid_config: Optional[DnsAidConfig] = None,
     ):
         if RAY_SERVE_THROUGHPUT_OPTIMIZED:
             self._log_throughput_opt_message()
@@ -263,6 +266,13 @@ class ServeController:
             worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
+        # DNS-AID deployment discovery integration (opt-in, best-effort)
+        self._dns_aid = DnsAidManager(dns_aid_config or DnsAidConfig())
+        # (app_name, dep_name) pairs whose DNS-AID records are currently live.
+        # Keyed by the full pair to avoid collisions when two applications use
+        # identically-named deployments.
+        self._dns_aid_running: Set[Tuple[str, str]] = set()
+
         self._shutting_down = False
         self._shutdown_flag_persisted = False
         if self.kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None:
@@ -651,6 +661,173 @@ class ServeController:
             ):
                 self.broadcast_fallback_targets_if_changed()
 
+        # Publish / retire DNS-AID SVCB records for deployments that have
+        # transitioned in or out of HEALTHY state.  Gated on recovery being
+        # complete so we don't publish stale records from a restarting controller.
+        if self.done_recovering_event.is_set():
+            await self._update_dns_aid_registrations()
+
+    def _get_dns_ingress_host(self, http_config: HTTPOptions) -> str:
+        """Return the public HTTP ingress hostname.
+
+        Falls back to the head-node IP when the configured host is a
+        loopback or wildcard address that would not be reachable from
+        external agents.
+        """
+        host = http_config.host or ""
+        if host in (
+            "0.0.0.0", "127.0.0.1", "localhost",
+            "::", "::1", "",
+        ):
+            return ray.util.get_node_ip_address()
+        return host
+
+    async def _update_dns_aid_registrations(self) -> None:
+        """Synchronize DNS-AID records with the current HEALTHY deployment set.
+
+        Called once per control-loop iteration.  Short-circuits immediately
+        when DNS-AID is disabled so there is zero overhead.  All DNS network
+        I/O is delegated to :class:`DnsAidManager` which fires async tasks
+        so this method never blocks the controller event loop.
+
+        We use ``get_deployment_infos()`` (lightweight config-only objects)
+        and ``get_deployment_statuses([id])`` (lightweight status-only
+        objects) rather than ``list_deployment_details()`` which loads full
+        per-replica actor info.
+        """
+        # In NoServer / Disabled proxy mode there is no HTTP listener,
+        # so publishing DNS records would advertise unreachable endpoints.
+        if self.proxy_state_manager is None:
+            return
+        if not self._dns_aid.is_enabled():
+            # DNS-AID was just disabled (or was never enabled).
+            # Deregister any live records before clearing the
+            # tracking set, using force=True since _is_enabled()
+            # would otherwise short-circuit the cleanup.
+            if self._dns_aid_running:
+                self._dns_aid.deregister_all(
+                    known_keys=self._dns_aid_running,
+                    force=True,
+                )
+            self._dns_aid_running = set()
+            return
+        try:
+            # Statuses that indicate the deployment is terminally
+            # broken and should be deregistered from DNS.  Transient
+            # states (UPDATING, UPSCALING, DOWNSCALING) keep the
+            # record alive so clients aren't disrupted by scaling
+            # events or rolling updates.
+            _DEREGISTER_STATUSES = {
+                DeploymentStatus.UNHEALTHY,
+                DeploymentStatus.DEPLOY_FAILED,
+            }
+
+            # Collect deployments eligible for DNS-AID registration
+            # (HEALTHY) and those that must be deregistered.
+            eligible: Dict[
+                Tuple[str, str], Tuple[str, int]
+            ] = {}
+            must_deregister: Set[Tuple[str, str]] = set()
+
+            all_infos = (
+                self.deployment_state_manager.get_deployment_infos()
+            )
+            # Batch-fetch all deployment statuses in a single call
+            # instead of one per deployment.  get_deployment_statuses()
+            # with no args returns one entry per _deployment_states
+            # value in insertion order — the same order as
+            # get_deployment_infos() keys.  Both calls are synchronous
+            # reads of the same dict with no await in between, so the
+            # zip alignment is guaranteed.
+            all_statuses = (
+                self.deployment_state_manager
+                .get_deployment_statuses()
+            )
+            status_by_id: Dict[DeploymentID, object] = dict(
+                zip(all_infos.keys(), all_statuses)
+            )
+
+            all_dep_keys: Set[Tuple[str, str]] = set()
+            for dep_id, dep_info in all_infos.items():
+                key = (dep_id.app_name, dep_id.name)
+                all_dep_keys.add(key)
+                status_info = status_by_id.get(dep_id)
+                if not status_info:
+                    continue
+                status = status_info.status
+
+                if status in _DEREGISTER_STATUSES:
+                    must_deregister.add(key)
+                    continue
+                if status != DeploymentStatus.HEALTHY:
+                    # Transient state — keep existing record if any,
+                    # but don't register a new one.
+                    continue
+
+                # HEALTHY: eligible for registration.
+                # In Ray Serve the route prefix is application-level:
+                # all deployments in an app share the same ingress
+                # route.  The fallback uses the deployment name.
+                route_prefix = (
+                    self.application_state_manager
+                    .get_route_prefix(dep_id.app_name)
+                    or f"/{dep_id.name}"
+                )
+                # num_replicas is None for autoscaling deployments.
+                # Pass 0 to signal "autoscaling" rather than a
+                # misleading fixed count.
+                replicas = (
+                    dep_info.deployment_config.num_replicas or 0
+                )
+                eligible[key] = (route_prefix, replicas)
+
+            http_config = self.get_http_config()
+            # NOTE: In EveryNode proxy mode this publishes the
+            # head-node IP only.  Multi-value SVCB records (one per
+            # proxy node) are a future improvement.
+            ingress_host = self._get_dns_ingress_host(http_config)
+            ingress_port = http_config.port
+
+            # Register newly-HEALTHY deployments.  Also retry any
+            # deployments that are in the intent set but whose
+            # previous registration may have failed (not yet
+            # confirmed in the manager's _registered set).
+            confirmed = self._dns_aid.get_registered()
+            to_register = set(eligible) - confirmed
+            for app_name, dep_name in to_register:
+                route_prefix, replicas = eligible[
+                    (app_name, dep_name)
+                ]
+                self._dns_aid.register(
+                    dep_name,
+                    route_prefix,
+                    replicas,
+                    ingress_host,
+                    ingress_port,
+                    app_name,
+                )
+
+            # Deregister deployments that are terminally broken or
+            # have been deleted (no longer in all_dep_keys).
+            deleted = (
+                self._dns_aid_running - all_dep_keys
+            )
+            for app_name, dep_name in (
+                must_deregister | deleted
+            ):
+                if (app_name, dep_name) in self._dns_aid_running:
+                    self._dns_aid.deregister(dep_name, app_name)
+
+            # Update intent tracking: add eligible, remove
+            # deregistered/deleted, keep transient states.
+            self._dns_aid_running |= set(eligible)
+            self._dns_aid_running -= must_deregister
+            self._dns_aid_running -= deleted
+        except Exception:
+            logger.exception(
+                "DNS-AID: error during registration update"
+            )
+
     def _maybe_update_ingress_ports(self) -> None:
         """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
@@ -803,18 +980,34 @@ class ServeController:
 
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            (
-                deployment_time,
-                target_capacity,
-                target_capacity_direction,
-                config_checkpoints_dict,
-            ) = pickle.loads(checkpoint)
+            loaded = pickle.loads(checkpoint)
+            # Older checkpoints have 4 elements; newer ones include
+            # dns_aid_enabled as the 5th element.
+            if len(loaded) >= 5:
+                (
+                    deployment_time,
+                    target_capacity,
+                    target_capacity_direction,
+                    config_checkpoints_dict,
+                    dns_aid_enabled,
+                ) = loaded[:5]
+            else:
+                (
+                    deployment_time,
+                    target_capacity,
+                    target_capacity_direction,
+                    config_checkpoints_dict,
+                ) = loaded
+                dns_aid_enabled = False
 
             return (
                 deployment_time,
                 ServeDeploySchema(
-                    applications=list(config_checkpoints_dict.values()),
+                    applications=list(
+                        config_checkpoints_dict.values()
+                    ),
                     target_capacity=target_capacity,
+                    dns_aid_enabled=dns_aid_enabled,
                 ),
                 target_capacity_direction,
             )
@@ -975,6 +1168,13 @@ class ServeController:
             self._shutdown_flag_persisted = True
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
+        # Best-effort: retire DNS-AID records before the controller exits
+        # so they don't outlive the Serve instance beyond the record TTL.
+        # Pass the controller's tracking set to cover in-flight
+        # registrations not yet confirmed in the manager's internal set.
+        self._dns_aid.deregister_all(
+            known_keys=self._dns_aid_running
+        )
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
@@ -1153,6 +1353,7 @@ class ServeController:
                     self._target_capacity,
                     self._target_capacity_direction,
                     new_config_checkpoint,
+                    config.dns_aid_enabled,
                 )
             ),
         )
@@ -1168,6 +1369,11 @@ class ServeController:
         )
 
         self.application_state_manager.save_checkpoint()
+
+        # Honour dns_aid_enabled from the deploy schema at runtime so
+        # users can toggle DNS-AID without restarting the controller.
+        # Unconditional so setting dns_aid_enabled=false also takes effect.
+        self._dns_aid.set_enabled(config.dns_aid_enabled)
 
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.

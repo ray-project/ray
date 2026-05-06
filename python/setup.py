@@ -320,6 +320,17 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # Optional DNS-AID integration for standards-compliant (RFC 9460
+    # SVCB) deployment discovery by external AI agents.
+    setup_spec.extras["serve-dns-aid"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "dns-aid",
+            ]
+        )
+    )
+
     setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
