@@ -185,6 +185,39 @@ class ObjectRefGenerator:
         core_worker = self.worker.core_worker
         return core_worker.peek_object_ref_stream(self._generator_ref)[0]
 
+    def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
+        """Return the next num_refs references from a generator.
+
+        Note that the ObjectIDs generated from a generator are always
+        deterministic. This method does not consume the stream.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return [
+            ref
+            for ref, _ in core_worker.peek_object_ref_stream_n(
+                self._generator_ref, num_refs
+            )
+        ]
+
+    def _consume_next_ref_n(self, num_refs: int) -> None:
+        """Consume the next num_refs references from a generator.
+
+        The EOF sentinel is consumable and returned to the caller as an ObjectRef.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        for i in range(num_refs):
+            try:
+                ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
+            except ObjectRefStreamEndOfStreamError:
+                return
+            assert not ref.is_nil()
+
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
 

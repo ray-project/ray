@@ -341,6 +341,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
+  /// Read multiple next indexes of a ObjectRefStream of generator_id without
+  /// consuming them.
+  std::vector<std::pair<rpc::ObjectReference, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items);
+
   /// Asynchronously delete the ObjectRefStream that was created upon the
   /// initial task submission. This method triggers a timer. On each interval,
   /// we check whether the generator ref and all dynamic return refs have been
@@ -704,6 +709,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /// Like \p Wait, but each object may independently set \p fetch_local.
+  ///
+  /// \param[in] fetch_local_per_id Same length as \p object_ids; entry i applies to
+  /// \p object_ids[i].
+  Status WaitAndFetch(const std::vector<ObjectID> &object_ids,
+                      const std::vector<bool> &fetch_local_per_id,
+                      int num_objects,
+                      int64_t timeout_ms,
+                      std::vector<bool> *results);
 
   /// Delete a list of objects from the plasma object store.
   ///

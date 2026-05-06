@@ -1585,6 +1585,130 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
+// Similar to CoreWorker::Wait. Same wait semantics, but with a
+// per-object fetch_local flag instead of a single bool for all ids.
+Status CoreWorker::WaitAndFetch(const std::vector<ObjectID> &ids,
+                                const std::vector<bool> &fetch_local_per_id,
+                                int num_objects,
+                                int64_t timeout_ms,
+                                std::vector<bool> *results) {
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        *worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  }
+
+  results->resize(ids.size(), false);
+
+  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
+    return Status::Invalid(
+        "Number of objects to wait for must be between 1 and the number of ids.");
+  }
+
+  if (fetch_local_per_id.size() != ids.size()) {
+    return Status::Invalid(
+        "fetch_local_per_id must contain one entry per object id in WaitAndFetch.");
+  }
+
+  absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
+
+  if (memory_object_ids.size() != ids.size()) {
+    return Status::Invalid("Duplicate object IDs not supported in wait.");
+  }
+
+  size_t objs_without_owners = 0;
+  size_t objs_with_owners = 0;
+  std::ostringstream ids_stream;
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (!HasOwner(ids[i])) {
+      ids_stream << ids[i] << " ";
+      ++objs_without_owners;
+    } else {
+      ++objs_with_owners;
+    }
+    // enough owned objects to process this batch
+    if (objs_with_owners == static_cast<size_t>(num_objects)) {
+      break;
+    }
+    // not enough objects with owners to process the batch
+    if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
+      std::ostringstream stream;
+      stream << "An application is trying to access a Ray object whose owner is unknown"
+             << "(" << ids_stream.str()
+             << "). "
+                "Please make sure that all Ray objects you are trying to access are part"
+                " of the current Ray session. Note that "
+                "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+                " Ray does not know which task created them. "
+                "If this was not how your object ID was generated, please file an issue "
+                "at https://github.com/ray-project/ray/issues/";
+      return Status::ObjectUnknownOwner(stream.str());
+    }
+  }
+
+  int64_t start_time = current_time_ms();
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+  ready.reserve(num_objects);
+  RAY_RETURN_NOT_OK(memory_store_->Wait(
+      memory_object_ids,
+      std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+      timeout_ms,
+      *worker_context_,
+      &ready,
+      &plasma_object_ids));
+  RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+  if (timeout_ms > 0) {
+    timeout_ms =
+        std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+  }
+
+  // Plasma objects that do not require a local copy count as ready in input order
+  // until we have num_objects ready.
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (ready.size() >= static_cast<size_t>(num_objects)) {
+      break;
+    }
+    const auto &object_id = ids[i];
+    if (!fetch_local_per_id[i] &&
+        plasma_object_ids.find(object_id) != plasma_object_ids.end()) {
+      ready.insert(object_id);
+    }
+  }
+
+  // Pull objects that require a local copy. When any key still has fetch_local=true,
+  // issue plasma wait (possibly with num_to_fetch == 0) to start local pulls even if
+  // num_objects is already satisfied (same prefetch idea as ray.wait fetch_local=true).
+  std::vector<ObjectID> fetch_ids;
+  fetch_ids.reserve(plasma_object_ids.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    const auto &object_id = ids[i];
+    if (fetch_local_per_id[i] &&
+        plasma_object_ids.find(object_id) != plasma_object_ids.end()) {
+      fetch_ids.push_back(object_id);
+    }
+  }
+  if (!fetch_ids.empty()) {
+    const int num_to_fetch =
+        std::min(static_cast<int>(fetch_ids.size()),
+                 std::max(0, num_objects - static_cast<int>(ready.size())));
+    auto owner_addresses = reference_counter_->GetOwnerAddresses(fetch_ids);
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+        fetch_ids, owner_addresses, num_to_fetch, timeout_ms, *worker_context_, &ready));
+  }
+  RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (ready.find(ids[i]) != ready.end()) {
+      results->at(i) = true;
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
   absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
   absl::flat_hash_map<WorkerID, rpc::Address> addresses;
@@ -3081,6 +3205,21 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
   return {object_ref, ready};
+}
+
+std::vector<std::pair<rpc::ObjectReference, bool>> CoreWorker::PeekObjectRefStreamN(
+    const ObjectID &generator_id, int64_t num_items) {
+  auto object_ids_and_ready =
+      task_manager_->PeekObjectRefStreamN(generator_id, num_items);
+  std::vector<std::pair<rpc::ObjectReference, bool>> results;
+  results.reserve(object_ids_and_ready.size());
+  for (const auto &[object_id, ready] : object_ids_and_ready) {
+    rpc::ObjectReference object_ref;
+    object_ref.set_object_id(object_id.Binary());
+    object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+    results.emplace_back(std::move(object_ref), ready);
+  }
+  return results;
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,

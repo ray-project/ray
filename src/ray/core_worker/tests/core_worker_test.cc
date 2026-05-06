@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <future>
 #include <memory>
 #include <string>
@@ -31,6 +32,7 @@
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -329,6 +331,35 @@ std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
       metadata_str.size(),
       true);
   return std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
+}
+
+TaskSpecification CreateStreamingGeneratorTaskSpec() {
+  TaskSpecification task;
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_returns_dynamic(true);
+  task.GetMutableMessage().set_streaming_generator(true);
+  task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
+  return task;
+}
+
+TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
+  auto spec = CreateStreamingGeneratorTaskSpec();
+  auto generator_id = spec.ReturnId(0);
+  task_manager_->AddPendingTask(rpc_address_, spec, "call_site");
+
+  auto refs = core_worker_->PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(refs.size(), 2);
+  ASSERT_EQ(ObjectID::FromBinary(refs[0].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 2));
+  ASSERT_FALSE(refs[0].second);
+  ASSERT_EQ(ObjectID::FromBinary(refs[1].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 3));
+  ASSERT_FALSE(refs[1].second);
+  ASSERT_EQ(WorkerID::FromBinary(refs[0].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
+  ASSERT_EQ(WorkerID::FromBinary(refs[1].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
 }
 
 TEST_F(CoreWorkerTest, RecordMetrics) {
@@ -1271,6 +1302,233 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
 INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
                          HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                          ::testing::Values(true, false));
+
+TEST_F(CoreWorkerTest, WaitAndFetchRejectsMismatchedFetchLocalSize) {
+  std::vector<ObjectID> ids = {ObjectID::FromRandom(), ObjectID::FromRandom()};
+  std::vector<bool> fetch_flags = {true};
+  std::vector<bool> results;
+  auto status = core_worker_->WaitAndFetch(ids, fetch_flags, 1, 1000, &results);
+  ASSERT_FALSE(status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInMemoryReadyCounts) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id1 = ObjectID::FromRandom();
+  const auto id2 = ObjectID::FromRandom();
+  const auto id3 = ObjectID::FromRandom();
+  for (const auto &id : {id1, id2, id3}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    auto obj = MakeRayObject("x", "m");
+    memory_store_->Put(*obj, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id1, id2, id3};
+  const std::vector<bool> fetch_all = {true, true, true};
+
+  for (int num = 1; num <= 3; ++num) {
+    std::vector<bool> results;
+    const auto st = core_worker_->WaitAndFetch(ids, fetch_all, num, 1000, &results);
+    ASSERT_TRUE(st.ok()) << st.ToString();
+    ASSERT_EQ(results.size(), ids.size());
+    ASSERT_EQ(std::count(results.begin(), results.end(), true), num);
+    if (num == static_cast<int>(ids.size())) {
+      ASSERT_EQ(results, (std::vector<bool>{true, true, true}));
+    }
+  }
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInMemoryPerIdFetchLocalWhenAllRequired) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id1 = ObjectID::FromRandom();
+  const auto id2 = ObjectID::FromRandom();
+  const auto id3 = ObjectID::FromRandom();
+  for (const auto &id : {id1, id2, id3}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    auto obj = MakeRayObject("x", "m");
+    memory_store_->Put(*obj, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id1, id2, id3};
+  const std::vector<bool> fetch_all = {true, true, true};
+  const std::vector<bool> fetch_mixed = {false, true, false};
+
+  std::vector<bool> all_local;
+  std::vector<bool> mixed_local;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_all, 3, 1000, &all_local).ok());
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_mixed, 3, 1000, &mixed_local).ok());
+
+  // Objects live only in the in-memory store (not plasma); per-id fetch_local should
+  // not change the ready bitmap when every id must be returned.
+  ASSERT_EQ(all_local, mixed_local);
+  ASSERT_EQ(all_local, (std::vector<bool>{true, true, true}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchSucceedsWhenUnknownOwnerAfterEnoughOwnedIds) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id_unknown = ObjectID::FromRandom();
+  const auto id_known = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(id_known,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  memory_store_->Put(
+      *MakeRayObject("v", "m"), id_known, reference_counter_->HasReference(id_known));
+
+  const std::vector<ObjectID> ids = {id_unknown, id_known};
+  const std::vector<bool> fetch = {true, true};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch, 1, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{false, true}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchOwnedButMissingObjectReturnsNoneReadyWithTimeout) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+
+  std::vector<bool> results;
+  ASSERT_TRUE(
+      core_worker_->WaitAndFetch({id}, {true}, 1, /*timeout_ms=*/0, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{false}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchPartialMemoryReadyWhenCoOwnedObjectStillMissing) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id_ready = ObjectID::FromRandom();
+  const auto id_missing = ObjectID::FromRandom();
+  for (const auto &id : {id_ready, id_missing}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+  }
+  memory_store_->Put(
+      *MakeRayObject("a", "m"), id_ready, reference_counter_->HasReference(id_ready));
+
+  const std::vector<ObjectID> ids = {id_ready, id_missing};
+  const std::vector<bool> fetch = {true, true};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch, 2, /*timeout_ms=*/0, &results).ok());
+  ASSERT_EQ(std::count(results.begin(), results.end(), true), 1);
+  ASSERT_TRUE(results[0]);
+  ASSERT_FALSE(results[1]);
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInPlasmaPlaceholderReadyWithoutLocalFetch) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id1 = ObjectID::FromRandom();
+  const auto id2 = ObjectID::FromRandom();
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  for (const auto &id : {id1, id2}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    memory_store_->Put(in_plasma, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id1, id2};
+  const std::vector<bool> fetch_local = {false, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 2, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{true, true}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInPlasmaPlaceholderRespectsInputOrderForNoFetch) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  const auto id_first = ObjectID::FromRandom();
+  const auto id_second = ObjectID::FromRandom();
+  for (const auto &id : {id_first, id_second}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    memory_store_->Put(in_plasma, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id_first, id_second};
+  const std::vector<bool> fetch_local = {false, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 1, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{true, false}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchMixedMemoryAndInPlasmaPlaceholderNoFetch) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id_mem = ObjectID::FromRandom();
+  const auto id_plasma = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(id_mem,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  reference_counter_->AddOwnedObject(id_plasma,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  memory_store_->Put(
+      *MakeRayObject("d", "m"), id_mem, reference_counter_->HasReference(id_mem));
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  memory_store_->Put(in_plasma, id_plasma, reference_counter_->HasReference(id_plasma));
+
+  const std::vector<ObjectID> ids = {id_mem, id_plasma};
+  const std::vector<bool> fetch_local = {false, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 2, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{true, true}));
+}
 
 }  // namespace core
 }  // namespace ray
