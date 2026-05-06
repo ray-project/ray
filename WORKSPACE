@@ -57,6 +57,7 @@ python_register_toolchains(
     name = "python3_10",
     python_version = "3.10",
     register_toolchains = False,
+    ignore_root_user_error = True,
 )
 
 load("@python3_10//:defs.bzl", python310 = "interpreter")

@@ -16,6 +16,7 @@
 
 #include <deque>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -237,8 +238,39 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The number of bytes currently in flight.
   int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  /// Per-concurrency-group max sequence number we have processed responses for.
-  absl::flat_hash_map<std::string, int64_t> max_finished_group_seq_no_
+  /// Tracks the highest contiguous sequence number completed per concurrency group.
+  /// When responses arrive out of order, we buffer the non-contiguous completions
+  /// and only advance the watermark when contiguity is restored. This ensures
+  /// client_processed_up_to accurately reflects what the server can safely skip.
+  struct GroupSeqState {
+    /// The highest contiguous seq_no for which we have received a response.
+    /// All seq_nos <= this value have completed.
+    int64_t contiguous_watermark;
+    /// Seq_nos that completed out of order (above the watermark).
+    std::set<int64_t> pending_completions;
+
+    explicit GroupSeqState(int64_t initial) : contiguous_watermark(initial) {}
+
+    /// Record a completed seq_no. Advances the watermark if possible.
+    void MarkCompleted(int64_t seq_no) {
+      if (seq_no <= contiguous_watermark) {
+        return;  // Already accounted for.
+      }
+      if (seq_no == contiguous_watermark + 1) {
+        contiguous_watermark = seq_no;
+        // Drain any buffered completions that are now contiguous.
+        while (!pending_completions.empty() &&
+               *pending_completions.begin() == contiguous_watermark + 1) {
+          contiguous_watermark = *pending_completions.begin();
+          pending_completions.erase(pending_completions.begin());
+        }
+      } else {
+        pending_completions.insert(seq_no);
+      }
+    }
+  };
+
+  absl::flat_hash_map<std::string, GroupSeqState> group_seq_state_
       ABSL_GUARDED_BY(mutex_);
 };
 
