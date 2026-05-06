@@ -137,7 +137,11 @@ class NixlTensorTransport(TensorTransportManager):
         obj_id: str,
         rdt_object: List["torch.Tensor"],
     ) -> NixlTransportMetadata:
+        import time as _time
+
         import torch
+
+        from ray._private.worker import _rdt_profile_timings
 
         with self._cache_lock:
             device = None
@@ -162,14 +166,37 @@ class NixlTensorTransport(TensorTransportManager):
                 if device.type == "cuda":
                     # We have to synchronize before memory registration to assure the
                     # object has been created because nixl doesn't guarantee it will.
+                    _t0 = _time.perf_counter()
                     for dev in devices:
                         torch.cuda.synchronize(dev)
+                    _rdt_profile_timings["A3a_cuda_synchronize"] = (
+                        _time.perf_counter() - _t0
+                    )
 
                 nixl_agent = self.get_nixl_agent()
+
+                _t0 = _time.perf_counter()
                 self._add_tensor_descs(rdt_object)
+                _rdt_profile_timings["A3b_add_tensor_descs"] = (
+                    _time.perf_counter() - _t0
+                )
+
+                _t0 = _time.perf_counter()
                 xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
+                _rdt_profile_timings["A3c_get_xfer_descs"] = _time.perf_counter() - _t0
+
+                _t0 = _time.perf_counter()
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
+                _rdt_profile_timings["A3d_get_serialized_descs"] = (
+                    _time.perf_counter() - _t0
+                )
+
+                _t0 = _time.perf_counter()
                 agent_meta = nixl_agent.get_agent_metadata()
+                _rdt_profile_timings["A3e_get_agent_metadata"] = (
+                    _time.perf_counter() - _t0
+                )
+
                 agent_name = nixl_agent.name
                 agent_meta_version = self._nixl_agent_meta_version
             else:
@@ -202,6 +229,9 @@ class NixlTensorTransport(TensorTransportManager):
         communicator_metadata: CommunicatorMetadata,
         target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
+        import time as _time
+
+        from ray._private.worker import _rdt_profile_timings
         from ray.experimental.rdt.util import (
             create_empty_tensors_from_metadata,
         )
@@ -230,11 +260,22 @@ class NixlTensorTransport(TensorTransportManager):
         added_tensor_descs = False
         try:
             nixl_agent = self.get_nixl_agent()
+
+            _t0 = _time.perf_counter()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+            _rdt_profile_timings["C1_deserialize_descs"] = _time.perf_counter() - _t0
+
             # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
+            _t0 = _time.perf_counter()
             self._add_tensor_descs(tensors)
+            _rdt_profile_timings["C2_add_tensor_descs_recv"] = (
+                _time.perf_counter() - _t0
+            )
             added_tensor_descs = True
+
+            _t0 = _time.perf_counter()
             local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
+            _rdt_profile_timings["C3_get_xfer_descs_local"] = _time.perf_counter() - _t0
 
             remote_name = tensor_transport_metadata.nixl_agent_name
             remote_agent_meta_version = (
@@ -257,8 +298,11 @@ class NixlTensorTransport(TensorTransportManager):
 
                 self._remote_agents[remote_name] = remote_agent_meta_version
 
+            _t0 = _time.perf_counter()
             nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+            _rdt_profile_timings["C4_add_remote_agent"] = _time.perf_counter() - _t0
 
+            _t0 = _time.perf_counter()
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
                 # nixl will fail to transfer multiple times.
@@ -268,26 +312,42 @@ class NixlTensorTransport(TensorTransportManager):
                 remote_name,
                 b"UUID",
             )
+            _rdt_profile_timings["C5_initialize_xfer"] = _time.perf_counter() - _t0
 
+            _t0 = _time.perf_counter()
             state = nixl_agent.transfer(xfer_handle)
+            _rdt_profile_timings["D1_transfer_call"] = _time.perf_counter() - _t0
             if state == "ERR":
                 raise RuntimeError("NIXL transfer got to Error state.")
-            # Since current nixl does not provide a better way, we need to check the state of
-            # the transfer continuously.
-            while True:
-                state = nixl_agent.check_xfer_state(xfer_handle)
-                if state == "ERR":
-                    raise RuntimeError("NIXL transfer got to Error state.")
-                if state == "PROC":
-                    with self._aborted_transfer_obj_ids_lock:
-                        if obj_id in self._aborted_transfer_obj_ids:
-                            self._aborted_transfer_obj_ids.remove(obj_id)
-                            raise RuntimeError(
-                                f"NIXL transfer aborted for object id: {obj_id}"
-                            )
-                    time.sleep(0.001)  # Avoid busy waiting
-                elif state == "DONE":
-                    break
+            if state == "DONE":
+                _rdt_profile_timings["D_transfer_and_poll"] = _time.perf_counter() - _t0
+                _rdt_profile_timings["D2_poll_iterations"] = 0
+                _rdt_profile_timings["D3_poll_wait"] = 0
+            else:
+                # Since current nixl does not provide a better way, we need to check the state of
+                # the transfer continuously.
+                _poll_count = 0
+                _poll_start = _time.perf_counter()
+                while True:
+                    state = nixl_agent.check_xfer_state(xfer_handle)
+                    if state == "ERR":
+                        raise RuntimeError("NIXL transfer got to Error state.")
+                    if state == "PROC":
+                        _poll_count += 1
+                        with self._aborted_transfer_obj_ids_lock:
+                            if obj_id in self._aborted_transfer_obj_ids:
+                                self._aborted_transfer_obj_ids.remove(obj_id)
+                                raise RuntimeError(
+                                    f"NIXL transfer aborted for object id: {obj_id}"
+                                )
+                        time.sleep(0.001)  # Avoid busy waiting
+                    elif state == "DONE":
+                        break
+                _rdt_profile_timings["D2_poll_iterations"] = _poll_count
+                _rdt_profile_timings["D3_poll_wait"] = (
+                    _time.perf_counter() - _poll_start
+                )
+                _rdt_profile_timings["D_transfer_and_poll"] = _time.perf_counter() - _t0
         except Exception:
             from ray.exceptions import RayDirectTransportError
 
@@ -298,6 +358,7 @@ class NixlTensorTransport(TensorTransportManager):
         finally:
             # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
             # so doing best effort cleanup.
+            _cleanup_start = _time.perf_counter()
             with self._aborted_transfer_obj_ids_lock:
                 self._aborted_transfer_obj_ids.discard(obj_id)
             if xfer_handle:
@@ -306,6 +367,7 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent.remove_remote_agent(remote_name)
             if added_tensor_descs:
                 self._remove_tensor_descs(tensors)
+            _rdt_profile_timings["E_cleanup"] = _time.perf_counter() - _cleanup_start
 
         return tensors
 

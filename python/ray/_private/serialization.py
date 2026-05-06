@@ -202,6 +202,12 @@ class SerializationContext:
         self._register_cloudpickle_reducer(CompiledDAGRef, compiled_dag_ref_reducer)
 
         def object_ref_reducer(obj):
+            import time as _time
+
+            from ray._private.worker import _rdt_profile_timings
+
+            _reducer_start = _time.perf_counter()
+
             worker = ray._private.worker.global_worker
             worker.check_connected()
 
@@ -232,6 +238,9 @@ class SerializationContext:
                 # We don't want to send over any target buffers the user set
                 if rdt_meta.target_buffers:
                     rdt_meta = rdt_meta._replace(target_buffers=None)
+                _rdt_profile_timings["B_object_ref_reducer"] = (
+                    _time.perf_counter() - _reducer_start
+                )
                 return _rdt_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
