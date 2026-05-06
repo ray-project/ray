@@ -1,9 +1,11 @@
 import dataclasses
+import logging
 from dataclasses import asdict, fields
-from typing import Awaitable, Callable, List, Tuple
+from typing import Awaitable, Callable, List, Optional, Tuple
 
 import aiohttp.web
 
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, ValidationError
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.utils import HTTPStatusCode
 from ray.util.state.common import (
@@ -22,6 +24,8 @@ from ray.util.state.common import (
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.util import convert_string_to_type
 
+logger = logging.getLogger(__name__)
+
 
 def do_reply(
     status_code: HTTPStatusCode, error_message: str, result: ListApiResponse, **kwargs
@@ -38,13 +42,27 @@ def do_reply(
 async def handle_list_api(
     list_api_fn: Callable[[ListApiOptions], Awaitable[ListApiResponse]],
     req: aiohttp.web.Request,
+    schema: Optional[BaseModel] = None,
 ):
     try:
         result = await list_api_fn(option=options_from_req(req))
+        result_dict = asdict(result)
+
+        if PYDANTIC_INSTALLED and schema is not None:
+            validated_results = []
+            for item in result_dict.get("result", []):
+                try:
+                    validated_item = schema.parse_obj(item)
+                    validated_results.append(validated_item.dict())
+                except ValidationError as e:
+                    logger.warning(f"Schema validation failed for item in list: {e}")
+                    validated_results.append(item)
+            result_dict["result"] = validated_results
+
         return do_reply(
             status_code=HTTPStatusCode.OK,
             error_message="",
-            result=asdict(result),
+            result=result_dict,
         )
     except ValueError as e:
         return do_reply(
