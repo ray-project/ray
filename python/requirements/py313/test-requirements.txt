@@ -59,7 +59,7 @@ proxy.py==2.4.3
 pydantic>=2.10.0
 pydot==1.4.2
 pygame==2.5.2
-Pygments==2.18.0
+Pygments==2.20.0
 pymongo==4.3.2
 pyspark==3.4.1
 pytest==7.4.4
