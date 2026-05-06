@@ -700,9 +700,7 @@ class _ClosingIterator(OutputIterator):
             bundle = state.get_output_blocking(output_split_idx)
 
             # Untrack blocks leaving the pipeline so the counter doesn't grow unbounded.
-            counter = self._executor._resource_manager.block_ref_counter
-            for block_ref, _ in bundle.blocks:
-                counter.on_task_completed(block_ref)
+            op._track_bundle_consumed(bundle)
 
             # Update progress-bars
             if self._executor._progress_manager:

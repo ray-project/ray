@@ -205,11 +205,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 b = replace(b, output_split_idx=i)
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
-        # Untrack any blocks truncated by the equal-split remainder before clearing.
-        for bundle in self._buffer:
-            self._track_bundle_consumed(bundle)
-        # Drain truncated remainder through the metrics layer.
-        # A bare self._buffer.clear() would bypass on_input_dequeued,
+        # Drain truncated remainder through the metrics layer and untrack remaining
+        # blocks. A bare self._buffer.clear() would bypass on_input_dequeued,
         # orphaning RefBundle references in _metrics._internal_inqueues
         # that pin ObjectRefs in the object store.
         self.clear_internal_input_queue()

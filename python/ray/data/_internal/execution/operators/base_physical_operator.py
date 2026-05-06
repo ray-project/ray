@@ -54,13 +54,19 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         )
 
     def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue(s)."""
+        """Clear internal input queue(s), untracking any remaining blocks."""
         for input_buffer in self._input_queues:
+            # Untrack any remaining blocks in the input queue to avoid overestimating memory.
+            for bundle in input_buffer:
+                self._track_bundle_consumed(bundle)
             input_buffer.clear()
 
     def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue(s)."""
+        """Clear internal output queue(s), untracking any remaining blocks."""
         for output_buffer in self._output_queues:
+            # Untrack any remaining blocks in the output queue to avoid overestimating memory.
+            for bundle in output_buffer:
+                self._track_bundle_consumed(bundle)
             output_buffer.clear()
 
     def mark_execution_finished(self) -> None:
@@ -70,15 +76,6 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         and then clears internal input and output queues.
         """
         super().mark_execution_finished()
-        # Untrack any blocks still sitting in the queues before clearing them,
-        # so the BlockRefCounter doesn't overestimate memory (e.g. when a downstream limit
-        # operator terminates early and discards buffered blocks).
-        for input_queue in self._input_queues:
-            for bundle in input_queue:
-                self._track_bundle_consumed(bundle)
-        for output_queue in self._output_queues:
-            for bundle in output_queue:
-                self._track_bundle_consumed(bundle)
         self.clear_internal_input_queue()
         self.clear_internal_output_queue()
 
