@@ -148,7 +148,7 @@ def test_from_items_e2e(ray_start_regular_shared_2_cpus):
 
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromItems"
+    assert ds._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
 
 
@@ -290,7 +290,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     cols = ["sepal.length", "petal.width"]
     ds = ds.select_columns(cols)
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.exprs == [col("sepal.length"), col("petal.width")]
@@ -315,7 +315,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     cols_rename = {"sepal.length": "sepal_length", "petal.width": "pedal_width"}
     ds = ds.rename_columns(cols_rename)
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.exprs == [

@@ -86,8 +86,8 @@ class TrainRunStateManager:
         dataset_info_list = [
             TrainDatasetInfo(
                 name=ds_name,
-                dataset_name=ds._plan._dataset_name,
-                dataset_uuid=ds._plan._dataset_uuid,
+                dataset_name=ds._dataset_name,
+                dataset_uuid=ds._uuid,
             )
             for ds_name, ds in datasets.items()
         ]
