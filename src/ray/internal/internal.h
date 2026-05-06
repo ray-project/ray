@@ -45,7 +45,7 @@ std::vector<rpc::ObjectReference> SendInternal(
     int return_num,
     int max_retries = -1,
     bool retry_exceptions = false,
-    std::string serialized_retry_exception_allowlist = "");
+    std::string_view serialized_retry_exception_allowlist = "");
 
 const stats::TagKeyType TagRegister(const std::string tag_name);
 

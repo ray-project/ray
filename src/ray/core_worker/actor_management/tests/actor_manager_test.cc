@@ -270,6 +270,36 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   ASSERT_TRUE(actor_handle_to_get->CreationJobID() == job_id);
 }
 
+TEST_F(ActorManagerTest, SerializedActorHandlePreservesNamespaceAndExtensionData) {
+  JobID job_id = JobID::FromInt(3);
+  const TaskID task_id = TaskID::ForDriverTask(job_id);
+  ActorID actor_id = ActorID::Of(job_id, task_id, 1);
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  ActorHandle actor_handle(actor_id,
+                           TaskID::Nil(),
+                           rpc::Address(),
+                           job_id,
+                           ObjectID::FromRandom(),
+                           function.GetLanguage(),
+                           function.GetFunctionDescriptor(),
+                           "actor_extension_data",
+                           0,
+                           "named_actor",
+                           "test_namespace",
+                           -1,
+                           false);
+
+  std::string serialized_actor_handle;
+  actor_handle.Serialize(&serialized_actor_handle);
+
+  ActorHandle deserialized_handle(std::string_view(serialized_actor_handle));
+  ASSERT_EQ(deserialized_handle.GetActorID(), actor_id);
+  ASSERT_EQ(deserialized_handle.GetName(), "named_actor");
+  ASSERT_EQ(deserialized_handle.GetNamespace(), "test_namespace");
+  ASSERT_EQ(deserialized_handle.ExtensionData(), "actor_extension_data");
+}
+
 TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   ActorID actor_id = AddActorHandle();
   // Nothing happens if state is pending.

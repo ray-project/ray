@@ -38,7 +38,7 @@ std::vector<rpc::ObjectReference> SendInternal(
     int return_num,
     int max_retries,
     bool retry_exceptions,
-    std::string serialized_retry_exception_allowlist) {
+    std::string_view serialized_retry_exception_allowlist) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};
