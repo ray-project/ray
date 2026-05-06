@@ -1377,18 +1377,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                               const std::vector<NodeID> &locations);
 
  private:
-  /// Retry FreeLocalObjects on a single node manager after a failure at the
-  /// plasma layer. Re-resolves the raylet client on each attempt to handle
-  /// node death between attempts.
-  ///
-  /// \param node_id The node manager to retry against.
-  /// \param attempt_number Zero-indexed attempt count, used to compute
-  /// exponential backoff.
-  /// \param request The request to resend.
-  void RetryFreeLocalObjects(const NodeID &node_id,
-                             uint32_t attempt_number,
-                             const rpc::FreeLocalObjectsRequest &request);
-
   /// Resolve a raylet RPC client by node id.
   ///
   /// \param node_id The node to resolve.

@@ -45,7 +45,6 @@
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
-#include "ray/util/exponential_backoff.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
@@ -4653,38 +4652,16 @@ void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
           }
           client->FreeLocalObjects(
               request,
-              [this, node_id, request](const Status &status,
-                                       const rpc::FreeLocalObjectsReply &reply) {
+              [object_id, node_id](const Status &status,
+                                   const rpc::FreeLocalObjectsReply &reply) {
                 if (!status.ok()) {
-                  RetryFreeLocalObjects(node_id, /*attempt_number=*/0, request);
+                  RAY_LOG(WARNING).WithField(object_id)
+                      << "FreeLocalObjects RPC to node " << node_id
+                      << " failed: " << status.ToString();
                 }
               });
         }
       },
       "CoreWorker.SpreadFreeLocalObjects");
 }
-
-void CoreWorker::RetryFreeLocalObjects(const NodeID &node_id,
-                                       uint32_t attempt_number,
-                                       const rpc::FreeLocalObjectsRequest &request) {
-  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, /*base_ms=*/1000);
-  execute_after(
-      io_service_,
-      [this, node_id, attempt_number, request]() {
-        auto client = GetRayletRpcClient(node_id);
-        if (client == nullptr) {
-          return;
-        }
-        client->FreeLocalObjects(
-            request,
-            [this, node_id, attempt_number, request](
-                const Status &status, const rpc::FreeLocalObjectsReply &reply) {
-              if (!status.ok()) {
-                RetryFreeLocalObjects(node_id, attempt_number + 1, request);
-              }
-            });
-      },
-      std::chrono::milliseconds(delay_ms));
-}
-
 }  // namespace ray::core
