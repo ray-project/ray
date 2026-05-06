@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/store_client/redis_async_context.h"
 #include "ray/stats/metric.h"
