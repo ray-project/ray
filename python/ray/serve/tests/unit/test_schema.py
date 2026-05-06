@@ -385,6 +385,19 @@ class TestDeploymentSchema:
         }
         DeploymentSchema.model_validate(deployment_options)
 
+    def test_autoscaling_config_rejects_extra_fields(self):
+        """Misplaced deployment-level options inside autoscaling_config should
+        raise a validation error instead of being silently ignored."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = None
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "max_ongoing_requests": 10,  # Wrong: belongs at deployment level
+        }
+        with pytest.raises(ValidationError, match="max_ongoing_requests"):
+            DeploymentSchema.model_validate(deployment_schema)
+
     def test_route_prefix_nullable(self):
         deployment_options = {"name": "test", "route_prefix": None}
         DeploymentSchema.model_validate(deployment_options)
