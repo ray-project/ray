@@ -21,6 +21,7 @@ from ray_release.github_client import GitHubClient
 from ray_release.test import (
     DATAPLANE_ECR_ML_REPO,
     DATAPLANE_ECR_REPO,
+    DATAPLANE_ECR_TORCH_REPO,
     LINUX_TEST_PREFIX,
     MACOS_BISECT_DAILY_RATE_LIMIT,
     MACOS_TEST_PREFIX,
@@ -139,6 +140,22 @@ def test_get_anyscale_byod_image():
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
         "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+    )
+    assert _stub_test(
+        {
+            "python": "3.13",
+            "cluster": {"byod": {"type": "torch-cpu"}},
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py313-cpu"
+    )
+    assert _stub_test(
+        {
+            "python": "3.13",
+            "cluster": {"byod": {"type": "torch-cu130"}},
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py313-cu130"
     )
 
 
