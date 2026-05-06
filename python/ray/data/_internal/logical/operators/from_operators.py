@@ -35,21 +35,19 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     input_blocks: InitVar[List[ObjectRef[Block]]]
     input_metadata: InitVar[List[BlockMetadataWithSchema]]
     input_data: List[RefBundle] = field(init=False)
-    _input_dependencies: list[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadataWithSchema],
     ):
+        super().__post_init__()
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),
         )
 
+        object.__setattr__(self, "name", self.__class__.__name__)
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
         object.__setattr__(
             self,
@@ -63,14 +61,10 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
                 for i in range(len(input_blocks))
             ],
         )
-        object.__setattr__(self, "_num_outputs", len(input_blocks))
+        object.__setattr__(self, "num_outputs", len(input_blocks))
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
     @functools.cached_property
     def _cached_output_metadata(self) -> BlockMetadata:

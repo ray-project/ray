@@ -8,11 +8,8 @@ class Operator(ABC):
     Operators live on the driver side of the Dataset only.
     """
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Name for this operator."""
-        ...
+    name: str
+    input_dependencies: List["Operator"]
 
     @property
     def dag_str(self) -> str:
@@ -24,12 +21,6 @@ class Operator(ABC):
             out_str = ""
         out_str += f"{self.__class__.__name__}[{self.name}]"
         return out_str
-
-    @property
-    @abstractmethod
-    def input_dependencies(self) -> List["Operator"]:
-        """List of operators that provide inputs for this operator."""
-        ...
 
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""

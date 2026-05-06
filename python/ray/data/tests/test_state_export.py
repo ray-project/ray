@@ -91,11 +91,6 @@ class TestDataclass:
 class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
-    _name: str = field(init=False, default="DummyOperator", repr=False)
-    _input_dependencies: List[LogicalOperator] = field(
-        init=False, default_factory=list, repr=False
-    )
-    _num_outputs: None = field(init=False, default=None, repr=False)
     _string_value: str = "test_string"
     _int_value: int = 42
     _float_value: float = 3.14
@@ -150,9 +145,9 @@ class DummyLogicalOperator(LogicalOperator):
     )
     _data_class: TestDataclass = field(default_factory=TestDataclass)
 
-    @property
-    def num_outputs(self):
-        return self._num_outputs
+    def __post_init__(self):
+        super().__post_init__()
+        object.__setattr__(self, "name", "DummyOperator")
 
 
 @pytest.fixture
