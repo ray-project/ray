@@ -28,6 +28,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DRAINING_MESSAGE,
     HEALTHY_MESSAGE,
+    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
@@ -963,6 +964,9 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_bufsize": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
+                    ),
+                    "ingress_request_router_capacity_queue_token_header": (
+                        INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER
                     ),
                 }
             )

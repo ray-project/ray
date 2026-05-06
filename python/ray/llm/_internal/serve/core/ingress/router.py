@@ -3,6 +3,7 @@ from typing import FrozenSet, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
+import ray
 from ray import serve
 from ray.serve._private.common import ReplicaID
 from ray.serve.handle import DeploymentHandle
@@ -10,6 +11,23 @@ from ray.serve.handle import DeploymentHandle
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
 _ReplicaCacheSignature = FrozenSet[ReplicaID]
+
+DIRECT_ROUTER_OPTIMISTIC_LOAD_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_OPTIMISTIC_LOAD"
+DIRECT_ROUTER_POLL_INTERVAL_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_POLL_INTERVAL_S"
+DIRECT_ROUTER_CAPACITY_QUEUE_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE"
+DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME_ENV = (
+    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME"
+)
+DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_ENV = (
+    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S"
+)
+DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_ENV = (
+    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_S"
+)
+DEFAULT_DIRECT_ROUTER_POLL_INTERVAL_S = 0.05
+DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME = "capacity_queue"
+DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S = 0.05
+DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_S = 5.0
 
 # Placeholder app used only to make Serve wrap this class as ASGI. The actual
 # hot-path ASGI app is late-bound per replica by __serve_build_asgi_app__.
