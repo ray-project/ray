@@ -16,11 +16,14 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+)
 from ray.serve._private.haproxy import (
     BackendConfig,
     HAProxyApi,
     HAProxyConfig,
+    HAProxyManager,
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
@@ -494,7 +497,7 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
 
         result = api._write_ingress_request_router_lua([backend])
 
-        assert result is None
+        assert result == (None, False)
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
@@ -543,6 +546,11 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
 
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
+        assert "wait-for-body" not in cfg
+        direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
+        direct_backend = direct_backend.split("listen stats", 1)[0]
+        assert "http-reuse never" in direct_backend
+        assert "option http-server-close" in direct_backend
         # Only router-bearing backends contribute a set-var directive that
         # arms the Lua dispatch; the plain `api` backend must not.
         assert "set-var(txn.ingress_request_router_app) str(llm)" in cfg
@@ -566,12 +574,9 @@ def _create_replica_server(port: int, replica_id_header: str):
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
 
-def _create_router_server(
-    port: int,
-    replica_id_to_return: str,
-):
+def _create_router_server(port: int, replica_id_to_return: str):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    actually buffered + forwarded the request."""
+    calls the router without copying the prompt body."""
     app = FastAPI()
     captured = {"bodies": []}
 
@@ -615,8 +620,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
             replica_b_port, replica_id_header="B"
         )
         router, router_thread, router_captured = _create_router_server(
-            router_port,
-            replica_id_to_return=actor_name_b,  # always pick B
+            router_port, replica_id_to_return=actor_name_b  # always pick B
         )
 
         try:
@@ -689,12 +693,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
 
-            # The router actually saw the original body (via wait-for-body +
-            # txn.sf:req_body()). Just check the field made it through.
-            assert any(
-                '"prompt"' in body and "hello" in body
-                for body in router_captured["bodies"]
-            )
+            # The router only needs the app/model selection. Direct streaming
+            # supports one LLM config today, so HAProxy should not copy the
+            # large prompt body through the Lua routing path.
+            assert router_captured["bodies"] == ["{}"]
 
             # Repeat to confirm the pin holds across requests.
             for _ in range(3):
@@ -704,9 +706,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                     timeout=5,
                 )
                 assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["bodies"] == ["{}"] * 4
 
-            # GET is not POST, so wait-for-body / Lua never run; the router
-            # should have seen exactly the four POSTs above and nothing more.
+            # GET is not POST, so Lua routing never runs; the router should
+            # have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
             requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
@@ -1186,6 +1189,81 @@ async def test_update_and_reload(haproxy_api_cleanup):
             timeout=5,
             retry_interval_ms=100,
         )
+
+
+@pytest.mark.asyncio
+async def test_reload_skips_graceful_reload_when_config_unchanged(
+    haproxy_api_cleanup,
+):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        backend = BackendConfig(
+            name="backend",
+            path_prefix="/",
+            app_name="backend_app",
+            servers=[
+                ServerConfig(
+                    name="server",
+                    host="127.0.0.1",
+                    port=9999,
+                    replica_id="replica-id",
+                )
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router", host="127.0.0.1", port=9000)
+            ],
+        )
+        config = HAProxyConfig(
+            http_options=HTTPOptions(
+                host="127.0.0.1",
+                port=8000,
+            ),
+            stats_port=8404,
+            socket_path=socket_path,
+        )
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={backend.name: backend},
+            config_file_path=config_file_path,
+        )
+        haproxy_api_cleanup(api)
+        api._graceful_reload = mock.AsyncMock()
+
+        await api.reload()
+        api._graceful_reload.assert_awaited_once()
+
+        await api.reload()
+        api._graceful_reload.assert_awaited_once()
+
+        backend2 = BackendConfig(
+            name="backend_2",
+            path_prefix="/api",
+            app_name="backend_app_2",
+            servers=[ServerConfig(name="server2", host="127.0.0.1", port=9998)],
+        )
+        api.set_backend_configs({backend.name: backend, backend2.name: backend2})
+
+        await api.reload()
+        assert api._graceful_reload.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_haproxy_manager_health_check_uses_process_liveness():
+    manager = HAProxyManager.__new__(HAProxyManager)
+    manager._haproxy = mock.Mock()
+    manager._haproxy._is_running.return_value = True
+    manager._haproxy.is_running = mock.AsyncMock(
+        side_effect=AssertionError("admin socket should not be used")
+    )
+
+    assert await manager.check_health()
+    manager._haproxy._is_running.assert_called_once()
+    manager._haproxy.is_running.assert_not_awaited()
+
+    manager._haproxy._is_running.return_value = False
+    assert not await manager.check_health()
 
 
 @pytest.mark.asyncio

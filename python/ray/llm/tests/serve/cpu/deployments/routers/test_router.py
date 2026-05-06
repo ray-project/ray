@@ -19,18 +19,23 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 
 
+class _DirectRouterReplicaId:
+    def __init__(self, unique_id: str, full_id: Optional[str] = None):
+        self.unique_id = unique_id
+        self._full_id = full_id or unique_id
+
+    def to_full_id_str(self) -> str:
+        return self._full_id
+
+
 class _DirectRouterReplica:
-    def __init__(self, replica_id: str):
-        self.replica_id = replica_id
-        self.backend_http_endpoint = ("127.0.0.1", 8000)
+    def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
+        self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
+        self.backend_http_endpoint = ("127.0.0.1", port)
 
 
-def _new_direct_router(*, optimistic_load: bool = False):
+def _new_direct_router():
     router = LLMRouter.__new__(LLMRouter)
-    router._di_load_cache = {}
-    router._di_optimistic_load = optimistic_load
-    router._di_poll_interval_s = 0.05
-    router._di_routing_policy = "pow2"
     router._di_round_robin_counter = 0
     return router
 
@@ -73,93 +78,34 @@ def create_oai_client(llm_config: LLMConfig):
 
 
 class TestDirectStreamingLLMRouter:
-    def test_missing_load_entries_start_at_zero(self):
-        router = _new_direct_router()
-        hot = _DirectRouterReplica("hot")
-        missing = _DirectRouterReplica("missing")
-        router._set_replica_load(hot, 5)
-
-        assert router._get_replica_load(missing) == 0
-        assert router._choose_best_loaded_replica([hot, missing]) is missing
-
-    def test_optimistic_load_balances_repeated_identical_candidates(self):
-        router = _new_direct_router(optimistic_load=True)
-        replica_a = _DirectRouterReplica("a")
-        replica_b = _DirectRouterReplica("b")
-
-        picks = [
-            router._choose_best_loaded_replica([replica_a, replica_b]).replica_id
-            for _ in range(4)
-        ]
-
-        assert picks == ["a", "b", "a", "b"]
-        assert router._di_load_cache == {"a": 2, "b": 2}
-
-    def test_poll_reconciliation_overwrites_optimistic_load(self):
-        router = _new_direct_router(optimistic_load=True)
-        replica_a = _DirectRouterReplica("a")
-        replica_b = _DirectRouterReplica("b")
-
-        assert router._choose_best_loaded_replica([replica_a, replica_b]) is replica_a
-        assert router._di_load_cache["a"] == 1
-
-        router._set_replica_load(replica_a, 7)
-
-        assert router._di_load_cache["a"] == 7
-        assert router._choose_best_loaded_replica([replica_a, replica_b]) is replica_b
-
-    def test_non_optimistic_mode_does_not_increment_load(self):
-        router = _new_direct_router(optimistic_load=False)
-        replica_a = _DirectRouterReplica("a")
-        replica_b = _DirectRouterReplica("b")
-
-        picks = [
-            router._choose_best_loaded_replica([replica_a, replica_b]).replica_id
-            for _ in range(3)
-        ]
-
-        assert picks == ["a", "a", "a"]
-        assert router._di_load_cache == {}
-
-    def test_round_robin_candidates_wrap_in_stable_replica_order(self):
+    def test_round_robin_wraps_in_stable_replica_order(self):
         router = _new_direct_router()
         replica_a = _DirectRouterReplica("a")
         replica_b = _DirectRouterReplica("b")
         replica_c = _DirectRouterReplica("c")
 
         picks = [
-            [
-                r.replica_id
-                for r in router._choose_round_robin_candidates(
-                    [replica_c, replica_a, replica_b]
-                )
-            ]
-            for _ in range(4)
-        ]
-
-        assert picks == [["a", "b"], ["b", "c"], ["c", "a"], ["a", "b"]]
-
-    def test_round_robin_policy_balances_first_choice_without_load(self):
-        router = _new_direct_router()
-        router._di_routing_policy = "round_robin"
-        replica_a = _DirectRouterReplica("a")
-        replica_b = _DirectRouterReplica("b")
-        replica_c = _DirectRouterReplica("c")
-
-        picks = []
-        for _ in range(4):
-            candidates = router._choose_round_robin_candidates(
+            router._choose_round_robin_replica(
                 [replica_c, replica_a, replica_b]
-            )
-            picks.append(router._choose_best_loaded_replica(candidates).replica_id)
+            ).replica_id.unique_id
+            for _ in range(4)
+        ]
 
         assert picks == ["a", "b", "c", "a"]
 
-    def test_router_policy_normalization(self):
-        assert LLMRouter._normalize_routing_policy("pow2") == "pow2"
-        assert LLMRouter._normalize_routing_policy("power-of-two") == "pow2"
-        assert LLMRouter._normalize_routing_policy("round-robin") == "round_robin"
-        assert LLMRouter._normalize_routing_policy("rr") == "round_robin"
+    def test_route_result_returns_full_replica_id_for_haproxy_mapping(self):
+        router = _new_direct_router()
+        replica = _DirectRouterReplica(
+            "short-id",
+            full_id="DeploymentName#short-id",
+            port=9001,
+        )
+
+        assert router._replica_route_result(replica) == (
+            "127.0.0.1",
+            9001,
+            "DeploymentName#short-id",
+        )
 
 
 class TestOpenAiIngress:
