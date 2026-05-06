@@ -1098,6 +1098,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns
         c_bool *is_retryable_error
         c_string *application_error
+        optional[c_string] c_tensor_transport
         shared_ptr[CGeneratorBackpressureWaiter] waiter
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
@@ -1131,6 +1132,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_bool *is_retryable_error,
         c_string *application_error,
         int64_t generator_backpressure_num_objects,
+        optional[c_string] c_tensor_transport,
     ):
         cdef StreamingGeneratorExecutionContext self = (
             StreamingGeneratorExecutionContext())
@@ -1152,6 +1154,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
+        self.c_tensor_transport = c_tensor_transport
 
         self.waiter = make_shared[CGeneratorBackpressureWaiter](
             generator_backpressure_num_objects,
@@ -1199,6 +1202,7 @@ cdef report_streaming_generator_output(
         context.return_size,
         generator_index,
         context.is_async,
+        context.c_tensor_transport,
         &return_obj)
 
     # Del output here so that we can GC the memory
@@ -1464,6 +1468,7 @@ cdef create_generator_return_obj(
         return_size,
         generator_index,
         is_async,
+        optional[c_string] c_tensor_transport,
         c_pair[CObjectID, shared_ptr[CRayObject]] *return_object):
     """Create a generator return object based on a given output.
 
@@ -1499,7 +1504,8 @@ cdef create_generator_return_obj(
         worker, [output],
         caller_address,
         &intermediate_result,
-        generator_id.Binary())
+        generator_id.Binary(),
+        c_tensor_transport)
 
     return_object[0] = intermediate_result.back()
 
@@ -1722,6 +1728,7 @@ cdef void execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         uint64_t attempt_number = core_worker.get_current_task_attempt_number()
+        optional[c_string] c_store_tensor_transport
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -1885,7 +1892,8 @@ cdef void execute_task(
                                 streaming_generator_returns,
                                 is_retryable_error,
                                 application_error,
-                                generator_backpressure_num_objects)
+                                generator_backpressure_num_objects,
+                                c_tensor_transport)
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
@@ -2033,12 +2041,15 @@ cdef void execute_task(
                 # actually run the task. We should run the usual handlers for
                 # task cancellation, retrying on application exception, etc. for
                 # all generator tasks, both static and dynamic.
+                c_store_tensor_transport = NULL_TENSOR_TRANSPORT
+                if not is_streaming_generator:
+                    c_store_tensor_transport = c_tensor_transport
                 core_worker.store_task_outputs(
                     worker, outputs,
                     caller_address,
                     returns,
                     None, # ref_generator_id
-                    c_tensor_transport
+                    c_store_tensor_transport
                 )
         except (KeyboardInterrupt, SystemExit):
             # Special casing these two because Ray can raise them
@@ -2237,7 +2248,8 @@ cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_st
         object_id = c_object_id.Hex().decode()
         tensor_transport_meta = ray_pickle.loads(c_direct_transport_metadata)
         rdt_manager = ray._private.worker.global_worker.rdt_manager
-        rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
+        rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
+            object_id, tensor_transport_meta)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -4772,18 +4784,23 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
+            object tensor_transport = None
 
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
                     c_generator_id, &c_object_ref))
 
+        if c_object_ref.has_tensor_transport():
+            tensor_transport = c_object_ref.tensor_transport().decode("utf-8")
+
         return ObjectRef(
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),
             "",
             # Already added when the ref is updated.
-            skip_adding_local_ref=True)
+            skip_adding_local_ref=True,
+            tensor_transport=tensor_transport)
 
     def is_object_ref_stream_finished(self, ObjectRef generator_id):
         cdef:
@@ -4799,15 +4816,22 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
             pair[CObjectReference, c_bool] c_object_ref_and_is_ready_pair
+            object tensor_transport = None
 
         with nogil:
             c_object_ref_and_is_ready_pair = (
                     CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
                         c_generator_id))
 
+        if c_object_ref_and_is_ready_pair.first.has_tensor_transport():
+            tensor_transport = (
+                c_object_ref_and_is_ready_pair.first.tensor_transport().decode("utf-8")
+            )
+
         return (ObjectRef(
                     c_object_ref_and_is_ready_pair.first.object_id(),
-                    c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
+                    c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString(),
+                    tensor_transport=tensor_transport), # noqa
                 c_object_ref_and_is_ready_pair.second)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,

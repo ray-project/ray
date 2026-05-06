@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -223,8 +224,10 @@ class ReferenceCounterInterface {
   ///
   /// \param[in] object_id The ID of the object that we now own.
   /// \param[in] generator_id The Object ID of the streaming generator task.
-  virtual void OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
-                                                const ObjectID &generator_id) = 0;
+  virtual bool OwnDynamicStreamingTaskReturnRef(
+      const ObjectID &object_id,
+      const ObjectID &generator_id,
+      const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
 
   /// Try to decrement the local ref count for the given objects, if they are
   /// still in scope.

@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -270,9 +271,14 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   returned_refs.reserve(num_returns);
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
+  const auto is_streaming_generator = spec.IsStreamingGenerator();
   auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
+    std::optional<std::string> return_tensor_transport;
+    if (!is_streaming_generator && tensor_transport.has_value()) {
+      return_tensor_transport.emplace(*tensor_transport);
+    }
     if (!spec.IsActorCreationTask()) {
       LineageReconstructionEligibility lineage_eligibility;
       if (max_retries == 0) {
@@ -297,7 +303,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         lineage_eligibility,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        tensor_transport);
+                                        return_tensor_transport);
     }
 
     return_ids.push_back(return_id);
@@ -306,8 +312,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
-    if (tensor_transport.has_value()) {
-      ref.set_tensor_transport(*tensor_transport);
+    if (return_tensor_transport.has_value()) {
+      ref.set_tensor_transport(*return_tensor_transport);
       // Register the callback to free the GPU object when it is out of scope.
       reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
                                                             free_actor_object_callback_);
@@ -320,12 +326,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   // If it is a generator task, create an object ref stream.
   // The language frontend is responsible for calling DeleteObjectRefStream.
-  if (spec.IsStreamingGenerator()) {
+  if (is_streaming_generator) {
     const auto generator_id = spec.ReturnId(0);
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
     auto inserted =
-        object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+        object_ref_streams_.emplace(generator_id,
+                                    ObjectRefStream(generator_id, tensor_transport));
     ref_stream_execution_signal_callbacks_.emplace(
         generator_id, std::vector<ExecutionSignalCallback>());
     RAY_CHECK(inserted.second);
@@ -687,6 +694,16 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
   return stream_it->second.IsFinished();
 }
 
+std::optional<std::string> TaskManager::GetObjectRefStreamTensorTransport(
+    const ObjectID &generator_id) const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "GetObjectRefStreamTensorTransport API can be used only when the stream has "
+         "been created and not removed.";
+  return stream_it->second.TensorTransport();
+}
+
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
   // Call execution signal callbacks to ensure that the executor does not block
   // after the generator goes out of scope at the caller.
@@ -830,7 +847,16 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     // own the dynamically generated task return.
     // NOTE: If we call this method while holding a lock, it can deadlock.
     if (index_not_used_yet) {
-      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+      std::optional<std::string> tensor_transport;
+      if (returned_object.has_direct_transport_metadata()) {
+        tensor_transport = stream_it->second.TensorTransport();
+      }
+      if (reference_counter_.OwnDynamicStreamingTaskReturnRef(
+              object_id, generator_id, tensor_transport) &&
+          tensor_transport.has_value()) {
+        reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+            object_id, free_actor_object_callback_);
+      }
       num_objects_written += 1;
     }
     // When an object is reported, the object is ready to be fetched.

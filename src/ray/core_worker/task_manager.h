@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -85,9 +86,11 @@ using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
-  explicit ObjectRefStream(ObjectID generator_id)
+  explicit ObjectRefStream(ObjectID generator_id,
+                           std::optional<std::string> tensor_transport = std::nullopt)
       : generator_task_id_(generator_id.TaskId()),
-        generator_id_(std::move(generator_id)) {}
+        generator_id_(std::move(generator_id)),
+        tensor_transport_(std::move(tensor_transport)) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -130,6 +133,11 @@ class ObjectRefStream {
   /// \param[in] object_id The temporarily written object id.
   /// \return True if object ID is temporarily written. False otherwise.
   bool TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id);
+
+  /// Tensor transport inherited by each real item produced by this stream.
+  const std::optional<std::string> &TensorTransport() const {
+    return tensor_transport_;
+  }
 
   /// Mark that after a given item_index, the stream cannot be written
   /// anymore.
@@ -189,6 +197,8 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+  /// Tensor transport inherited by each real item produced by this stream.
+  std::optional<std::string> tensor_transport_;
 };
 
 class TaskManager : public TaskManagerInterface {
@@ -420,6 +430,10 @@ class TaskManager : public TaskManagerInterface {
   /// \return True if there are no more objects to read from the generator.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Return the tensor transport inherited by real items in this stream.
+  std::optional<std::string> GetObjectRefStreamTensorTransport(
+      const ObjectID &generator_id) const ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.

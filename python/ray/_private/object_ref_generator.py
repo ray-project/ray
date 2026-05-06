@@ -239,6 +239,10 @@ class ObjectRefGenerator:
             else:
                 # The task finished without an exception.
                 raise StopIteration from None
+        if ref.tensor_transport():
+            self.worker._rdt_manager.add_rdt_ref_from_generator(
+                self._generator_ref, ref
+            )
         return ref
 
     async def _suppress_exceptions(self, ref: "ray.ObjectRef") -> None:
@@ -284,15 +288,26 @@ class ObjectRefGenerator:
                 # Meaning the task succeed without failure raise StopAsyncIteration.
                 raise StopAsyncIteration from None
 
+        if ref.tensor_transport():
+            self.worker._rdt_manager.add_rdt_ref_from_generator(
+                self._generator_ref, ref
+            )
         return ref
 
+    def _remove_streaming_generator_rdt_ref_if_needed(self) -> None:
+        rdt_manager = getattr(self.worker, "_rdt_manager", None)
+        if rdt_manager is not None:
+            rdt_manager.remove_streaming_generator_rdt_ref(self._generator_ref)
+
     def __del__(self):
-        if hasattr(self.worker, "core_worker"):
+        self._remove_streaming_generator_rdt_ref_if_needed()
+        core_worker = getattr(self.worker, "core_worker", None)
+        if core_worker is not None:
             # The stream is created when a task is first submitted.
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
-            self.worker.core_worker.async_delete_object_ref_stream(self._generator_ref)
+            core_worker.async_delete_object_ref_stream(self._generator_ref)
 
     def __getstate__(self):
         raise TypeError(

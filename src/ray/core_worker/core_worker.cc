@@ -3067,6 +3067,10 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   RAY_CHECK(object_ref_out != nullptr);
   object_ref_out->set_object_id(object_id.Binary());
   object_ref_out->mutable_owner_address()->CopyFrom(rpc_address_);
+  const auto tensor_transport = reference_counter_->GetTensorTransport(object_id);
+  if (tensor_transport.has_value()) {
+    object_ref_out->set_tensor_transport(*tensor_transport);
+  }
   return status;
 }
 
@@ -3080,6 +3084,10 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   rpc::ObjectReference object_ref;
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+  const auto tensor_transport = reference_counter_->GetTensorTransport(object_id);
+  if (tensor_transport.has_value()) {
+    object_ref.set_tensor_transport(*tensor_transport);
+  }
   return {object_ref, ready};
 }
 

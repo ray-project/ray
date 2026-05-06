@@ -270,8 +270,10 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
-void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
-                                                        const ObjectID &generator_id) {
+bool ReferenceCounter::OwnDynamicStreamingTaskReturnRef(
+    const ObjectID &object_id,
+    const ObjectID &generator_id,
+    const std::optional<std::string> &tensor_transport) {
   absl::MutexLock lock(&mutex_);
   // NOTE: The upper layer (the layer that manages the object ref stream)
   // should make sure the generator ref is not GC'ed until the
@@ -285,7 +287,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
         << "Ignore OwnDynamicStreamingTaskReturnRef. The dynamic return reference "
         << object_id << " is registered after the generator id " << generator_id
         << " went out of scope.";
-    return;
+    return false;
   }
   RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
                  << " contained in generator object " << generator_id;
@@ -294,15 +296,24 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
   rpc::Address owner_address(outer_it->second.owner_address_.value());
   // We add a local reference here. The ref removal will be handled
   // by the ObjectRefStream.
-  RAY_UNUSED(AddOwnedObjectInternal(object_id,
-                                    {},
-                                    owner_address,
-                                    outer_it->second.call_site_,
-                                    /*object_size=*/-1,
-                                    outer_it->second.lineage_eligibility_,
-                                    /*add_local_ref=*/true,
-                                    std::optional<NodeID>(),
-                                    /*tensor_transport=*/std::nullopt));
+  bool added = AddOwnedObjectInternal(object_id,
+                                      {},
+                                      owner_address,
+                                      outer_it->second.call_site_,
+                                      /*object_size=*/-1,
+                                      outer_it->second.lineage_eligibility_,
+                                      /*add_local_ref=*/true,
+                                      std::optional<NodeID>(),
+                                      tensor_transport);
+  if (!added && tensor_transport.has_value()) {
+    auto object_it = object_id_refs_.find(object_id);
+    RAY_CHECK(object_it != object_id_refs_.end());
+    if (!object_it->second.tensor_transport_.has_value()) {
+      object_it->second.tensor_transport_ = tensor_transport;
+      return true;
+    }
+  }
+  return added;
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,

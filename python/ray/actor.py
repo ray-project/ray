@@ -1053,10 +1053,12 @@ class ActorMethod:
             tensor_transport = self._tensor_transport
 
         if tensor_transport is not None:
-            if num_returns != 1:
+            if num_returns not in (1, "streaming"):
                 raise ValueError(
-                    f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
-                    "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
+                    f"Currently, methods with tensor_transport={tensor_transport} only support "
+                    '1 return value or num_returns="streaming". Please make sure the actor '
+                    "method is decorated with `@ray.method(num_returns=1)` (the default) "
+                    'or `@ray.method(num_returns="streaming")`.'
                 )
             if not self._actor._ray_enable_tensor_transport:
                 raise ValueError(
@@ -1113,11 +1115,15 @@ class ActorMethod:
 
         object_refs = invocation(args, kwargs)
         if tensor_transport is not None:
-            # Currently, we only support RDT when num_returns is 1.
-            assert isinstance(object_refs, ObjectRef)
-            object_ref = object_refs
             rdt_manager = ray._private.worker.global_worker.rdt_manager
-            rdt_manager.add_rdt_ref(object_ref, self._actor, tensor_transport)
+            if num_returns == "streaming":
+                assert isinstance(object_refs, ObjectRefGenerator)
+                rdt_manager.add_streaming_generator_rdt_ref(
+                    object_refs.completed(), self._actor, tensor_transport
+                )
+            else:
+                assert isinstance(object_refs, ObjectRef)
+                rdt_manager.add_rdt_ref(object_refs, self._actor, tensor_transport)
 
         return object_refs
 

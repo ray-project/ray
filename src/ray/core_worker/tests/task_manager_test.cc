@@ -186,7 +186,10 @@ class TaskManagerTest : public ::testing::Test {
             mock_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
-            /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+            /*free_actor_object_callback=*/
+            [this](const ObjectID &object_id) {
+              freed_actor_object_ids_.push_back(object_id);
+            },
             /*set_direct_transport_metadata=*/
             [](const ObjectID &, const std::string &) {}) {}
 
@@ -230,6 +233,7 @@ class TaskManagerTest : public ::testing::Test {
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
+  std::vector<ObjectID> freed_actor_object_ids_;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
@@ -1779,6 +1783,70 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   ASSERT_TRUE(status.IsObjectRefEndOfStream());
   // DELETE
   manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamTensorTransport) {
+  // Submit an RDT streaming generator, peek once to temporarily own the first
+  // stream ref without tensor transport, report the item with direct-transport
+  // metadata, then verify the yielded ref inherits tensor transport and gets
+  // the RDT cleanup callback while the generator control ref does not.
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*streaming_generator=*/true,
+                               /*generator_backpressure_num_objects=*/-1,
+                               /*enable_tensor_transport=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+
+  auto object_refs = manager_.AddPendingTask(caller_address, spec, "", 0);
+  ASSERT_EQ(object_refs.size(), 1);
+  ASSERT_FALSE(object_refs[0].has_tensor_transport());
+  ASSERT_FALSE(reference_counter_->GetTensorTransport(generator_id).has_value());
+  ASSERT_TRUE(freed_actor_object_ids_.empty());
+  ASSERT_EQ(manager_.GetObjectRefStreamTensorTransport(generator_id).value(),
+            "some direct transport");
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto [pre_report_id, pre_report_ready] = manager_.PeekObjectRefStream(generator_id);
+  ASSERT_EQ(pre_report_id, dynamic_return_id);
+  ASSERT_FALSE(pre_report_ready);
+  ASSERT_FALSE(reference_counter_->GetTensorTransport(dynamic_return_id).has_value());
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx=*/0,
+      /*finished=*/false,
+      generator_id,
+      dynamic_return_id,
+      data,
+      /*set_in_plasma=*/false);
+  req.mutable_returned_object()->set_direct_transport_metadata("metadata");
+
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback=*/[](Status, int64_t) {}));
+  ASSERT_EQ(reference_counter_->GetTensorTransport(dynamic_return_id).value(),
+            "some direct transport");
+
+  auto [peek_id, ready] = manager_.PeekObjectRefStream(generator_id);
+  ASSERT_EQ(peek_id, dynamic_return_id);
+  ASSERT_TRUE(ready);
+
+  ObjectID obj_id;
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  CompletePendingStreamingTask(spec, caller_address, 1);
+  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(freed_actor_object_ids_.empty());
+  reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
+  ASSERT_EQ(freed_actor_object_ids_.size(), 1);
+  ASSERT_EQ(freed_actor_object_ids_[0], dynamic_return_id);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
