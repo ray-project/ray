@@ -574,6 +574,17 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def __init__(self, col: Union["pyarrow.Array", "pyarrow.ChunkedArray"]):
         super().__init__(col)
 
+    def first(self, *, ignore_nulls: bool, as_py: bool = True) -> Any:
+        import pyarrow.compute as pac
+
+        # If there are only null-values, the column's type is `NullType`.
+        # Pyarrow call will throw a 'no kernel matching input types (null)' Exception
+        try:
+            res = pac.first(self._column, skip_nulls=ignore_nulls)
+        except pyarrow.ArrowNotImplementedError:
+            return None
+        return res.as_py() if as_py else res
+
     def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         import pyarrow.compute as pac
 

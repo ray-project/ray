@@ -637,6 +637,9 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def first(self, on: str, ignore_nulls: bool) -> Any:
+        raise NotImplementedError
+
     def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
         """Returns a count of the distinct values in the provided column"""
         raise NotImplementedError
@@ -782,6 +785,9 @@ class BlockColumnAccessor:
 
     def __init__(self, col: BlockColumn):
         self._column = col
+
+    def first(self, *, ignore_nulls: bool, as_py: bool = True) -> Any:
+        raise NotImplementedError()
 
     def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a count of the distinct values in the column"""

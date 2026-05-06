@@ -251,6 +251,12 @@ class TableBlockAccessor(BlockAccessor):
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
 
+    def first(self, on: str, ignore_nulls: bool) -> Any:
+        self._validate_column(on)
+
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.first(ignore_nulls=ignore_nulls)
+
     def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
         accessor = BlockColumnAccessor.for_column(self._table[on])
         return accessor.count(ignore_nulls=ignore_nulls)

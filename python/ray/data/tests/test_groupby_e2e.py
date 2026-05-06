@@ -23,6 +23,7 @@ from ray.data.aggregate import (
     AsList,
     Count,
     CountDistinct,
+    First,
     Max,
     Mean,
     Min,
@@ -486,6 +487,43 @@ def test_groupby_tabular_sum(
         expected,
         result,
     )
+
+
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_first_e2e(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    df = pd.DataFrame(
+        {
+            "A": [1, 1, 1, 1, 1, 2, 2, 2, 3, 3],
+            "B": [None, 12, 13, 14, 15, None, 22, 23, 31, 32],
+        }
+    )
+    ds = (
+        ray.data.from_pandas(df)
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
+
+    result = ds.groupby("A").aggregate(First(on="B")).take_all()
+    assert sorted(result, key=lambda x: x["A"]) == [
+        {"A": 1, "first(B)": 12},
+        {"A": 2, "first(B)": 22},
+        {"A": 3, "first(B)": 31},
+    ]
+
+    result_with_null = (
+        ds.groupby("A").aggregate(First(on="B", ignore_nulls=False)).take_all()
+    )
+    assert sorted(result_with_null, key=lambda x: x["A"]) == [
+        {"A": 1, "first(B)": None},
+        {"A": 2, "first(B)": None},
+        {"A": 3, "first(B)": 31},
+    ]
 
 
 @pytest.mark.parametrize("num_parts", [1, 10])

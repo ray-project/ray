@@ -400,6 +400,67 @@ class Count(AggregateFnV2[int, int]):
 
 
 @PublicAPI
+class First(AggregateFnV2[List[Any], Any]):
+    """Defines first aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            import pandas as pd
+            from ray.data.aggregate import First
+
+            df = pd.DataFrame({"A": [1, 1, 1, 1, 1, 2, 2, 2, 3, 3],
+                               "B": [None, 12, 13, 14, 15, None, 22, 23, 31, 32]})
+            ds = ray.data.from_pandas(df)
+
+            # Get first value per group:
+            result = ds.groupby("A").aggregate(First(on="B")).take_all()
+            # result: [{'A': 1, 'first(B)': 12},
+            #          {'A': 2, 'first(B)': 22},
+            #          {'A': 3, 'first(B)': 33}]
+
+    Args:
+        on: The name of the column from which to collect unique values.
+        ignore_nulls: Whether to ignore null values when collecting. If `True`,
+            nulls are skipped. If `False` (default), nulls are included in the list.
+        alias_name: Optional name for the resulting column.
+    """
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"first({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: list([None, False]),  # noqa: C410
+        )
+
+    def aggregate_block(self, block: Block) -> List[Any]:
+        result = BlockAccessor.for_block(block).first(
+            self._target_col_name, self._ignore_nulls
+        )
+        if self._ignore_nulls:
+            return [result, result is not None]
+        else:
+            return [result, True]
+
+    def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
+        return [
+            current_accumulator[0] if current_accumulator[1] else new[0],
+            current_accumulator[1] or new[1],
+        ]
+
+    def finalize(self, accumulator: List[Any]) -> Optional[Any]:
+        return accumulator[0]
+
+
+@PublicAPI
 class AsList(AggregateFnV2[List, List]):
     """Listing aggregation combining all values within the group into a single
     list element.
