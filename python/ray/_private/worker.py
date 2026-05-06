@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1241,7 +1242,12 @@ class BaseContext(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def __exit__(self):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ) -> Optional[bool]:
         pass
 
     def _context_table_template(self):
@@ -2048,36 +2054,6 @@ def init(
 
     for hook in _post_init_hooks:
         hook()
-
-    # Check and show accelerator override warning during driver initialization
-    from ray._private.ray_constants import env_bool
-
-    override_on_zero = env_bool(
-        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
-    )
-    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
-        warnings.warn(
-            "Tip: In future versions of Ray, Ray will no longer override accelerator "
-            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
-            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0",
-            FutureWarning,
-        )
-
-    # Check for Pydantic v1 and emit deprecation warning
-    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
-
-    if (
-        PYDANTIC_MAJOR_VERSION
-        and PYDANTIC_MAJOR_VERSION == 1
-        and log_once("pydantic_v1_deprecation")
-    ):
-        warnings.warn(
-            "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
-            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
-            "See https://github.com/ray-project/ray/issues/58876 for more details.",
-            FutureWarning,
-        )
 
     services.find_gcs_addresses.cache_clear()
     node_id = global_worker.core_worker.get_current_node_id()

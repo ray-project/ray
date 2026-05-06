@@ -2,8 +2,10 @@
 
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
+
 import dataclasses
 import logging
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -48,6 +50,9 @@ logger = logging.getLogger(__name__)
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
+
+# Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
+WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
 
 
 class OpBufferQueue:
@@ -186,6 +191,16 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Tracks consumers blocked in get_output_blocking().
+        # Used to detect consumer starvation. Guarded by
+        # _waiting_consumers_lock since += is not atomic.
+        self._num_waiting_consumers: int = 0
+        self._waiting_consumers_lock = threading.Lock()
+
+    @property
+    def num_waiting_consumers(self) -> int:
+        """Return the number of consumers currently blocked in get_output_blocking."""
+        return self._num_waiting_consumers
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,24 +268,26 @@ class OpState:
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        out_ref, diverged = dedupe_schemas_with_validation(
-            self._schema,
-            ref,
-            enforce_schemas=self.op.data_context.enforce_schemas,
-        )
+        if ref.schema is not None:
+            out_ref, diverged = dedupe_schemas_with_validation(
+                self._schema,
+                ref,
+                enforce_schemas=self.op.data_context.enforce_schemas,
+            )
 
-        if (
-            diverged
-            and not self._warned_on_schema_divergence
-            and self.op.data_context.enforce_schemas
-        ):
-            warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
-            logger.warning(warning_message)
+            if (
+                diverged
+                and not self._warned_on_schema_divergence
+                and self.op.data_context.enforce_schemas
+            ):
+                warning_message = _build_schemas_mismatch_warning(
+                    self._schema, ref.schema
+                )
+                logger.warning(warning_message)
 
-        ref = out_ref
-
-        self._schema = ref.schema
-        self._warned_on_schema_divergence |= diverged
+            ref = out_ref
+            self._schema = ref.schema
+            self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
@@ -280,6 +297,11 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        # Update actor pool utilization metrics for monitoring scaling behavior
+        self.op.metrics.num_active_actors = actor_info.active
+        self.op.metrics.num_idle_actors = actor_info.idle
+        self.op.metrics.pool_utilization = actor_info.pool_utilization
+        self.op.metrics.num_tasks_in_flight = actor_info.tasks_in_flight
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
@@ -306,6 +328,8 @@ class OpState:
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
+        This method must be thread-safe.
+
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
 
@@ -313,20 +337,35 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
-        while True:
-            # Check if StreamingExecutor has caught an exception or is done execution.
-            if self._exception is not None:
-                raise self._exception
-            elif self._finished and not self.output_queue.has_next(output_split_idx):
-                raise StopIteration()
-            ref = self.output_queue.pop(output_split_idx)
-            if ref is not None:
-                # Update outqueue metrics when blocks are removed from this operator's outqueue
-                # TODO: Abstract queue-releated metrics to queue.
-                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                return ref
-            time.sleep(0.01)
+        starving = False
+        try:
+            while True:
+                # Check if StreamingExecutor has caught an exception or is done
+                # execution.
+                if self._exception is not None:
+                    raise self._exception
+                elif self._finished and not self.output_queue.has_next(
+                    output_split_idx
+                ):
+                    raise StopIteration()
+                ref = self.output_queue.pop(output_split_idx)
+                if ref is not None:
+                    # Update outqueue metrics when blocks are removed from
+                    # this operator's outqueue.
+                    # TODO: Abstract queue-releated metrics to queue.
+                    self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                    self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    return ref
+                if not starving:
+                    # Queue is empty — mark this consumer as starving.
+                    with self._waiting_consumers_lock:
+                        self._num_waiting_consumers += 1
+                    starving = True
+                time.sleep(0.01)
+        finally:
+            if starving:
+                with self._waiting_consumers_lock:
+                    self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
@@ -446,7 +485,7 @@ def process_completed_tasks(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=0.1,
+            timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
         )
 
         # Organize tasks by the operator they belong to, and sort them by task index.
@@ -537,14 +576,19 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators have completed.
+    # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
-        if dependents_completed:
+        # For terminal operators (no output dependencies, e.g. OutputSplitter),
+        # mark execution finished once the operator has fully completed so that
+        # internal queues are properly cleared via clear_internal_input_queue()
+        # and clear_internal_output_queue().
+        terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
+        if dependents_completed or terminal_completed:
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.

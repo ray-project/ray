@@ -2,7 +2,9 @@ import abc
 import typing
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from typing_extensions import override
+
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     PhysicalOperator,
@@ -10,7 +12,6 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -19,43 +20,47 @@ if typing.TYPE_CHECKING:
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
+    @property
     @abc.abstractmethod
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        """Return all the internal input buffer queues for this operator."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        """Return all the internal output buffer queues for this operator."""
+        ...
+
     def internal_input_queue_num_blocks(self) -> int:
         """Returns Operator's internal input queue size (in blocks)"""
-        ...
+        return sum(input_buffer.num_blocks() for input_buffer in self._input_queues)
 
-    @abc.abstractmethod
     def internal_input_queue_num_bytes(self) -> int:
         """Returns Operator's internal input queue size (in bytes)"""
-        ...
+        return sum(
+            input_buffer.estimate_size_bytes() for input_buffer in self._input_queues
+        )
 
-    @abc.abstractmethod
     def internal_output_queue_num_blocks(self) -> int:
         """Returns Operator's internal output queue size (in blocks)"""
-        ...
+        return sum(output_buffer.num_blocks() for output_buffer in self._output_queues)
 
-    @abc.abstractmethod
     def internal_output_queue_num_bytes(self) -> int:
         """Returns Operator's internal output queue size (in bytes)"""
-        ...
+        return sum(
+            output_buffer.estimate_size_bytes() for output_buffer in self._output_queues
+        )
 
-    @abc.abstractmethod
     def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue(s).
+        """Clear internal input queue(s)."""
+        for input_buffer in self._input_queues:
+            input_buffer.clear()
 
-        This should drain all buffered input bundles and update metrics appropriately
-        by calling on_input_dequeued().
-        """
-        ...
-
-    @abc.abstractmethod
     def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue(s).
-
-        This should drain all buffered output bundles and update metrics appropriately
-        by calling on_output_dequeued().
-        """
-        ...
+        """Clear internal output queue(s)."""
+        for output_buffer in self._output_queues:
+            output_buffer.clear()
 
     def mark_execution_finished(self) -> None:
         """Mark execution as finished and clear internal queues.
@@ -137,6 +142,16 @@ class AllToAllOperator(
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._input_buffer]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_buffer]
+
     def num_outputs_total(self) -> Optional[int]:
         return (
             self._num_outputs
@@ -156,30 +171,6 @@ class AllToAllOperator(
         assert input_index == 0, input_index
         self._input_buffer.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._input_buffer)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._input_buffer)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue."""
-        while self._input_buffer.has_next():
-            bundle = self._input_buffer.get_next()
-            self._metrics.on_input_dequeued(bundle, input_index=0)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_buffer.has_next():
-            bundle = self._output_buffer.get_next()
-            self._metrics.on_output_dequeued(bundle)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
@@ -247,12 +238,13 @@ class NAryOperator(PhysicalOperator):
     def __init__(
         self,
         data_context: DataContext,
-        *input_ops: LogicalOperator,
+        *input_ops: PhysicalOperator,
     ):
-        """Create a OneToOneOperator.
+        """Create a NAryOperator.
+
         Args:
-            input_op: Operator generating input data for this op.
-            name: The name of this operator.
+            data_context: The DataContext instance containing configuration settings.
+            *input_ops: Operators generating input data for this op.
         """
         input_names = ", ".join([op._name for op in input_ops])
         op_name = f"{self.__class__.__name__}({input_names})"

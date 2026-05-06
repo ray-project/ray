@@ -20,7 +20,6 @@ ray_cc_test(
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
