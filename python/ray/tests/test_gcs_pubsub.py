@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import sys
 import threading
@@ -89,6 +90,28 @@ async def test_aio_poll_no_leaks(ray_start_regular):
         subscriber.poll()
         # There should only be 1 task, but use 10 as a buffer.
         assert len(asyncio.all_tasks()) < 10
+
+    await subscriber.close()
+
+
+@pytest.mark.asyncio
+async def test_aio_publisher_id_first_connection_no_failover_log(
+    ray_start_regular, caplog
+):
+    address_info = getattr(ray_start_regular, "address_info", ray_start_regular)
+    gcs_server_addr = address_info["gcs_address"]
+
+    caplog.set_level(logging.DEBUG, logger="ray._private.gcs_pubsub")
+
+    subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
+    await subscriber.subscribe()
+
+    gcs_client = ray._raylet.GcsClient(address=gcs_server_addr)
+    await gcs_client.async_publish_node_resource_usage("aaa_id", '{"cpu": 1}')
+
+    assert await subscriber.poll() == ("aaa_id", '{"cpu": 1}')
+    assert subscriber._publisher_id != b""
+    assert "only happens during gcs failover" not in caplog.text
 
     await subscriber.close()
 

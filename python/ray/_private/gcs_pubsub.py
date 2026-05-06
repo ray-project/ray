@@ -150,7 +150,7 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 self._last_batch_size = len(poll.result().pub_messages)
                 if poll.result().publisher_id != self._publisher_id:
-                    if self._publisher_id != b"":
+                    if self._publisher_id:
                         logger.debug(
                             f"replied publisher_id {poll.result().publisher_id} "
                             f"different from {self._publisher_id}, this should "
