@@ -451,11 +451,14 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
             bundling and may produce at most one block smaller than target_num_rows_per_block
             per input block without forcing exact sizes through block splitting.
             Defaults to False.
+        concurrency: Optional cap on the number of concurrent streaming repartition
+            tasks.
     """
 
     target_num_rows_per_block: int
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     strict: bool = False
+    concurrency: Optional[int] = None
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
@@ -471,8 +474,12 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
                 "target_num_rows_per_block must be positive for streaming repartition, "
                 f"got {self.target_num_rows_per_block}"
             )
+        if self.concurrency is not None and self.concurrency <= 0:
+            raise ValueError(
+                f"concurrency must be positive for streaming repartition, got {self.concurrency}"
+            )
         if self.compute is None:
-            object.__setattr__(self, "compute", TaskPoolStrategy())
+            object.__setattr__(self, "compute", TaskPoolStrategy(size=self.concurrency))
         object.__setattr__(
             self,
             "_name",

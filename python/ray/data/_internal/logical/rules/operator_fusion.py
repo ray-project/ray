@@ -240,7 +240,13 @@ class FuseOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
-                and self._can_fuse_map_ops(up_logical_op, down_logical_op)
+                and (
+                    # StreamingRepartition has a dedicated compatibility check
+                    # below that allows inheriting downstream task concurrency.
+                    # Avoid short-circuiting on generic map-op strategy fusion.
+                    isinstance(down_logical_op, StreamingRepartition)
+                    or self._can_fuse_map_ops(up_logical_op, down_logical_op)
+                )
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
@@ -280,6 +286,11 @@ class FuseOperators(Rule):
         if isinstance(down_logical_op, StreamingRepartition):
             if not (
                 isinstance(up_logical_op, MapBatches)
+                and self._fuse_streaming_repartition_compute_strategy(
+                    up_logical_op.compute,
+                    down_logical_op.compute,
+                )
+                is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
             ):
@@ -340,7 +351,7 @@ class FuseOperators(Rule):
             # Works with any batch_size without cross-task buffering.
             ref_bundler = None
 
-        compute = self._fuse_compute_strategy(
+        compute = self._fuse_streaming_repartition_compute_strategy(
             up_logical_op.compute, down_logical_op.compute
         )
         assert compute is not None
@@ -426,6 +437,30 @@ class FuseOperators(Rule):
             if up_compute.size is not None and up_compute.size != down_compute.max_size:
                 return None
             return down_compute
+
+    @classmethod
+    def _fuse_streaming_repartition_compute_strategy(
+        cls, up_compute: ComputeStrategy, down_compute: ComputeStrategy
+    ) -> Optional[ComputeStrategy]:
+        """Fuse compute strategies for MapBatches -> StreamingRepartition.
+
+        This path allows a default upstream task pool (size=None) to inherit an
+        explicit downstream task cap. That preserves existing fusion behavior
+        while allowing StreamingRepartition to specify its own concurrency limit.
+        """
+        compute = cls._fuse_compute_strategy(up_compute, down_compute)
+        if compute is not None:
+            return compute
+
+        if (
+            isinstance(up_compute, TaskPoolStrategy)
+            and up_compute.size is None
+            and isinstance(down_compute, TaskPoolStrategy)
+            and down_compute.size is not None
+        ):
+            return down_compute
+
+        return None
 
     def _can_merge_target_max_block_size(
         self,
