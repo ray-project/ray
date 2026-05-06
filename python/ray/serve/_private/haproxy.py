@@ -77,75 +77,6 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-_LUA_TEMPLATE = string.Template(
-    (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
-)
-
-
-def _routers_and_targets_by_backend(
-    backends: "List[BackendConfig]",
-) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router and replica map, restricted to backends with both.
-
-    Deterministic min-(port, host) within each router pool avoids the
-    TTFT regression from cycling routers across requests.
-    """
-    routers: Dict[str, ServerConfig] = {}
-    targets: Dict[str, List[Tuple[str, str]]] = {}
-    for backend in backends:
-        if not backend.ingress_request_router_servers:
-            continue
-        entries = [
-            (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
-        ]
-        if not entries:
-            continue
-        routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.port, s.host)
-        )
-        targets[backend.name] = entries
-    return routers, targets
-
-
-def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
-    """Render {backend_name: ServerConfig} as a Lua table literal."""
-    body = ",\n".join(
-        f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
-        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
-        for name, s in routers.items()
-    )
-    return "{\n" + body + "\n}"
-
-
-def _format_replica_targets_lua(
-    targets: "Dict[str, List[Tuple[str, str]]]",
-) -> str:
-    """Render {backend_name: {replica_id: server_name}} as nested Lua tables."""
-    backends_lua = []
-    for backend_name, entries in targets.items():
-        inner = ",\n".join(
-            f"        [{json.dumps(rid)}] = {json.dumps(sname)}"
-            for rid, sname in entries
-        )
-        backends_lua.append(
-            f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
-        )
-    return "{\n" + ",\n".join(backends_lua) + "\n}"
-
-
-def _write_if_changed(path: str, content: str) -> bool:
-    """Write content to path only if it differs from what's there."""
-    try:
-        with open(path) as f:
-            if f.read() == content:
-                return False
-    except FileNotFoundError:
-        pass
-    with open(path, "w") as f:
-        f.write(content)
-    return True
-
 
 def _get_safe_name(name: str) -> str:
     """Sanitize an actor name for use as a HAProxy server/backend label."""
@@ -924,9 +855,10 @@ class HAProxyApi(ProxyApi):
 
             # Derive from the write result: returns None when no backend has
             # both routers and replicas with IDs (transient during scaling).
-            ingress_request_router_lua_path = self._write_ingress_request_router_lua(
-                backends
-            )
+            (
+                ingress_request_router_lua_path,
+                ingress_request_router_lua_changed,
+            ) = self._write_ingress_request_router_lua(backends)
             has_ingress_request_router = ingress_request_router_lua_path is not None
 
             # Enrich backends with precomputed health check configuration strings

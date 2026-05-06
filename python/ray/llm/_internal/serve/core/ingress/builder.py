@@ -228,5 +228,3 @@ def build_openai_app(builder_config: dict) -> Application:
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
     )
-
-    return app
