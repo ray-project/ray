@@ -490,7 +490,7 @@ class AmdGpuProvider(GpuProvider):
                 info = GpuUtilizationInfo(
                     index=i,
                     name=self._decode(self._pyamdsmi.smi_get_device_name(i)),
-                    uuid=hex(self._pyamdsmi.smi_get_device_unique_id(i)),
+                    uuid=self._pyamdsmi.smi_get_device_unique_id(i),
                     utilization_gpu=utilization,
                     memory_used=int(self._pyamdsmi.smi_get_device_memory_used(i)) // MB,
                     memory_total=int(self._pyamdsmi.smi_get_device_memory_total(i))

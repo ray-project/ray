@@ -444,7 +444,9 @@ class TestAmdGpuProvider(unittest.TestCase):
             mock_process
         ]
         mock_pyamdsmi.smi_get_device_name.return_value = b"AMD Radeon RX 6800 XT"
-        mock_pyamdsmi.smi_get_device_unique_id.return_value = 0x123456789ABCDEF0
+        mock_pyamdsmi.smi_get_device_unique_id.return_value = (
+            "GPU-13579bdf-9abc-def0-0000-000000000000"
+        )
         mock_pyamdsmi.smi_get_device_memory_used.return_value = 6 * MB * 1024
         mock_pyamdsmi.smi_get_device_memory_total.return_value = 16 * MB * 1024
         mock_pyamdsmi.smi_shutdown.return_value = None
@@ -460,7 +462,7 @@ class TestAmdGpuProvider(unittest.TestCase):
 
         self.assertEqual(gpu_info["index"], 0)
         self.assertEqual(gpu_info["name"], "AMD Radeon RX 6800 XT")
-        self.assertEqual(gpu_info["uuid"], hex(0x123456789ABCDEF0))
+        self.assertEqual(gpu_info["uuid"], "GPU-13579bdf-9abc-def0-0000-000000000000")
         self.assertEqual(gpu_info["utilization_gpu"], 85)
         self.assertEqual(gpu_info["memory_used"], 6 * 1024)  # 6GB in MB
         self.assertEqual(gpu_info["memory_total"], 16 * 1024)  # 16GB in MB
