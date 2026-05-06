@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import List, Optional, Union
 
 import tree
@@ -142,6 +143,7 @@ def synchronous_parallel_sample(
                     int(agent_stat)
                     for stat_dict in stats_dicts
                     for agent_stat in stat_dict[NUM_AGENT_STEPS_SAMPLED].values()
+                    if not math.isnan(float(agent_stat))
                 )
             else:
                 agent_or_env_steps += sum(
