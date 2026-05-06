@@ -1,0 +1,121 @@
+diff --git a/.bazelrc b/.bazelrc
+index 8d6d871648..2a0c12bbcb 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -18,6 +18,9 @@ build --action_env=RAY_BUILD_ENV
+ build:windows --action_env=PATH
+ # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
+ build --compilation_mode=opt
++# Force static linking to avoid cross-package upb dylib symbol resolution
++# failures (envoy_api/googleapis/grpc) seen on macOS arm64 with Bazel 7.
++build --dynamic_mode=off
+ # Using C++ 17 on all platforms.
+ build:linux --host_cxxopt="-std=c++17"
+ build:macos --host_cxxopt="-std=c++17"
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 16706e0c21..970179ebcf 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -349,6 +349,7 @@ pkg_files(
+     srcs = ["@jemalloc//:shared"],
+     attributes = pkg_attributes(mode = "755"),
+     prefix = "ray/core/",
++    target_compatible_with = ["@platforms//os:linux"],
+     visibility = ["//visibility:private"],
+ )
+ 
+diff --git a/src/ray/common/cgroup2/BUILD.bazel b/src/ray/common/cgroup2/BUILD.bazel
+index 247f139784..08981ffb68 100644
+--- a/src/ray/common/cgroup2/BUILD.bazel
++++ b/src/ray/common/cgroup2/BUILD.bazel
+@@ -106,6 +106,9 @@ ray_cc_library(
+     name = "sysfs_cgroup_driver",
+     srcs = ["sysfs_cgroup_driver.cc"],
+     hdrs = ["sysfs_cgroup_driver.h"],
++    target_compatible_with = [
++        "@platforms//os:linux",
++    ],
+     visibility = [":__subpackages__"],
+     deps = [
+         ":cgroup_driver_interface",
+diff --git a/src/ray/gcs/store_client/BUILD.bazel b/src/ray/gcs/store_client/BUILD.bazel
+index ebeaebd2ea..fdbbcd188a 100644
+--- a/src/ray/gcs/store_client/BUILD.bazel
++++ b/src/ray/gcs/store_client/BUILD.bazel
+@@ -67,7 +67,6 @@ ray_cc_library(
+     name = "rocksdb_store_client",
+     srcs = ["rocksdb_store_client.cc"],
+     hdrs = ["rocksdb_store_client.h"],
+-    target_compatible_with = ["@platforms//os:linux"],
+     deps = [
+         ":store_client",
+         "//src/ray/common:asio",
+diff --git a/src/ray/gcs/store_client/rocksdb_store_client.h b/src/ray/gcs/store_client/rocksdb_store_client.h
+index 02b01f66e5..72af788933 100644
+--- a/src/ray/gcs/store_client/rocksdb_store_client.h
++++ b/src/ray/gcs/store_client/rocksdb_store_client.h
+@@ -205,7 +205,7 @@ class RocksDbStoreClient : public StoreClient {
+ 
+   // Holds a ref so Postable's default-IO-context resolution still works,
+   // matching how RedisStoreClient stores its io_service_.
+-  instrumented_io_context &io_service_;
++  [[maybe_unused]] instrumented_io_context &io_service_;
+ 
+   /// Offload pool for RocksDB I/O. Null when offload_io was false in
+   /// the ctor. Joined and destroyed BEFORE `db_` so any in-flight RocksDB
+diff --git a/src/ray/raylet/node_manager.cc b/src/ray/raylet/node_manager.cc
+index fc9a9097aa..63eddf0b16 100644
+--- a/src/ray/raylet/node_manager.cc
++++ b/src/ray/raylet/node_manager.cc
+@@ -3408,24 +3408,34 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
+ 
+ std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
+     const NodeID &self_node_id, const NodeManagerConfig &config) {
++  // Use the same wait budget as runtime_env_agent_client so a slow first-time
++  // import in the dashboard agent doesn't crash the raylet on platforms where
++  // 15s isn't enough (e.g. macOS dev machines). Default is 30s on POSIX, 100s
++  // on Windows; overridable via RAY_agent_register_timeout_ms.
++  const int timeout_ms =
++      static_cast<int>(RayConfig::instance().agent_register_timeout_ms());
+   int metrics_agent_port = config.metrics_agent_port;
+   if (metrics_agent_port == 0) {
+     RAY_ASSIGN_OR_CHECK_SET(
+         metrics_agent_port,
+-        WaitForPersistedPort(config.session_dir, self_node_id, kMetricsAgentPortName));
++        WaitForPersistedPort(
++            config.session_dir, self_node_id, kMetricsAgentPortName, timeout_ms));
+   }
+   int metrics_export_port = config.metrics_export_port;
+   if (metrics_export_port == 0) {
+     RAY_ASSIGN_OR_CHECK_SET(
+         metrics_export_port,
+-        WaitForPersistedPort(config.session_dir, self_node_id, kMetricsExportPortName));
++        WaitForPersistedPort(
++            config.session_dir, self_node_id, kMetricsExportPortName, timeout_ms));
+   }
+   int dashboard_agent_listen_port = config.dashboard_agent_listen_port;
+   if (dashboard_agent_listen_port == 0) {
+     RAY_ASSIGN_OR_CHECK_SET(
+         dashboard_agent_listen_port,
+-        WaitForPersistedPort(
+-            config.session_dir, self_node_id, kDashboardAgentListenPortName));
++        WaitForPersistedPort(config.session_dir,
++                             self_node_id,
++                             kDashboardAgentListenPortName,
++                             timeout_ms));
+   }
+   return {metrics_agent_port, metrics_export_port, dashboard_agent_listen_port};
+ }
+@@ -3472,7 +3482,11 @@ int NodeManager::WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+   }
+   RAY_ASSIGN_OR_CHECK_SET(
+       int port,
+-      WaitForPersistedPort(config.session_dir, self_node_id, kRuntimeEnvAgentPortName));
++      WaitForPersistedPort(config.session_dir,
++                           self_node_id,
++                           kRuntimeEnvAgentPortName,
++                           static_cast<int>(
++                               RayConfig::instance().agent_register_timeout_ms())));
+   return port;
+ }
+ 

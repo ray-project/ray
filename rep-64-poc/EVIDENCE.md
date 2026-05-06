@@ -13,6 +13,7 @@ The REP-64 design **works** on the substrate(s) we can test rigorously here, wit
 3. **Two Ray-core regressions surfaced as blockers and were fixed.** Both are independently upstream-worthy and would block any current Ray master build:
    - `boostorg.jfrog.io` no longer serves the `boost_1_81_0.tar.bz2` archive Ray's `WORKSPACE` pinned the SHA for; switched to `archives.boost.io` (canonical, matches the SHA exactly). Commit `07c65c84`.
    - `bazel/BUILD.rocksdb`'s `out_static_libs = ["librocksdb.a"]` assumed install-to-`lib/`, but RocksDB's CMake uses `GNUInstallDirs` which picks `lib64/` on x86_64 Linux. Pinned `CMAKE_INSTALL_LIBDIR=lib` in cache_entries for cross-distro / cross-platform portability. Commit `b043e462`.
+4. **macOS arm64 dev workflow is now green.** `bazel build //src/ray/...`, `bazel build //:all //cpp:all`, and `pytest python/ray/tests/test_basic.py` all succeed on macOS arm64 (Apple Silicon, Bazel 7.5.0). The six local changes that make this possible are documented in `MACOS_DEV_SETUP.md` and packaged as an applicable patch in `macos-dev.patch` — they are **not** committed to the tree, since Ray's supported build target is Linux. Four of the six are general portability fixes (independent of REP-64) that would benefit any macOS contributor: `--dynamic_mode=off` to dodge upb dylib symbol resolution, two missing `target_compatible_with` Linux gates (`:jemalloc_files`, `:sysfs_cgroup_driver`), and routing the dashboard-agent port-file wait through the existing `agent_register_timeout_ms` config. **These four are upstream-worthy as a separate PR.** Substrate-evidence runs (Phases 1/4/7/8) on APFS remain pending — this work unblocks them but does not perform them.
 
 The walking-skeleton GCS integration, full StoreClient API surface, durability under SIGKILL, concurrency under N-thread contention, and storage-layer recovery are all verified with green tests. The K8s + cloud-volume validation is **scaffolded but not run** — running it requires a Ray container image built from this branch (the highest-priority Phase 8 follow-on) and cloud-volume access (collaborator-driven).
 
@@ -37,7 +38,7 @@ The walking-skeleton GCS integration, full StoreClient API surface, durability u
 |---|---|---|---|---|
 | ext4 on `/dev/sda3` (this VM) | **Honest** (p50 = 3608 µs) | **PASS** (1k, 5k writes) | **Captured** (Put p50 3.81 ms, Get p50 0.97 µs) | **Captured** (sub-100 ms cold open at 10k) |
 | `/tmp` tmpfs | **Lying** (p50 = 1 µs, expected) | Not run — SIGKILL preserves page cache, tmpfs cannot fail this test. | Used as the "compare-against-honest" cross-check (RocksDB Put p50 = 7 µs, ~500× too fast → flags substrate dishonesty). | n/a |
-| macOS APFS (user's MacBook) | Probe ready (`probe_fsync.py` supports `F_FULLFSYNC`) | Pending | Pending | Pending |
+| macOS APFS (user's MacBook) | Probe ready (`probe_fsync.py` supports `F_FULLFSYNC`); dev workflow green per `MACOS_DEV_SETUP.md` | Pending | Pending | Pending |
 | NFS loopback | Pending | Pending | Pending | Pending |
 | AWS EBS / GCE PD | Pending — wrapper script `cloud_fsync_check.sh` ready for collaborator | Pending | Pending | Pending |
 
@@ -66,7 +67,7 @@ The walking-skeleton GCS integration, full StoreClient API surface, durability u
 3. **Cloud-volume substrate sweep** (EBS, GCE PD) via `cloud_fsync_check.sh` + collaborator. Closes R4 fully.
 4. **NFS loopback substrate.** Local quick-win before cloud.
 5. **`drop_caches`-equipped variants** of Phases 4 and 8 on a host with `sudo`. Closes the OS-level fsync honesty argument.
-6. **macOS+F_FULLFSYNC** runs on the user's MacBook for substrate diversity at zero infrastructure cost.
+6. **macOS+F_FULLFSYNC** runs on the user's MacBook for substrate diversity at zero infrastructure cost. Dev setup landed (`MACOS_DEV_SETUP.md` + `macos-dev.patch`); substrate runs themselves still pending.
 7. **Multi-threaded writer microbench variant** (Phase 7) to capture group-commit benefit on aggregate throughput.
 8. **`chaos_rocksdb_store_client_test.cc`** mirroring `chaos_redis_store_client_test.cc`, if maintainers want it before merge.
 9. **Cluster-ID-mismatch fail-fast** with K8s downward API plumbing (Phase 8 follow-on).
