@@ -88,7 +88,6 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
     {%- if has_ingress_request_router %}
-    option http-buffer-request
     # Set txn.ingress_request_router_app to the first matching router-bearing
     # backend. Backends are sorted longest-prefix-first, and the !found guard
     # ensures only the longest match wins.
@@ -98,6 +97,7 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
