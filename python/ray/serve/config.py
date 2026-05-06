@@ -46,7 +46,7 @@ from ray.util.annotations import Deprecated, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies.
 
@@ -421,7 +421,7 @@ class AggregationFunction(str, Enum):
     MIN = "min"
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
@@ -618,7 +618,7 @@ class AutoscalingConfig(BaseModel):
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
     policy: AutoscalingPolicy = Field(
         default_factory=AutoscalingPolicy,
-        description="The autoscaling policy for the deployment. This option is experimental.",
+        description="The autoscaling policy for the deployment.",
     )
 
     @model_validator(mode="after")
@@ -862,7 +862,7 @@ class HTTPOptions(BaseModel):
         return v
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptions(BaseModel):
     """gRPC options for the proxies. Supported fields:
 

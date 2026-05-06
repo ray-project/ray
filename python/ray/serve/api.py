@@ -97,7 +97,7 @@ def start(
         http_options: HTTP config options for the proxies. These can be passed as an
           unstructured dictionary or the structured `HTTPOptions` class. See
           `HTTPOptions` for supported options.
-        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
+        grpc_options: gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
@@ -529,7 +529,7 @@ def deployment(
             deployment. The user_config must be fully JSON-serializable.
         max_ongoing_requests: Maximum number of requests that are sent to a
             replica of this deployment without receiving a response. Defaults to 5.
-        max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
+        max_queued_requests: Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
