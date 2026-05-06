@@ -21,6 +21,8 @@
 #include "nlohmann/json.hpp"
 #include "ray/rpc/authentication/authentication_token.h"
 
+#include "ray/common/status.h"
+
 namespace ray {
 namespace rpc {
 namespace k8s {
@@ -37,10 +39,26 @@ void InitK8sClientConfig();
 /// \param path The API path for the request.
 /// \param body The JSON body of the request.
 /// \param[out] response_json The JSON response from the API server.
-/// \return true if the request was successful, false otherwise.
-bool K8sApiPost(const std::string &path,
-                const nlohmann::json &body,
-                nlohmann::json &response_json);
+/// \return Status::OK() if the request was successful, otherwise error status.
+Status K8sApiPost(const std::string &path,
+                  const nlohmann::json &body,
+                  nlohmann::json &response_json);
+
+/// Performs an HTTP GET request to the Kubernetes API server.
+/// \param path The API path for the request.
+/// \param[out] response_json The JSON response from the API server.
+/// \return Status::OK() if the request was successful, otherwise error status.
+Status K8sApiGet(const std::string &path,
+                 nlohmann::json &response_json);
+
+/// Performs an HTTP PUT request to the Kubernetes API server.
+/// \param path The API path for the request.
+/// \param body The JSON body of the request.
+/// \param[out] response_json The JSON response from the API server.
+/// \return Status::OK() if the request was successful, otherwise error status.
+Status K8sApiPut(const std::string &path,
+                 const nlohmann::json &body,
+                 nlohmann::json &response_json);
 
 // Validates a token by calling the Kubernetes API server.
 /// \param token The token to validate.
