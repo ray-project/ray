@@ -39,10 +39,8 @@ void SubscriberChannel::Subscribe(
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
-    subscription_map_[publisher_id].per_entity_subscription.try_emplace(
-        *key_id,
-        SubscriptionInfo(std::move(subscription_callback),
-                         std::move(subscription_failure_callback)));
+    subscription_map_[publisher_id].per_entity_subscription[*key_id].emplace_back(
+        std::move(subscription_callback), std::move(subscription_failure_callback));
     return;
   }
   auto &all_entities_subscription =
@@ -131,20 +129,23 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
       << rpc::ChannelType_Name(channel_type_);
 
   auto maybe_subscription_callback =
-      GetSubscriptionItemCallback(publisher_address, key_id);
+      GetSubscriptionItemCallbacks(publisher_address, key_id);
   cum_published_messages_++;
-  if (!maybe_subscription_callback.has_value()) {
+  if (maybe_subscription_callback.empty()) {
     return;
   }
   cum_processed_messages_++;
   // If the object id is still subscribed, run a callback to the callback io service.
   const auto &channel_name =
       rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
-  callback_service_->post(
-      [subscription_callback = std::move(maybe_subscription_callback.value()),
-       msg = std::move(pub_message)]() mutable  // allow data to be moved
-      { subscription_callback(std::move(msg)); },
-      "Subscriber.HandlePublishedMessage_" + channel_name);
+  const rpc::PubMessage message = pub_message;
+  for (auto &subscription_callback : maybe_subscription_callback) {
+    callback_service_->post(
+        [subscription_callback = std::move(subscription_callback), msg = message]() mutable {
+          subscription_callback(std::move(msg));
+        },
+        "Subscriber.HandlePublishedMessage_" + channel_name);
+  }
 }
 
 void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
@@ -193,18 +194,21 @@ bool SubscriberChannel::HandlePublisherFailureInternal(
     const rpc::Address &publisher_address,
     const std::string &key_id,
     const Status &status) {
-  auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
-  if (maybe_failure_callback.has_value()) {
-    const auto &channel_name =
-        rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
+  auto failure_callbacks = GetFailureCallbacks(publisher_address, key_id);
+  if (failure_callbacks.empty()) {
+    return false;
+  }
+
+  const auto &channel_name =
+      rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
+  for (auto &failure_callback : failure_callbacks) {
     callback_service_->post(
-        [failure_callback = std::move(maybe_failure_callback.value()), key_id, status]() {
+        [failure_callback = std::move(failure_callback), key_id, status]() {
           failure_callback(key_id, status);
         },
         "Subscriber.HandleFailureCallback_" + channel_name);
-    return true;
   }
-  return false;
+  return true;
 }
 
 std::string SubscriberChannel::DebugString() const {

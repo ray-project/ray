@@ -48,13 +48,15 @@ struct SubscriptionInfo {
   SubscriptionFailureCallback failure_cb;
 };
 
+using SubscriptionInfos = std::vector<SubscriptionInfo>;
+
 /// All subscription info for the publisher.
 struct Subscriptions {
   // Subscriptions for all entities.
   std::unique_ptr<SubscriptionInfo> all_entities_subscription;
 
   // Subscriptions for each entity.
-  absl::flat_hash_map<std::string, SubscriptionInfo> per_entity_subscription;
+  absl::flat_hash_map<std::string, SubscriptionInfos> per_entity_subscription;
 };
 
 /// Subscriber channel is an abstraction for each channel.
@@ -142,42 +144,52 @@ class SubscriberChannel {
                                       const std::string &key_id,
                                       const Status &status);
 
-  /// Returns a subscription callback; Returns a nullopt if the object id is not
+  /// Returns subscription callbacks. Returns an empty vector if the object id is not
   /// subscribed.
-  std::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
+  std::vector<SubscriptionItemCallback> GetSubscriptionItemCallbacks(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      return std::nullopt;
+      return {};
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->item_cb;
+      return {subscription_it->second.all_entities_subscription->item_cb};
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return std::nullopt;
+      return {};
     }
-    return callback_it->second.item_cb;
+    std::vector<SubscriptionItemCallback> callbacks;
+    callbacks.reserve(callback_it->second.size());
+    for (const auto &subscription_info : callback_it->second) {
+      callbacks.push_back(subscription_info.item_cb);
+    }
+    return callbacks;
   }
 
-  /// Returns a publisher failure callback; Returns a nullopt if the object id is not
-  /// subscribed.
-  std::optional<SubscriptionFailureCallback> GetFailureCallback(
+  /// Returns publisher failure callbacks. Returns an empty vector if the object id is
+  /// not subscribed.
+  std::vector<SubscriptionFailureCallback> GetFailureCallbacks(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      return std::nullopt;
+      return {};
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->failure_cb;
+      return {subscription_it->second.all_entities_subscription->failure_cb};
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return std::nullopt;
+      return {};
     }
-    return callback_it->second.failure_cb;
+    std::vector<SubscriptionFailureCallback> callbacks;
+    callbacks.reserve(callback_it->second.size());
+    for (const auto &subscription_info : callback_it->second) {
+      callbacks.push_back(subscription_info.failure_cb);
+    }
+    return callbacks;
   }
 
   const rpc::ChannelType channel_type_;
