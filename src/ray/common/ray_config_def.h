@@ -430,8 +430,37 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+// The storage backend to use for the GCS. It can be 'redis', 'memory', or
+// 'rocksdb' (REP-64 embedded storage backend).
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS backend (REP-64). Only meaningful
+/// when gcs_storage == "rocksdb"; the operator points this at a
+/// PersistentVolume mount inside the Ray head pod.
+RAY_CONFIG(std::string, gcs_storage_path, "")
+
+/// REP-64: offload RocksDB I/O (including the WAL fsync that dominates
+/// per-call latency) to a background thread pool, so blocking ops do
+/// not stall the GCS event loop. When false, each Async* call runs
+/// synchronously on the caller's thread (current POC default; matches
+/// InMemoryStoreClient semantics, easier to reason about). Phase 7 of
+/// the POC measures both paths so maintainers can compare.
+RAY_CONFIG(bool, gcs_rocksdb_async_offload, false)
+
+/// Number of worker threads in the RocksDB offload pool. Only meaningful
+/// when gcs_rocksdb_async_offload is true. RocksDB serializes WAL writes
+/// internally and batches concurrent in-flight writers into one fsync
+/// (group commit), so a small pool (≈4) is enough to capture the
+/// aggregate-throughput benefit on the GCS metadata workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
+/// REP-64: number of per-key strand buckets used for single-key op
+/// ordering on the offload path. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4). Only meaningful
+/// when gcs_rocksdb_async_offload is true.
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)

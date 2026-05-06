@@ -1,0 +1,138 @@
+# REP-64 POC, Phase 8: Ray head pod with RocksDB GCS backend.
+#
+# Reference manifest demonstrating the "embedded storage" deployment
+# the REP describes:
+#   - Single Ray head pod (`ray-head-0`) managed by a StatefulSet so
+#     the pod identity is stable across restarts.
+#   - PersistentVolumeClaim mounted at /data/gcs-state — same path the
+#     RAY_GCS_STORAGE_PATH env var points at.
+#   - Headless Service so workers can reach the head pod by stable name.
+#   - No Redis. No external KV store. State lives on the PVC.
+#
+# This manifest is provided as a reproducer skeleton; running it on a
+# real cluster is part of Phase 8's open follow-on work (see
+# phase-8-recovery.md). The PLAN's `make kind-up` driver script is the
+# one-command wrapper that brings this up against a kind cluster.
+#
+# To bring up against a kind cluster (after Phase 8 follow-on lands):
+#   kind create cluster --name rep64-poc
+#   kubectl apply -f rep-64-poc/harness/kind/ray-head-rocksdb.yaml
+#   kubectl wait --for=condition=ready pod/ray-head-0 --timeout=120s
+#
+# Failure-mode tests this manifest is designed to support:
+#   1. `kubectl delete pod ray-head-0` — StatefulSet recreates the pod,
+#      which re-mounts the PVC, which re-opens RocksDB at the same
+#      path. Recovery time = the storage-layer numbers from
+#      recovery_bench (sub-100 ms at 10k entries) plus pod-startup +
+#      worker-reconnect time.
+#   2. `kubectl drain <node>` — pod re-scheduled to a different node;
+#      PVC re-attachment behavior depends on the StorageClass
+#      AccessMode (RWO will block if another pod still has it; the
+#      PVC must be cleanly released first).
+#   3. PVC swap (operator-managed PVC re-mounts a different cluster's
+#      data) — REP "Stale data protection" case. Detection requires
+#      an external authoritative cluster_id source plumbed in via env
+#      var (REP-64 deferral, see phase-3-skeleton.md).
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ray-head
+  labels:
+    app: ray-head
+spec:
+  clusterIP: None  # headless: workers resolve to the pod IP directly
+  selector:
+    app: ray-head
+  ports:
+    - name: gcs-server
+      port: 6379
+      targetPort: 6379
+    - name: dashboard
+      port: 8265
+      targetPort: 8265
+    - name: client
+      port: 10001
+      targetPort: 10001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ray-head
+  labels:
+    app: ray-head
+spec:
+  serviceName: ray-head
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ray-head
+  template:
+    metadata:
+      labels:
+        app: ray-head
+    spec:
+      containers:
+        - name: ray-head
+          # IMAGE: replace with a Ray image built from this branch.
+          # Until that wheel exists, Phase 8 cannot run end-to-end on
+          # K8s; the manifest is here for review and as the test
+          # target for the Phase 8 follow-on.
+          image: rayproject/ray:rep64-poc-PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          command: ["ray", "start", "--head", "--block"]
+          env:
+            - name: RAY_GCS_STORAGE
+              value: "rocksdb"
+            - name: RAY_GCS_STORAGE_PATH
+              value: "/data/gcs-state"
+            # Workers wait for GCS to come back rather than failing on
+            # first disconnect — same knob as Redis-based FT.
+            - name: RAY_gcs_rpc_server_reconnect_timeout_s
+              value: "60"
+            # When the cluster_id mismatch fail-fast lands (Phase 8
+            # follow-on, see phase-3-skeleton.md), this is where the
+            # external authoritative cluster_id would be plumbed in
+            # via the K8s downward API:
+            #   - name: RAY_GCS_EXPECTED_CLUSTER_ID
+            #     valueFrom:
+            #       fieldRef:
+            #         fieldPath: metadata.labels['ray.io/cluster-id']
+          ports:
+            - containerPort: 6379
+              name: gcs-server
+            - containerPort: 8265
+              name: dashboard
+            - containerPort: 10001
+              name: client
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: gcs-state
+              mountPath: /data/gcs-state
+          readinessProbe:
+            tcpSocket:
+              port: 10001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 30
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: gcs-state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # On a real cluster, set storageClassName explicitly. The
+        # POC's reproducer assumes the default StorageClass works
+        # (kind ships with one; cloud setups need a real one).
+        resources:
+          requests:
+            storage: 10Gi

@@ -1,0 +1,50 @@
+{
+  "harness": {
+    "name": "rep-64-poc-fsync-probe",
+    "schema_version": 1,
+    "started_at": "2026-05-06T03:39:45.794939+00:00",
+    "params": {
+      "target_dir": "/Users/sanjha/rep64-fsync-probe",
+      "n": 200,
+      "write_size": 4096
+    },
+    "environment": {
+      "host_os": "Darwin",
+      "host_kernel": "25.4.0",
+      "host_machine": "arm64",
+      "host_python": "3.13.11"
+    }
+  },
+  "results": {
+    "fsync": {
+      "available": true,
+      "n": 200,
+      "p50_us": 17.375,
+      "p99_us": 21.292,
+      "p999_us": 22.75,
+      "min_us": 13.625,
+      "max_us": 50.041,
+      "mean_us": 17.73
+    },
+    "fdatasync": {
+      "available": false,
+      "reason": "os.fdatasync not present"
+    },
+    "f_fullfsync": {
+      "available": true,
+      "n": 200,
+      "p50_us": 4003.417,
+      "p99_us": 5159.292,
+      "p999_us": 6058.875,
+      "min_us": 3729.167,
+      "max_us": 7087.167,
+      "mean_us": 4091.016
+    }
+  },
+  "label": {
+    "verdict": "honest_via_fullfsync",
+    "notes": [
+      "macOS: standard fsync is documented as not flushing to permanent media; F_FULLFSYNC is the honest signal here."
+    ]
+  }
+}

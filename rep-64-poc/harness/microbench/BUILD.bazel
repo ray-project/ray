@@ -1,0 +1,14 @@
+# REP-64 POC, Phase 7: side-by-side microbenchmarks for InMemory vs
+# RocksDB StoreClient backends.
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "storage_microbench",
+    srcs = ["storage_microbench.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)

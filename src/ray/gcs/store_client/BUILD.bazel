@@ -61,3 +61,20 @@ ray_cc_library(
         ":store_client",
     ],
 )
+
+# REP-64 (rep-64-poc/) embedded RocksDB StoreClient implementation.
+ray_cc_library(
+    name = "rocksdb_store_client",
+    srcs = ["rocksdb_store_client.cc"],
+    hdrs = ["rocksdb_store_client.h"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":store_client",
+        "//src/ray/common:asio",
+        "//src/ray/util:logging",
+        "@boost//:asio",
+        "@com_github_facebook_rocksdb//:rocksdb",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

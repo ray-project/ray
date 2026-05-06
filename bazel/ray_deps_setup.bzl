@@ -170,6 +170,18 @@ def ray_deps_setup():
         sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
     )
 
+    # RocksDB is the embedded storage backend for the GCS fault tolerance
+    # work in REP-64 (`rep-64-poc/`). Built minimally — no compression, no
+    # gflags, no jemalloc — via rules_foreign_cc; see bazel/BUILD.rocksdb
+    # for the cmake() invocation. Phase 7 follow-on may revisit compression
+    # tuning.
+    auto_http_archive(
+        name = "com_github_facebook_rocksdb",
+        build_file = "@io_ray//bazel:BUILD.rocksdb",
+        url = "https://github.com/facebook/rocksdb/archive/refs/tags/v9.11.2.tar.gz",
+        sha256 = "0466a3c220464410687c45930f3fa944052229c894274fddb7d821397f2b8fba",
+    )
+
     auto_http_archive(
         name = "rules_jvm_external",
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
@@ -186,7 +198,7 @@ def ray_deps_setup():
         name = "bazel_skylib",
         sha256 = "9f38886a40548c6e96c106b752f242130ee11aaa068a56ba7e56f4511f33e4f2",
         url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.6.1/bazel-skylib-1.6.1.tar.gz",
-        strip_prefix = None
+        strip_prefix = None,
     )
 
     # Declare org_lzma_lzma before com_github_nelhage_rules_boost so that

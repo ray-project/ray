@@ -129,10 +129,12 @@ class GcsServer {
     UNKNOWN = 0,
     IN_MEMORY = 1,
     REDIS_PERSIST = 2,
+    ROCKSDB_PERSIST = 3,
   };
 
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
+  static constexpr char kRocksDbStorage[] = "rocksdb";
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,

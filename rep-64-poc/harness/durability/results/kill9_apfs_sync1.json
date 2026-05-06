@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "host": {
+    "node": "sanjha-mn3428.linkedin.biz",
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64"
+  },
+  "config": {
+    "db_path": "/var/folders/95/573d0v312vz1mcf4sdc0dr9r002jpt/T/rep64-kill9-g5u8ofmy",
+    "num_writes": 1000,
+    "sync": 1,
+    "ghost_writes": 0,
+    "kill_after_ack_target": 754,
+    "seed": 42
+  },
+  "writer": {
+    "exit_code": -9,
+    "killed_at_ack": 754,
+    "finished_naturally": false,
+    "acks_seen": 755,
+    "stderr_tail": ""
+  },
+  "verifier": {
+    "exit_code": 0,
+    "found_count": 756,
+    "missing_count": 244
+  },
+  "result": {
+    "acked_but_missing_count": 0,
+    "acked_but_missing_examples": [],
+    "not_acked_but_found_count": 1,
+    "verdict": "PASS"
+  }
+}
