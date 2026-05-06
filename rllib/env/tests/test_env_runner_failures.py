@@ -398,17 +398,10 @@ class TestEnvRunnerFailures(unittest.TestCase):
             .training(optimizer={})
         )
 
-    def test_env_crash_during_sampling_but_restart_crashed_sub_envs(self):
-        """Expect sub-envs to fail (and not recover), but re-start them individually."""
-        register_env(
-            "ma_cartpole_crashing",
-            lambda cfg: (
-                cfg.update({"num_agents": 2}),
-                make_multi_agent(CartPoleCrashing)(cfg),
-            )[1],
-        )
-
-        config = (
+    def _crashing_envs_config(self):
+        """Shared config: 4 EnvRunners, sub-envs that crash w/ p=0.05% per step,
+        sub-env auto-restart enabled, EnvRunner failures ignored."""
+        return (
             PPOConfig()
             .env_runners(num_env_runners=4)
             .fault_tolerance(
@@ -428,28 +421,43 @@ class TestEnvRunnerFailures(unittest.TestCase):
                 }
             )
         )
-        for multi_agent in [False, True]:
-            if multi_agent:
-                config.environment("ma_cartpole_crashing")
-                config.env_runners(num_envs_per_env_runner=1)
-                config.multi_agent(
-                    policies={"p0", "p1"},
-                    policy_mapping_fn=lambda aid, eps, **kw: f"p{aid}",
-                )
-            else:
-                config.environment(CartPoleCrashing)
-                config.env_runners(num_envs_per_env_runner=2)
 
-            # Pre-checking disables, so building the Algorithm is save.
-            algo = config.build()
-            # Try to re-create the sub-env for infinite amount of times.
-            for _ in range(5):
-                # Expect some errors being logged here, but in general, should continue
-                # as we recover from all sub-env failures.
+    def _run_crash_recovery_iters(self, config, iters=5):
+        """Build, train `iters` times, asserting all 4 EnvRunners stay healthy."""
+        algo = config.build()
+        try:
+            for _ in range(iters):
+                # Expect some errors being logged here, but in general, should
+                # continue as we recover from all sub-env failures.
                 algo.train()
-                # No EnvRunner has been removed. Still 2 left.
                 self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 4)
+        finally:
             algo.stop()
+
+    def test_env_crash_during_sampling_but_restart_crashed_sub_envs_single_agent(self):
+        """Expect sub-envs to fail (and not recover), but re-start them
+        individually. Single-agent variant."""
+        config = self._crashing_envs_config().environment(CartPoleCrashing)
+        config.env_runners(num_envs_per_env_runner=2)
+        self._run_crash_recovery_iters(config)
+
+    def test_env_crash_during_sampling_but_restart_crashed_sub_envs_multi_agent(self):
+        """Expect sub-envs to fail (and not recover), but re-start them
+        individually. Multi-agent variant."""
+        register_env(
+            "ma_cartpole_crashing",
+            lambda cfg: (
+                cfg.update({"num_agents": 2}),
+                make_multi_agent(CartPoleCrashing)(cfg),
+            )[1],
+        )
+        config = self._crashing_envs_config().environment("ma_cartpole_crashing")
+        config.env_runners(num_envs_per_env_runner=1)
+        config.multi_agent(
+            policies={"p0", "p1"},
+            policy_mapping_fn=lambda aid, eps, **kw: f"p{aid}",
+        )
+        self._run_crash_recovery_iters(config)
 
     def test_eval_env_runners_failing_ignore(self):
         # Test the case where one eval EnvRunner fails, but we chose to ignore.
