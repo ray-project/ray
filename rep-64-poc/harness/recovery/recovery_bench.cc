@@ -93,12 +93,11 @@ int Populate(const std::string &db_dir, int num_keys) {
     for (size_t j = 0; j < value.size(); ++j) {
       value[j] = static_cast<char>('A' + ((i + j) % 26));
     }
-    auto s =
-        client.AsyncPut(kTable, key, value, true, [&acked](bool) { acked.fetch_add(1); });
-    if (!s.ok()) {
-      std::cerr << "AsyncPut failed: " << s.ToString() << std::endl;
-      return 1;
-    }
+    client.AsyncPut(kTable,
+                    key,
+                    value,
+                    true,
+                    {[&acked](bool) { acked.fetch_add(1); }, io.io()});
   }
   while (acked.load() < num_keys) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -121,16 +120,13 @@ int Recover(const std::string &db_dir) {
   std::atomic<int> done{0};
   size_t scan_count = 0;
   auto t_scan_start = std::chrono::steady_clock::now();
-  auto s = client.AsyncGetAll(
+  client.AsyncGetAll(
       kTable,
-      [&done, &scan_count](absl::flat_hash_map<std::string, std::string> &&result) {
-        scan_count = result.size();
-        done.fetch_add(1);
-      });
-  if (!s.ok()) {
-    std::cerr << "AsyncGetAll failed: " << s.ToString() << std::endl;
-    return 1;
-  }
+      {[&done, &scan_count](absl::flat_hash_map<std::string, std::string> result) {
+         scan_count = result.size();
+         done.fetch_add(1);
+       },
+       io.io()});
   while (done.load() == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
   auto t_scan_end = std::chrono::steady_clock::now();
 
@@ -138,17 +134,14 @@ int Recover(const std::string &db_dir) {
   std::atomic<int> lookup_done{0};
   bool lookup_present = false;
   auto t_lookup_start = std::chrono::steady_clock::now();
-  s = client.AsyncGet(
+  client.AsyncGet(
       kTable,
       "actor_0",
-      [&lookup_done, &lookup_present](Status, const boost::optional<std::string> &v) {
-        lookup_present = v.has_value();
-        lookup_done.fetch_add(1);
-      });
-  if (!s.ok()) {
-    std::cerr << "AsyncGet failed: " << s.ToString() << std::endl;
-    return 1;
-  }
+      {[&lookup_done, &lookup_present](Status, std::optional<std::string> v) {
+         lookup_present = v.has_value();
+         lookup_done.fetch_add(1);
+       },
+       io.io()});
   while (lookup_done.load() == 0)
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   auto t_lookup_end = std::chrono::steady_clock::now();
