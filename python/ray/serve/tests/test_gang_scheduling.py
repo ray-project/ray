@@ -1581,16 +1581,9 @@ class TestGangRollingUpdate:
             def __call__(self):
                 return "v2"
 
-        # Issue the update in a background thread so we can poll
+        # Issue the update without blocking so we can poll
         # intermediate controller state from the main thread.
-        update_done = threading.Event()
-
-        def update():
-            serve.run(V2.bind(), name="app")
-            update_done.set()
-
-        t = threading.Thread(target=update, daemon=True)
-        t.start()
+        serve._run(V2.bind(), name="app", _blocking=False)
 
         # Wait until we observe mixed state: at least one old gang still
         # RUNNING and at least one new gang in STARTING (blocked on signal).
@@ -1641,7 +1634,6 @@ class TestGangRollingUpdate:
             return current_gang_ids and not (current_gang_ids & initial_gang_ids)
 
         wait_for_condition(update_complete, timeout=60)
-        t.join(timeout=10)
 
         # Confirm all replicas serve the new version.
         for _ in range(20):
