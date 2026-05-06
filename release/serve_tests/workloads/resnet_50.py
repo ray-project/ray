@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from io import BytesIO
+import ipaddress
+import urllib.parse
 import PIL
 from PIL import Image
 import requests
@@ -36,6 +38,24 @@ class Model:
 
     async def __call__(self, request: starlette.requests.Request) -> str:
         uri = (await request.json())["uri"]
+
+        # Validate URI scheme and host to prevent SSRF
+        parsed = urllib.parse.urlparse(uri)
+        if parsed.scheme not in ("http", "https"):
+            return
+        hostname = parsed.hostname or ""
+        try:
+            addr = ipaddress.ip_address(hostname)
+            if (
+                addr.is_private
+                or addr.is_loopback
+                or addr.is_link_local
+                or addr.is_reserved
+            ):
+                return
+        except ValueError:
+            if hostname.lower() in ("localhost", "metadata.google.internal"):
+                return
 
         try:
             image_bytes = requests.get(uri, timeout=5).content
