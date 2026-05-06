@@ -215,13 +215,13 @@ You can use any of these implementations by wrapping the ``fsspec`` filesystem w
 
 
 
-MinIO and other S3-compatible storage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+S3-compatible storage (MinIO, Backblaze B2, etc.)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can follow the :ref:`examples shown above <custom-storage-filesystem>` to configure
-a custom S3 filesystem to work with MinIO.
-
-Note that including these as query parameters in the ``storage_path`` URI directly is another option:
+For S3-compatible stores like `MinIO <https://min.io/>`_ or
+`Backblaze B2 <https://www.backblaze.com/cloud-storage>`_, follow the
+:ref:`custom-filesystem examples above <custom-storage-filesystem>` — or pass
+the endpoint as a query parameter in the ``storage_path`` URI:
 
 .. testcode::
     :skipif: True
@@ -232,10 +232,25 @@ Note that including these as query parameters in the ``storage_path`` URI direct
     trainer = TorchTrainer(
         ...,
         run_config=train.RunConfig(
+            # MinIO running locally:
             storage_path="s3://bucket-name/sub-path?endpoint_override=http://localhost:9000",
+            # Backblaze B2 (substitute your bucket's region):
+            # storage_path="s3://bucket-name/sub-path?endpoint_override=https://s3.us-west-001.backblazeb2.com",
             name="unique-run-id",
         )
     )
+
+You can also set the standard AWS env vars (``AWS_ENDPOINT_URL_S3``,
+``AWS_ACCESS_KEY_ID``, ``AWS_SECRET_ACCESS_KEY``) and use plain
+``storage_path="s3://bucket/path"`` — pyarrow's URI resolver honors them.
+
+For ``s3://`` storage paths, Backblaze B2's documented ``B2_APPLICATION_KEY_ID`` /
+``B2_APPLICATION_KEY`` env vars are aliased onto the AWS-named equivalents by
+Ray Train when the AWS-named pair is not fully set.
+
+See `this end-to-end notebook
+<https://github.com/backblaze-b2-samples/notebooks/tree/main/ray-train-tune-checkpoints>`_
+for a worked Backblaze B2 example.
 
 
 Overview of Ray Train outputs

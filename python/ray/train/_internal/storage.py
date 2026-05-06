@@ -46,6 +46,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_S3_COMPATIBLE_CREDENTIAL_PROVIDERS: Dict[str, Tuple[str, str]] = {
+    "B2": ("B2_APPLICATION_KEY_ID", "B2_APPLICATION_KEY"),
+}
 _VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 
 
@@ -294,6 +297,35 @@ def _create_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> None:
         )
 
 
+def _alias_s3_compatible_credentials_to_aws_env_vars() -> None:
+    """Alias S3-compatible provider credentials onto AWS-named env vars.
+
+    No-op when the AWS-named pair is already fully set (treating empty
+    strings as unset). Warns on a partial AWS pair or a partial provider
+    pair so the user can correct the inconsistent state.
+    """
+    aws_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_sec = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    if bool(aws_id) ^ bool(aws_sec):
+        logger.warning(
+            "Only one of AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY is set; "
+            "S3 auth is likely to fail. No alias applied."
+        )
+        return
+    if aws_id and aws_sec:
+        return  # AWS pair fully set — no aliasing needed.
+
+    for label, (id_env, secret_env) in _S3_COMPATIBLE_CREDENTIAL_PROVIDERS.items():
+        id_val = os.environ.get(id_env)
+        sec_val = os.environ.get(secret_env)
+        if id_val and sec_val:
+            os.environ["AWS_ACCESS_KEY_ID"] = id_val
+            os.environ["AWS_SECRET_ACCESS_KEY"] = sec_val
+            return
+        if bool(id_val) ^ bool(sec_val):
+            logger.warning(f"{label} requires both {id_env} and {secret_env}.")
+
+
 def get_fs_and_path(
     storage_path: Union[str, os.PathLike],
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
@@ -312,6 +344,11 @@ def get_fs_and_path(
     if storage_filesystem:
         return storage_filesystem, storage_path
 
+    # Only alias S3-compatible credentials for s3:// URIs to avoid leaking
+    # provider creds (e.g. B2_APPLICATION_KEY_ID) into AWS_* env vars when
+    # the user is writing to a local filesystem path.
+    if storage_path.startswith("s3://"):
+        _alias_s3_compatible_credentials_to_aws_env_vars()
     return pyarrow.fs.FileSystem.from_uri(storage_path)
 
 

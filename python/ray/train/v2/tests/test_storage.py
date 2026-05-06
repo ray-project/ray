@@ -151,6 +151,43 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
     assert _list_at_fs_path(storage.storage_filesystem, checkpoint_fs_path) == ["1.txt"]
 
 
+def test_b2_env_vars_alias_to_aws_in_v2_get_fs_and_path(monkeypatch):
+    """B2 env vars are aliased onto AWS_* in the v2 get_fs_and_path code
+    path (the default with RAY_TRAIN_V2_ENABLED=1) for s3:// URIs."""
+    from ray.train.v2._internal.execution.storage import get_fs_and_path
+
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-key-id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")
+
+    # The endpoint resolution will fail for a fake bucket, but the alias
+    # runs *before* from_uri, so we only need to swallow that.
+    try:
+        get_fs_and_path("s3://nonexistent-bucket-for-alias-test")
+    except Exception:
+        pass
+
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "b2-key-id"
+    assert os.environ["AWS_SECRET_ACCESS_KEY"] == "b2-secret"
+
+
+def test_b2_env_var_alias_skipped_for_non_s3_in_v2(monkeypatch, tmp_path):
+    """v2's get_fs_and_path must not leak B2 creds into AWS_* for a
+    local fs path."""
+    from ray.train.v2._internal.execution.storage import get_fs_and_path
+
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")
+
+    get_fs_and_path(str(tmp_path))
+
+    assert "AWS_ACCESS_KEY_ID" not in os.environ
+    assert "AWS_SECRET_ACCESS_KEY" not in os.environ
+
+
 if __name__ == "__main__":
     import sys
 

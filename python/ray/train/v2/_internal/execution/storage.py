@@ -305,6 +305,15 @@ def get_fs_and_path(
     if storage_filesystem:
         return storage_filesystem, storage_path
 
+    # Only alias S3-compatible credentials for s3:// URIs to avoid leaking
+    # provider creds (e.g. B2_APPLICATION_KEY_ID) into AWS_* env vars when
+    # the user is writing to a local filesystem path.
+    if storage_path.startswith("s3://"):
+        from ray.train._internal.storage import (
+            _alias_s3_compatible_credentials_to_aws_env_vars,
+        )
+
+        _alias_s3_compatible_credentials_to_aws_env_vars()
     return pyarrow.fs.FileSystem.from_uri(storage_path)
 
 
