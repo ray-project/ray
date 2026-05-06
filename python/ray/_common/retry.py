@@ -1,6 +1,7 @@
 import functools
 import logging
 import random
+import re
 import time
 from collections.abc import Sequence
 from typing import Callable, Optional, TypeVar
@@ -31,8 +32,9 @@ def call_with_retry(
         f: The function to retry.
         description: An imperative description of the function being retried. For
             example, "open the file".
-        match: A sequence of strings to match in the exception message.
-            If ``None``, any error is retried.
+        match: A sequence of patterns to match in the exception message. Each
+            pattern is first checked as a substring, then as a regex. If
+            ``None``, any error is retried.
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
         *args: Arguments to pass to the function.
@@ -50,7 +52,8 @@ def call_with_retry(
         except Exception as e:
             exception_str = str(e)
             is_retryable = match is None or any(
-                pattern in exception_str for pattern in match
+                pattern in exception_str or bool(re.search(pattern, exception_str))
+                for pattern in match
             )
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary exponential backoff with 20% random jitter.
@@ -82,8 +85,9 @@ def retry(
     Args:
         description: An imperative description of the function being retried. For
             example, "open the file".
-        match: A sequence of strings to match in the exception message.
-            If ``None``, any error is retried.
+        match: A sequence of patterns to match in the exception message. Each
+            pattern is first checked as a substring, then as a regex. If
+            ``None``, any error is retried.
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
 

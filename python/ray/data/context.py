@@ -171,7 +171,7 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
-    "AWS Error UNKNOWN \\(HTTP status 503\\)",
+    "AWS Error UNKNOWN (HTTP status 503)",
     "AWS Error SERVICE_UNAVAILABLE",
 )
 
@@ -559,8 +559,9 @@ class DataContext:
             initializes. Default is 3. Set to -1 for infinite retries.
         retried_map_errors: Controls which user exceptions are retried in map
             tasks. ``False`` (default) disables retries. ``True`` retries any user
-            exception. A list of strings retries only when the exception message
-            contains one of the substrings. Bounded by ``max_map_retries``.
+            exception. A list of patterns retries only when the exception message
+            matches one of them (checked as substring first, then as regex).
+            Bounded by ``max_map_retries``.
         max_map_retries: Maximum number of retry attempts per map task for user
             exceptions. Default is 3. Ignored if ``retried_map_errors`` is
             empty.
@@ -592,8 +593,9 @@ class DataContext:
             tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
-        retried_io_errors: A list of string regex patterns of error messages that should
-            trigger a retry when reading or writing files. This is useful for handling
+        retried_io_errors: A list of patterns to match against error messages that should
+            trigger a retry when reading or writing files. Each pattern is first checked
+            as a substring, then as a regex. This is useful for handling
             transient errors when reading from remote storage systems.
         lance_config: Configuration for Lance datasource and datasink operations
             including retry settings for read and write operations. See
@@ -857,6 +859,12 @@ class DataContext:
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+
+        elif name == "retried_io_errors" and value != DEFAULT_RETRIED_IO_ERRORS:
+            warnings.warn(
+                "`retried_io_errors` using substring matching will be deprecated in a future version. Configure `retried_io_errors` using regex patterns instead",
                 DeprecationWarning,
             )
 
