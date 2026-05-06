@@ -719,6 +719,16 @@ class ActorReplicaWrapper:
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
+        # Populated in self.recover() for non-cross-language replicas to
+        # asynchronously verify the actor finished its initial setup before
+        # we trigger `initialize_and_get_metadata`.
+        self._was_initialized_obj_ref: Optional[ObjectRef] = None
+        # Set to True when `check_ready()` determines the actor cannot be
+        # recovered (e.g., the previous controller crashed before the actor
+        # finished its initial setup). The reconciler treats this case as a
+        # silent drop / replace rather than a deploy failure, since the
+        # underlying cause is a controller-side crash, not user code.
+        self._unrecoverable: bool = False
 
         self._actor_resources: Dict[str, float] = None
         # If the replica is being started, this will be the true version
@@ -822,6 +832,10 @@ class ActorReplicaWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
 
     @property
     def app_name(self) -> str:
@@ -1065,6 +1079,7 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
+                deployment_info.ingress_request_router,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1212,14 +1227,19 @@ class ActorReplicaWrapper:
 
         Also confirm that actor is allocated and initialized before marking as running.
 
+        This call is non-blocking: any RPCs needed to query the actor are
+        fired here as ObjectRefs and observed in `check_ready()` from the
+        reconcile loop.
+
         Args:
             ingress: Whether this replica is an ingress replica.
 
         Returns:
-            False if the replica actor is no longer alive; the
-            actor could have been killed in the time between when the
-            controller fetching all Serve actors in the cluster and when
-            the controller tries to recover it. Otherwise, return True.
+            False if the replica actor is no longer alive; the caller drops
+            the replica from tracking. Otherwise True. Replicas that are
+            alive but never finished their initial setup are detected
+            asynchronously in `check_ready()` rather than here so that
+            controller recovery does not block.
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
@@ -1250,11 +1270,36 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = (
-                self._actor_handle.initialize_and_get_metadata.remote()
-            )
+            # For non-cross-language replicas, asynchronously probe whether
+            # the actor finished its initial setup before triggering
+            # `initialize_and_get_metadata`. If the previous controller
+            # crashed between actor creation and the first
+            # `initialize_and_get_metadata(rank=...)` call, the actor has
+            # neither a rank nor an initialized user callable. Recovering it
+            # would silently complete its initialization with `rank=None`,
+            # leaving rank tracking permanently broken for that replica.
+            # `check_ready()` waits for this probe and replaces the replica
+            # if it reports `False`. We defer firing
+            # `initialize_and_get_metadata` until the probe passes so we
+            # don't accidentally drive the bad actor through initialization
+            # only to kill it afterwards.
+            self._was_initialized_obj_ref = self._actor_handle.was_initialized.remote()
 
         return True
+
+    def _kill_unrecoverable_actor(self) -> None:
+        """Force-kill an actor that cannot be recovered.
+
+        Best-effort: any failure to kill the actor is
+        logged but ignored.
+        """
+        try:
+            ray.kill(self._actor_handle, no_restart=True)
+        except Exception:
+            logger.exception(
+                f"Failed to kill unrecoverable replica actor "
+                f"{self._replica_id} during controller recovery."
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -1307,6 +1352,47 @@ class ActorReplicaWrapper:
                 )
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
+
+        # If we issued a `was_initialized` probe in `recover()`, wait for it
+        # before triggering `initialize_and_get_metadata`. If the actor was
+        # never initialized previously (the previous controller crashed
+        # mid-startup), kill it and signal an unrecoverable drop so the
+        # reconciler replaces it without counting a deploy failure.
+        if self._was_initialized_obj_ref is not None:
+            if not check_obj_ref_ready_nowait(self._was_initialized_obj_ref):
+                return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+
+            probe_ref = self._was_initialized_obj_ref
+            self._was_initialized_obj_ref = None
+            try:
+                was_initialized = ray.get(probe_ref)
+            except Exception as e:
+                msg = (
+                    f"Failed to probe initialization state of "
+                    f"{self._replica_id} during controller recovery ({e!r}). "
+                    "Replacing with a fresh replica."
+                )
+                logger.warning(msg)
+                self._kill_unrecoverable_actor()
+                self._unrecoverable = True
+                return ReplicaStartupStatus.FAILED, msg
+
+            if not was_initialized:
+                msg = (
+                    f"{self._replica_id} was found alive but never finished "
+                    "its initial setup; the previous controller likely "
+                    "crashed during replica startup. Replacing with a fresh "
+                    "replica."
+                )
+                logger.warning(msg)
+                self._kill_unrecoverable_actor()
+                self._unrecoverable = True
+                return ReplicaStartupStatus.FAILED, msg
+
+            # Probe succeeded; safe to drive the actor through recovery.
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
         if self._ready_obj_ref is None:
             # Perform auto method name translation for java handles.
@@ -1705,6 +1791,7 @@ class DeploymentReplica:
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
+            backend_http_port=self._actor._http_port or None,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
@@ -1882,6 +1969,16 @@ class DeploymentReplica:
     def gang_context(self) -> Optional[GangContext]:
         """Get the gang context for this replica."""
         return self._actor.gang_context
+
+    @property
+    def unrecoverable(self) -> bool:
+        """Whether `check_ready()` determined the actor cannot be recovered.
+
+        When True, the reconciler should drop and replace the replica
+        without counting it as a deploy failure (the underlying cause is a
+        previous controller crash, not user code).
+        """
+        return self._actor.unrecoverable
 
     def check_started(
         self,
@@ -2871,7 +2968,7 @@ class DeploymentState:
         self._in_transition = True
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
-        self._last_broadcasted_availability: bool = True
+        self._last_broadcasted_availability: Optional[bool] = None
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
@@ -2950,11 +3047,6 @@ class DeploymentState:
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
             self._deployment_scheduler.on_replica_recovering(replica_id)
             logger.debug(f"RECOVERING {replica_id}.")
-
-        # TODO(jiaodong): this currently halts all traffic in the cluster
-        # briefly because we will broadcast a replica update with everything in
-        # RECOVERING. We should have a grace period where we recover the state
-        # of the replicas before doing this update.
 
     def _recover_deployment_actors(self):
         """Recover deployment-scoped actors that survived a controller restart.
@@ -3138,6 +3230,11 @@ class DeploymentState:
             else None
         )
 
+    @property
+    def _is_gang_deployment(self) -> bool:
+        """Returns True if this deployment uses gang scheduling."""
+        return self.get_gang_config() is not None
+
     def _get_target_replica_delta(self) -> int:
         """Calculate delta between target replicas and active replicas."""
         current_replicas = self._replicas.count(
@@ -3193,6 +3290,11 @@ class DeploymentState:
             not self._broadcasted_replicas_set_changed
             and not self._request_routing_info_updated
         ):
+            return
+
+        # Hold off on broadcasting while replicas are in RECOVERING state to avoid sending
+        # partial or empty routable set.
+        if self._replicas.count(states=[ReplicaState.RECOVERING]) > 0:
             return
 
         running_replica_infos = self.get_running_replica_infos()
@@ -3520,8 +3622,7 @@ class DeploymentState:
         reconfigure_changes = 0
 
         # Process gang-grouped replicas
-        gang_config = self.get_gang_config()
-        if gang_config is not None:
+        if self._is_gang_deployment:
             need_restart: List[DeploymentReplica] = []
             remaining: List[DeploymentReplica] = []
             for replica in replicas_to_update:
@@ -3665,12 +3766,17 @@ class DeploymentState:
         # Maximum number of replicas that can be updating at any given time.
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
-        rollout_size = max(int(0.2 * self._target_state.target_num_replicas), 1)
+        rolling_update_percentage = (
+            self._target_state.info.deployment_config.rolling_update_percentage
+        )
+        rollout_size = max(
+            int(rolling_update_percentage * self._target_state.target_num_replicas), 1
+        )
 
         # For gang deployments, ensure rollout_size is at least a multiple of
         # gang_size so that we always stop and start complete gangs.
-        gang_config = self.get_gang_config()
-        if gang_config is not None:
+        if self._is_gang_deployment:
+            gang_config = self.get_gang_config()
             gs = gang_config.gang_size
             rollout_size = max(rollout_size, gs)
             rollout_size = math.ceil(rollout_size / gs) * gs
@@ -3733,11 +3839,10 @@ class DeploymentState:
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            gang_config = self.get_gang_config()
             gang_id_by_replica = None
             replicas_by_gang_id = None
 
-            if gang_config is not None:
+            if self._is_gang_deployment:
                 gang_id_by_replica = self._gang_id_by_replica
                 replicas_by_gang_id = self._replicas_by_gang_id
 
@@ -3748,7 +3853,9 @@ class DeploymentState:
                 num_to_stop=to_remove,
                 gang_id_by_replica=gang_id_by_replica,
                 replicas_by_gang_id=replicas_by_gang_id,
-                gang_size=gang_config.gang_size if gang_config else None,
+                gang_size=self.get_gang_config().gang_size
+                if self._is_gang_deployment
+                else None,
             )
 
         return upscale, downscale
@@ -3765,14 +3872,15 @@ class DeploymentState:
         if to_add <= 0 or self._terminally_failed():
             return upscale
 
-        gang_config = self.get_gang_config()
-        if gang_config is None:
+        if not self._is_gang_deployment:
             return self._add_upscale_replicas(to_add)
 
         gang_reservation_result = (
             gang_placement_groups.get(self._id) if gang_placement_groups else None
         )
-        return self._add_upscale_gang_replicas(gang_config, gang_reservation_result)
+        return self._add_upscale_gang_replicas(
+            self.get_gang_config(), gang_reservation_result
+        )
 
     def _add_upscale_replicas(self, to_add: int) -> List[ReplicaSchedulingRequest]:
         """Add replicas for deployments that adopt single-replica (non-gang) scheduling."""
@@ -4105,6 +4213,20 @@ class DeploymentState:
 
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed.
+                # When `check_ready()` flagged the replica as unrecoverable
+                # (e.g., the previous controller crashed before assigning a
+                # rank to it), don't bump the deploy failure counter -- the
+                # underlying cause is controller-side, not user code, and a
+                # fresh replica will be started in its place. The actor was
+                # already killed in `check_ready()`, so force-stop to avoid
+                # issuing a graceful shutdown RPC to a dead actor. We still
+                # propagate gang failure tracking so siblings get cleaned up.
+                if replica.unrecoverable:
+                    self._stop_replica(replica, graceful_stop=False)
+                    if replica.gang_context is not None:
+                        failed_gang_ids.add(replica.gang_context.gang_id)
+                    continue
+
                 # For gang replicas, count the failure once per gang and not per replica so the
                 # retry counter isn't inflated by gang_size on every cycle.
                 if (
@@ -4380,10 +4502,9 @@ class DeploymentState:
         # Under the RESTART_GANG policy, force-stop all members of any gang that has at
         # least one unhealthy replica. Replicas handled here are removed from the lists;
         # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
-        gang_config = self.get_gang_config()
         if (
-            gang_config is not None
-            and gang_config.runtime_failure_policy
+            self._is_gang_deployment
+            and self.get_gang_config().runtime_failure_policy
             == GangRuntimeFailurePolicy.RESTART_GANG
         ):
             healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
@@ -4759,8 +4880,6 @@ class DeploymentState:
         if not draining_nodes and not self._in_transition:
             return
 
-        gang_config = self.get_gang_config()
-
         # Move replicas back to RUNNING if they are no longer on a draining node.
         # If this causes the number of replicas to exceed the target state,
         # they will be scaled down because `scale_deployment_replicas` is called on
@@ -4769,7 +4888,7 @@ class DeploymentState:
             states=[ReplicaState.PENDING_MIGRATION]
         )
 
-        if gang_config is not None:
+        if self._is_gang_deployment:
             # For gangs, only move back to RUNNING if ALL members' nodes are no
             # longer draining.
             gangs = self._group_replicas_by_gang_id(pending_migration_replicas)
@@ -4804,7 +4923,7 @@ class DeploymentState:
             ]
         )
 
-        if gang_config is not None:
+        if self._is_gang_deployment:
             # For gangs, if ANY member is on a draining node the entire gang migrates.
             gangs_to_migrate: Set[str] = set()
             for replica in all_replicas:
@@ -4839,7 +4958,7 @@ class DeploymentState:
                 self._stop_replica(
                     replica,
                     # Always force-stop gang members to avoid leaving partial gangs.
-                    graceful_stop=gang_config is None,
+                    graceful_stop=not self._is_gang_deployment,
                 )
 
         num_running = self._replicas.count(states=[ReplicaState.RUNNING])
@@ -4850,7 +4969,7 @@ class DeploymentState:
 
         choose_pending_migration_to_stop_fn = (
             self._choose_pending_migration_gangs_to_stop
-            if gang_config is not None
+            if self._is_gang_deployment
             else self._choose_pending_migration_replicas_to_stop
         )
         replicas_to_stop, replicas_to_keep = choose_pending_migration_to_stop_fn(
@@ -4896,6 +5015,9 @@ class DeploymentState:
 
     def is_ingress(self) -> bool:
         return self._target_state.info.ingress
+
+    def is_ingress_request_router(self) -> bool:
+        return self._target_state.info.ingress_request_router
 
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the outbound deployments.
@@ -5192,6 +5314,22 @@ class DeploymentStateManager:
             deployment_id, SpreadDeploymentSchedulingPolicy()
         )
 
+        # Evict any stale long-poll snapshots for this deployment_id from a
+        # prior deletion. The delete path tombstones DEPLOYMENT_TARGETS
+        # (is_available=False) so existing handles fail fast, but the
+        # tombstone persists in LongPollHost. A re-created DeploymentState's
+        # _last_broadcasted_* defaults match its own (True, []) state, so
+        # broadcast_running_replicas_if_changed short-circuits and never
+        # overwrites the tombstone — freshly-subscribed routers would then
+        # see is_available=False and reject every request.
+        self._long_poll_host.remove_keys(
+            [
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id),
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id.name),
+                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id),
+            ]
+        )
+
         return DeploymentState(
             deployment_id,
             self._long_poll_host,
@@ -5350,24 +5488,19 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
 
-        # TODO(jiaodong): This might not be 100% safe since we deleted
-        # everything without ensuring all shutdown goals are completed
-        # yet. Need to address in follow-up PRs.
-        self._kv_store.delete(CHECKPOINT_KEY)
-
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
-        Check there are no deployment states and no checkpoints.
+        Check there are no deployment states.
         """
-        return (
-            self._shutting_down
-            and len(self._deployment_states) == 0
-            and self._kv_store.get(CHECKPOINT_KEY) is None
-        )
+        return self._shutting_down and len(self._deployment_states) == 0
+
+    def delete_checkpoint(self) -> None:
+        """Delete the deployment state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all deployment states."""
@@ -5479,6 +5612,30 @@ class DeploymentStateManager:
             alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
 
         return alive_replica_actor_ids
+
+    def get_deployment_ids(self) -> List[DeploymentID]:
+        return list(self._deployment_states.keys())
+
+    def get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        node_id_to_alive_replica_ids = defaultdict(set)
+        for deployment_state in self._deployment_states.values():
+            # Keep replicas that are alive even if they are not yet fully running so
+            # ingress cleanup does not aggressively prune their allocated ports.
+            for replica in deployment_state._replicas.get():
+                if replica.actor_node_id is not None:
+                    node_id_to_alive_replica_ids[replica.actor_node_id].add(
+                        replica.replica_id.unique_id
+                    )
+
+        return dict(node_id_to_alive_replica_ids)
+
+    def _dump_replica_states_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> ReplicaStateContainer:
+        return self._deployment_states[deployment_id]._replicas
+
+    def _stop_one_running_replica_for_testing(self, deployment_id: DeploymentID):
+        self._deployment_states[deployment_id]._stop_one_running_replica_for_testing()
 
     def deploy(
         self,
@@ -5664,6 +5821,23 @@ class DeploymentStateManager:
                 if not self._app_deployment_mapping[deployment_id.app_name]:
                     del self._app_deployment_mapping[deployment_id.app_name]
 
+            # Tombstone TARGETS so routers fail fast on a deleted deployment.
+            # Don't evict in the same tick: the waiter wakes after update()
+            # returns and listen_for_change's guard would drop the payload.
+            tombstone = DeploymentTargetInfo(is_available=False, running_replicas=[])
+            self._long_poll_host.notify_changed(
+                {
+                    (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id): tombstone,
+                    (
+                        LongPollNamespace.DEPLOYMENT_TARGETS,
+                        deployment_id.name,
+                    ): tombstone,
+                }
+            )
+            self._long_poll_host.remove_keys(
+                [(LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id)]
+            )
+
         if len(deleted_ids):
             self._record_deployment_usage()
 
@@ -5750,9 +5924,10 @@ class DeploymentStateManager:
         gang_requests: Dict[DeploymentID, GangPlacementGroupRequest] = {}
 
         for deployment_id, deployment_state in self._deployment_states.items():
-            gang_config = deployment_state.get_gang_config()
-            if gang_config is None:
+            if not deployment_state._is_gang_deployment:
                 continue
+
+            gang_config = deployment_state.get_gang_config()
 
             num_replicas_to_add = deployment_state._get_target_replica_delta()
             if num_replicas_to_add <= 0:
@@ -5832,11 +6007,15 @@ class DeploymentStateManager:
         return node_ids
 
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
-        """Get all ingress replicas info for all deployments."""
+        """Get replicas that own direct-ingress ports.
+
+        Includes both ingress deployments and ingress request router deployments.
+        """
         ingress_replicas_list = [
             deployment_state._replicas.get()
             for deployment_state in self._deployment_states.values()
             if deployment_state.is_ingress()
+            or deployment_state.is_ingress_request_router()
         ]
 
         ingress_replicas_info = []

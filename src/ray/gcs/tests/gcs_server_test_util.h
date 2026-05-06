@@ -22,7 +22,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
@@ -92,19 +92,15 @@ struct GcsServerMocker {
 
     void GetWorkerFailureCause(
         const LeaseID &lease_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
-        override {
-      ray::rpc::GetWorkerFailureCauseReply reply;
+        const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {
+      rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
     void RequestWorkerLease(
-        const rpc::LeaseSpec &spec,
-        bool grant_or_reject,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size,
-        const bool is_selected_based_on_locality) override {
+        rpc::RequestWorkerLeaseRequest &&request,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }

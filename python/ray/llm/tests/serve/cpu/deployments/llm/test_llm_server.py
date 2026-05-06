@@ -598,10 +598,10 @@ class TestGetDeploymentOptions:
         )
         serve_options = LLMServer.get_deployment_options(llm_config)
         # First bundle has replica actor resources merged in (CPU: 1 from config + 1 from replica = 2)
-        # Bundles are validated via PlacementGroupConfig: omitted CPU/GPU become 0.0 (no implicit GPU).
+        # Bundles are validated via PlacementGroupConfig: unset CPU/GPU are omitted from the output due to exclude_unset=True.
         assert serve_options["placement_group_bundles"] == [
-            {"CPU": 2.0, "GPU": 0.0, "XPU": 1}
-        ] + [{"CPU": 0.0, "GPU": 0.0, "XPU": 1} for _ in range(5)]
+            {"CPU": 2.0, "GPU": 0, "XPU": 1}
+        ] + [{"XPU": 1} for _ in range(5)]
         assert serve_options["placement_group_strategy"] == "PACK"
 
     def test_get_serve_options_with_accelerator_type(self):
@@ -677,6 +677,20 @@ class TestGetDeploymentOptions:
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
         )
+
+    def test_deferred_placement_group_for_tpu_topology(self):
+        """Test that Serve skips PG creation when deferred placement group is required."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+            accelerator_type="TPU-V6E",
+            accelerator_config={"kind": "tpu", "topology": "4x4"},
+            llm_engine="vLLM",
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert "placement_group_bundles" not in serve_options
+        assert "placement_group_strategy" not in serve_options
 
 
 if __name__ == "__main__":

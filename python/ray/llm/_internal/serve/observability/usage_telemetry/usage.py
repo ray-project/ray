@@ -250,14 +250,10 @@ class HardwareUsage:
     def infer_gpu_from_hardware(self) -> str:
         """Infer the GPU type from the hardware when the accelerator type on llm config is
         not specified.
-
-        Iterate through all the hardware recorded on the cluster and return the first
-        ray-compatible accelerator as the GPU type used for the deployment. If not, return
-        `UNSPECIFIED` as the default GPU type.
         """
-        from ray.llm._internal.serve.core.configs.llm_config import GPUType
+        from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
-        all_accelerator_types = [t.value for t in GPUType]
+        all_accelerator_types = [t.value for t in AcceleratorType]
         gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
         hardwares = self._get_hardware_fn(gcs_client)
         for hardware in hardwares:

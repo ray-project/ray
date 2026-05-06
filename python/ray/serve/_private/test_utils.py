@@ -65,6 +65,10 @@ PROMETHEUS_METRICS_TIMEOUT_S = 5
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
+# Replicas registered in this set will report `was_initialized() == False` to
+# the controller during recovery, simulating the case where a previous
+# controller crashed before the actor finished its initial setup.
+uninitialized_replicas_context = set()
 replica_rank_context: Dict[str, ReplicaRank] = {}
 
 
@@ -382,6 +386,7 @@ class MockReplicaActorWrapper:
         self._node_id_is_set = False
         self._actor_id = None
         self._internal_grpc_port = None
+        self._http_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path = None
@@ -390,6 +395,7 @@ class MockReplicaActorWrapper:
         self._ingress = False
         self._gang_context = None
         self._gang_pg_index = None
+        self._unrecoverable = False
 
     @property
     def is_cross_language(self) -> bool:
@@ -576,9 +582,23 @@ class MockReplicaActorWrapper:
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
+        # Mirror production: the `was_initialized` probe is fired here and
+        # observed asynchronously in `check_ready()`. Tests register
+        # uninitialized replicas via `uninitialized_replicas_context`.
+        self._unrecoverable = self.replica_id in uninitialized_replicas_context
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
+        # If the controller's async `was_initialized` probe came back False,
+        # report a failed-but-unrecoverable startup so the reconciler drops
+        # and replaces the replica without recording a deploy failure.
+        if self.recovering and self._unrecoverable:
+            return (
+                ReplicaStartupStatus.FAILED,
+                f"{self._replica_id} was found alive but never finished "
+                "its initial setup.",
+            )
+
         ready = self.status
         self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
@@ -601,7 +621,10 @@ class MockReplicaActorWrapper:
         return {}
 
     def graceful_stop(self) -> None:
-        assert self.started
+        # `started` is only set after a successful `check_ready` transition
+        # to RUNNING. A replica force-stopped while still RECOVERING (e.g.,
+        # because the `was_initialized` probe failed) is a legitimate stop.
+        assert self.started or self.recovering
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
@@ -628,6 +651,10 @@ class MockReplicaActorWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
 
 
 @serve.deployment

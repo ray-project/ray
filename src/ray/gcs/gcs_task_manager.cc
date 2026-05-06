@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
