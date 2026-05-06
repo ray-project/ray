@@ -5108,6 +5108,161 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    def write_kinetica(
+        self,
+        table_name: str,
+        url: str,
+        *,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        mode: str = "append",
+        table_settings: Optional["KineticaTableSettings"] = None,
+        batch_size: int = 10000,
+        use_multihead: bool = True,
+        options: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write this :class:`~ray.data.Dataset` to a Kinetica database table.
+
+        Kinetica is a distributed, in-memory analytical database. This method
+        uses Kinetica's multihead ingestion for optimal write performance when
+        writing to a distributed cluster.
+
+        Examples:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.from_items([
+                    {"id": 1, "name": "Alice", "amount": 100.0},
+                    {"id": 2, "name": "Bob", "amount": 200.0},
+                ])
+                ds.write_kinetica(
+                    table_name="transactions",
+                    url="http://localhost:9191",
+                    username="admin",
+                    password="password",
+                    mode="append",
+                )
+
+        Args:
+            table_name: Target table name.
+            url: Kinetica server URL (e.g., "http://localhost:9191").
+            username: Authentication username.
+            password: Authentication password.
+            mode: Write mode - "create", "append", or "overwrite".
+            table_settings: Kinetica-specific table options (KineticaTableSettings).
+            batch_size: Records per ingestion batch. Default is 10,000.
+            use_multihead: Enable multihead ingestion for parallelism.
+            options: Additional GPUdb client options.
+            ray_remote_args: Keyword arguments passed to :func:`ray.remote`.
+            concurrency: Maximum concurrent write tasks.
+        """
+        from ray.data._internal.datasource.kinetica_datasink import (
+            KineticaDatasink,
+            KineticaTableSettings,
+        )
+
+        datasink = KineticaDatasink(
+            url=url,
+            table_name=table_name,
+            username=username,
+            password=password,
+            mode=mode,
+            schema=self.schema(),
+            table_settings=table_settings,
+            batch_size=batch_size,
+            use_multihead=use_multihead,
+            options=options,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    def write_kinetica_sql(
+        self,
+        sql: str,
+        url: str,
+        *,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        oauth_token: Optional[str] = None,
+        default_schema: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write this :class:`~ray.data.Dataset` to Kinetica using SQL INSERT.
+
+        This method uses Kinetica's DB-API 2.0 interface with Ray Data's native
+        ``write_sql`` method. The target table must already exist.
+
+        For automatic table creation and multihead ingestion, use
+        :meth:`~ray.data.Dataset.write_kinetica` instead.
+
+        Examples:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.from_items([
+                    {"id": 1, "name": "Alice", "value": 100.0},
+                    {"id": 2, "name": "Bob", "value": 200.0},
+                ])
+                ds.write_kinetica_sql(
+                    sql="INSERT INTO my_table (id, name, value) VALUES (?, ?, ?)",
+                    url="http://localhost:9191",
+                    username="admin",
+                    password="password",
+                )
+
+        Args:
+            sql: SQL INSERT statement with parameter placeholders.
+                Use '?' for placeholders (qmark paramstyle).
+            url: Kinetica server URL (e.g., "http://localhost:9191").
+            username: Authentication username.
+            password: Authentication password.
+            oauth_token: OAuth token for authentication (alternative to username/password).
+            default_schema: Default schema for queries.
+            options: Additional GPUdb client options.
+            ray_remote_args: Keyword arguments passed to :func:`ray.remote`.
+            concurrency: Maximum concurrent write tasks.
+        """
+        from ray.data._internal.datasource.kinetica_sql_connection import (
+            create_kinetica_connection_factory,
+        )
+
+        connection_factory = create_kinetica_connection_factory(
+            url=url,
+            username=username,
+            password=password,
+            oauth_token=oauth_token,
+            default_schema=default_schema,
+            options=options,
+        )
+
+        write_kwargs: Dict[str, Any] = {
+            "sql": sql,
+            "connection_factory": connection_factory,
+        }
+
+        if ray_remote_args is not None:
+            write_kwargs["ray_remote_args"] = ray_remote_args
+
+        if concurrency is not None:
+            write_kwargs["concurrency"] = concurrency
+
+        self.write_sql(**write_kwargs)
+
+    @ConsumptionAPI
     def write_snowflake(
         self,
         table: str,
