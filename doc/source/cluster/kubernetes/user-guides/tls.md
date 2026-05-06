@@ -151,19 +151,19 @@ For more information on how to configure Ray with TLS authentication, please ref
 # Log in to the worker Pod
 kubectl exec -it ${WORKER_POD} -- bash
 
-# Since the head Pod has the certificate of $FQ_RAY_IP, the connection to the worker Pods
-# will be established successfully, and the exit code of the ray health-check command
-# should be 0.
+# The worker connects to the head through the head Service address.
+# The head certificate includes $FQ_RAY_IP in its SAN entries, so TLS verification succeeds.
+# The exit code of the ray health-check command should be 0.
 ray health-check --address $FQ_RAY_IP:6379
 echo $? # 0
 
-# Since the head Pod has the certificate of $RAY_IP, the connection will fail and an error
-# message similar to the following will be displayed: "Peer name raycluster-tls-head-svc is
-# not in peer certificate".
+# The head certificate doesn't include $RAY_IP in its SAN entries, so TLS verification fails.
+# You should see a TLS verification error.
+# The error will indicate that the pod IP ($RAY_IP) is not in the certificate.
 ray health-check --address $RAY_IP:6379
 
 # If you add `DNS.3 = $RAY_IP` to the [alt_names] section in `gencert_head.sh`,
-# the head Pod will generate the certificate of $RAY_IP.
+# the generated head certificate will include a SAN entry for $RAY_IP.
 #
 # For KubeRay versions prior to 0.5.0, this step is necessary because Ray workers in earlier
 # versions use $RAY_IP to connect with Ray head.
