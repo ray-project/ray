@@ -190,6 +190,23 @@ class ReplicaState(str, Enum):
     STOPPING = "STOPPING"
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
+    def to_numeric(self) -> int:
+        """Convert state to a numeric value for metrics.
+
+        0 is reserved for UNKNOWN. Values map to:
+        1=STARTING, 2=UPDATING, 3=RECOVERING, 4=RUNNING,
+        5=STOPPING, 6=PENDING_MIGRATION.
+        """
+        mapping = {
+            ReplicaState.STARTING: 1,
+            ReplicaState.UPDATING: 2,
+            ReplicaState.RECOVERING: 3,
+            ReplicaState.RUNNING: 4,
+            ReplicaState.STOPPING: 5,
+            ReplicaState.PENDING_MIGRATION: 6,
+        }
+        return mapping.get(self, 0)
+
 
 class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"

@@ -2825,6 +2825,7 @@ class DeploymentState:
         # threshold, the deployment is considered terminally failed.
         self._deployment_actor_retry_counter: int = 0
 
+        self._last_replica_state_gauge_refresh_time: Optional[float] = None
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
@@ -2945,6 +2946,19 @@ class DeploymentState:
             tag_keys=("deployment", "application"),
         )
         self.target_replicas_gauge.set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
+        )
+
+        self.replica_state_gauge = metrics.Gauge(
+            "serve_replica_state",
+            description=(
+                "The current state of each deployment replica. "
+                "0=UNKNOWN, 1=STARTING, 2=UPDATING, 3=RECOVERING, "
+                "4=RUNNING, 5=STOPPING, 6=PENDING_MIGRATION."
+            ),
+            tag_keys=("deployment", "application", "replica"),
+        )
+        self.replica_state_gauge.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -4559,6 +4573,20 @@ class DeploymentState:
             # Reconfigure replicas that had their ranks reassigned
             self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
 
+        # Periodically, export the current state of all replicas to the replica_state_gauge metric.
+        now = time.time()
+        if (
+            self._last_replica_state_gauge_refresh_time is None
+            or now - self._last_replica_state_gauge_refresh_time
+            >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
+        ):
+            for replica in self._replicas.get():
+                self.replica_state_gauge.set(
+                    replica.actor_details.state.to_numeric(),
+                    tags={"replica": replica.replica_id.unique_id},
+                )
+            self._last_replica_state_gauge_refresh_time = now
+
     def _handle_deployment_actor_failed_health_check(
         self,
         wrapper: DeploymentActorWrapper,
@@ -4714,6 +4742,8 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._clear_health_gauge_cache(replica_id)
+                # Update the replica state gauge to 0 (UNKNOWN)
+                self.replica_state_gauge.set(0, tags={"replica": replica_id})
                 if self._rank_manager.has_replica_rank(replica_id):
                     # Only release rank if assigned. Replicas that failed allocation
                     # or never reached RUNNING state won't have ranks.
