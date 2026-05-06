@@ -78,6 +78,37 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
+    "sphinx_llms_txt",
+]
+
+# -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
+
+llms_txt_summary = (
+    "Ray is an open-source unified compute framework for scaling AI and "
+    "Python workloads, including data processing, model training, model "
+    "serving, hyperparameter tuning, and reinforcement learning. The full "
+    "documentation lives at https://docs.ray.io/."
+)
+
+# Filter low-signal pages from llms-full.txt. Auto-generated API reference
+# pages (one per public class/method) are excluded because they would
+# dominate the corpus with autodoc boilerplate. Mirrors the directories in
+# `remove_from_toctrees` below. Agents needing specific API details can
+# fetch per-page markdown twins via Read the Docs' Markdown for Agents
+# content negotiation. Tuning of this list is tracked separately.
+llms_txt_exclude = [
+    "search",
+    "genindex",
+    "404",
+    "_TableOfContents",
+    "cluster/running-applications/job-submission/doc/*",
+    "ray-observability/reference/doc/*",
+    "ray-core/api/doc/*",
+    "data/api/doc/*",
+    "train/api/doc/*",
+    "tune/api/doc/*",
+    "serve/api/doc/*",
+    "rllib/package_ref/*",
 ]
 
 # -- sphinx-collections: pull external template files at build time -----------
@@ -245,7 +276,12 @@ nb_mime_priority_overrides = [
 
 html_extra_path = ["robots.txt"]
 
-html_baseurl = "https://docs.ray.io/en/latest"
+html_baseurl = "https://docs.ray.io/en/latest/"
+
+# `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
+# default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
+# extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
+sitemap_url_scheme = "{link}"
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")

@@ -245,6 +245,100 @@ def test_start_timeout(monkeypatch):
         wg._start()
 
 
+def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
+    """TPU head reservation timeouts should surface as the retryable
+    ``WorkerGroupStartupTimeoutError`` so the controller transitions
+    SCHEDULING -> RESCHEDULING instead of failing the run, matching the
+    behavior of CPU/GPU placement-group timeouts.
+
+    Also verifies that Ray Train's worker-group-start timeout is forwarded
+    to ``SlicePlacementGroup`` so users have a single knob governing how
+    long the cluster has to provide capacity.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
+
+    # SlicePlacementGroup blocks synchronously on a TPU head PG; simulate the
+    # "cluster still autoscaling" scenario where reserve_tpu_slice times out
+    # and capture the timeout that Ray Train passed in.
+    captured_kwargs = {}
+
+    def _raise_timeout(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        raise TimeoutError(
+            "Failed to reserve TPU head for slice with shape: v5litepod-8 "
+            "after 0.1 seconds."
+        )
+
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_timeout)
+    monkeypatch.setattr(
+        wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+
+    tpu_scaling_config = ScalingConfig(
+        num_workers=4,
+        resources_per_worker={"TPU": 4},
+        accelerator_type="TPU-V5LITEPOD",
+        topology="2x4",
+        use_tpu=True,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=tpu_scaling_config),
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    with pytest.raises(WorkerGroupStartupTimeoutError):
+        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
+
+    # Ray Train should forward its own startup timeout to the TPU head wait
+    # rather than relying on the hard-coded default in reserve_tpu_slice.
+    assert captured_kwargs.get("head_reservation_timeout_s") == 0.1
+
+
+def test_tpu_slice_reservation_non_timeout_failure_is_retryable(monkeypatch):
+    """Non-timeout failures from ``SlicePlacementGroup`` (e.g. transient
+    RPC errors) should surface as the retryable
+    ``WorkerGroupStartupFailedError``, matching the precedent of the
+    worker-actor startup path (``RayActorError`` -> ``WorkerGroupStartupFailedError``)
+    so non-timeout startup failures retry consistently across CPU/GPU/TPU.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    def _raise_runtime_error(*args, **kwargs):
+        raise RuntimeError("transient placement group reservation error")
+
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_runtime_error)
+    monkeypatch.setattr(
+        wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+
+    tpu_scaling_config = ScalingConfig(
+        num_workers=4,
+        resources_per_worker={"TPU": 4},
+        accelerator_type="TPU-V5LITEPOD",
+        topology="2x4",
+        use_tpu=True,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=tpu_scaling_config),
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    with pytest.raises(
+        WorkerGroupStartupFailedError, match="Failed to reserve TPU slice"
+    ):
+        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
+
+
 def test_zombie_actor_termination(ray_start_4_cpus):
     """This test checks that RayTrainWorker actors are terminated correctly even if python garbage collection hangs on actor shutdown."""
     NUM_WORKERS = 4
