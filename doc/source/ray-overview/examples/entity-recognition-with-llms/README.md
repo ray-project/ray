@@ -753,7 +753,6 @@ Start by defining the [vLLM engine processor config](https://docs.ray.io/en/late
 
 
 ```python
-import os
 import ray
 from ray.data.llm import vLLMEngineProcessorConfig
 ```
@@ -765,12 +764,6 @@ from ray.data.llm import vLLMEngineProcessorConfig
 ```python
 config = vLLMEngineProcessorConfig(
     model_source=model_source,
-    runtime_env={
-        "env_vars": {
-            "VLLM_USE_V1": "0",  # v1 doesn't support lora adapters yet
-            # "HF_TOKEN": os.environ.get("HF_TOKEN"),
-        },
-    },
     engine_kwargs={
         "enable_lora": True,
         "max_lora_rank": 8,
