@@ -79,6 +79,103 @@ class TestVLLMBackend:
             sys.modules.update(saved)
 
 
+class _PartialVLLMBlocker:
+    """Block only the listed ``vllm.*`` submodules; leave the rest importable.
+
+    Simulates a partial / dev vLLM build (e.g. the DeepSeek-V4 cu130 image)
+    that exposes chat/completion/error but is missing newer optional protocol
+    submodules like ``vllm.entrypoints.pooling.score``.
+    """
+
+    def __init__(self, blocked):
+        self.blocked = tuple(blocked)
+
+    def find_module(self, fullname, path=None):
+        if fullname in self.blocked or any(
+            fullname.startswith(b + ".") for b in self.blocked
+        ):
+            return self
+        return None
+
+    def load_module(self, fullname):
+        raise ImportError(f"Mocked: {fullname} is not installed")
+
+
+class TestPartialVLLM:
+    """Cover the case where vLLM is installed but missing optional submodules.
+
+    Before this fix, a single missing submodule (e.g. pooling.score) caused the
+    whole openai_api_models import to fall through to the SGLang branch — which
+    fails entirely if SGLang is also absent. Result: ray.serve.llm became
+    unusable on otherwise-working vLLM builds.
+
+    After the fix, each feature group is resolved independently. Missing
+    optional groups become NotImplementedError stubs; chat/completion still
+    work.
+    """
+
+    def _reimport_with_blocked(self, blocked):
+        blocker = _PartialVLLMBlocker(blocked)
+        saved = {
+            k: sys.modules.pop(k)
+            for k in list(sys.modules)
+            if k in blocked or any(k.startswith(b + ".") for b in blocked)
+        }
+        sys.modules.pop(_OAI_MODELS_MOD, None)
+        sys.meta_path.insert(0, blocker)
+        try:
+            return importlib.import_module(_OAI_MODELS_MOD)
+        finally:
+            sys.meta_path.remove(blocker)
+            sys.modules.pop(_OAI_MODELS_MOD, None)
+            sys.modules.update(saved)
+
+    def test_import_succeeds_when_pooling_score_missing(self):
+        """vLLM cu130 dev build (DS-V4) is missing pooling.score — must still import."""
+        mod = self._reimport_with_blocked(["vllm.entrypoints.pooling.score"])
+        assert "vllm" in mod.ChatCompletionRequest.__mro__[1].__module__
+        assert "vllm" in mod.CompletionRequest.__mro__[1].__module__
+
+    def test_score_endpoints_stub_raise_when_unavailable(self):
+        mod = self._reimport_with_blocked(["vllm.entrypoints.pooling.score"])
+        with pytest.raises(NotImplementedError, match="ScoreTextRequest"):
+            mod.ScoreRequest(model="m", text_1="a", text_2="b")
+
+    def test_import_succeeds_when_pooling_embed_missing(self):
+        mod = self._reimport_with_blocked(["vllm.entrypoints.pooling.embed"])
+        assert "vllm" in mod.ChatCompletionRequest.__mro__[1].__module__
+        with pytest.raises(NotImplementedError, match="Embedding"):
+            mod.EmbeddingResponse(data=[])
+
+    def test_import_succeeds_when_speech_to_text_missing(self):
+        mod = self._reimport_with_blocked(
+            ["vllm.entrypoints.openai.speech_to_text"]
+        )
+        with pytest.raises(NotImplementedError, match="Transcription"):
+            mod.TranscriptionResponse()
+
+    def test_import_succeeds_when_tokenize_missing(self):
+        mod = self._reimport_with_blocked(["vllm.entrypoints.serve.tokenize"])
+        with pytest.raises(NotImplementedError, match="Tokenize"):
+            mod.TokenizeCompletionRequest(model="m", prompt="x")
+
+    def test_chat_still_works_with_all_optionals_blocked(self):
+        """A vLLM with only chat+completion+engine still works for DS-V4."""
+        mod = self._reimport_with_blocked(
+            [
+                "vllm.entrypoints.pooling.score",
+                "vllm.entrypoints.pooling.embed",
+                "vllm.entrypoints.openai.speech_to_text",
+                "vllm.entrypoints.serve.tokenize",
+            ]
+        )
+        req = mod.ChatCompletionRequest(
+            model="deepseek-v4-pro",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        assert req.model == "deepseek-v4-pro"
+
+
 class TestSanitizeChatCompletionRequest:
     def test_serializes_tool_calls_iterator(self):
         from ray.llm._internal.serve.core.configs.openai_api_models import (
