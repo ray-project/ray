@@ -261,7 +261,7 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
         click.echo("Interrupted by user.", err=True)
     finally:
         # Stop Ray cluster.
-        subprocess.run(["ray", "stop"])
+        subprocess.run(["ray", "stop", "--address", address])
 
         # Propagate the exit code of the user script.
         if result is not None and result.returncode != 0:
