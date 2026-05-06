@@ -89,8 +89,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 
     // Callback that is invoked when the owner of the object id is dead.
     auto owner_dead_callback = [owner_address](const std::string &object_id_binary,
-                                                     const Status &) {
-    };
+                                               const Status &) {};
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
