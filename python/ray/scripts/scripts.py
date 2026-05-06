@@ -2,8 +2,10 @@ import json
 import logging
 import os
 import platform
+import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -1324,6 +1326,250 @@ def start(
         # not-reachable
 
 
+def _normalize_gcs_address(address: str) -> Tuple[Set[str], int]:
+    """Normalize a GCS address string to possible hosts and port.
+
+    Uses the same resolution as Ray (resolve_ip_for_localhost) so that
+    e.g. 127.0.0.1:6380 matches processes started with the node's primary IP.
+    Hostnames are resolved to their first getaddrinfo result because Slurm users
+    often pass hostnames while Ray process command lines store resolved IP
+    addresses. This avoids overmatching every IP on a multi-homed host.
+
+    Args:
+        address: GCS address string (e.g., "127.0.0.1:6379" or "localhost:6379").
+
+    Returns:
+        Tuple of (possible_normalized_hosts, port_as_int).
+    """
+    parsed = parse_address(address)
+    if parsed is None:
+        raise ValueError(f"Invalid address format: {address}")
+
+    host, port = parsed
+    port = int(port)
+    host = services.resolve_ip_for_localhost(host or "127.0.0.1")
+
+    hosts = {host}
+    try:
+        addrinfo = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        if addrinfo:
+            hosts.add(addrinfo[0][4][0])
+    except socket.gaierror as e:
+        logger.debug("Failed to resolve GCS address host %s: %s", host, e)
+    return hosts, port
+
+
+def _extract_flag_value(cmdline: List[str], flag: str) -> Optional[str]:
+    """Extract the value of --flag from a command line argument list.
+
+    Handles normal args (--flag=value or --flag value) and setproctitle cases
+    where args are concatenated into a single string
+    (e.g., "ray::DashboardAgent --flag=value").
+
+    Args:
+        cmdline: List of command line arguments from psutil.Process.cmdline().
+        flag: Flag name without leading dashes (e.g., "gcs-address").
+
+    Returns:
+        The flag value if found, None otherwise.
+    """
+    tokens = []
+    for arg in cmdline:
+        if f"--{flag}" in arg and " " in arg:
+            try:
+                tokens.extend(shlex.split(arg))
+            except ValueError:
+                tokens.extend(arg.split())
+        else:
+            tokens.append(arg)
+
+    prefix = f"--{flag}="
+    for idx, arg in enumerate(tokens):
+        if arg == f"--{flag}":
+            if idx + 1 < len(tokens):
+                value = tokens[idx + 1].strip("\"'")
+                if value and not value.startswith("-"):
+                    return value
+        if arg.startswith(prefix):
+            return arg.split("=", 1)[1].strip("\"'")
+    return None
+
+
+def _cmdline_contains(cmdline: List[str], value: str) -> bool:
+    """Return whether any command line argument contains the given substring."""
+    return any(value in arg for arg in cmdline)
+
+
+def _extract_java_property_value(cmdline: List[str], key: str) -> Optional[str]:
+    """Extract a JVM property value from a command line argument list."""
+    tokens = []
+    prefix = f"-D{key}="
+    for arg in cmdline:
+        if prefix in arg and " " in arg:
+            try:
+                tokens.extend(shlex.split(arg))
+            except ValueError:
+                tokens.extend(arg.split())
+        else:
+            tokens.append(arg)
+
+    for arg in tokens:
+        if arg.startswith(prefix):
+            return arg.split("=", 1)[1].strip("\"'")
+    return None
+
+
+def _read_persisted_gcs_server_port(cmdline: List[str]) -> Optional[str]:
+    """Read the dynamically bound GCS server port from the session directory.
+
+    When GCS starts with --gcs_server_port=0, its command line keeps the
+    requested port 0. The C++ GCS server persists the actual bound port under
+    the session directory, keyed by node ID. The bounded retry covers the small
+    window between process start and the port file being written.
+    """
+    session_dir = _extract_flag_value(cmdline, "session-dir") or _extract_flag_value(
+        cmdline, "session_dir"
+    )
+    node_id = _extract_flag_value(cmdline, "node-id") or _extract_flag_value(
+        cmdline, "node_id"
+    )
+    if not session_dir or not node_id:
+        return None
+
+    try:
+        filename = ray._raylet.get_port_filename(
+            node_id, ray._raylet.GCS_SERVER_PORT_NAME
+        )
+    except Exception:
+        return None
+
+    port_path = os.path.join(session_dir, filename)
+    port = ""
+    for attempt in range(3):
+        try:
+            with open(port_path, encoding="utf-8") as f:
+                port = f.read(64).strip()
+            break
+        except OSError:
+            if attempt == 2:
+                return None
+            time.sleep(0.05)
+
+    try:
+        return str(int(port))
+    except ValueError:
+        return None
+
+
+def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
+    """Extract GCS address from a process's command line arguments.
+
+    Handles multiple cases:
+    1. Most processes: --gcs-address=ip:port
+    2. C++ worker wrappers: --ray_address=ip:port
+    3. Java worker wrappers: -Dray.address=ip:port
+    4. ray.util.client.server: --address=ip:port (equivalent to GCS address)
+    5. gcs_server: --node-ip-address=ip + --gcs_server_port=port
+
+    Args:
+        cmdline: List of command line arguments from psutil.Process.cmdline().
+
+    Returns:
+        GCS address string (ip:port) if found, None otherwise.
+    """
+    if not cmdline:
+        return None
+
+    # Strategy 1: --gcs-address=ip:port (most Ray processes).
+    addr = _extract_flag_value(cmdline, "gcs-address")
+    if addr:
+        return addr
+
+    # Strategy 2: --ray_address=ip:port (C++ worker wrappers).
+    addr = _extract_flag_value(cmdline, "ray_address")
+    if addr:
+        return addr
+
+    # Strategy 3: -Dray.address=ip:port (Java worker wrappers).
+    addr = _extract_java_property_value(cmdline, "ray.address")
+    if addr:
+        return addr
+
+    # Strategy 4: --address=ip:port is a GCS address only for Ray Client server.
+    if _cmdline_contains(cmdline, "ray.util.client.server"):
+        addr = _extract_flag_value(cmdline, "address")
+        if addr:
+            return addr
+
+    # Strategy 5: gcs_server uses --node-ip-address + --gcs_server_port.
+    # C++ gflags may show underscore or hyphen variants in argv.
+    node_ip = _extract_flag_value(cmdline, "node-ip-address") or _extract_flag_value(
+        cmdline, "node_ip_address"
+    )
+    gcs_port = _extract_flag_value(cmdline, "gcs_server_port")
+    if node_ip and gcs_port:
+        try:
+            if int(gcs_port) == 0:
+                gcs_port = _read_persisted_gcs_server_port(cmdline)
+        except ValueError:
+            return None
+        if gcs_port is None:
+            return None
+        return build_address(node_ip, gcs_port)
+
+    return None
+
+
+def _cmdline_matches_gcs_address(
+    cmdline: List[str],
+    target_address: str,
+    normalized_target_address: Optional[Tuple[Set[str], int]] = None,
+) -> bool:
+    """Check if a process's command line matches the target GCS address.
+
+    Address-filtered stop only matches processes whose command line exposes a
+    reliable cluster identity. Processes whose title no longer exposes GCS
+    identity, e.g. after setproctitle, intentionally do not match to avoid
+    terminating processes from another local Ray cluster.
+
+    Args:
+        cmdline: List of command line arguments.
+        target_address: Target GCS address to match (e.g., "127.0.0.1:6379").
+        normalized_target_address: Precomputed target address normalization.
+
+    Returns:
+        True if the process belongs to the target cluster, False otherwise.
+    """
+    extracted_address = _extract_gcs_address_from_cmdline(cmdline)
+    if extracted_address is None:
+        return False
+
+    try:
+        target_hosts, target_port = normalized_target_address or _normalize_gcs_address(
+            target_address
+        )
+        extracted_hosts, extracted_port = _normalize_gcs_address(extracted_address)
+        return target_port == extracted_port and bool(target_hosts & extracted_hosts)
+    except Exception:
+        # If address parsing fails, don't match.
+        return False
+
+
+def _address_matches_gcs_address(
+    address: str,
+    target_address: str,
+    normalized_target_address: Optional[Tuple[Set[str], int]] = None,
+) -> bool:
+    try:
+        target_hosts, target_port = normalized_target_address or _normalize_gcs_address(
+            target_address
+        )
+        address_hosts, address_port = _normalize_gcs_address(address)
+        return target_port == address_port and bool(target_hosts & address_hosts)
+    except Exception:
+        return False
+
+
 @cli.command()
 @click.option(
     "-f",
@@ -1341,14 +1587,46 @@ def start(
         "they are forcefully terminated after the grace period. "
     ),
 )
+@click.option(
+    "--address",
+    "stop_address",
+    default=None,
+    type=str,
+    help=(
+        "If set, only stop Ray processes that belong to "
+        "the cluster with this GCS address. This is useful "
+        "when multiple Ray clusters run on the same node "
+        "with different GCS addresses (ports). "
+        "Format: 'host:port', e.g., '127.0.0.1:6379'. "
+        "On multi-NIC or dual-stack hosts, pass an IP address "
+        "to avoid ambiguous hostname resolution."
+    ),
+)
 @add_click_logging_options
 @PublicAPI
-def stop(force: bool, grace_period: int):
+def stop(force: bool, grace_period: int, stop_address: Optional[str]):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
     total_procs_found = 0
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
+    normalized_stop_address = None
+
+    if stop_address is not None:
+        # Validate address format.
+        try:
+            normalized_stop_address = _normalize_gcs_address(stop_address)
+        except Exception as e:
+            cli_logger.error(
+                "Invalid address format: {}. "
+                "Expected 'ip:port' (e.g., '127.0.0.1:6379').",
+                stop_address,
+            )
+            raise click.ClickException(f"Invalid address format: {e}")
+        cli_logger.print(
+            "Stopping only Ray processes with GCS address={}.",
+            cf.bold(stop_address),
+        )
 
     def kill_procs(
         force: bool, grace_period: int, processes_to_kill: List[str]
@@ -1391,6 +1669,13 @@ def stop(force: bool, grace_period: int):
                     proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
                 )
                 if keyword in corpus:
+                    # If stop_address is set, only include processes whose
+                    # command line matches the target GCS address.
+                    if stop_address is not None:
+                        if not _cmdline_matches_gcs_address(
+                            proc_args, stop_address, normalized_stop_address
+                        ):
+                            continue
                     found.append(candidate)
             for proc, proc_cmd, proc_args in found:
                 proc_string = str(subprocess.list2cmdline(proc_args))
@@ -1482,7 +1767,23 @@ def stop(force: bool, grace_period: int):
 
     # Print the termination result.
     if total_procs_found == 0:
-        cli_logger.print("Did not find any active Ray processes.")
+        if stop_address is not None:
+            # User specified an address but no matching processes were found.
+            cli_logger.warning(
+                "No Ray processes found for address {}.",
+                cf.bold(stop_address),
+            )
+            existing_addresses = services.find_gcs_addresses()
+            if existing_addresses:
+                addrs_str = ", ".join(sorted(existing_addresses))
+                cli_logger.warning(
+                    "Existing GCS addresses on this node: {}",
+                    cf.bold(addrs_str),
+                )
+            else:
+                cli_logger.print("Did not find any active Ray processes on this node.")
+        else:
+            cli_logger.print("Did not find any active Ray processes.")
     else:
         if total_procs_stopped == total_procs_found:
             cli_logger.success("Stopped all {} Ray processes.", total_procs_stopped)
@@ -1503,7 +1804,14 @@ def stop(force: bool, grace_period: int):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._common.utils.reset_ray_address()
+    if stop_address is None:
+        ray._common.utils.reset_ray_address()
+    else:
+        current_address = ray._private.utils.read_ray_address()
+        if current_address and _address_matches_gcs_address(
+            current_address, stop_address, normalized_stop_address
+        ):
+            ray._common.utils.reset_ray_address()
 
 
 @cli.command(name="kill-actor")
