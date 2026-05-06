@@ -839,5 +839,114 @@ def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
     assert override_pg.bundle_resources["TPU"] == 4
 
 
+def test_user_bundle_label_selector_merged(ray_tpu_cluster):
+    """Verifies that user-passed bundle_label_selector is merged with dynamic TPU labels."""
+    user_selectors = [{"env": "prod"}, {"env": "test"}]
+
+    # 2x2x2 v4 = 2 hosts = 2 bundles
+    slice_pg = SlicePlacementGroup(
+        topology="2x2x2", accelerator_version="v4", bundle_label_selector=user_selectors
+    )
+
+    assert len(slice_pg._bundle_label_selector) == 2
+
+    # Verify slice 0
+    assert slice_pg._bundle_label_selector[0]["env"] == "prod"
+    assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[0]
+
+    # Verify slice 1
+    assert slice_pg._bundle_label_selector[1]["env"] == "test"
+    assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[1]
+
+
+def test_user_bundle_label_selector_collision_dynamic_wins(ray_v6e_tpu_cluster):
+    """Verifies that dynamic TPU labels take precedence on collision."""
+    user_selectors = [{ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"}]
+
+    # v6e-8 is single host (1 bundle)
+    slice_pg = SlicePlacementGroup(
+        topology="2x4", accelerator_version="v6e", bundle_label_selector=user_selectors
+    )
+
+    assert len(slice_pg._bundle_label_selector) == 1
+    # The dynamic value should win (it generates test-v6e-slice-N)
+    actual_val = slice_pg._bundle_label_selector[0][
+        ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+    ]
+    assert actual_val != "user-requested-slice"
+    assert "test-v6e-slice-" in actual_val
+
+
+def test_user_bundle_label_selector_length_mismatch_raises():
+    """Verifies that providing wrong length of selector list raises ValueError."""
+    user_selectors = [{"env": "prod"}]  # Only 1 provided but 2x2x2 v4 has 2 hosts
+
+    with pytest.raises(ValueError, match="bundle_label_selector length"):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            bundle_label_selector=user_selectors,
+        )
+
+
+def test_release_head_pgs_idempotent(ray_tpu_cluster):
+    """Verifies that release_head_pgs() is idempotent."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    assert len(slice_pg.head_placement_groups) == 1
+
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+    # Call again, should not raise
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+
+def test_shutdown_idempotent(ray_tpu_cluster):
+    """Verifies that shutdown() is idempotent."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    slice_pg.shutdown()
+    assert slice_pg.placement_group is None
+    assert len(slice_pg.head_placement_groups) == 0
+
+    # Call again, should not raise
+    slice_pg.shutdown()
+
+
+def test_shutdown_safe_after_construction_failure():
+    """Verifies that shutdown() is safe to call on a partially-constructed instance."""
+    with patch(
+        "ray.util.tpu.SlicePlacementGroup._reserve_slice",
+        side_effect=RuntimeError("Test failure"),
+    ):
+        with pytest.raises(RuntimeError, match="Test failure"):
+            SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    # If the above didn't crash or leak resources, we are good.
+    # We can also manually construct a partial instance and call shutdown.
+    partial_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    partial_pg._head_pgs = []
+    partial_pg._placement_group = None
+
+    # Should not raise even though it's missing attributes
+    partial_pg.shutdown()
+
+
+def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
+    """Validates Slice PG lifecycle: wait until ready, release head PGs, then shutdown."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    # Wait for ready
+    ray.get(slice_pg.placement_group.ready())
+
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+    slice_pg.shutdown()
+    assert slice_pg.placement_group is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

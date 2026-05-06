@@ -160,8 +160,10 @@ def get_tpu_worker_resources(
     """
     accelerator_version = get_tpu_version_from_type(accelerator_type)
 
-    resolved_chips_per_vm = chips_per_vm or get_chips_per_host(
-        topology, accelerator_version
+    resolved_chips_per_vm = (
+        chips_per_vm
+        if chips_per_vm is not None
+        else get_chips_per_host(topology, accelerator_version)
     )
     total_chips_per_slice = get_num_chips_from_topology(topology)
 
@@ -447,6 +449,8 @@ class SlicePlacementGroup:
             TPU head placement group to become ready. Defaults to
             ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``. Pass ``None`` to wait
             indefinitely.
+        bundle_label_selector: Optional list of label selectors to apply per bundle. These label
+            selectors are applied in addition to dynamic TPU slice name labels, which take precedence.
 
     Examples:
 
@@ -490,7 +494,13 @@ class SlicePlacementGroup:
         head_reservation_timeout_s: Optional[float] = (
             DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
         ),
+        bundle_label_selector: Optional[List[Dict[str, str]]] = None,
     ):
+        self._head_pgs: List[PlacementGroup] = []
+        self._bundle_label_selector: List[Dict[str, str]] = []
+        self._placement_group: Optional[PlacementGroup] = None
+        self._user_bundle_label_selector = bundle_label_selector or []
+
         self._topology = topology.strip().lower()
         self._accelerator_version = get_tpu_version_from_type(
             accelerator_version.strip()
@@ -508,8 +518,10 @@ class SlicePlacementGroup:
             chips_per_vm=chips_per_vm,
         )
 
-        self._chips_per_host = chips_per_vm or get_chips_per_host(
-            self._topology, self._accelerator_version
+        self._chips_per_host = (
+            chips_per_vm
+            if chips_per_vm is not None
+            else get_chips_per_host(self._topology, self._accelerator_version)
         )
 
         # Within Ray, a "host" corresponds to a user-visible compute VM.
@@ -518,10 +530,7 @@ class SlicePlacementGroup:
         hosts_per_slice = max(1, total_chips // self._chips_per_host)
         self._num_hosts = hosts_per_slice * self._num_slices
 
-        self._head_pgs: List[PlacementGroup] = []
-        self._bundle_label_selector: List[Dict[str, str]] = []
         self._validate_tpu_config()
-        self._placement_group = None
 
         # Reserve a TPU slice of the provided accelerator version and topology.
         self._placement_group = self._reserve_slice(
@@ -549,6 +558,15 @@ class SlicePlacementGroup:
         lifetime: Optional[str] = None,
     ) -> PlacementGroup:
         """Performs the two-step scheduling to reserve a TPU slice."""
+        if (
+            self._user_bundle_label_selector
+            and len(self._user_bundle_label_selector) != self._num_bundles
+        ):
+            raise ValueError(
+                f"bundle_label_selector length ({len(self._user_bundle_label_selector)}) must "
+                f"match the number of bundles ({self._num_bundles})."
+            )
+
         self._bundle_label_selector = []
         bundles = []
         bundles_per_slice = self._num_bundles // self._num_slices
@@ -557,7 +575,7 @@ class SlicePlacementGroup:
         accelerator_type = "TPU-" + self.accelerator_version.upper()
 
         try:
-            for _ in range(self.num_slices):
+            for slice_idx in range(self.num_slices):
                 reservation = reserve_tpu_slice(
                     self._topology,
                     accelerator_type,
@@ -575,10 +593,20 @@ class SlicePlacementGroup:
                 slice_name, head_pg = reservation
                 self._head_pgs.append(head_pg)
 
-                # Reserving a slice is done through constructing num_hosts bundles, each with a label selector for
-                # the unique name of an available TPU slice.
-                selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
-                self._bundle_label_selector.extend([selector] * bundles_per_slice)
+                dynamic_labels = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
+
+                for bundle_idx in range(bundles_per_slice):
+                    global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
+
+                    user_labels = (
+                        self._user_bundle_label_selector[global_bundle_idx]
+                        if global_bundle_idx < len(self._user_bundle_label_selector)
+                        else {}
+                    )
+                    # Dynamic TPU slice labels take precedence; user labels fill in the rest.
+                    merged_labels = {**user_labels, **dynamic_labels}
+                    self._bundle_label_selector.append(merged_labels)
+
                 bundles += [
                     self._bundle_resources.copy() for _ in range(bundles_per_slice)
                 ]
@@ -647,14 +675,47 @@ class SlicePlacementGroup:
         """The resources that are assigned to each bundle."""
         return self._bundle_resources
 
-    def shutdown(self):
-        """Removes the worker placement group and all internal head PGs."""
-        if self._placement_group:
-            remove_placement_group(self._placement_group)
-            self._placement_group = None
-        for head_pg in self._head_pgs:
-            remove_placement_group(head_pg)
+    @DeveloperAPI(stability="alpha")
+    def release_head_pgs(self) -> None:
+        """Remove all internal head placement groups.
+
+        The head PGs exist only to atomically claim a TPU slice's label during
+        the race window between slice selection and worker-PG construction.
+        Once the worker PG's bundles are scheduled, the worker PG holds the TPU
+        resources on every host in the slice and the head PGs are redundant.
+
+        Callers should invoke this idempotent call after `self.placement_group.ready()`
+        resolves successfully.
+        """
+        head_pgs = getattr(self, "_head_pgs", [])
         self._head_pgs = []
+        for head_pg in head_pgs:
+            try:
+                remove_placement_group(head_pg)
+            except Exception:
+                logger.exception(
+                    "Failed to remove TPU head placement group %s; the "
+                    "slice reservation marker may leak until the creator "
+                    "process exits.",
+                    getattr(head_pg, "id", head_pg),
+                )
+
+    def shutdown(self):
+        """Remove the worker placement group and all internal head PGs.
+
+        Idempotent. Safe to call on a partially-constructed instance.
+        """
+        worker_pg = getattr(self, "_placement_group", None)
+        if worker_pg is not None:
+            self._placement_group = None
+            try:
+                remove_placement_group(worker_pg)
+            except Exception:
+                logger.exception(
+                    "Failed to remove TPU worker placement group %s.",
+                    getattr(worker_pg, "id", worker_pg),
+                )
+        self.release_head_pgs()
 
 
 @PublicAPI(stability="alpha")
