@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import pickle
+import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set, Tuple
 
 import grpc
@@ -9,7 +11,9 @@ import grpc
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    DeploymentID,
     ReplicaID,
+    RequestMetadata,
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
@@ -201,6 +205,9 @@ class RunningReplica:
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
 
+        # Active slot reservation tokens for the choose_replica/dispatch pattern.
+        self._reserved_slots: Set[str] = set()
+
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
         """Update mutable fields from a new RunningReplicaInfo.
 
@@ -324,3 +331,100 @@ class RunningReplica:
             return wrapper.send_request_java(pr)
 
         return wrapper.send_request_python(pr, with_rejection=with_rejection)
+
+    def reserve_slot(self) -> str:
+        """Reserve a slot on this replica for an upcoming request.
+
+        Returns a unique token that can be used to release the slot later.
+        This is used in the choose_replica/dispatch pattern to track
+        reservations that haven't been dispatched yet.
+
+        Note: This only tracks the reservation locally. The actual queue
+        length management is handled by the replica actor itself.
+        """
+        slot_token = str(uuid.uuid4())
+        self._reserved_slots.add(slot_token)
+        return slot_token
+
+    def release_slot(self, slot_token: str) -> None:
+        """Release a previously reserved slot.
+
+        This should be called if a request is not dispatched after
+        reserving a slot (e.g., due to an error or cancellation).
+        """
+        if slot_token in self._reserved_slots:
+            self._reserved_slots.discard(slot_token)
+        else:
+            logger.warning(
+                f"Attempted to release unknown slot token {slot_token} "
+                f"on replica {self.replica_id}"
+            )
+
+
+@dataclass
+class ReplicaSelection:
+    """Represents a selected replica, holding information for dispatch or coordination.
+
+    This class is returned by the choose_replica() context manager.
+    The slot reservation lifecycle is managed by the context manager.
+    """
+
+    # Public, user-accessible fields
+    replica_id: str
+    """Unique identifier for the selected replica."""
+
+    node_ip: str
+    """IP address of the node running this replica."""
+
+    port: Optional[int]
+    """Port number for direct communication (if configured)."""
+
+    node_id: str
+    """Ray node ID where the replica is running."""
+
+    availability_zone: Optional[str]
+    """Cloud availability zone of the replica's node."""
+
+    # Internal fields (not part of public API)
+    _replica: RunningReplica
+    _deployment_id: Optional[DeploymentID]
+    _request_metadata: RequestMetadata
+    _method_name: str
+    _slot_token: str  # Token for reserved slot
+    _dispatched: bool = field(
+        default=False, init=False
+    )  # Tracks if dispatch was called
+
+    @property
+    def address(self) -> str:
+        """Returns the replica address in host:port format."""
+        if self.port:
+            return f"{self.node_ip}:{self.port}"
+        return self.node_ip
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize public fields to a dictionary."""
+        return {
+            "replica_id": self.replica_id,
+            "node_ip": self.node_ip,
+            "port": self.port,
+            "node_id": self.node_id,
+            "availability_zone": self.availability_zone,
+        }
+
+    def _mark_dispatched(self) -> None:
+        """Internal: Mark this selection as dispatched (slot consumed).
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+        """
+        if self._dispatched:
+            raise RuntimeError(
+                f"ReplicaSelection for {self.replica_id} has already been dispatched. "
+                "Each selection can only be dispatched once."
+            )
+        self._dispatched = True
+
+    def _release_slot(self) -> None:
+        """Internal: Release the reserved slot."""
+        self._replica.release_slot(self._slot_token)

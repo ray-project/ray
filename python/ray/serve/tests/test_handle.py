@@ -6,12 +6,17 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import OBJ_REF_NOT_SUPPORTED_ERROR
+from ray.serve._private.common import (
+    OBJ_REF_NOT_SUPPORTED_ERROR,
+    DeploymentID,
+    RequestMetadata,
+)
 from ray.serve._private.replica_result import (
     ActorReplicaResult,
     ReplicaResult,
     gRPCReplicaResult,
 )
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.conftest import _shared_serve_instance  # noqa
@@ -121,6 +126,29 @@ def test_compose_apps(serve_instance, inner_by_reference, outer_by_reference):
         ).result()
         == "app1|app2|hi1|hi2|app2|hi3|hi4"
     )
+
+
+def test_dispatch_rejects_selection_from_different_deployment():
+    handle = DeploymentHandle("deployment-a", "app")
+    selection = ReplicaSelection(
+        replica_id="replica-1",
+        node_ip="127.0.0.1",
+        port=None,
+        node_id="node-1",
+        availability_zone=None,
+        _replica=object(),
+        _deployment_id=DeploymentID(name="deployment-b", app_name="app"),
+        _request_metadata=RequestMetadata(
+            request_id="request-id",
+            internal_request_id="internal-request-id",
+            call_method="__call__",
+        ),
+        _method_name="__call__",
+        _slot_token="slot-1",
+    )
+
+    with pytest.raises(ValueError, match="different deployment"):
+        handle.dispatch(selection)
 
 
 @pytest.mark.asyncio

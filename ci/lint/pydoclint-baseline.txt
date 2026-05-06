@@ -1457,10 +1457,6 @@ python/ray/serve/_private/proxy_response_generator.py
 python/ray/serve/_private/proxy_state.py
     DOC201: Method `ProxyStateManager.get_targets` does not have a return section in docstring
 --------------------
-python/ray/serve/_private/router.py
-    DOC101: Method `SingletonThreadRouter.assign_request`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `SingletonThreadRouter.assign_request`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**request_kwargs: , *request_args: , request_meta: RequestMetadata].
---------------------
 python/ray/serve/_private/storage/kv_store.py
     DOC201: Method `RayInternalKVStore.put` does not have a return section in docstring
     DOC201: Method `RayInternalKVStore.delete` does not have a return section in docstring
