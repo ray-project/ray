@@ -56,7 +56,7 @@ void PythonRayEvent::Merge(RayEventInterface &&other) {
                    << "The recorder should skip grouping for non-mergeable events.";
 }
 
-StatusOr<rpc::events::RayEvent> PythonRayEvent::Serialize() && {
+StatusSetOr<rpc::events::RayEvent, StatusT::Invalid> PythonRayEvent::Serialize() && {
   rpc::events::RayEvent event;
 
   event.set_event_id(event_id_.empty() ? UniqueID::FromRandom().Binary() : event_id_);
@@ -76,7 +76,7 @@ StatusOr<rpc::events::RayEvent> PythonRayEvent::Serialize() && {
   google::protobuf::Message *nested =
       event.GetReflection()->MutableMessage(&event, field);
   if (!nested->ParseFromString(serialized_event_data_)) {
-    return Status::Invalid(
+    return StatusT::Invalid(
         absl::StrCat("Failed to parse nested event data for field ", field->name()));
   }
 

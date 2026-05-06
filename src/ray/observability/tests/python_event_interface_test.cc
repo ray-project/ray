@@ -198,8 +198,8 @@ TEST(PythonRayEventTest, TestSerializeReturnsErrorOnParseFailure) {
       rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
 
   auto result = std::move(*event).Serialize();
-  EXPECT_FALSE(result.ok());
-  EXPECT_TRUE(result.IsInvalid());
+  EXPECT_TRUE(result.has_error());
+  EXPECT_TRUE(std::holds_alternative<StatusT::Invalid>(result.error()));
 }
 
 TEST(PythonRayEventTest, TestSupportsMerge) {

@@ -34,7 +34,8 @@ class RayEvent : public RayEventInterface {
     MergeData(static_cast<RayEvent<T> &&>(other));
   }
 
-  ray::StatusOr<ray::rpc::events::RayEvent> Serialize() && override {
+  ray::StatusSetOr<ray::rpc::events::RayEvent, ray::StatusT::Invalid> Serialize() &&
+      override {
     ray::rpc::events::RayEvent event = std::move(*this).SerializeData();
     event.set_event_id(UniqueID::FromRandom().Binary());
     event.set_source_type(source_type_);

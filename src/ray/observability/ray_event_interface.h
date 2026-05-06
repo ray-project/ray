@@ -16,7 +16,7 @@
 
 #include <memory>
 
-#include "ray/common/status_or.h"
+#include "ray/common/status.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
@@ -55,10 +55,11 @@ class RayEventInterface {
   // This function assumes that the two events have the same type and entity ID.
   virtual void Merge(RayEventInterface &&other) = 0;
 
-  // Serialize the event data to a RayEvent proto. Returns a non-OK status when the
+  // Serialize the event data to a RayEvent proto. Returns an error when the
   // event cannot be serialized (e.g., the nested event payload fails to parse). The
-  // recorder skips events that return a non-OK status.
-  virtual ray::StatusOr<ray::rpc::events::RayEvent> Serialize() && = 0;
+  // recorder skips events that fail to serialize.
+  virtual ray::StatusSetOr<ray::rpc::events::RayEvent, ray::StatusT::Invalid> Serialize()
+      && = 0;
 
   virtual ray::rpc::events::RayEvent::EventType GetEventType() const = 0;
 
