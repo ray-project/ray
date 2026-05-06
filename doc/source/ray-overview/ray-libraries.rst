@@ -376,6 +376,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/plugboard.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/plugboard-dev/plugboard?style=social
+                :target: https://github.com/plugboard-dev/plugboard
+
+            Plugboard is a modelling and orchestration framework in Python for simulating and driving complex processes with many interconnected stateful components. With the Ray integration, you can seamlessly scale your models to multiple processors or cloud infrastructure.
+
+        +++
+        .. button-link:: https://docs.plugboard.dev/latest/
+            :color: primary
+            :outline:
+            :expand:
+
+            Plugboard Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/prefect.png
             :class: card-figure
 
