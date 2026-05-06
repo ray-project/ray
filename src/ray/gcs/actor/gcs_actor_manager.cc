@@ -1514,6 +1514,18 @@ void GcsActorManager::RestartActor(
     }
     auto new_num_restarts = num_restarts + 1;
     mutable_actor_table_data->set_num_restarts(new_num_restarts);
+
+    // Invoke creation callbacks early if pending and actor was created.
+    auto create_callback_iter = actor_to_create_callbacks_.find(actor_id);
+    if (create_callback_iter != actor_to_create_callbacks_.end() &&
+        actor->GetState() == rpc::ActorTableData::ALIVE) {
+      RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+          << "Invoking creation callbacks in RestartActor before clearing address.";
+      rpc::PushTaskReply reply;
+      reply.mutable_borrowed_refs()->CopyFrom(actor->GetSavedBorrowedRefs());
+      RunAndClearActorCreationCallbacks(actor, reply, Status::OK());
+    }
+
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
     // Make sure to reset the address before flushing to GCS. Otherwise,
@@ -1667,6 +1679,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     mutable_actor_table_data->set_start_time(time);
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
+  actor->SetSavedBorrowedRefs(reply.borrowed_refs());
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
