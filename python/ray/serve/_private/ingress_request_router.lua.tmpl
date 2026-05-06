@@ -102,12 +102,5 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
     end
 
     txn:set_var("txn.ingress_request_router_target", server_name)
-    local capacity_queue_token = extract_json_string(
-        response_body, "capacity_queue_token")
-    if capacity_queue_token then
-        txn:set_var(
-            "txn.ingress_request_router_capacity_queue_token",
-            capacity_queue_token)
-    end
     txn:set_var("txn.via_ingress_request_router", true)
 end, 0)

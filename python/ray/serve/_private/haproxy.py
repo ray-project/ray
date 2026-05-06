@@ -26,7 +26,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DRAINING_MESSAGE,
     HEALTHY_MESSAGE,
-    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
@@ -855,9 +854,6 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
                     "ingress_request_router_timeout_s": (
                         INGRESS_REQUEST_ROUTER_TIMEOUT_S
-                    ),
-                    "ingress_request_router_capacity_queue_token_header": (
-                        INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER
                     ),
                 }
             )
