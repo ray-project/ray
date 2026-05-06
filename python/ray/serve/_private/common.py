@@ -1054,3 +1054,35 @@ class AsyncInferenceTaskQueueMetricReport:
     deployment_id: DeploymentID
     queue_length: int
     timestamp_s: float
+
+
+class RolloutState(str, Enum):
+    """The states the RolloutSupervisor transitions through."""
+
+    IDLE = "IDLE"
+    WATCHING = "WATCHING"
+    ROLLING_BACK = "ROLLING_BACK"
+    ROLLED_BACK = "ROLLED_BACK"
+    ROLLBACK_FAILED = "ROLLBACK_FAILED"
+
+
+@dataclass
+class ConfigSnapshot:
+    """Snapshot of a single config submission."""
+
+    deployment_time: float = 0.0
+    target_capacity: Optional[float] = None
+    target_capacity_direction: Optional[TargetCapacityDirection] = None
+    config_dict: Dict[str, Any] = field(default_factory=dict)
+    auto_rollback_enabled: bool = False
+
+
+@dataclass
+class ServeConfigCheckpoint:
+    """Versioned checkpoint for the Serve cluster config and rollout state."""
+
+    version: int = 2
+    current: ConfigSnapshot = field(default_factory=ConfigSnapshot)
+    last_good: Optional[ConfigSnapshot] = None
+    rollout_state: RolloutState = RolloutState.IDLE
+    rollout_started_at: Optional[float] = None

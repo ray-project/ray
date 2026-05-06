@@ -983,6 +983,19 @@ class HTTPOptionsSchema(BaseModel):
         return v
 
 
+@PublicAPI(stability="alpha")
+class RolloutStrategySchema(BaseModel):
+    """Options controlling rollout behavior for Serve cluster config."""
+
+    auto_rollback: bool = Field(
+        default=False,
+        description=(
+            "If True, automatically roll back to the last known good config "
+            "when any application reaches DEPLOY_FAILED status."
+        ),
+    )
+
+
 @PublicAPI(stability="stable")
 class ServeDeploySchema(BaseModel):
     """
@@ -1017,6 +1030,13 @@ class ServeDeploySchema(BaseModel):
         ..., description="The set of applications to run on the Ray cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    rollout_strategy: Optional[RolloutStrategySchema] = Field(
+        default=None,
+        description=(
+            "Options controlling rollout behavior. If not specified, no "
+            "automatic rollback is performed on deployment failure."
+        ),
+    )
 
     @field_validator("applications")
     @classmethod
