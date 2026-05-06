@@ -56,3 +56,4 @@ YOLO
 [Ss]harded
 [Pp]arameterization(s)?
 repr
+Zarr
