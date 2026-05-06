@@ -518,6 +518,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_memory_usage_threshold=0.5
@@ -547,6 +548,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -602,10 +604,14 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -622,6 +628,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -641,6 +648,7 @@
         wait_for_nodes:
           num_nodes: 16
       cluster:
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -655,6 +663,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -674,6 +683,7 @@
         wait_for_nodes:
           num_nodes: 16
       cluster:
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -687,6 +697,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -710,6 +721,7 @@
       smoke_test:
         frequency: manual
       cluster:
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
@@ -721,6 +733,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -748,6 +761,7 @@
       env: gce
       frequency: manual
       cluster:
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
@@ -759,6 +773,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -776,6 +791,7 @@
       env: gce
       frequency: manual
       cluster:
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
@@ -787,6 +803,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -801,6 +818,7 @@
       env: gce
       frequency: manual
       cluster:
+        cloud: anyscale_gce_cloud
         cluster_compute: tpl_gce_1x96.yaml
 
 
@@ -816,6 +834,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
