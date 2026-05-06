@@ -4441,6 +4441,13 @@ class Dataset:
                     catalog_kwargs={"name": "default", "type": "sql"}
                 )
 
+                # Create a brand new table from the dataset schema
+                ds.write_iceberg(
+                    table_identifier="db_name.new_table",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode=SaveMode.CREATE,
+                )
+
                 # Schema evolution is automatic - new columns are added automatically
                 enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
                 ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
@@ -4477,6 +4484,7 @@ class Dataset:
                 to an iceberg table.
             mode: Write mode using SaveMode enum. Options:
 
+                * SaveMode.CREATE: Create a new table from the dataset schema and fail if the table already exists.
                 * SaveMode.APPEND (default): Add new data to the table without checking for duplicates.
                 * SaveMode.UPSERT: Update existing rows that match on the join condition (``join_cols`` in ``upsert_kwargs``),
                   or insert new rows if they don't exist in the table.
@@ -4503,7 +4511,8 @@ class Dataset:
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
             are automatically added to the table schema. The schema is extracted
-            automatically from the data being written.
+            automatically from the data being written. CREATE mode also uses this
+            inferred schema to create the target table.
         """
         datasink = IcebergDatasink(
             table_identifier=table_identifier,
