@@ -55,6 +55,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   const rpc::Address &Addr() const override { return addr_; }
 
   bool IsIdleAfterRPCs() const override {
+    // Both stubs share the same gRPC channel, so channel idle state is the same.
+    // We check grpc_client_ specifically because in practice, any active connection
+    // will always have made at least one CoreWorkerService RPC.
     return grpc_client_->IsChannelIdleAfterRPCs() &&
            retryable_grpc_client_->NumActiveRequests() == 0;
   }
@@ -99,16 +102,16 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                                    override)
 
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
-                                   CoreWorkerService,
+                                   CoreWorkerPubsubService,
                                    PubsubLongPolling,
-                                   grpc_client_,
+                                   pubsub_grpc_client_,
                                    /*method_timeout_ms*/ -1,
                                    override)
 
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
-                                   CoreWorkerService,
+                                   CoreWorkerPubsubService,
                                    PubsubCommandBatch,
-                                   grpc_client_,
+                                   pubsub_grpc_client_,
                                    /*method_timeout_ms*/ -1,
                                    override)
 
@@ -225,8 +228,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// Address of the remote worker.
   rpc::Address addr_;
 
-  /// The RPC client.
   std::shared_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
+
+  std::shared_ptr<GrpcClient<CoreWorkerPubsubService>> pubsub_grpc_client_;
 
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 

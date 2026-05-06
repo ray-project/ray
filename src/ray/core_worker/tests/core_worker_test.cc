@@ -759,12 +759,17 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  // Drain io_service_ to execute the posted subscribe/unsubscribe handlers.
+  io_service_.poll();
+  io_service_.restart();
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
       &command_reply2,
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  io_service_.poll();
+  io_service_.restart();
 
   if (should_free_object) {
     // Triggers the unpin_object callbacks that publish the message to the
@@ -820,19 +825,13 @@ INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
                          ::testing::Values(true, false));
 
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
-  // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
-  // type. The publisher was created with only:
-  // - WORKER_OBJECT_EVICTION
-  // - WORKER_REF_REMOVED_CHANNEL
-  // - WORKER_OBJECT_LOCATIONS_CHANNEL
-  // Using a channel type that was not registered should return InvalidArgument.
+  // channel_type is validated synchronously before posting to io_service_.
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  // Use GCS_ACTOR_CHANNEL which is not registered with the core worker's publisher.
   command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   command->set_key_id(object_id.Binary());
   command->mutable_subscribe_message();
@@ -881,8 +880,10 @@ TEST_F(CoreWorkerTest,
   ASSERT_TRUE(received_status.IsInvalidArgument());
 }
 
-TEST_F(CoreWorkerTest,
-       HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsInvalidArgument) {
+TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsOk) {
+  // An empty subscribe_message (no eviction/ref_removed/locations sub-message)
+  // is detected asynchronously in ProcessSubscribeMessage on io_service_.
+  // The handler returns OK because subscribe is posted, not executed inline.
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
 
@@ -903,7 +904,7 @@ TEST_F(CoreWorkerTest,
                          std::function<void()>,
                          std::function<void()>) { received_status = status; });
 
-  ASSERT_TRUE(received_status.IsInvalidArgument());
+  ASSERT_TRUE(received_status.ok());
 }
 
 class CoreWorkerPubsubWorkerRefRemovedChannelTest
@@ -954,6 +955,9 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  // Drain io_service_ to execute the posted subscribe/unsubscribe handlers.
+  io_service_.poll();
+  io_service_.restart();
   // NOTE: unlike in the worker object eviction channel test, the second call to
   // HandlePubsubComandBatch does not store a unique callback and just turns on
   // publish_ref_removed which is already true
@@ -963,6 +967,8 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  io_service_.poll();
+  io_service_.restart();
 
   if (should_remove_ref) {
     // This will check the publish_ref_removed flag and publish one
@@ -1064,6 +1070,9 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  // Drain io_service_ to process the posted RegisterSubscription + ProcessSubscribe*.
+  io_service_.poll();
+  io_service_.restart();
 
   // The second call to HandlePubsubCommandBatch publishes the object location. The
   // publisher stores the second snapshot in the mailbox.
@@ -1074,6 +1083,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  io_service_.poll();
+  io_service_.restart();
 
   // Since the max_processed_sequence_id is 0, the publisher sends the second AND first
   // snapshot of the object location. The first snapshot is not erased until it gets a

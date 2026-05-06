@@ -9,6 +9,7 @@ ray_cc_library(
     ],
     hdrs = [
         "core_worker.h",
+        "core_worker_io_context_policy.h",
         "core_worker_process.h",
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",

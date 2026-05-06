@@ -3611,7 +3611,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   }
 }
 
-StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
+StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeCommand(
     const rpc::SubMessage &sub_message,
     rpc::ChannelType channel_type,
     const std::string &key_id,
@@ -3656,8 +3656,12 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
-  for (const auto &command : request.commands()) {
+  // This handler runs on a dedicated pubsub io_context thread. Subscribe and
+  // unsubscribe are posted to io_service_ because ProcessSubscribeMessage and
+  // UnregisterSubscription touch ReferenceCounter state that lives there.
+  const NodeID subscriber_id =
+      NodeID::FromBinary(std::move(*request.mutable_subscriber_id()));
+  for (auto &command : *request.mutable_commands()) {
     if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
       send_reply_callback(Status::InvalidArgument(absl::StrFormat(
                               "Unexpected pubsub command has been received: %s."
@@ -3668,26 +3672,50 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
       return;
     }
 
+    auto channel_type = command.channel_type();
+    if (channel_type != rpc::ChannelType::WORKER_OBJECT_EVICTION &&
+        channel_type != rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL &&
+        channel_type != rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
+      send_reply_callback(
+          Status::InvalidArgument(absl::StrFormat(
+              "Invalid channel type %s. Expected WORKER_OBJECT_EVICTION, "
+              "WORKER_REF_REMOVED_CHANNEL, or WORKER_OBJECT_LOCATIONS_CHANNEL",
+              rpc::ChannelType_Name(channel_type))),
+          nullptr,
+          nullptr);
+      return;
+    }
+
     if (command.has_unsubscribe_message()) {
-      object_info_publisher_->UnregisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
+      io_service_.post(
+          [this,
+           channel_type,
+           subscriber_id,
+           key_id = std::move(*command.mutable_key_id())] {
+            object_info_publisher_->UnregisterSubscription(
+                channel_type, subscriber_id, key_id);
+          },
+          "CoreWorker.HandlePubsubCommandBatch");
     } else {  // subscribe_message case
-      StatusSet<StatusT::InvalidArgument> result =
-          ProcessSubscribeMessage(command.subscribe_message(),
-                                  command.channel_type(),
-                                  command.key_id(),
-                                  subscriber_id);
-      if (result.has_error()) {
-        // Terminate the worker if the subscribe message is invalid.
-        send_reply_callback(
-            Status::InvalidArgument(
-                std::get<StatusT::InvalidArgument>(result.error()).message()),
-            nullptr,
-            nullptr);
-        return;
-      }
+      io_service_.post(
+          [this,
+           sub_message = std::move(*command.mutable_subscribe_message()),
+           channel_type,
+           key_id = std::move(*command.mutable_key_id()),
+           subscriber_id] {
+            auto result =
+                ProcessSubscribeCommand(sub_message, channel_type, key_id, subscriber_id);
+            if (result.has_error()) {
+              RAY_LOG(WARNING)
+                  << "Failed to process subscribe command: "
+                  << std::get<StatusT::InvalidArgument>(result.error()).message();
+            }
+          },
+          "CoreWorker.HandlePubsubCommandBatch");
     }
   }
+  // Reply immediately. Subscribe/unsubscribe are fire-and-forget; the subscriber
+  // relies on long-poll timeout to detect failures.
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

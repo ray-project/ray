@@ -18,7 +18,9 @@
 #include <memory>
 #include <string>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/metrics.h"
+#include "ray/core_worker/core_worker_io_context_policy.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
@@ -29,6 +31,7 @@ namespace core {
 
 class CoreWorker;
 class CoreWorkerServiceHandlerProxy;
+class CoreWorkerPubsubServiceHandlerProxy;
 
 /// Lifecycle management of the `CoreWorker` instance in a process.
 ///
@@ -159,6 +162,10 @@ class CoreWorkerProcessImpl {
   instrumented_io_context io_service_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
 
+  /// Provides dedicated io_contexts for specific components (e.g. pubsub).
+  /// Follows the same pattern as GCS's IOContextProvider.
+  IOContextProvider<CoreWorkerIOContextPolicy> io_context_provider_{io_service_};
+
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
@@ -184,6 +191,9 @@ class CoreWorkerProcessImpl {
 
   /// The proxy service handler that routes the RPC calls to the core worker.
   std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
+
+  /// The proxy service handler for pubsub RPCs (dispatched to a dedicated io_context).
+  std::unique_ptr<CoreWorkerPubsubServiceHandlerProxy> pubsub_service_handler_;
 
   std::unique_ptr<ray::stats::Gauge> task_by_state_gauge_;
   std::unique_ptr<ray::stats::Gauge> actor_by_state_gauge_;

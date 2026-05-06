@@ -35,25 +35,44 @@ namespace core {
         std::move(request), reply, std::move(send_reply_callback));          \
   }
 
-// This class was introduced as a result of changes in
-// https://github.com/ray-project/ray/pull/54759, where the dependencies of CoreWorker
-// were refactored into CoreWorkerProcessImpl. Previously, CoreWorker inherited from
-// CoreWorkerServiceHandler, but this design made it impossible to run the gRPC server
-// within CoreWorkerProcessImpl despite the fact that several CoreWorker subclasses rely
-// on the server's port, which is only known when the server is running. To address this,
-// we created this service handler which can be created before CoreWorker is done
-// initializing. This pattern is NOT recommended for future use and was only used
-// as other options were significantly more ugly and complex.
-class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
+/// Base for service handler proxies that forward RPCs to CoreWorker. Provides
+/// the blocking WaitUntilInitialized / SetCoreWorker handshake so the gRPC server
+/// can start before CoreWorker is fully constructed.
+template <typename ServiceHandler>
+class CoreWorkerServiceHandlerProxyBase : public ServiceHandler {
+ public:
+  void WaitUntilInitialized() override {
+    std::unique_lock<std::mutex> lock(core_worker_mutex_);
+    core_worker_cv_.wait(lock, [this]() { return this->core_worker_ != nullptr; });
+  }
+
+  void SetCoreWorker(CoreWorker *core_worker) {
+    {
+      std::scoped_lock<std::mutex> lock(core_worker_mutex_);
+      core_worker_ = core_worker;
+    }
+    core_worker_cv_.notify_all();
+  }
+
+ protected:
+  CoreWorker *core_worker_ = nullptr;
+
+ private:
+  std::mutex core_worker_mutex_;
+  std::condition_variable core_worker_cv_;
+};
+
+// This proxy pattern was introduced in https://github.com/ray-project/ray/pull/54759
+// so the gRPC server can start before CoreWorker is done initializing. NOT recommended
+// for future use — it was chosen because other options were significantly more complex.
+class CoreWorkerServiceHandlerProxy
+    : public CoreWorkerServiceHandlerProxyBase<rpc::CoreWorkerServiceHandler> {
  public:
   RAY_CORE_WORKER_RPC_PROXY(PushTask)
   RAY_CORE_WORKER_RPC_PROXY(ActorCallArgWaitComplete)
   RAY_CORE_WORKER_RPC_PROXY(RayletNotifyGCSRestart)
   RAY_CORE_WORKER_RPC_PROXY(GetObjectStatus)
   RAY_CORE_WORKER_RPC_PROXY(WaitForActorRefDeleted)
-  RAY_CORE_WORKER_RPC_PROXY(PubsubLongPolling)
-  RAY_CORE_WORKER_RPC_PROXY(PubsubCommandBatch)
-  RAY_CORE_WORKER_RPC_PROXY(UpdateObjectLocationBatch)
   RAY_CORE_WORKER_RPC_PROXY(GetObjectLocationsOwner)
   RAY_CORE_WORKER_RPC_PROXY(ReportGeneratorItemReturns)
   RAY_CORE_WORKER_RPC_PROXY(KillActor)
@@ -70,25 +89,14 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(Exit)
   RAY_CORE_WORKER_RPC_PROXY(AssignObjectOwner)
   RAY_CORE_WORKER_RPC_PROXY(NumPendingTasks)
+  RAY_CORE_WORKER_RPC_PROXY(UpdateObjectLocationBatch)
+};
 
-  /// Wait until the worker is initialized.
-  void WaitUntilInitialized() override {
-    std::unique_lock<std::mutex> lock(core_worker_mutex_);
-    core_worker_cv_.wait(lock, [this]() { return this->core_worker_ != nullptr; });
-  }
-
-  void SetCoreWorker(CoreWorker *core_worker) {
-    {
-      std::scoped_lock<std::mutex> lock(core_worker_mutex_);
-      core_worker_ = core_worker;
-    }
-    core_worker_cv_.notify_all();
-  }
-
- private:
-  std::mutex core_worker_mutex_;
-  std::condition_variable core_worker_cv_;
-  CoreWorker *core_worker_ = nullptr;
+class CoreWorkerPubsubServiceHandlerProxy
+    : public CoreWorkerServiceHandlerProxyBase<rpc::CoreWorkerPubsubServiceHandler> {
+ public:
+  RAY_CORE_WORKER_RPC_PROXY(PubsubLongPolling)
+  RAY_CORE_WORKER_RPC_PROXY(PubsubCommandBatch)
 };
 
 }  // namespace core

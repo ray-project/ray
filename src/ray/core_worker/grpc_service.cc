@@ -49,18 +49,6 @@ void CoreWorkerGrpcService::InitServerCallFactories(
                                                           max_active_rpcs_per_handler_,
                                                           ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          PubsubLongPolling,
-                                                          max_active_rpcs_per_handler_,
-                                                          ClusterIdAuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          PubsubCommandBatch,
-                                                          max_active_rpcs_per_handler_,
-                                                          ClusterIdAuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          UpdateObjectLocationBatch,
-                                                          max_active_rpcs_per_handler_,
-                                                          ClusterIdAuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           GetObjectLocationsOwner,
                                                           max_active_rpcs_per_handler_,
                                                           ClusterIdAuthType::NO_AUTH);
@@ -120,6 +108,25 @@ void CoreWorkerGrpcService::InitServerCallFactories(
                                                           ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           NumPendingTasks,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          UpdateObjectLocationBatch,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
+}
+
+void CoreWorkerPubsubGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id,
+    std::shared_ptr<const AuthenticationToken> auth_token) {
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerPubsubService,
+                                                          PubsubLongPolling,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerPubsubService,
+                                                          PubsubCommandBatch,
                                                           max_active_rpcs_per_handler_,
                                                           ClusterIdAuthType::NO_AUTH);
 }

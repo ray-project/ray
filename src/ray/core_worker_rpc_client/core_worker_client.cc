@@ -30,6 +30,8 @@ CoreWorkerClient::CoreWorkerClient(
     : addr_(std::move(address)),
       grpc_client_(std::make_shared<GrpcClient<CoreWorkerService>>(
           addr_.ip_address(), addr_.port(), client_call_manager)),
+      pubsub_grpc_client_(std::make_shared<GrpcClient<CoreWorkerPubsubService>>(
+          grpc_client_->Channel(), client_call_manager, addr_.ip_address())),
       retryable_grpc_client_(RetryableGrpcClient::Create(
           grpc_client_->Channel(),
           client_call_manager.GetMainService(),
