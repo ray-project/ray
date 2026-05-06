@@ -38,7 +38,7 @@ class _DirectRouterReplica:
 
 def _new_direct_router():
     router = LLMRouter.__new__(LLMRouter)
-    router._di_round_robin_counter = 0
+    router._round_robin_counter = 0
     return router
 
 

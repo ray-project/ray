@@ -32,32 +32,28 @@ class LLMRouter:
 
     def __init__(
         self,
-        llm_deployments=None,
-        llm_deployment_names=None,
-        llm_configs_pre=None,
+        llm_deployment_names: List[str],
+        llm_configs_pre: List[LLMConfig],
     ):
         self._default_serve_handles: Dict[str, DeploymentHandle] = {}
         self._llm_configs: Dict[str, LLMConfig] = {}
-        self._di_round_robin_counter = 0
+        self._round_robin_counter = 0
 
         self._init_completed = asyncio.Event()
-        if llm_deployment_names is not None:
-            # Late-bind path: resolve handles by name when the deployment is ready.
-            get_or_create_event_loop().create_task(
-                self._setup_by_names(llm_deployment_names, llm_configs_pre or [])
-            )
-        else:
-            get_or_create_event_loop().create_task(self._setup(llm_deployments or []))
+        get_or_create_event_loop().create_task(
+            self._setup(llm_deployment_names, llm_configs_pre)
+        )
 
-    async def _setup_by_names(self, names, configs_pre):
+    async def _setup(self, llm_deployment_names, llm_configs):
         from ray import serve as _serve
 
         # Pre-fill configs from build-time data so we can answer routing decisions
         # before the LLMServer replica is actually up.
-        for cfg in configs_pre:
+        for cfg in llm_configs:
             self._llm_configs[cfg.model_id] = cfg
+
         # Wait until each named deployment is registered, then grab its handle.
-        for name, cfg in zip(names, configs_pre):
+        for name, cfg in zip(llm_deployment_names, llm_configs):
             for _ in range(600):  # up to ~60s
                 try:
                     handle = _serve.get_deployment_handle(name)
@@ -120,18 +116,18 @@ class LLMRouter:
                 await send({"type": "lifespan.shutdown.complete"})
                 return
 
-    async def _read_body(self, receive) -> Tuple[bytes, bool]:
-        body = b""
+    async def _read_body(self, receive) -> Optional[bytes]:
+        body_chunks = []
         more_body = True
         while more_body:
             message = await receive()
             if message["type"] == "http.disconnect":
-                return body, True
+                return None
             if message["type"] != "http.request":
                 continue
-            body += message.get("body", b"")
+            body_chunks.append(message.get("body", b""))
             more_body = message.get("more_body", False)
-        return body, False
+        return b"".join(body_chunks)
 
     async def _send_json(self, send, payload, *, status_code: int = 200):
         body = orjson.dumps(payload)
@@ -147,18 +143,24 @@ class LLMRouter:
         )
         await send({"type": "http.response.body", "body": body})
 
-    def _get_header(self, scope, header_name: bytes) -> Optional[bytes]:
-        for name, value in scope.get("headers", []):
+    def _has_header(self, scope, header_name: bytes) -> bool:
+        for name, _ in scope.get("headers", []):
             if name.lower() == header_name:
-                return value
-        return None
+                return True
+        return False
 
-    def _is_body_truncated(self, scope) -> bool:
-        return self._get_header(scope, _BODY_TRUNCATED_HEADER) is not None
+    def _parse_route_body(self, body: bytes, body_truncated: bool) -> Optional[dict]:
+        try:
+            parsed = orjson.loads(body)
+        except Exception:
+            return {} if body_truncated else None
 
-    def _extract_json_string_from_prefix(
-        self, body: bytes, field: str
-    ) -> Optional[str]:
+        if isinstance(parsed, dict):
+            return parsed
+        return {} if body_truncated else None
+
+    @staticmethod
+    def _extract_json_string_from_prefix(body: bytes, field: str) -> Optional[str]:
         pattern = (
             rb'"' + re.escape(field.encode("utf-8")) + rb'"\s*:\s*"((?:\\.|[^"\\])*)"'
         )
@@ -174,28 +176,11 @@ class LLMRouter:
 
         return decoded if isinstance(decoded, str) else None
 
-    async def _handle_route_endpoint(self, scope, receive, send):
-        body, disconnected = await self._read_body(receive)
-        if disconnected:
-            return
-        body_truncated = self._is_body_truncated(scope)
-        try:
-            parsed = orjson.loads(body)
-        except Exception:
-            if not body_truncated:
-                await self._send_json(send, {"error": "invalid json"}, status_code=400)
-                return
-            parsed = {}
+    def _default_model_id(self) -> Optional[str]:
+        return next(iter(self._llm_configs.keys())) if self._llm_configs else None
 
-        if not isinstance(parsed, dict):
-            if not body_truncated:
-                await self._send_json(send, {"error": "invalid json"}, status_code=400)
-                return
-            parsed = {}
-
-        default_model_id = (
-            next(iter(self._llm_configs.keys())) if self._llm_configs else None
-        )
+    def _resolve_model_id(self, parsed: dict, body: bytes) -> Optional[str]:
+        default_model_id = self._default_model_id()
         model = parsed.get("model") or self._extract_json_string_from_prefix(
             body, "model"
         )
@@ -204,8 +189,20 @@ class LLMRouter:
             base = get_base_model_id(model)
             if base not in self._llm_configs:
                 model = None
-        model_id = model or default_model_id
+        return model or default_model_id
 
+    async def _handle_route_endpoint(self, scope, receive, send):
+        body = await self._read_body(receive)
+        if body is None:
+            return
+
+        body_truncated = self._has_header(scope, _BODY_TRUNCATED_HEADER)
+        parsed = self._parse_route_body(body, body_truncated)
+        if parsed is None:
+            await self._send_json(send, {"error": "invalid json"}, status_code=400)
+            return
+
+        model_id = self._resolve_model_id(parsed, body)
         if model_id is None:
             await self._send_json(send, {"error": "no model"}, status_code=404)
             return
@@ -220,15 +217,9 @@ class LLMRouter:
             await self._send_json(send, {"error": str(e)}, status_code=503)
             return
 
-        response = {"host": host, "port": port, "replica_id": replica_id}
-        await self._send_json(send, response)
-
-    async def _setup(self, llm_deployments: List[DeploymentHandle]):
-        for handle in llm_deployments:
-            llm_config = await handle.llm_config.remote()
-            self._default_serve_handles[llm_config.model_id] = handle
-            self._llm_configs[llm_config.model_id] = llm_config
-        self._init_completed.set()
+        await self._send_json(
+            send, {"host": host, "port": port, "replica_id": replica_id}
+        )
 
     async def check_health(self):
         await self._init_completed.wait()
@@ -253,8 +244,8 @@ class LLMRouter:
         if not candidates:
             return None
 
-        index = self._di_round_robin_counter % len(candidates)
-        self._di_round_robin_counter += 1
+        index = self._round_robin_counter % len(candidates)
+        self._round_robin_counter += 1
         return candidates[index]
 
     async def _pick_replica(
@@ -287,6 +278,4 @@ class LLMRouter:
             raise RuntimeError(f"No backend-http-enabled replicas for {model_id}")
 
         replica = self._choose_round_robin_replica(backend_http_replicas)
-        if replica is None:
-            raise RuntimeError(f"No backend-http-enabled replicas for {model_id}")
         return self._replica_route_result(replica)
