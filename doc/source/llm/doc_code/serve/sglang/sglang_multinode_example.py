@@ -16,11 +16,17 @@ llm_config = LLMConfig(
             "target_ongoing_requests": 4,
         }
     },
-    # PACK fills GPUs on each node before moving to the next.
-    # With 8 bundles across 2 nodes (4 GPUs each), each node gets 4 bundles.
+    # SGLangServer (RayEngine) requires one bundle per node, with each
+    # bundle holding that node's full GPU allocation. RayEngine indexes the
+    # placement group by node, so every tp/pp rank assigned to a given node
+    # reuses the same bundle index. With 2 nodes of 4 GPUs each, that means
+    # 2 bundles of {"GPU": 4}; STRICT_PACK keeps each bundle on a single node.
     placement_group_config={
-        "placement_group_bundles": [{"CPU": 1, "GPU": 1}] + [{"GPU": 1}] * 7,
-        "placement_group_strategy": "PACK",
+        "placement_group_bundles": [
+            {"CPU": 1, "GPU": 4},
+            {"CPU": 1, "GPU": 4},
+        ],
+        "placement_group_strategy": "STRICT_PACK",
     },
     server_cls=SGLangServer,
     engine_kwargs={
