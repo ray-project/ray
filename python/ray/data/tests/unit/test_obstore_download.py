@@ -11,8 +11,10 @@ from ray.data._internal.planner._obstore_download import (
     _FILE_SIZE_COLUMN_PREFIX,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
+    _frozen_s3fs_credentials,
     _is_obstore_supported_url,
     _obstore_filesystem_requires_threaded_download,
+    _plan_obstore_routing,
     download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
@@ -63,15 +65,19 @@ class TestDownloadHelpers:
         assert _extract_credentials_from_filesystem(None) == {}
 
     def test_extract_credentials_unrecognized_fs(self):
-        # LocalFileSystem is not S3/GCS/Azure, so no credentials extracted.
-        assert _extract_credentials_from_filesystem(pafs.LocalFileSystem()) == {}
+        # Unrecognized non-None filesystems (LocalFileSystem, custom FS) return
+        # None so the planner routes to the threaded path, keeping the user's
+        # filesystem authoritative instead of handing control to obstore's
+        # default credential chain.
+        assert _extract_credentials_from_filesystem(pafs.LocalFileSystem()) is None
 
     def test_extract_credentials_unwraps_retrying_fs(self):
         # RetryingPyFileSystem must be unwrapped before the isinstance checks,
-        # otherwise an S3/GCS/Azure branch would never be reached.
+        # otherwise an S3/GCS/Azure branch would never be reached. After
+        # unwrapping to an unrecognized FS, extraction returns None.
         inner = pafs.LocalFileSystem()
         retrying = RetryingPyFileSystem.wrap(inner, retryable_errors=[])
-        assert _extract_credentials_from_filesystem(retrying) == {}
+        assert _extract_credentials_from_filesystem(retrying) is None
 
     def test_extract_credentials_unwraps_retrying_fs_over_s3(self):
         # Even when an S3FileSystem is wrapped, credentials must still be
@@ -90,6 +96,7 @@ class TestDownloadHelpers:
         with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
             result = _extract_credentials_from_filesystem(mock_retrying)
 
+        assert result is not None
         assert result.get("region") == "eu-west-1"
 
     # _extract_credentials_from_filesystem with S3
@@ -102,6 +109,7 @@ class TestDownloadHelpers:
         except Exception:
             pytest.skip("Cannot instantiate S3FileSystem in this environment")
         result = _extract_credentials_from_filesystem(fs)
+        assert result is not None
         assert result.get("region") == "us-west-2"
         assert "access_key_id" not in result
         assert "skip_signature" not in result
@@ -117,6 +125,7 @@ class TestDownloadHelpers:
         mock_fs.region = None
         with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
             result = _extract_credentials_from_filesystem(mock_fs)
+        assert result is not None
         assert result.get("skip_signature") is True
         assert "access_key_id" not in result
 
@@ -130,6 +139,7 @@ class TestDownloadHelpers:
         mock_fs.region = "us-west-2"
         with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
             result = _extract_credentials_from_filesystem(mock_fs)
+        assert result is not None
         assert result["access_key_id"] == "AKID"
         assert result["secret_access_key"] == "SECRET"
         assert result["session_token"] == "TOKEN"
@@ -250,6 +260,208 @@ class TestDownloadHelpers:
             )
         with ctx:
             assert _is_obstore_supported_url(uri) is expected
+
+
+# Test helpers for fsspec-S3 credential extraction & routing.
+def _sync_session(access_key, secret_key="sk", token="tk"):
+    """Build a botocore-style sync session returning frozen creds."""
+    frozen = MagicMock(access_key=access_key, secret_key=secret_key, token=token)
+    creds = MagicMock()
+    creds.get_frozen_credentials = MagicMock(return_value=frozen)
+    session = MagicMock()
+    session.get_credentials = MagicMock(return_value=creds)
+    return session
+
+
+def _raising_session(exc=RuntimeError("no creds")):
+    session = MagicMock()
+    session.get_credentials = MagicMock(side_effect=exc)
+    return session
+
+
+def _wrap_s3fs(session=None, storage_options=None, protocol="s3", anon=False):
+    """Build a PyFileSystem(FSSpecHandler(stub)) with the given session."""
+    from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+    inner = MagicMock(
+        protocol=protocol,
+        storage_options=storage_options or {},
+        session=session,
+        key=None,
+        secret=None,
+        token=None,
+        endpoint_url=None,
+        client_kwargs=None,
+        anon=anon,
+    )
+    inner._strip_protocol = lambda p: p.split("://", 1)[-1] if "://" in p else p
+    return PyFileSystem(FSSpecHandler(inner))
+
+
+class TestFsspecSessionCreds:
+    """Session-backed s3fs (Okta / STS / profile-based) credential paths."""
+
+    def test_frozen_sync_and_underscore_fallback(self):
+        # Modern s3fs uses ``session``; older versions used ``_session``.
+        # Both must work and produce identical frozen-credential output.
+        expected = {"access_key": "AKIA", "secret_key": "sk", "token": "tk"}
+
+        modern = MagicMock(session=_sync_session("AKIA"))
+        assert _frozen_s3fs_credentials(modern) == expected
+
+        legacy = MagicMock(spec=["_session"])
+        legacy._session = _sync_session("AKIA")
+        assert _frozen_s3fs_credentials(legacy) == expected
+
+    def test_frozen_async_session(self):
+        # aiobotocore returns coroutines from get_credentials /
+        # get_frozen_credentials; the helper must drive them. Internally
+        # we use ``inspect.isawaitable`` (not ``asyncio.iscoroutine``) so
+        # custom wrappers returning Tasks / Futures / other awaitables
+        # also work.
+        async def _frozen():
+            return MagicMock(access_key="AKIA_AIO", secret_key="s", token="t")
+
+        async def _creds():
+            return MagicMock(get_frozen_credentials=MagicMock(return_value=_frozen()))
+
+        inner = MagicMock()
+        inner.session = MagicMock()
+        inner.session.get_credentials = MagicMock(return_value=_creds())
+        assert _frozen_s3fs_credentials(inner) == {
+            "access_key": "AKIA_AIO",
+            "secret_key": "s",
+            "token": "t",
+        }
+
+    @pytest.mark.parametrize(
+        "session_factory",
+        [
+            pytest.param(lambda: None, id="no-session"),
+            pytest.param(_raising_session, id="session-raises"),
+            pytest.param(lambda: _sync_session(None, None, None), id="empty-creds"),
+        ],
+    )
+    def test_frozen_returns_none_on_failure(self, session_factory):
+        inner = MagicMock()
+        inner.session = session_factory()
+        inner._session = None
+        assert _frozen_s3fs_credentials(inner) is None
+
+    def test_extract_recovers_via_session(self):
+        # The target bug: fsspec s3fs with Okta has static attrs None but
+        # credentials resolvable via session. Extraction must recover them.
+        wrapped = _wrap_s3fs(_sync_session("AKIA_STS", "s_sts", "t_sts"))
+        assert _extract_credentials_from_filesystem(wrapped) == {
+            "access_key_id": "AKIA_STS",
+            "secret_access_key": "s_sts",
+            "session_token": "t_sts",
+        }
+
+    def test_extract_static_wins_over_session(self):
+        # Static storage_options wins — explicit user config is not overridden.
+        session = _sync_session("AKIA_SESSION")
+        wrapped = _wrap_s3fs(
+            session, storage_options={"key": "AKIA_EXPLICIT", "secret": "e"}
+        )
+        result = _extract_credentials_from_filesystem(wrapped)
+        assert result is not None
+        assert result["access_key_id"] == "AKIA_EXPLICIT"
+        assert result["secret_access_key"] == "e"
+        session.get_credentials.assert_not_called()
+
+    def test_extract_anon_skips_session(self):
+        # Anonymous → no creds needed; session must not be invoked.
+        session = _raising_session(AssertionError("must not be called"))
+        wrapped = _wrap_s3fs(session, anon=True)
+        assert _extract_credentials_from_filesystem(wrapped) == {"skip_signature": True}
+
+
+class TestPlanObstoreRouting:
+    """``_plan_obstore_routing`` picks obstore vs threaded with one-shot warning."""
+
+    def setup_method(self):
+        # Clear the module-level dedup so each test sees a fresh warning.
+        from ray.data._internal.planner import _obstore_download as m
+
+        m._warned_credential_fs_ids.clear()
+
+    def test_none_fs_uses_obstore(self):
+        assert _plan_obstore_routing(None) == (True, {})
+
+    def test_extractable_fsspec_s3_uses_obstore(self):
+        wrapped = _wrap_s3fs(
+            storage_options={"key": "AKIA", "secret": "sec", "token": "tok"}
+        )
+        assert _plan_obstore_routing(wrapped) == (
+            True,
+            {
+                "access_key_id": "AKIA",
+                "secret_access_key": "sec",
+                "session_token": "tok",
+            },
+        )
+
+    def test_fsspec_s3_unextractable_warns_once(self):
+        # Patch module logger directly — Ray's internal loggers don't always
+        # propagate to pytest's caplog in sandboxed test runners. This also
+        # covers the dedup path: same FS twice = one warning, different FS =
+        # new warning.
+        fs_a = _wrap_s3fs(_raising_session())
+        fs_b = _wrap_s3fs(_raising_session())
+
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            assert _plan_obstore_routing(fs_a) == (False, {})
+            _plan_obstore_routing(fs_a)  # dedup — no new warning
+            _plan_obstore_routing(fs_b)  # different FS — new warning
+
+        assert mock_logger.warning.call_count == 2
+        msg = mock_logger.warning.call_args_list[0][0][0]
+        assert "S3 credentials" in msg and "storage_options" in msg
+
+    def test_silent_routing_for_unrecognized_fs(self):
+        # Both non-S3 fsspec and native unrecognized filesystems must route
+        # to the threaded path WITHOUT a S3-specific warning. The hardcoded
+        # "pass credentials via fsspec storage_options" advice only makes
+        # sense for fsspec-S3.
+        import fsspec
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+        class _GcsStub(fsspec.AbstractFileSystem):
+            protocol = "gcs"
+
+        filesystems = [
+            PyFileSystem(FSSpecHandler(_GcsStub())),
+            pafs.LocalFileSystem(),
+        ]
+        for fs in filesystems:
+            with patch(
+                "ray.data._internal.planner._obstore_download.logger"
+            ) as mock_logger:
+                assert _plan_obstore_routing(fs) == (False, {})
+                mock_logger.warning.assert_not_called()
+
+    def test_async_partition_actor_fails_closed(self):
+        pytest.importorskip("obstore")
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        with pytest.raises(RuntimeError, match="cannot be statically extracted"):
+            AsyncPartitionActor(
+                ["uri"], DataContext.get_current(), filesystem=pafs.LocalFileSystem()
+            )
+
+    def test_download_uris_fails_closed(self):
+        pytest.importorskip("obstore")
+        with pytest.raises(RuntimeError, match="cannot be statically extracted"):
+            asyncio.run(
+                _download_uris_with_obstore(
+                    ["file:///tmp/x.bin"], "uri", filesystem=pafs.LocalFileSystem()
+                )
+            )
 
 
 # TestObstoreDownloadPath
@@ -434,12 +646,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "big.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/big.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size * 2,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size * 2,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             results = asyncio.run(
                 _download_uris_with_obstore([uri], "uri", file_sizes=[len(content)])
@@ -453,12 +668,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "big2.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/big2.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             results = asyncio.run(
                 _download_uris_with_obstore([uri], "uri", file_sizes=None)
@@ -488,15 +706,19 @@ class TestObstoreRangeSplitDownload:
         def _fail_ranged(*_args, **_kwargs):
             raise AssertionError("_fetch_ranged must not be called")
 
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            100,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            -512,
-        ), patch(
-            "ray.data._internal.planner._obstore_download._fetch_ranged",
-            side_effect=_fail_ranged,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                100,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                -512,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download._fetch_ranged",
+                side_effect=_fail_ranged,
+            ),
         ):
             results2 = asyncio.run(
                 _download_uris_with_obstore([uri2], "uri", file_sizes=[len(content2)])
@@ -515,12 +737,15 @@ class TestObstoreRangeSplitDownload:
             f"file://{tmp_path}/large.bin",
             f"file://{tmp_path}/small.bin",
         ]
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size * 2,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size * 2,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             results = asyncio.run(
                 _download_uris_with_obstore(
@@ -629,12 +854,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "f.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/f.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             import obstore as obs
 
@@ -648,9 +876,10 @@ class TestObstoreRangeSplitDownload:
                 range_calls.append(args)
                 return await original_get_range(*args, **kwargs)
 
-            with patch.object(
-                obs, "head_async", side_effect=_failing_head
-            ), patch.object(obs, "get_range_async", side_effect=_tracking_range):
+            with (
+                patch.object(obs, "head_async", side_effect=_failing_head),
+                patch.object(obs, "get_range_async", side_effect=_tracking_range),
+            ):
                 results = asyncio.run(
                     _download_uris_with_obstore([uri], "uri", file_sizes=[0])
                 )
@@ -678,12 +907,15 @@ class TestObstoreRangeSplitDownload:
         ]
         file_sizes: list[Optional[int]] = [len(large_content), len(small_content), 0]
 
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size * 2,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size * 2,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             import obstore as obs
 
@@ -710,12 +942,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "exact.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/exact.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            threshold,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            256,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                threshold,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                256,
+            ),
         ):
             import obstore as obs
 
@@ -742,12 +977,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "fail.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/fail.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             import obstore as obs
 
@@ -783,15 +1021,17 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/f.bin"
         # Simulate misconfiguration: range splitting on, but concurrency = 0.
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_MAX_CONCURRENCY",
-            0,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.logger"
-        ) as mock_logger:
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_MAX_CONCURRENCY",
+                0,
+            ),
+            patch("ray.data._internal.planner._obstore_download.logger") as mock_logger,
+        ):
             import obstore as obs
 
             # Spy on get_range_async to verify it is never called.
