@@ -3,8 +3,9 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import openai
-import orjson
 import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -30,6 +31,15 @@ class _DirectRouterReplicaId:
         return self._full_id
 
 
+class _FakeRequest:
+    def __init__(self, body: bytes, headers: Optional[dict] = None):
+        self._body = body
+        self.headers = Headers(headers or {})
+
+    async def body(self) -> bytes:
+        return self._body
+
+
 class _DirectRouterReplica:
     def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
         self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
@@ -39,6 +49,8 @@ class _DirectRouterReplica:
 def _new_direct_router():
     router = LLMRouter.__new__(LLMRouter)
     router._round_robin_counter = 0
+    router._cached_replica_signature = None
+    router._cached_sorted_replicas = []
     return router
 
 
@@ -86,87 +98,60 @@ def create_oai_client(llm_config: LLMConfig):
 
 class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
-    async def test_route_endpoint_accepts_truncated_body_prefix(self):
+    async def test_route_forwards_body_and_truncation_signal(self):
         router = _new_direct_router()
-        router._llm_configs = {"llm_model_id": MagicMock()}
         router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
 
-        body = b'{"model":"llm_model_id","prompt":"' + (b"x" * 1024)
-        messages = [{"type": "http.request", "body": body, "more_body": False}]
-        sent = []
+        body = b'{"model":"x","prompt":"' + (b"x" * 1024)
+        request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
 
-        async def receive():
-            return messages.pop(0)
+        result = await router.route(request)
 
-        async def send(message):
-            sent.append(message)
-
-        await router._handle_route_endpoint(
-            {"headers": [(b"x-body-truncated", b"1058/90000")]},
-            receive,
-            send,
-        )
-
-        assert sent[0]["status"] == 200
-        assert orjson.loads(sent[1]["body"]) == {
+        assert result == {
             "host": "127.0.0.1",
             "port": 9001,
             "replica_id": "DeploymentName#replica",
         }
         router._pick_replica.assert_awaited_once_with(
-            "llm_model_id",
-            request_body=body,
-            body_truncated=True,
+            request_body=body, body_truncated=True
         )
 
     @pytest.mark.asyncio
-    async def test_route_endpoint_returns_on_disconnect(self):
+    async def test_route_returns_503_on_pick_failure(self):
         router = _new_direct_router()
-        router._pick_replica = AsyncMock()
-        messages = [{"type": "http.disconnect"}]
-        sent = []
+        router._pick_replica = AsyncMock(side_effect=RuntimeError("no replicas"))
 
-        async def receive():
-            return messages.pop(0)
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 503
+        assert "no replicas" in exc_info.value.detail
 
-        async def send(message):
-            sent.append(message)
-
-        await router._handle_route_endpoint({"headers": []}, receive, send)
-
-        router._pick_replica.assert_not_called()
-        assert sent == []
-
-    def test_round_robin_wraps_in_stable_replica_order(self):
+    def test_ready_replicas_sorts_and_caches_by_replica_id(self):
         router = _new_direct_router()
         replica_a = _DirectRouterReplica("a")
         replica_b = _DirectRouterReplica("b")
         replica_c = _DirectRouterReplica("c")
 
-        picks = [
-            router._choose_round_robin_replica(
-                [replica_c, replica_a, replica_b]
-            ).replica_id.unique_id
-            for _ in range(4)
-        ]
+        request_router = MagicMock()
+        request_router.curr_replicas = {
+            "c": replica_c,
+            "a": replica_a,
+            "b": replica_b,
+        }
 
-        assert picks == ["a", "b", "c", "a"]
+        first = router._ready_replicas(request_router)
+        assert [r.replica_id.unique_id for r in first] == ["a", "b", "c"]
 
-    def test_route_result_returns_full_replica_id_for_haproxy_mapping(self):
-        router = _new_direct_router()
-        replica = _DirectRouterReplica(
-            "short-id",
-            full_id="DeploymentName#short-id",
-            port=9001,
-        )
+        # Same replica set → cached list returned (identity check).
+        assert router._ready_replicas(request_router) is first
 
-        assert router._replica_route_result(replica) == (
-            "127.0.0.1",
-            9001,
-            "DeploymentName#short-id",
-        )
+        # Membership change → cache invalidates and re-sorts.
+        request_router.curr_replicas = {"a": replica_a, "b": replica_b}
+        second = router._ready_replicas(request_router)
+        assert second is not first
+        assert [r.replica_id.unique_id for r in second] == ["a", "b"]
 
 
 class TestOpenAiIngress:
