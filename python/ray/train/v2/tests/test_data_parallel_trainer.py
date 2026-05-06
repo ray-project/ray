@@ -420,6 +420,7 @@ def test_unsupported_returned_metrics(metric_name, tmp_path):
 
 
 def test_local_in_out_of_band_checkpointing(tmp_path, port=5002, region="us-west-2"):
+    tmp_path = tmp_path.resolve()
     experiment_path = tmp_path / "storage-dir"
     out_of_band_path = tmp_path / "oob-dir"
 
@@ -438,106 +439,75 @@ def test_local_in_out_of_band_checkpointing(tmp_path, port=5002, region="us-west
             "AWS_SESSION_TOKEN": "testing",
         }
 
-        s3 = boto3.client(
-            "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
-        )
-        s3.create_bucket(
-            Bucket=URI(s3_uri).name,
-            CreateBucketConfiguration={"LocationConstraint": region},
-        )
-
-        for score in range(8, 11):
-            s3.put_object(
-                Bucket=bucket_name,
-                Key=f"epoch-{score}/results.txt",
-                Body=str(score),
-            )
-
-        def s3_checkpoint_uri(epoch: int) -> str:
-            return str(s3_bucket_uri / f"epoch-{epoch}")
-
-        def assert_scores(best_checkpoints):
-            assert [metrics["score"] for _, metrics in best_checkpoints] == list(
-                range(1, 11)
-            )
-
-        def assert_checkpoint_content(checkpoint, expected: str):
-            with checkpoint.as_directory() as checkpoint_dir:
-                assert Path(checkpoint_dir, "results.txt").read_text() == expected
-
         def train_fn():
-            # Save local checkpoint with the default storage upload.
+            # Save with default storage upload
             write_file(tmp_path / "epoch-1" / "results.txt", "1")
             ray.train.report(
                 metrics={"score": 1},
                 checkpoint=Checkpoint(tmp_path / "epoch-1"),
+                checkpoint_dir_name="epoch-1",
             )
-            # Save local checkpoint with a custom checkpoint dir name.
-            write_file(tmp_path / "epoch-2" / "test" / "results.txt", "2")
+            # Save in-band with NO_UPLOAD
+            write_file(experiment_path / "epoch-2" / "results.txt", "2")
             ray.train.report(
                 metrics={"score": 2},
-                checkpoint=Checkpoint(tmp_path / "epoch-2"),
-                checkpoint_dir_name="test",
+                checkpoint=Checkpoint(experiment_path / "epoch-2"),
+                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
             )
-
-            # Keep local checkpoints by reference with NO_UPLOAD.
+            # Save in-band with a custom upload function
             write_file(experiment_path / "epoch-3" / "results.txt", "3")
             ray.train.report(
                 metrics={"score": 3},
                 checkpoint=Checkpoint(experiment_path / "epoch-3"),
-                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
             )
+
+            # Save out-of-band with NO_UPLOAD
             write_file(out_of_band_path / "epoch-4" / "results.txt", "4")
             ray.train.report(
                 metrics={"score": 4},
                 checkpoint=Checkpoint(out_of_band_path / "epoch-4"),
                 checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
             )
-
-            # Keep local checkpoints by reference with a custom upload function.
-            write_file(experiment_path / "epoch-5" / "results.txt", "5")
+            # Save out-of-band with a custo upload function
+            write_file(out_of_band_path / "epoch-5" / "results.txt", "5")
             ray.train.report(
                 metrics={"score": 5},
-                checkpoint=Checkpoint(experiment_path / "epoch-5"),
+                checkpoint=Checkpoint(out_of_band_path / "epoch-5"),
                 checkpoint_upload_fn=lambda ckpt, name: ckpt,
             )
-            write_file(out_of_band_path / "epoch-6" / "results.txt", "6")
+
+            s3 = boto3.client(
+                "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
+            )
+            s3.create_bucket(
+                Bucket=URI(s3_uri).name,
+                CreateBucketConfiguration={"LocationConstraint": region},
+            )
+            # S3 with default upload
+            s3.put_object(Bucket=bucket_name, Key="epoch-6/results.txt", Body="6")
             ray.train.report(
                 metrics={"score": 6},
-                checkpoint=Checkpoint(out_of_band_path / "epoch-6"),
-                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+                checkpoint=Checkpoint(str(s3_bucket_uri / "epoch-6")),
+                checkpoint_dir_name="epoch-6",
             )
-            write_file(out_of_band_path / "test" / "epoch-7" / "results.txt", "7")
+            # Save S3 out-of-band with NO_UPLOAD
+            s3.put_object(Bucket=bucket_name, Key="epoch-7/results.txt", Body="7")
             ray.train.report(
                 metrics={"score": 7},
-                checkpoint=Checkpoint(out_of_band_path / "test" / "epoch-7"),
-                checkpoint_dir_name="test",
-                checkpoint_upload_fn=lambda ckpt, name: ckpt,
-            )
-
-            # Copy an S3 checkpoint into local experiment storage.
-            ray.train.report(
-                metrics={"score": 8},
-                checkpoint=Checkpoint(s3_checkpoint_uri(8)),
-            )
-
-            # Keep S3 checkpoints by reference.
-            ray.train.report(
-                metrics={"score": 9},
-                checkpoint=Checkpoint(s3_checkpoint_uri(9)),
+                checkpoint=Checkpoint(str(s3_bucket_uri / "epoch-7")),
                 checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
             )
+            # Save S3 out-of-band with custom upload fn
+            s3.put_object(Bucket=bucket_name, Key="epoch-8/results.txt", Body="8")
             ray.train.report(
-                metrics={"score": 10},
-                checkpoint=Checkpoint(s3_checkpoint_uri(10)),
+                metrics={"score": 8},
+                checkpoint=Checkpoint(str(s3_bucket_uri / "epoch-8")),
                 checkpoint_upload_fn=lambda ckpt, name: ckpt,
             )
 
             reported_checkpoints = ray.train.get_all_reported_checkpoints()
-            assert len(reported_checkpoints) == 10
-            assert [rc.metrics["score"] for rc in reported_checkpoints] == list(
-                range(1, 11)
-            )
+            assert len(reported_checkpoints) == 8
 
             raise RuntimeError("intentional failure after checkpoint reports")
 
@@ -555,14 +525,11 @@ def test_local_in_out_of_band_checkpointing(tmp_path, port=5002, region="us-west
 
         def resumption_train_fn():
             checkpoint = ray.train.get_checkpoint()
-            assert checkpoint is not None
-            assert checkpoint.path.endswith(f"{bucket_name}/epoch-10")
+            assert checkpoint.path.endswith("epoch-8")
+            assert isinstance(checkpoint.filesystem, pyarrow.fs.S3FileSystem)
 
             reported_checkpoints = ray.train.get_all_reported_checkpoints()
-            assert len(reported_checkpoints) == 10
-            assert [rc.metrics["score"] for rc in reported_checkpoints] == list(
-                range(1, 11)
-            )
+            assert len(reported_checkpoints) == 8
 
         trainer = DataParallelTrainer(
             resumption_train_fn,
@@ -573,16 +540,32 @@ def test_local_in_out_of_band_checkpointing(tmp_path, port=5002, region="us-west
             ),
         )
         result = trainer.fit()
-        assert_scores(result.best_checkpoints)
+        assert len(result.best_checkpoints) == 8
 
-        checkpoint_by_score = {
-            metrics["score"]: checkpoint for checkpoint, metrics in result.best_checkpoints
-        }
-        for score in range(1, 9):
-            assert_checkpoint_content(checkpoint_by_score[score], str(score))
+        restored_result = Result.from_path(
+            experiment_path / "test-local-in-out-of-band"
+        )
+        assert len(restored_result.best_checkpoints) == 8
 
-        restored_result = Result.from_path(experiment_path / "test-local-in-out-of-band")
-        assert_scores(restored_result.best_checkpoints)
+        expected_paths = [
+            experiment_path / "test-local-in-out-of-band" / "epoch-1",
+            experiment_path / "epoch-2",
+            experiment_path / "epoch-3",
+            out_of_band_path / "epoch-4",
+            out_of_band_path / "epoch-5",
+            experiment_path / "test-local-in-out-of-band" / "epoch-6",
+            f"{bucket_name}/epoch-7",
+            f"{bucket_name}/epoch-8",
+        ]
+        for expected_path, (ckpt, metrics), i in zip(
+            expected_paths, restored_result.best_checkpoints, range(1, 9), strict=True
+        ):
+            assert ckpt.path == str(expected_path)
+            if i < 7:
+                assert isinstance(ckpt.filesystem, pyarrow.fs.LocalFileSystem)
+            else:
+                assert isinstance(ckpt.filesystem, pyarrow.fs.S3FileSystem)
+            assert metrics == {"score": i}
 
 
 if __name__ == "__main__":

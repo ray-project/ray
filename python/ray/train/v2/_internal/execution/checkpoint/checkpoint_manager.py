@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import pyarrow
+
 import ray
 from ray._common.pydantic_compat import BaseModel
 from ray._private.ray_constants import env_float
@@ -80,12 +82,12 @@ class _CheckpointManagerState(BaseModel):
 
 # Mapping from pyarrow FileSystem.type_name to URI scheme for from_uri.
 # LocalFileSystem is special-cased and reconstructed without going through from_uri.
-_TYPE_NAME_TO_URI_SCHEME = {
-    "local": "",
-    "s3": "s3://",
-    "gcs": "gs://",
-    "hdfs": "hdfs://",
-    "abfs": "abfs://",
+_TYPE_NAME_FS_CLS = {
+    "local": lambda: pyarrow.fs.LocalFileSystem(),
+    "s3": lambda: pyarrow.fs.S3FileSystem(),
+    "gcs": lambda: pyarrow.fs.GcsFileSystem(),
+    "hdfs": lambda: pyarrow.fs.HadoopFileSystem("missing-host"),
+    "abfs": lambda: pyarrow.fs.AzureFileSystem("missing-host"),
 }
 
 
@@ -137,9 +139,9 @@ def _get_training_result_from_state(
             state.checkpoint_dir_name,
         )
 
-    scheme = _TYPE_NAME_TO_URI_SCHEME.get(state.checkpoint_filesystem_type)
+    fs = _TYPE_NAME_FS_CLS[state.checkpoint_filesystem_type]
     return _TrainingResult(
-        checkpoint=Checkpoint(f"{scheme}{state.checkpoint_dir_name}"),
+        checkpoint=Checkpoint(state.checkpoint_dir_name, filesystem=fs()),
         metrics=state.metrics,
     )
 
