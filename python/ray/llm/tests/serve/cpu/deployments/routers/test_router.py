@@ -22,18 +22,23 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 
 
+class _DirectRouterReplicaId:
+    def __init__(self, unique_id: str, full_id: Optional[str] = None):
+        self.unique_id = unique_id
+        self._full_id = full_id or unique_id
+
+    def to_full_id_str(self) -> str:
+        return self._full_id
+
+
 class _DirectRouterReplica:
-    def __init__(self, replica_id: str):
-        self.replica_id = replica_id
-        self.backend_http_endpoint = ("127.0.0.1", 8000)
+    def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
+        self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
+        self.backend_http_endpoint = ("127.0.0.1", port)
 
 
-def _new_direct_router(*, optimistic_load: bool = False):
+def _new_direct_router():
     router = LLMRouter.__new__(LLMRouter)
-    router._di_load_cache = {}
-    router._di_optimistic_load = optimistic_load
-    router._di_poll_interval_s = 0.05
-    router._di_routing_policy = "pow2"
     router._di_round_robin_counter = 0
     return router
 

@@ -104,8 +104,7 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         return
     end
 
-    local response_body = http_response_body(response)
-    local replica_id = extract_json_string(response_body, "replica_id")
+    local replica_id = extract_replica_id(http_response_body(response))
     if not replica_id then
         return
     end
