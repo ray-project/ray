@@ -16,8 +16,10 @@
 
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <utility>
 
+#include "ray/common/id.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -48,6 +50,24 @@ CoreWorkerClient::CoreWorkerClient(
 void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
                                      bool skip_queue,
                                      ClientCallback<PushTaskReply> &&callback) {
+  // [karticam] Log every PushActorTask: the caller (this CoreWorker) is sending
+  // a task RPC to the actor's worker. Log task id, function, by-ref args, and
+  // sequence info so we can trace which tasks are actually leaving the driver.
+  // {
+  //   std::stringstream args_ss;
+  //   for (int i = 0; i < request->task_spec().args_size(); i++) {
+  //     const auto &arg = request->task_spec().args(i);
+  //     if (!arg.object_ref().object_id().empty()) {
+  //       args_ss << ObjectID::FromBinary(arg.object_ref().object_id()) << " ";
+  //     }
+  //   }
+  //   RAY_LOG(INFO) << "[karticam] CoreWorkerClient::PushActorTask: "
+  //                 << "task_id=" << TaskID::FromBinary(request->task_spec().task_id())
+  //                 << " func=" << request->task_spec().name()
+  //                 << " seq=" << request->sequence_number() << " skip_queue=" <<
+  //                 skip_queue
+  //                 << " by_ref_args=[ " << args_ss.str() << "]";
+  // }
   if (skip_queue) {
     // Set this value so that the actor does not skip any tasks when
     // processing this request. We could also set it to max_finished_seq_no_,

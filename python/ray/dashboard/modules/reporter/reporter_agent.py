@@ -1325,6 +1325,58 @@ class ReporterAgent(
 
         return records
 
+    def _log_process_memory_stats(self, stats: dict):
+        """Log per-component memory stats (RSS, USS, shared) for observability."""
+        # [karticam] mem-stats logging disabled for benchmark.
+        # node_mem = stats.get("mem")
+        # mem_line = ""
+        # if node_mem:
+        #     mem_line = (
+        #         f"node_mem: total={node_mem[0] / 1e6:.0f}MB "
+        #         f"avail={node_mem[1] / 1e6:.0f}MB "
+        #         f"used_pct={node_mem[2]:.1f}%"
+        #     )
+
+        # lines = [f"[karticam] [mem-stats] ip={self._ip} {mem_line}"]
+        # for component_name, component_stats in [
+        #     ("raylet", [stats.get("raylet")] if stats.get("raylet") else []),
+        #     ("agent", [stats.get("agent")] if stats.get("agent") else []),
+        # ]:
+        #     for s in component_stats:
+        #         mem_info = s.get("memory_info")
+        #         if not mem_info:
+        #             continue
+        #         rss_mb = mem_info.rss / 1e6
+        #         shm_mb = getattr(mem_info, "shared", 0) / 1e6
+        #         uss_mb = rss_mb - shm_mb
+        #         mem_full = s.get("memory_full_info")
+        #         if mem_full and hasattr(mem_full, "uss"):
+        #             uss_mb = mem_full.uss / 1e6
+        #         lines.append(
+        #             f"[karticam] [mem-stats]   {component_name} pid={s.get('pid')}: "
+        #             f"rss={rss_mb:.1f}MB uss={uss_mb:.1f}MB shm={shm_mb:.1f}MB"
+        #         )
+
+        # for w in stats.get("workers", []):
+        #     mem_info = w.get("memory_info")
+        #     if not mem_info:
+        #         continue
+        #     rss_mb = mem_info.rss / 1e6
+        #     shm_mb = getattr(mem_info, "shared", 0) / 1e6
+        #     uss_mb = rss_mb - shm_mb
+        #     mem_full = w.get("memory_full_info")
+        #     if mem_full and hasattr(mem_full, "uss"):
+        #         uss_mb = mem_full.uss / 1e6
+        #     cmdline = " ".join(w.get("cmdline", [])[:3])
+        #     lines.append(
+        #         f"[karticam] [mem-stats]   worker pid={w.get('pid')}: "
+        #         f"rss={rss_mb:.1f}MB uss={uss_mb:.1f}MB shm={shm_mb:.1f}MB "
+        #         f"cmd={cmdline}"
+        #     )
+
+        # logger.info("\n".join(lines))
+        return
+
     def _generate_reseted_gpu_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
         the GPU metrics of a given component name.
@@ -1867,6 +1919,8 @@ class ReporterAgent(
         autoscaler_v2_enabled: bool,
     ) -> str:
         stats = await self._async_collect_stats()
+
+        self._log_process_memory_stats(stats)
 
         # Report stats only when metrics collection is enabled.
         if not self._metrics_collection_disabled:

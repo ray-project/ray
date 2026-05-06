@@ -83,7 +83,7 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
       const std::string &object_url,
       std::function<void(const ray::Status &)> callback) override {}
 
-  void FlushFreeObjects() override{};
+  void FlushFreeObjects(bool local_only = false) override{};
 
   bool ObjectPendingDeletion(const ObjectID &object_id) override {
     return objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end();
@@ -104,6 +104,8 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
   bool HasLocallySpilledObjects() const override { return false; }
 
   std::string DebugString() const override { return ""; }
+
+  void ReleaseFreedObject(const ObjectID &object_id, bool local_only = false) override {}
 
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;

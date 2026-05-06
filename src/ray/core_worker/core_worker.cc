@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <future>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -2765,6 +2767,11 @@ Status CoreWorker::ExecuteTask(
     bool *is_retryable_error,
     std::string *actor_repr_name,
     std::string *application_error) {
+  // RAY_LOG(INFO) << "[karticam] CoreWorker::ExecuteTask: "
+  //               << "task_id=" << task_spec.TaskId() << " func=" << task_spec.GetName()
+  //               << " thread=" << std::this_thread::get_id()
+  //               << " (about to call user function — this thread will block in user
+  //               code)";
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
@@ -3327,6 +3334,20 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   std::vector<ObjectID> object_ids =
       std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
   auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
+  // [karticam] Log when the worker is about to read args from plasma. For
+  // actor tasks these are already local by now (raylet pulled them via
+  // WaitForActorCallArgs); this is just the local plasma Get.
+  // if (!object_ids.empty()) {
+  //   std::stringstream ids_ss;
+  //   for (const auto &id : object_ids) {
+  //     ids_ss << id << " ";
+  //   }
+  //   RAY_LOG(INFO) << "[karticam] GetAndPinArgs plasma Get (args should be local): "
+  //                 << "count=" << object_ids.size()
+  //                 << " thread=" << std::this_thread::get_id() << " ids=[ " <<
+  //                 ids_ss.str()
+  //                 << "]";
+  // }
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
   for (const auto &it : result_map) {
@@ -3343,6 +3364,25 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
+
+  // [karticam] Log the task arrival and its arguments (ObjectRef args).
+  // {
+  //   std::stringstream args_ss;
+  //   for (int i = 0; i < request.task_spec().args_size(); i++) {
+  //     const auto &arg = request.task_spec().args(i);
+  //     if (!arg.object_ref().object_id().empty()) {
+  //       args_ss << ObjectID::FromBinary(arg.object_ref().object_id()) << " ";
+  //     }
+  //   }
+  //   const std::string args_str = args_ss.str();
+  //   if (!args_str.empty()) {
+  //     RAY_LOG(INFO) << "[karticam] HandlePushTask (task arrived at worker): "
+  //                   << "task_id=" << TaskID::FromBinary(request.task_spec().task_id())
+  //                   << " func=" << request.task_spec().name()
+  //                   << " thread=" << std::this_thread::get_id() << " by_ref_args=[ "
+  //                   << args_str << "]";
+  //   }
+  // }
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -3427,11 +3467,16 @@ void CoreWorker::HandleActorCallArgWaitComplete(
     return;
   }
 
+  // RAY_LOG(INFO) << "[karticam] HandleActorCallArgWaitComplete: tag=" << request.tag()
+  //               << " thread=" << std::this_thread::get_id();
+
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
       [this, tag = request.tag()] {
-        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
+        // RAY_LOG(INFO) << "[karticam] MarkActorTaskArgsReady (posted callback running):
+        // "
+        //               << "tag=" << tag << " thread=" << std::this_thread::get_id();
         actor_task_execution_arg_waiter_->MarkReady(tag);
       },
       "CoreWorker.MarkActorTaskArgsReady");

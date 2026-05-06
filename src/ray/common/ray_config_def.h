@@ -45,7 +45,7 @@ RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 2000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
@@ -378,6 +378,10 @@ RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 /// Negative: waiting infinitely.
 /// 0: giving up retrying immediately.
 RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
+
+/// Whether to enable move semantics for plasma objects. When enabled, the local
+/// copy of an object is freed after it has been successfully pushed to another node.
+RAY_CONFIG(bool, enable_plasma_move_semantics, true)
 
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more

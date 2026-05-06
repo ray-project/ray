@@ -16,7 +16,9 @@
 
 #include <algorithm>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace ray {
@@ -108,6 +110,19 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
 
   if (!dependencies.empty()) {
+    // [karticam] Log that this actor task is now asking its local raylet to
+    // fetch its by-ref dependencies (this triggers the pull chain).
+    // {
+    //   std::stringstream deps_ss;
+    //   for (const auto &dep : dependencies) {
+    //     deps_ss << ObjectID::FromBinary(dep.object_id()) << " ";
+    //   }
+    //   RAY_LOG(INFO) << "[karticam] Actor task requesting deps fetch: "
+    //                 << "task_id=" << task_spec.TaskId() << " func=" <<
+    //                 task_spec.GetName()
+    //                 << " thread=" << std::this_thread::get_id() << " deps=[ "
+    //                 << deps_ss.str() << "]";
+    // }
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -115,37 +130,43 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task, group]() {
-      TaskToExecute *ready_task = nullptr;
-      if (is_retry) {
-        // retry_task is guaranteed to be a valid pointer for retries
-        // because it won't be erased from the retry list until its
-        // dependencies are fetched and ExecuteRequest happens.
-        ready_task = retry_task;
-      } else {
-        auto &group_state_in = group_states_.at(group);
-        auto it = group_state_in.pending_tasks.find(seq_no);
-        if (it != group_state_in.pending_tasks.end()) {
-          // For non-retry tasks, we need to check if the task is
-          // still in the map because it can be erased due to being
-          // canceled via a higher `client_processed_up_to`.
-          ready_task = &it->second;
-        }
-      }
+    auto task_id = task_spec.TaskId();
+    waiter_.AsyncWait(dependencies,
+                      [this, seq_no, is_retry, retry_task, group, task_id]() {
+                        // RAY_LOG(INFO) << "[karticam] Actor task deps ready (raylet
+                        // signaled): "
+                        //               << "task_id=" << task_id
+                        //               << " thread=" << std::this_thread::get_id();
+                        TaskToExecute *ready_task = nullptr;
+                        if (is_retry) {
+                          // retry_task is guaranteed to be a valid pointer for retries
+                          // because it won't be erased from the retry list until its
+                          // dependencies are fetched and ExecuteRequest happens.
+                          ready_task = retry_task;
+                        } else {
+                          auto &group_state_in = group_states_.at(group);
+                          auto it = group_state_in.pending_tasks.find(seq_no);
+                          if (it != group_state_in.pending_tasks.end()) {
+                            // For non-retry tasks, we need to check if the task is
+                            // still in the map because it can be erased due to being
+                            // canceled via a higher `client_processed_up_to`.
+                            ready_task = &it->second;
+                          }
+                        }
 
-      if (ready_task != nullptr) {
-        const auto &ready_task_spec = ready_task->TaskSpec();
-        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            ready_task_spec.TaskId(),
-            ready_task_spec.JobId(),
-            ready_task_spec.AttemptNumber(),
-            ready_task_spec,
-            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-            /* include_task_info */ false));
-        ready_task->MarkDependenciesResolved();
-        ExecuteQueuedTasks();
-      }
-    });
+                        if (ready_task != nullptr) {
+                          const auto &ready_task_spec = ready_task->TaskSpec();
+                          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                              ready_task_spec.TaskId(),
+                              ready_task_spec.JobId(),
+                              ready_task_spec.AttemptNumber(),
+                              ready_task_spec,
+                              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                              /* include_task_info */ false));
+                          ready_task->MarkDependenciesResolved();
+                          ExecuteQueuedTasks();
+                        }
+                      });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),

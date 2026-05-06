@@ -108,10 +108,42 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
+void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool local_only) {
   // Only free the object if it is not already freed.
+  // RAY_LOG(INFO) << "[karticam] ReleaseFreedObject called for objectId: " << object_id
+  //               << " local_only=" << local_only;
+
+  // TODO(karticam): CHECK THESE EDGE CASES:
+  // consider driver handling producer and consumer.
+  // say push completes, and move semantic calls ReleaseFreedObject. now producer
+  // is executing ReleaseFreedObject. but while its doing so, the consumer function
+  // using the object finishes and the driver also makes ref go out of scope, which
+  // means that ref_count goes to 0 => which triggers pub-sub callback and
+  // releaseFreedObject is called again. This might RACE??? Since
+  // its highly possible that both calls to ReleaseFreedObject are posted on the same
+  // thread and are serial, this might be fine. CHECK IF THIS IS HAPPENING. Also, even
+  // if this is the case, the order of execution might be reversed. Say the consumer
+  // execution finishes before move semantics callback is triggered, then the ref count
+  // call of ReleaseFreedObject will be called before move semantic triggered
+  // ReleaseFreedObject. CHECK if that's fine!!!
+
+  // [karticam] If this is the owner's eviction (local_only=false) for an object
+  // that was previously released locally via move semantics (local_only=true),
+  // we still need to broadcast FreeObjectsRequest to other nodes so they can
+  // clean up their copies (e.g. the consumer's plasma).
+  if (!local_only && moved_out_pending_broadcast_.erase(object_id) > 0) {
+    // RAY_LOG(INFO) << "[karticam] Broadcasting delayed FreeObjectsRequest for "
+    //               << object_id << " (was released locally via move semantics)";
+    on_objects_freed_({object_id}, /*local_only=*/false);
+    return;
+  }
+
   auto it = local_objects_.find(object_id);
   if (it == local_objects_.end() || it->second.is_freed_) {
+    // RAY_LOG(INFO) << "[karticam] ReleaseFreedObject early return since cond1 = "
+    //               << (it == local_objects_.end()) << " and "
+    //               << "cond2 = "
+    //               << (it != local_objects_.end() ? it->second.is_freed_ : false);
     return;
   }
   // Mark the object as freed. NOTE(swang): We have to mark this instead of
@@ -120,7 +152,9 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   // spill is complete.
   it->second.is_freed_ = true;
 
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+  // RAY_LOG(INFO) << "[karticam] Unpinning object " << object_id
+  //               << " local_only=" << local_only << " was_pinned="
+  //               << (pinned_objects_.find(object_id) != pinned_objects_.end());
   // The object should be in one of these states: pinned, spilling, or spilled.
   auto pinned_objects_it = pinned_objects_.find(object_id);
   RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
@@ -137,25 +171,32 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
     spilled_object_pending_delete_.push(object_id);
   }
 
+  // [karticam] For move-semantics releases, remember to broadcast later when
+  // the owner's eviction message arrives (so the consumer's plasma gets cleaned up).
+  if (local_only) {
+    moved_out_pending_broadcast_.insert(object_id);
+  }
+
   // Try to evict all copies of the object from the cluster.
   if (free_objects_period_ms_ >= 0) {
     objects_pending_deletion_.emplace(object_id);
   }
   if (objects_pending_deletion_.size() == free_objects_batch_size_ ||
-      free_objects_period_ms_ == 0) {
-    FlushFreeObjects();
+      free_objects_period_ms_ == 0 || local_only) {
+    FlushFreeObjects(local_only);
   }
 }
 
-void LocalObjectManager::FlushFreeObjects() {
+void LocalObjectManager::FlushFreeObjects(bool local_only) {
   if (!objects_pending_deletion_.empty()) {
-    RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()
-                   << " out-of-scope objects";
+    // RAY_LOG(INFO) << "[karticam] FlushFreeObjects freeing "
+    //               << objects_pending_deletion_.size()
+    //               << " out-of-scope objects, local_only=" << local_only;
     // TODO(irabbani): CORE-1640 will modify as much as the plasma API as is
     // reasonable to remove usage of vectors in favor of sets.
     std::vector<ObjectID> objects_to_delete(objects_pending_deletion_.begin(),
                                             objects_pending_deletion_.end());
-    on_objects_freed_(objects_to_delete);
+    on_objects_freed_(objects_to_delete, local_only);
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
