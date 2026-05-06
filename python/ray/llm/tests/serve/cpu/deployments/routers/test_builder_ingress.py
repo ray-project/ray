@@ -19,7 +19,6 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
     build_openai_app,
-    build_openai_ingress_request_router,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
@@ -392,32 +391,6 @@ class TestBuildOpenaiApp:
         assert ingress_request_router._bound_deployment.init_kwargs[
             "llm_deployment_names"
         ] == ["LLMServer:test-model"]
-
-    def test_direct_streaming_passes_router_knobs(self, llm_config, monkeypatch):
-        monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_OPTIMISTIC_LOAD", "1")
-        monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_POLL_INTERVAL_S", "0.005")
-        monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_POLICY", "round_robin")
-
-        class FakeBoundDeployment:
-            name = "LLMServer:test-model"
-
-        class FakeApp:
-            _bound_deployment = FakeBoundDeployment()
-
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "_build_direct_streaming_llm_deployments",
-            lambda llm_configs: [FakeApp()],
-        )
-
-        app = build_openai_ingress_request_router(
-            LLMServingArgs(llm_configs=[llm_config])
-        )
-        init_kwargs = app._bound_deployment.init_kwargs
-
-        assert init_kwargs["optimistic_load"] is True
-        assert init_kwargs["poll_interval_s"] == 0.005
-        assert init_kwargs["routing_policy"] == "round_robin"
 
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch

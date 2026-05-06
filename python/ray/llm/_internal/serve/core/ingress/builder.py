@@ -27,28 +27,6 @@ from ray.serve.deployment import Application
 logger = get_logger(__name__)
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.lower() in {"1", "true", "t", "yes", "y", "on"}
-
-
-def _env_float_non_negative(name: str, default: float) -> float:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    try:
-        parsed = float(value)
-    except ValueError:
-        logger.warning("Ignoring invalid %s=%r", name, value)
-        return default
-    if parsed < 0:
-        logger.warning("Ignoring negative %s=%r", name, value)
-        return default
-    return parsed
-
-
 def _get_llm_deployment_names(llm_deployments: List[Application]) -> List[str]:
     return [app._bound_deployment.name for app in llm_deployments]
 
@@ -91,14 +69,7 @@ def build_openai_ingress_request_router(builder_config: dict) -> Application:
     _validate_direct_streaming_llm_configs(llm_configs)
     llm_deployments = _build_direct_streaming_llm_deployments(llm_configs)
 
-    from ray.llm._internal.serve.core.ingress.router import (
-        DEFAULT_DIRECT_ROUTER_POLICY,
-        DEFAULT_DIRECT_ROUTER_POLL_INTERVAL_S,
-        DIRECT_ROUTER_OPTIMISTIC_LOAD_ENV,
-        DIRECT_ROUTER_POLICY_ENV,
-        DIRECT_ROUTER_POLL_INTERVAL_ENV,
-        LLMRouter,
-    )
+    from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
     num_ingress_request_router_replicas = 1
     logger.info(
@@ -116,15 +87,6 @@ def build_openai_ingress_request_router(builder_config: dict) -> Application:
     ).bind(
         llm_deployment_names=_get_llm_deployment_names(llm_deployments),
         llm_configs_pre=llm_configs,
-        optimistic_load=_env_bool(DIRECT_ROUTER_OPTIMISTIC_LOAD_ENV),
-        poll_interval_s=_env_float_non_negative(
-            DIRECT_ROUTER_POLL_INTERVAL_ENV,
-            DEFAULT_DIRECT_ROUTER_POLL_INTERVAL_S,
-        ),
-        routing_policy=os.environ.get(
-            DIRECT_ROUTER_POLICY_ENV,
-            DEFAULT_DIRECT_ROUTER_POLICY,
-        ),
     )
 
 

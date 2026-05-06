@@ -11,10 +11,6 @@ local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
 
-local function extract_json_string(json_body, field)
-    return json_body:match('"' .. field .. '"%s*:%s*"([^"]+)"')
-end
-
 local function call_router(router, body)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
@@ -54,17 +50,8 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
-local function warn_if_truncated(txn, body)
-    local content_length = txn.sf:hdr("content-length")
-    if not content_length then
-        return
-    end
-    local cl = tonumber(content_length)
-    if cl and #body < cl then
-        core.log(core.warning,
-            "ingress_request_router: routing on truncated body ("
-                .. #body .. "/" .. cl .. " bytes)")
-    end
+local function extract_replica_id(json_body)
+    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
 
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
@@ -78,20 +65,15 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         return
     end
 
-    local body = txn.sf:req_body()
-    if not body or body == "" then
-        return
-    end
-
-    warn_if_truncated(txn, body)
-
-    local response = call_router(router, body)
+    -- Direct streaming currently supports exactly one LLM config per app, so
+    -- routing only needs the app's default model. Avoid buffering and copying
+    -- large prompt bodies through HAProxy's Lua path.
+    local response = call_router(router, "{}")
     if not response or not is_http_200(response) then
         return
     end
 
-    local response_body = http_response_body(response)
-    local replica_id = extract_json_string(response_body, "replica_id")
+    local replica_id = extract_replica_id(http_response_body(response))
     if not replica_id then
         return
     end
