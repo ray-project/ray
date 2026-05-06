@@ -15,8 +15,11 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
 #include <future>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -2765,7 +2768,8 @@ Status CoreWorker::ExecuteTask(
     bool *is_retryable_error,
     std::string *actor_repr_name,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "(karticam) [TASK-EXEC] pid=" << pid_
+                << " Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
@@ -2903,6 +2907,55 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
+  // --- karticam: memory instrumentation around UDF execution ---
+  struct MemInfo {
+    double rss_mb = -1.0;
+    double uss_mb = -1.0;
+    double shared_mb = -1.0;
+  };
+  auto read_mem = []() -> MemInfo {
+    MemInfo info;
+#ifdef __linux__
+    // RSS from /proc/self/statm (fast)
+    {
+      std::ifstream statm("/proc/self/statm");
+      if (statm.is_open()) {
+        long pages = 0;
+        statm >> pages;  // total VM (skip)
+        statm >> pages;  // RSS in pages
+        info.rss_mb = pages * sysconf(_SC_PAGESIZE) / 1e6;
+      }
+    }
+    // USS from /proc/self/smaps_rollup (slower but accurate)
+    {
+      std::ifstream smaps("/proc/self/smaps_rollup");
+      if (smaps.is_open()) {
+        std::string line;
+        double private_clean = 0, private_dirty = 0, shared_clean = 0, shared_dirty = 0;
+        while (std::getline(smaps, line)) {
+          long val = 0;
+          if (sscanf(line.c_str(), "Private_Clean: %ld kB", &val) == 1) {
+            private_clean = val / 1e3;
+          } else if (sscanf(line.c_str(), "Private_Dirty: %ld kB", &val) == 1) {
+            private_dirty = val / 1e3;
+          } else if (sscanf(line.c_str(), "Shared_Clean: %ld kB", &val) == 1) {
+            shared_clean = val / 1e3;
+          } else if (sscanf(line.c_str(), "Shared_Dirty: %ld kB", &val) == 1) {
+            shared_dirty = val / 1e3;
+          }
+        }
+        info.uss_mb = private_clean + private_dirty;
+        info.shared_mb = shared_clean + shared_dirty;
+      }
+    }
+#endif
+    return info;
+  };
+  auto mem_before = read_mem();
+  RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+      << "(karticam) [MEM-BEFORE-PYTASK] rss_mb=" << mem_before.rss_mb
+      << " uss_mb=" << mem_before.uss_mb << " shared_mb=" << mem_before.shared_mb;
+
   Status status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2928,6 +2981,100 @@ Status CoreWorker::ExecuteTask(
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
       /*tensor_transport=*/task_spec.TensorTransport());
+
+  auto mem_after = read_mem();
+  RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+      << "(karticam) [MEM-AFTER-PYTASK] rss_mb=" << mem_after.rss_mb
+      << " uss_mb=" << mem_after.uss_mb << " shared_mb=" << mem_after.shared_mb
+      << " rss_delta_mb=" << (mem_after.rss_mb - mem_before.rss_mb)
+      << " uss_delta_mb=" << (mem_after.uss_mb - mem_before.uss_mb);
+
+  // --- karticam: memory breakdown by mapping from /proc/self/smaps ---
+#ifdef __linux__
+  {
+    std::ifstream smaps("/proc/self/smaps");
+    if (smaps.is_open()) {
+      // Per-mapping tracking: each mapping gets its own entry with address range
+      struct MappingInfo {
+        std::string addr_range;
+        std::string name;
+        std::string perms;
+        long priv_dirty = 0;
+        long priv_clean = 0;
+        long shared_dirty = 0;
+        long shared_clean = 0;
+        long size = 0;
+        long rss = 0;
+      };
+      std::vector<MappingInfo> mappings;
+      long total_priv_dirty = 0, total_priv_clean = 0;
+      long total_shared_dirty = 0, total_shared_clean = 0;
+      std::string line;
+      while (std::getline(smaps, line)) {
+        if (!line.empty() && !std::isspace(line[0]) && line.size() > 2 &&
+            line.find('-') < line.find(' ')) {
+          mappings.emplace_back();
+          auto &m = mappings.back();
+          auto space1 = line.find(' ');
+          m.addr_range = line.substr(0, space1);
+          auto space2 = line.find(' ', space1 + 1);
+          m.perms = line.substr(space1 + 1, space2 - space1 - 1);
+          int spaces = 0;
+          size_t pos = 0;
+          for (; pos < line.size() && spaces < 5; ++pos) {
+            if (line[pos] == ' ') spaces++;
+          }
+          while (pos < line.size() && line[pos] == ' ') pos++;
+          m.name = (pos < line.size()) ? line.substr(pos) : "[anonymous]";
+        } else if (!mappings.empty()) {
+          auto &m = mappings.back();
+          long val = 0;
+          if (sscanf(line.c_str(), "Private_Dirty: %ld kB", &val) == 1) {
+            m.priv_dirty = val;
+            total_priv_dirty += val;
+          } else if (sscanf(line.c_str(), "Private_Clean: %ld kB", &val) == 1) {
+            m.priv_clean = val;
+            total_priv_clean += val;
+          } else if (sscanf(line.c_str(), "Shared_Dirty: %ld kB", &val) == 1) {
+            m.shared_dirty = val;
+            total_shared_dirty += val;
+          } else if (sscanf(line.c_str(), "Shared_Clean: %ld kB", &val) == 1) {
+            m.shared_clean = val;
+            total_shared_clean += val;
+          } else if (sscanf(line.c_str(), "Size: %ld kB", &val) == 1) {
+            m.size = val;
+          } else if (sscanf(line.c_str(), "Rss: %ld kB", &val) == 1) {
+            m.rss = val;
+          }
+        }
+      }
+
+      RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+          << "(karticam) [MEM-TOTALS] "
+          << "private_dirty=" << total_priv_dirty / 1e3 << "MB "
+          << "private_clean=" << total_priv_clean / 1e3 << "MB "
+          << "shared_dirty=" << total_shared_dirty / 1e3 << "MB "
+          << "shared_clean=" << total_shared_clean / 1e3 << "MB";
+
+      // Log every mapping with Private_Dirty > 0, sorted by priv_dirty desc
+      std::sort(mappings.begin(), mappings.end(), [](const auto &a, const auto &b) {
+        return a.priv_dirty > b.priv_dirty;
+      });
+      for (const auto &m : mappings) {
+        if (m.priv_dirty <= 0) break;
+        RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+            << "(karticam) [MAPPING] " << m.addr_range << " " << m.perms
+            << " size=" << m.size / 1e3 << "MB"
+            << " rss=" << m.rss / 1e3 << "MB"
+            << " priv_dirty=" << m.priv_dirty / 1e3 << "MB"
+            << " priv_clean=" << m.priv_clean / 1e3 << "MB"
+            << " shared_dirty=" << m.shared_dirty / 1e3 << "MB"
+            << " shared_clean=" << m.shared_clean / 1e3 << "MB"
+            << " name=" << m.name;
+      }
+    }
+  }
+#endif
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2978,8 +3125,9 @@ Status CoreWorker::ExecuteTask(
   }
 
   task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Finished executing task, status=" << status;
+  RAY_LOG(INFO).WithField(task_spec.TaskId())
+      << "(karticam) [TASK-EXEC] pid=" << pid_
+      << " Finished executing task, status=" << status;
 
   if (task_spec.IsActorCreationTask()) {
     RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())

@@ -1022,6 +1022,41 @@ class ReporterAgent(
                     # Get basic process info
                     worker_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
 
+                    cpu_pct = float(worker_info.get("cpu_percent", 0.0))
+
+                    # (karticam) accurate USS/shared via memory_full_info (reads smaps_rollup)
+                    try:
+                        _km_full = w.memory_full_info()
+                        rss_mb = _km_full.rss / 1e6
+                        uss_mb = _km_full.uss / 1e6
+                        shared_mb = (_km_full.rss - _km_full.uss) / 1e6
+                    except Exception:
+                        mem_info = worker_info.get("memory_info")
+                        rss_mb = float(mem_info.rss / 1.0e6) if mem_info else 0.0
+                        shared_mb = (
+                            float(getattr(mem_info, "shared", 0) / 1.0e6)
+                            if mem_info
+                            else 0.0
+                        )
+                        uss_mb = rss_mb - shared_mb
+
+                    _km_cmdline = worker_info.get("cmdline", [])
+                    _km_proctitle = _km_cmdline[0] if _km_cmdline else "unknown"
+
+                    logger.info(
+                        "(karticam) [DEBUG-WORKER-STATS] pid=%s proctitle=%s "
+                        "cpu_percent=%.2f rss_mb=%.2f "
+                        "uss_mb=%.2f shared_mb=%.2f "
+                        "num_fds=%s",
+                        worker_info.get("pid"),
+                        _km_proctitle,
+                        cpu_pct,
+                        rss_mb,
+                        uss_mb,
+                        shared_mb,
+                        worker_info.get("num_fds", "N/A"),
+                    )
+
                     # Add GPU information if available
                     worker_pid = worker_info["pid"]
                     gpu_memory_usage = 0

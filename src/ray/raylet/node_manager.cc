@@ -1381,6 +1381,9 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
   if (worker_idle) {
     // Return the worker to the idle pool.
+    RAY_LOG(INFO) << "(karticam) [WORKER-IDLE] Pushing worker to idle pool"
+                  << " worker=" << worker->WorkerId()
+                  << " pid=" << worker->GetProcess().GetId();
     worker_pool_.PushWorker(worker);
   }
 
@@ -2375,7 +2378,9 @@ void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &clie
 
 bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
   LeaseID lease_id = worker->GetGrantedLeaseId();
-  RAY_LOG(DEBUG).WithField(lease_id) << "Cleaning up lease ";
+  RAY_LOG(INFO).WithField(lease_id)
+      << "(karticam) [LEASE-CLEANUP] Cleaning up lease"
+      << " worker=" << worker->WorkerId() << " pid=" << worker->GetProcess().GetId();
 
   const auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
   if ((lease_spec.IsActorCreationTask())) {

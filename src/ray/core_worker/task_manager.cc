@@ -909,7 +909,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
-  RAY_LOG(DEBUG) << "Completing task " << task_id;
+  RAY_LOG(INFO) << "(karticam) [TASK-COMPLETE] Completing task " << task_id;
 
   bool first_execution = false;
   const auto store_in_plasma_ids =

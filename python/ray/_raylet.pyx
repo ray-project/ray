@@ -1323,14 +1323,39 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
     gen = context.generator
 
+    # (karticam) memory instrumentation for streaming generator
+    import psutil as _km_psutil
+    import os as _km_os
+    def _km_get_mem():
+        _p = _km_psutil.Process()
+        _i = _p.memory_full_info()
+        return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
+
     try:
         stats = None
 
         while True:
             try:
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
+                print(
+                    f"(karticam) [GEN-BEFORE-YIELD#{gen_index}] "
+                    f"PID={_km_os.getpid()} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
+                )
+
                 # Send object serialization duration to the generator and retrieve
                 # next output
                 output = gen.send(stats)
+
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
+                print(
+                    f"(karticam) [GEN-AFTER-YIELD#{gen_index}] "
+                    f"PID={_km_os.getpid()} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
+                )
+
                 # Track serialization duration of the next output
                 stats = report_streaming_generator_output(context, output, gen_index, None)
 
@@ -1685,6 +1710,13 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                     "See https://github.com/ray-project/ray/issues/28688.")
 
 
+# (karticam) module-level task counter for memray file naming
+_km_task_counter = {}
+# (karticam) hostname for memray filename — pids are only unique per-host, and
+# the .bin files land on shared storage, so include hostname to avoid collisions.
+import socket as _km_socket
+_km_hostname = _km_socket.gethostname()
+
 cdef void execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -1800,6 +1832,57 @@ cdef void execute_task(
          ray._private.worker._changeproctitle(title, next_title):
         task_exception = False
         try:
+            # (karticam) memory instrumentation
+            import psutil as _km_psutil
+            import time as _km_time
+            def _km_get_mem():
+                _p = _km_psutil.Process()
+                _i = _p.memory_full_info()
+                return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
+
+            # (karticam) memray tracking — only for MapBatches tasks. Other
+            # tasks (Download, RayTrainWorker, SplitCoordinator, etc.) had
+            # problems with native_traces (libunwind crashes / overhead).
+            # MapBatches tasks run one-per-worker, so no concurrent-actor
+            # re-entrancy concerns — no lock needed.
+            _km_pid = os.getpid()
+            _km_task_counter[_km_pid] = _km_task_counter.get(_km_pid, 0) + 1
+            _km_task_num = _km_task_counter[_km_pid]
+            _km_memray_path = ""
+            _km_tracker = None
+
+            if "MapBatches" in title:
+                _km_memray_path = (
+                    f"/mnt/shared_storage/karticam/memray_{_km_hostname}"
+                    f"_pid{_km_pid}_task{_km_task_num}.bin"
+                )
+                try:
+                    import memray as _km_memray
+                    _km_tracker = _km_memray.Tracker(
+                        _km_memray_path,
+                        native_traces=True,
+                    )
+                    _km_tracker.__enter__()
+                    print(
+                        f"(karticam) [MEMRAY-START] PID={_km_pid} "
+                        f"task={title} task_num={_km_task_num} "
+                        f"file={_km_memray_path}"
+                    )
+                except BaseException as _km_e:
+                    _km_tracker = None
+                    print(
+                        f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
+                        f"task={title} task_num={_km_task_num} "
+                        f"reason=tracker_start_failed err={type(_km_e).__name__}: {_km_e}"
+                    )
+
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [BEFORE-DESER] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB Shared={_km_shared:.1f}MB"
+            )
+
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
@@ -1843,6 +1926,13 @@ cdef void execute_task(
 
             worker.record_task_log_start(task_id, attempt_number)
 
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [AFTER-DESER] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB Shared={_km_shared:.1f}MB"
+            )
+
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -1851,7 +1941,27 @@ cdef void execute_task(
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
                             breakpoint_uuid=debugger_breakpoint)
+
+                    _km_rss, _km_uss, _km_shared = _km_get_mem()
+                    print(
+                        f"(karticam) [BEFORE-FUNCTION-EXECUTOR] PID={os.getpid()} "
+                        f"task={title} | "
+                        f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                        f"Shared={_km_shared:.1f}MB"
+                    )
+                    _km_udf_start = _km_time.monotonic()
+
                     outputs = function_executor(*args, **kwargs)
+
+                    _km_udf_elapsed = _km_time.monotonic() - _km_udf_start
+                    _km_rss, _km_uss, _km_shared = _km_get_mem()
+                    print(
+                        f"(karticam) [AFTER-FUNCTION-EXECUTOR] PID={os.getpid()} "
+                        f"task={title} "
+                        f"udf_time={_km_udf_elapsed:.3f}s | "
+                        f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                        f"Shared={_km_shared:.1f}MB"
+                    )
 
                     if is_streaming_generator:
                         # Streaming generator always has a single return value
@@ -1992,6 +2102,14 @@ cdef void execute_task(
                     "Task returned {} objects, but num_returns={}.".format(
                         len(outputs), returns[0].size()))
 
+            # (karticam) before store_outputs
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [BEFORE-STORE] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                f"Shared={_km_shared:.1f}MB"
+            )
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 # TODO(sang): Remove it once we use streaming generator
@@ -2040,6 +2158,28 @@ cdef void execute_task(
                     None, # ref_generator_id
                     c_tensor_transport
                 )
+
+            # (karticam) after store_outputs
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [AFTER-STORE] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                f"Shared={_km_shared:.1f}MB"
+            )
+
+            # (karticam) stop memray tracker (.bin only, analyze locally)
+            if _km_tracker is not None:
+                _km_tracker.__exit__(None, None, None)
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
+                print(
+                    f"(karticam) [MEMRAY-STOP] PID={_km_pid} "
+                    f"task={title} task_num={_km_task_num} "
+                    f"file={_km_memray_path} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
+                )
+
         except (KeyboardInterrupt, SystemExit):
             # Special casing these two because Ray can raise them
             raise
