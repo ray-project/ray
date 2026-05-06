@@ -326,6 +326,13 @@ backend default_backend
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
 backend api_backend
     log global
+    # On a server failure, retry on a different server (combined with the
+    # default `retries 3`) instead of giving up to the backup or returning
+    # a synthesized 5xx. retry-on covers connection-establishment failures
+    # and "connected but no response yet" cases — both are body-stream-safe
+    # and don't risk double-execution.
+    option redispatch
+    retry-on conn-failure empty-response
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
@@ -344,6 +351,13 @@ backend api_backend
     server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
     log global
+    # On a server failure, retry on a different server (combined with the
+    # default `retries 3`) instead of giving up to the backup or returning
+    # a synthesized 5xx. retry-on covers connection-establishment failures
+    # and "connected but no response yet" cases — both are body-stream-safe
+    # and don't risk double-execution.
+    option redispatch
+    retry-on conn-failure empty-response
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
