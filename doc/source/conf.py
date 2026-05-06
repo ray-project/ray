@@ -116,9 +116,92 @@ llms_txt_exclude = [
 _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
+# Hard timeouts on the templates.ci.ray.io HTTP calls. The doc build previously
+# stalled when the templates host was slow or unresponsive (#63112 revert);
+# explicit timeouts let urlopen surface a TimeoutError instead of hanging
+# indefinitely so the per-template error handler in `_fetch_and_extract_zip`
+# can log a warning and continue with the remaining templates.
+_TEMPLATE_CHANNEL_TIMEOUT_S = 30
+_TEMPLATE_DOWNLOAD_TIMEOUT_S = 90
+
 _TEMPLATE_COLLECTIONS = {
+    "asynchronous_inference": {
+        "target": "serve/tutorials/asynchronous-inference",
+    },
+    "audio-dataset-curation-llm-judge": {
+        "target": "ray-overview/examples/e2e-audio",
+    },
+    "deepspeed_finetune": {
+        "target": "train/examples/pytorch/deepspeed_finetune",
+    },
     "deployment-serve-llm": {
         "target": "serve/tutorials/deployment-serve-llm",
+    },
+    "distributing-pytorch": {
+        "target": "train/examples/pytorch/distributing-pytorch",
+    },
+    "e2e-rag-deepdive": {
+        "target": "ray-overview/examples/e2e-rag",
+    },
+    "e2e-timeseries-forecasting": {
+        "target": "ray-overview/examples/e2e-timeseries",
+    },
+    "entity-recognition-with-llms": {
+        "target": "ray-overview/examples/entity-recognition-with-llms",
+    },
+    "image-search-and-classification": {
+        "target": "ray-overview/examples/e2e-multimodal-ai-workloads",
+    },
+    "llm_batch_inference_text": {
+        "target": "data/examples/llm_batch_inference_text",
+    },
+    "llm_batch_inference_vision": {
+        "target": "data/examples/llm_batch_inference_vision",
+    },
+    "langchain-agent-ray-serve": {
+        "target": "ray-overview/examples/langchain_agent_ray_serve/content",
+    },
+    "llm_finetuning": {
+        "target": "ray-overview/examples/llamafactory-llm-fine-tune",
+    },
+    "multi_agent_a2a": {
+        "target": "ray-overview/examples/multi_agent_a2a",
+    },
+    "mcp-ray-serve": {
+        "target": "ray-overview/examples/mcp-ray-serve",
+    },
+    "model-composition-recsys": {
+        "target": "serve/tutorials/model-composition-recsys",
+    },
+    "model-multiplexing": {
+        "target": "serve/tutorials/model_multiplexing_forecast",
+    },
+    "object-detection-video-processing": {
+        "target": "ray-overview/examples/object-detection",
+    },
+    "ray_train_workloads": {
+        "target": "train/tutorials",
+    },
+    "pytorch-fsdp": {
+        "target": "train/examples/pytorch/pytorch-fsdp",
+    },
+    "pytorch-profiling": {
+        "target": "train/examples/pytorch/pytorch-profiling",
+    },
+    "tensor_parallel_autotp": {
+        "target": "train/examples/pytorch/tensor_parallel_autotp",
+    },
+    "tensor_parallel_dtensor": {
+        "target": "train/examples/pytorch/tensor_parallel_dtensor",
+    },
+    "tune_pytorch_asha": {
+        "target": "tune/examples/tune_pytorch_asha",
+    },
+    "unstructured_data_ingestion": {
+        "target": "data/examples/unstructured_data_ingestion",
+    },
+    "xgboost-training-and-serving": {
+        "target": "ray-overview/examples/e2e-xgboost",
     },
 }
 
@@ -127,7 +210,7 @@ def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
-    with urlopen(api_url) as resp:
+    with urlopen(api_url, timeout=_TEMPLATE_CHANNEL_TIMEOUT_S) as resp:
         data = json.loads(resp.read())
     url = data["url"]
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
@@ -139,20 +222,43 @@ def _resolve_template_url(name):
 
 
 def _fetch_and_extract_zip(config):
-    """Download a zip archive and extract it into the collection target directory."""
+    """Download a zip archive and extract it into the collection target directory.
+
+    Failures fetching, downloading, or extracting an individual template are
+    logged as warnings and the target directory is cleared, so a single bad
+    template doesn't abort the entire doc build. Pages that depended on the
+    skipped template will surface as broken refs at build time and can be
+    triaged independently.
+    """
     import shutil
 
-    url = _resolve_template_url(config["name"])
+    name = config["name"]
     target = pathlib.Path(config["target"])
-    if target.is_dir():
-        shutil.rmtree(target)
-    target.mkdir(parents=True, exist_ok=True)
-    logger.info("sphinx-collections: downloading %s -> %s", url, target)
-    with urlopen(url) as resp:
-        zip_bytes = io.BytesIO(resp.read())
-    with zipfile.ZipFile(zip_bytes) as zf:
-        zf.extractall(target)
-    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
+    try:
+        url = _resolve_template_url(name)
+        if target.is_dir():
+            shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        logger.info("sphinx-collections: downloading %s -> %s", url, target)
+        with urlopen(url, timeout=_TEMPLATE_DOWNLOAD_TIMEOUT_S) as resp:
+            zip_bytes = io.BytesIO(resp.read())
+        with zipfile.ZipFile(zip_bytes) as zf:
+            zf.extractall(target)
+        logger.info(
+            "sphinx-collections: extracted %d files to %s",
+            len(zf.namelist()),
+            target,
+        )
+    except Exception as exc:
+        logger.warning(
+            "sphinx-collections: skipping template %r — fetch/extract failed: %s",
+            name,
+            exc,
+        )
+        # Leave any partial state out of the build tree so downstream sphinx
+        # passes don't trip over a half-extracted archive.
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
 
 
 collections = {
@@ -370,6 +476,52 @@ exclude_patterns = [
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    # Each template ships README.md + README.ipynb at the same docname; keep
+    # only the .md and exclude the duplicate .ipynb at the template root and
+    # in any sub-template directories. The template root README.md is the
+    # actual content page that toctrees / examples.yml refer to.
+    *[
+        pattern
+        for coll in _TEMPLATE_COLLECTIONS.values()
+        for pattern in (
+            f"_collections/{coll['target']}/README.ipynb",
+            f"_collections/{coll['target']}/**/README.ipynb",
+        )
+    ],
+    # ray_train_workloads bundles sub-folder READMEs that aren't part of any
+    # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
+    "_collections/train/tutorials/**/README.*",
+    # Sidecar README.md files in fetched template dirs duplicate the canonical
+    # notebook that the gallery / toctree already links to. Exclude to avoid
+    # orphan warnings without losing reachable content.
+    "_collections/serve/tutorials/asynchronous-inference/README.md",
+    "_collections/tune/examples/tune_pytorch_asha/README.md",
+    # llamafactory: master excludes the in-tree paths only, but this branch
+    # also pulls a copy via sphinx-collections (see _TEMPLATE_COLLECTIONS).
+    # Mirror the in-tree patterns under _collections/ so the fetched copy
+    # is suppressed too. The template has no landing page on docs.ray.io.
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/README.*",
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    # TODO(@elliot-barn): Remove the patterns below once the in-tree template
+    # directories are deleted in the follow-up PR. examples.yml + toctrees
+    # were repointed at /_collections/... so the in-tree copies left behind
+    # by the revert orphan-warn until they are removed.
+    "ray-overview/examples/*/README.ipynb",
+    "ray-overview/examples/*/content/README.ipynb",
+    "serve/tutorials/deployment-serve-llm/content/*/README.ipynb",
+    "serve/tutorials/asynchronous-inference/content/*.ipynb",
+    "train/tutorials/content/README.md",
+    "tune/examples/tune_pytorch_asha/content/*.ipynb",
+    # Numbered child notebooks of the excluded in-tree READMEs above. Their
+    # parent README's embedded {toctree} no longer fires (README is excluded),
+    # so the children orphan-warn until the in-tree directories are deleted.
+    "ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/*.ipynb",
+    "ray-overview/examples/e2e-rag/notebooks/*.ipynb",
+    "ray-overview/examples/e2e-timeseries/e2e_timeseries/*.ipynb",
+    "ray-overview/examples/e2e-xgboost/notebooks/*.ipynb",
+    "ray-overview/examples/mcp-ray-serve/*.ipynb",
+    "ray-overview/examples/object-detection/*.ipynb",
+    "train/tutorials/content/workload-patterns/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
