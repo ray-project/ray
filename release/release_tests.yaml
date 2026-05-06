@@ -4210,9 +4210,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4273,9 +4274,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
@@ -4292,9 +4294,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
@@ -4311,9 +4314,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4331,9 +4335,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4351,9 +4356,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4438,6 +4444,7 @@
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
 
   run:
@@ -4458,9 +4465,10 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4479,6 +4487,7 @@
     byod:
       type: llm-cu128
       post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
 
   run:
@@ -4519,6 +4528,7 @@
       type: llm-cu128
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
+    anyscale_sdk_2026: true
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
