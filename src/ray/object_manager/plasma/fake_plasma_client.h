@@ -88,6 +88,13 @@ class FakePlasmaClient : public PlasmaClientInterface {
     return Status::OK();
   }
 
+  void MarkLocal(const std::vector<ObjectID> &object_ids) {
+    for (const auto &id : object_ids) {
+      objects_in_plasma_.try_emplace(
+          id, std::vector<uint8_t>{0}, std::vector<uint8_t>{0});
+    }
+  }
+
   Status GetExperimentalMutableObject(
       const ObjectID &object_id,
       std::unique_ptr<plasma::MutableObject> *mutable_object) override {
