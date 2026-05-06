@@ -324,14 +324,38 @@ class _AutoscalingCoordinatorActor:
             [req for req in self._ongoing_reqs.values() if req.expiration_time >= now]
         )
         # Allocate resources to ongoing requests.
-        # TODO(hchen): Optimize the following triple loop.
+        maybe_subtract_resources = self._maybe_subtract_resources
+        num_nodes = len(cluster_node_resources)
+        # Assumption for this optimization (within one _reallocate_resources pass):
+        # node resources only decrease, never increase. Therefore for identical
+        # bundles:
+        # 1) the first feasible node index can only stay or move right;
+        # 2) if one identical bundle cannot fit any node, later identical bundles
+        #    also cannot fit in this pass.
+        # This is most beneficial when requested_resources has many duplicate
+        # bundles (e.g., homogeneous node shapes and/or multiple executors
+        # requesting similar specs).
+        first_fit_start_idx = {}
+        impossible_bundles = set()
         for ongoing_req in ongoing_reqs:
-            ongoing_req.allocated_resources = []
+            allocated_resources = []
+            ongoing_req.allocated_resources = allocated_resources
             for req in ongoing_req.requested_resources:
-                for node_resource in cluster_node_resources:
-                    if self._maybe_subtract_resources(node_resource, req):
-                        ongoing_req.allocated_resources.append(req)
+                req_key = frozenset(req.items())
+                if req_key in impossible_bundles:
+                    continue
+
+                start_idx = first_fit_start_idx.get(req_key, 0)
+                allocated = False
+                for node_idx in range(start_idx, num_nodes):
+                    if maybe_subtract_resources(cluster_node_resources[node_idx], req):
+                        allocated_resources.append(req)
+                        first_fit_start_idx[req_key] = node_idx
+                        allocated = True
                         break
+
+                if not allocated:
+                    impossible_bundles.add(req_key)
         # Allocate remaining resources.
         # NOTE: to handle the case where multiple datasets are running concurrently,
         # we divide remaining resources equally to all requesters with `request_remaining=True`.
