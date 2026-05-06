@@ -789,6 +789,21 @@ RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
     "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
 )
 
+# Timeout shared by the ingress-request-router Lua call and the frontend
+# `wait-for-body` directive. Bounds head-of-line blocking on POSTs when a
+# router replica is unhealthy.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
+)
+
+# Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
+# active. Bodies longer than this are truncated; the Lua forwards what it has
+# with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
+# do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+)
+
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
