@@ -15,6 +15,7 @@ from ray.serve._private.test_utils import (
     MockTimer,
     dead_replicas_context,
     replica_rank_context,
+    uninitialized_replicas_context,
 )
 
 
@@ -90,3 +91,4 @@ def mock_deployment_state_manager(
 
         dead_replicas_context.clear()
         replica_rank_context.clear()
+        uninitialized_replicas_context.clear()
