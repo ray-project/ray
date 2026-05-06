@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
@@ -561,7 +561,13 @@ class PrepareImageStageConfig(_PrepareImageStageConfig):
 
 @Deprecated(new="build_processor", error=False)
 def build_llm_processor(
-    config: ProcessorConfig,
+    config: Union[
+        ProcessorConfig,
+        vLLMEngineProcessorConfig,
+        SGLangEngineProcessorConfig,
+        HttpRequestProcessorConfig,
+        ServeDeploymentProcessorConfig,
+    ],
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
     preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
@@ -583,7 +589,13 @@ def build_llm_processor(
 
 @PublicAPI(stability="beta")
 def build_processor(
-    config: ProcessorConfig,
+    config: Union[
+        ProcessorConfig,
+        vLLMEngineProcessorConfig,
+        SGLangEngineProcessorConfig,
+        HttpRequestProcessorConfig,
+        ServeDeploymentProcessorConfig,
+    ],
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
     preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
