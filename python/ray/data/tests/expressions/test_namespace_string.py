@@ -322,6 +322,61 @@ class TestStringTransform:
         assert rows_same(result, expected)
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "filter_expr,input_values,expected_values",
+    [
+        # Simple field access
+        (".name", ['{"name": "alice"}', '{"name": "bob"}'], ["alice", "bob"]),
+        # Nested field access
+        (
+            ".user.email",
+            ['{"user": {"email": "a@b.com"}}'],
+            ["a@b.com"],
+        ),
+        # Array indexing
+        (".[0]", ['["x", "y", "z"]'], ["x"]),
+        (".items[1]", ['{"items": [10, 20, 30]}'], ["20"]),
+        # Chained path with array index
+        (
+            ".items[0].name",
+            ['{"items": [{"name": "first"}, {"name": "second"}]}'],
+            ["first"],
+        ),
+        # Non-existent key returns None
+        (".missing", ['{"name": "alice"}'], [None]),
+        # Invalid JSON returns None
+        (".name", ["not-json"], [None]),
+        # Null input returns None
+        (".name", [None], [None]),
+        # Numeric value returned as JSON string
+        (".age", ['{"age": 30}'], ["30"]),
+        # Boolean value returned as JSON string
+        (".active", ['{"active": true}'], ["true"]),
+        # Identity filter
+        (".", ['{"a": 1}'], ['{"a": 1}']),
+    ],
+)
+class TestStringJq:
+    """Tests for jq-style JSON extraction on string columns."""
+
+    def test_string_jq(
+        self,
+        ray_start_regular_shared,
+        dataset_format,
+        filter_expr,
+        input_values,
+        expected_values,
+    ):
+        data = [{"data": v} for v in input_values]
+        ds = _create_dataset(data, dataset_format)
+
+        result = ds.with_column("result", col("data").str.jq(filter_expr)).to_pandas()
+
+        expected = pd.DataFrame({"data": input_values, "result": expected_values})
+        assert rows_same(result, expected)
+
+
 if __name__ == "__main__":
     import sys
 
