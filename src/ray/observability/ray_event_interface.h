@@ -25,39 +25,54 @@ class RayEventInterface {
  public:
   virtual ~RayEventInterface() = default;
 
-  // Entity ID is a concept in Ray Event framework that captures the unique identifier
-  // of the entity that the event is associated with. For example, the entity ID of
-  // a task is the pair of task ID and task attempt ID, for a driver job, it is the
-  // driver job ID.
-  //
-  // Entity ID is used for two purposes:
-  // 1. To associate the execution event with the definition event.
-  // 2. To merge the individual execution events into a single execution event (single
-  // data point to a time series).
+  /// \brief Get the unique identifier of the entity this event is associated with.
+  ///
+  /// Entity ID is a concept in Ray Event framework that captures the unique identifier
+  /// of the entity that the event is associated with. For example, the entity ID of
+  /// a task is the pair of task ID and task attempt ID, for a driver job, it is the
+  /// driver job ID.
+  ///
+  /// Entity ID is used for two purposes:
+  /// 1. To associate the execution event with the definition event.
+  /// 2. To merge the individual execution events into a single execution event (single
+  /// data point to a time series).
+  ///
+  /// \return The entity ID string.
   virtual std::string GetEntityId() const = 0;
 
-  // Merge with another data point to form a time series. Merge is meant as an
-  // optimization for the data size.
-  //
-  // For example, given three events:
-  //
-  // 1. event 1: {entity_id: "1", type: "task", state_transitions: [("started", 1000)]}
-  // 2. event 2: {entity_id: "1", type: "task", state_transitions: [("running", 1001)]}
-  // 3. event 3: {entity_id: "1", type: "task", state_transitions: [("completed", 1002)]}
-  //
-  // The merged event will be:
-  //
-  // {entity_id: "1", type: "task", state_transitions: [("started", 1000), ("running",
-  // 1001),
-  // ("completed", 1002)]}
-  //
-  // This function assumes that the two events have the same type and entity ID.
+  /// \brief Merge with another data point to form a time series.
+  ///
+  /// Merge is meant as an optimization for the data size.
+  /// For example, given three events:
+  ///
+  /// 1. event 1: {entity_id: "1", type: "task", state_transitions: [("started", 1000)]}
+  /// 2. event 2: {entity_id: "1", type: "task", state_transitions: [("running", 1001)]}
+  /// 3. event 3: {entity_id: "1", type: "task", state_transitions: [("completed", 1002)]}
+  ///
+  /// The merged event will be:
+  ///
+  /// {entity_id: "1", type: "task", state_transitions: [("started", 1000), ("running",
+  /// 1001), ("completed", 1002)]}
+  ///
+  /// This function assumes that the two events have the same type and entity ID.
+  ///
+  /// \param[in] other The event to merge into this one.
   virtual void Merge(RayEventInterface &&other) = 0;
 
-  // Serialize the event data to a RayEvent proto.
+  /// \brief Serialize the event data to a RayEvent proto.
+  /// \return The serialized RayEvent.
   virtual ray::rpc::events::RayEvent Serialize() && = 0;
 
+  /// \brief Get the event type.
+  /// \return The event type enum value.
   virtual ray::rpc::events::RayEvent::EventType GetEventType() const = 0;
+
+  /// \brief Get an estimate of the serialized size in bytes.
+  ///
+  /// Used to batch events by size.
+  ///
+  /// \return The estimated serialized size in bytes.
+  virtual size_t GetSerializedSizeEstimate() const = 0;
 };
 
 }  // namespace observability

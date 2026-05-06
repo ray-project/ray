@@ -179,7 +179,6 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
-        "//src/ray/util:graceful_shutdown",
         "//src/ray/util:logging",
         "@boost//:circular_buffer",
     ],
