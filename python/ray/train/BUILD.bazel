@@ -1058,6 +1058,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
+        "manual",
         "team:ml",
     ],
     deps = [
