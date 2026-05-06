@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import sys
+import tarfile
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -283,9 +284,24 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
-            # Remove all periods except the last, which is part of the
-            # file extension
-            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+            # Preserve compound extensions like .tar.gz before replacing dots
+            compound_ext = None
+            if package_name.endswith(".tar.gz"):
+                compound_ext = ".tar.gz"
+                package_name = package_name[: -len(".tar.gz")]
+            elif package_name.endswith(".tar.bz2"):
+                compound_ext = ".tar.bz2"
+                package_name = package_name[: -len(".tar.bz2")]
+
+            if compound_ext:
+                package_name = package_name.replace(".", "_")
+                package_name += compound_ext
+            else:
+                # Remove all periods except the last, which is part of the
+                # file extension
+                package_name = package_name.replace(
+                    ".", "_", package_name.count(".") - 1
+                )
     else:
         package_name = uri.netloc
     return (protocol, package_name)
@@ -316,6 +332,15 @@ def is_jar_uri(uri: str) -> bool:
         return False
 
     return Path(path).suffix == ".jar"
+
+
+def is_tar_gz_uri(uri: str) -> bool:
+    try:
+        _, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return path.endswith(".tar.gz") or Path(path).suffix == ".tgz"
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -562,8 +587,14 @@ def get_uri_for_package(package: Path) -> str:
         )
     else:
         hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
-        return "{protocol}://{pkg_name}.zip".format(
-            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+        if package.name.endswith(".tar.gz"):
+            ext = ".tar.gz"
+        elif package.suffix == ".tgz":
+            ext = ".tar.gz"
+        else:
+            ext = ".zip"
+        return "{protocol}://{pkg_name}{ext}".format(
+            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val, ext=ext
         )
 
 
@@ -768,7 +799,13 @@ def upload_package_if_needed(
 def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory corresponding to this URI."""
     pkg_file = Path(_get_local_path(base_directory, uri))
-    local_dir = pkg_file.with_suffix("")
+    pkg_name = pkg_file.name
+    if pkg_name.endswith(".tar.gz"):
+        local_dir = pkg_file.parent / pkg_name[: -len(".tar.gz")]
+    elif pkg_name.endswith(".tar.bz2"):
+        local_dir = pkg_file.parent / pkg_name[: -len(".tar.bz2")]
+    else:
+        local_dir = pkg_file.with_suffix("")
     return local_dir
 
 
@@ -780,8 +817,9 @@ async def download_and_unpack_package(
     logger: Optional[logging.Logger] = default_logger,
     overwrite: bool = False,
 ) -> str:
-    """Download the package corresponding to this URI and unpack it if zipped.
+    """Download the package corresponding to this URI and unpack it.
 
+    Supports .zip, .jar, .tar.gz, and .tgz archives for remote protocols.
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
 
@@ -871,6 +909,14 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
+                elif is_tar_gz_uri(pkg_uri):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_tar=True,
+                        logger=logger,
+                    )
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
@@ -886,6 +932,18 @@ async def download_and_unpack_package(
                     )
                 elif pkg_file.suffix == ".whl":
                     return str(pkg_file)
+                elif (
+                    str(pkg_file).endswith(".tar.gz")
+                    or pkg_file.suffix == ".tgz"
+                    or str(pkg_file).endswith(".tar.bz2")
+                ):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=True,
+                        unlink_tar=True,
+                        logger=logger,
+                    )
                 else:
                     raise NotImplementedError(
                         f"Package format {pkg_file.suffix} is ",
@@ -1074,6 +1132,95 @@ def unzip_package(
         Path(package_path).unlink()
 
 
+def get_top_level_dir_from_tar_package(package_path: str):
+    """
+    If tar package at package_path contains a single top-level
+    directory, returns the name of the top-level directory. Otherwise,
+    returns None.
+    """
+    with tarfile.open(package_path, "r:*") as tar:
+        top_level_directory = None
+        for member in tar.getmembers():
+            # GNU tar commonly prefixes members with "./" — strip it so
+            # we don't treat "." as the top-level directory name.
+            name = member.name
+            while name.startswith("./"):
+                name = name[2:]
+            if not name or name == ".":
+                continue
+            parts = name.split("/")
+            if len(parts) == 1 and not member.isdir():
+                return None
+            dir_name = parts[0]
+            if top_level_directory is None:
+                top_level_directory = dir_name
+            elif dir_name != top_level_directory:
+                return None
+        return top_level_directory
+
+
+def untar_package(
+    package_path: str,
+    target_dir: str,
+    remove_top_level_directory: bool,
+    unlink_tar: bool,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    """
+    Extract the tar archive at package_path to target_dir.
+
+    If remove_top_level_directory is True and the archive contains a single
+    top-level directory, the contents are extracted directly into target_dir
+    without the top-level wrapper.
+
+    Args:
+        package_path: String path of the tar archive to extract.
+        target_dir: String path of the directory to store the extracted contents.
+        remove_top_level_directory: Whether to strip the top-level directory.
+        unlink_tar: Whether to delete the tar file after extraction.
+        logger: Optional logger to use for logging.
+    """
+    try:
+        os.mkdir(target_dir)
+    except FileExistsError:
+        logger.info(f"Directory at {target_dir} already exists")
+
+    logger.debug(f"Unpacking {package_path} to {target_dir}")
+
+    with tarfile.open(package_path, "r:*") as tar:
+        for member in tar.getmembers():
+            member_path = os.path.join(target_dir, member.name)
+            resolved = os.path.realpath(member_path)
+            target_real = os.path.realpath(target_dir)
+            if not resolved.startswith(target_real + os.sep) and resolved != target_real:
+                logger.warning(f"Skipping unsafe path in tar: {member.name}")
+                continue
+
+            if member.issym() or member.islnk():
+                logger.warning(f"Skipping link in tar: {member.name}")
+                continue
+
+            if member.isdir():
+                os.makedirs(member_path, exist_ok=True)
+            elif member.isfile():
+                parent_dir = os.path.dirname(member_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+                with tar.extractfile(member) as source, open(
+                    member_path, "wb"
+                ) as target:
+                    shutil.copyfileobj(source, target)
+                os.chmod(member_path, member.mode)
+
+    if remove_top_level_directory:
+        top_level_directory = get_top_level_dir_from_tar_package(package_path)
+        if top_level_directory is not None:
+            remove_dir_from_filepaths(target_dir, top_level_directory)
+
+    if unlink_tar:
+        Path(package_path).unlink()
+
+
 def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """Deletes a specific URI from the local filesystem.
 
@@ -1085,14 +1232,14 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """
 
     deleted = False
-    path = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(path) + ".lock"):
-        path = path.with_suffix("")
-        if path.exists():
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(str(path))
+    pkg_path = Path(_get_local_path(base_directory, pkg_uri))
+    with FileLock(str(pkg_path) + ".lock"):
+        local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
+        if local_dir.exists():
+            if local_dir.is_dir() and not local_dir.is_symlink():
+                shutil.rmtree(str(local_dir))
             else:
-                path.unlink()
+                local_dir.unlink()
             deleted = True
 
     return deleted

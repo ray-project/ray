@@ -296,7 +296,8 @@ Protocol = enum.Enum(
 @classmethod
 def _remote_protocols(cls):
     # Returns a list of protocols that support remote storage
-    # These protocols should only be used with paths that end in ".zip" or ".whl"
+    # These protocols should only be used with paths that end in
+    # ".zip", ".whl", ".tar.gz", or ".tgz"
     return [
         cls[protocol.upper()] for protocol in ProtocolsProvider.get_remote_protocols()
     ]
