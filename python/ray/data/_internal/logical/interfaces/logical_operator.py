@@ -1,6 +1,6 @@
 import copy
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
@@ -21,7 +21,9 @@ class LogicalOperator(Operator, ABC):
     """
 
     _name: Optional[str] = field(init=False, default=None, repr=False)
-    _input_dependencies: List["LogicalOperator"] = field(repr=False)
+    _input_dependencies: List["LogicalOperator"] = field(
+        init=False, default_factory=list, repr=False
+    )
     _num_outputs: Optional[int] = field(default=None, repr=False)
 
     @property
@@ -88,27 +90,21 @@ class LogicalOperator(Operator, ABC):
     def _with_new_input_dependencies(
         self, input_dependencies: List["LogicalOperator"]
     ) -> "LogicalOperator":
-        if len(input_dependencies) == 1 and "input_op" in getattr(
-            self, "__dataclass_fields__", {}
-        ):
-            return self._with_new_input(input_dependencies[0])
+        if "input_dependencies" in {field.name for field in fields(self)}:
+            return replace(self, input_dependencies=input_dependencies)
 
         target = copy.copy(self)
         object.__setattr__(target, "_input_dependencies", input_dependencies)
         return target
 
-    def _with_new_input(self, input_op: "LogicalOperator") -> "LogicalOperator":
-        return replace(self, input_op=input_op)
-
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
         args: Dict[str, Any] = {}
-        for key, value in vars(self).items():
-            if key.startswith("_"):
-                args[key] = value
-            else:
-                # Keep underscore-prefixed keys to preserve legacy export schema.
-                args[f"_{key}"] = value
+        for dataclass_field in fields(self):
+            key = dataclass_field.name
+            value = getattr(self, key)
+            # Keep underscore-prefixed keys to preserve legacy export schema.
+            args[key if key.startswith("_") else f"_{key}"] = value
         args["_name"] = self.name
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
