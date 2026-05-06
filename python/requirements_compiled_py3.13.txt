@@ -633,7 +633,7 @@ getdaft==0.4.3
     # via -r python/requirements/ml/py313/data-requirements.txt
 gitdb==4.0.12
     # via gitpython
-gitpython==3.1.47
+gitpython==3.1.48
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   mlflow-skinny
