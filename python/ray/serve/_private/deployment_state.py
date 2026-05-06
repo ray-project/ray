@@ -1065,6 +1065,7 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
+                deployment_info.ingress_request_router,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -4906,6 +4907,9 @@ class DeploymentState:
     def is_ingress(self) -> bool:
         return self._target_state.info.ingress
 
+    def is_ingress_request_router(self) -> bool:
+        return self._target_state.info.ingress_request_router
+
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the outbound deployments.
 
@@ -5894,11 +5898,15 @@ class DeploymentStateManager:
         return node_ids
 
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
-        """Get all ingress replicas info for all deployments."""
+        """Get replicas that own direct-ingress ports.
+
+        Includes both ingress deployments and ingress request router deployments.
+        """
         ingress_replicas_list = [
             deployment_state._replicas.get()
             for deployment_state in self._deployment_states.values()
             if deployment_state.is_ingress()
+            or deployment_state.is_ingress_request_router()
         ]
 
         ingress_replicas_info = []
