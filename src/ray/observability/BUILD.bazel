@@ -177,7 +177,7 @@ ray_cc_library(
         ":metrics",
         ":ray_event_interface",
         ":ray_event_recorder",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
