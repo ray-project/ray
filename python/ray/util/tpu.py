@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -19,6 +19,9 @@ from ray.util.placement_group import (
     placement_group,
     remove_placement_group,
 )
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -698,3 +701,13 @@ def slice_placement_group(
         chips_per_vm=chips_per_vm,
         **kwargs,
     )
+
+
+def get_tpu_device_ids(_):
+    try:
+        import jax
+
+        device_ids = [d.id for d in jax.local_devices()]
+        return device_ids
+    except (ImportError, IndexError):
+        return []
