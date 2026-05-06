@@ -49,7 +49,7 @@ def train_func():
     # Hugging Face Trainer
     training_args = TrainingArguments(
         output_dir="test_trainer",
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         report_to="none",
     )

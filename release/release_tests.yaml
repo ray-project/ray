@@ -109,6 +109,41 @@
       cluster:
         ray_version: 2.50.0
 
+- name: hello_world_torch
+  python: "3.13"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world_torch.py
+
+  variations:
+    - __suffix__: cpu
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cpu
+        cluster_compute: hello_world_compute_config.yaml
+    - __suffix__: cu128
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cu128
+        cluster_compute: hello_world_compute_config_gpu.yaml
+    - __suffix__: cu130
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cu130
+        cluster_compute: hello_world_compute_config_gpu.yaml
+
 - name: hello_world_custom_byod
   python: "3.10"
   team: reef
@@ -248,7 +283,7 @@
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
-  python: "3.10"
+  python: "3.13"
   group: Cluster tests
   working_dir: cluster_tests
 
@@ -289,7 +324,7 @@
 
 # Ray Train distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.13"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -298,7 +333,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -334,7 +369,7 @@
   alert: default
 
 - name: air_benchmark_tune_torch_mnist
-  python: "3.10"
+  python: "3.13"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -343,7 +378,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -365,7 +400,7 @@
 
 # Ray Train distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.13"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -375,7 +410,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -417,7 +452,7 @@
 
 # Test additional CPU nodes for preprocessing.
 - name: air_example_dreambooth_finetuning
-  python: "3.10"
+  python: "3.13"
   group: AIR examples
   working_dir: air_examples/dreambooth
 
@@ -427,7 +462,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: dreambooth_compute_aws.yaml
 
   run:
@@ -438,7 +473,7 @@
   # variations: A10G not available on GCE, yet.
 
 - name: air_example_dreambooth_finetuning_lora
-  python: "3.10"
+  python: "3.13"
   group: AIR examples
   working_dir: air_examples/dreambooth
 
@@ -448,7 +483,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: dreambooth_compute_aws.yaml
 
   run:
@@ -457,14 +492,14 @@
     artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
-  python: "3.10"
+  python: "3.13"
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
   frequency: manual
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
       post_build_script: byod_gptj_test.sh
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
@@ -473,14 +508,14 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
-  python: "3.10"
+  python: "3.13"
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
   frequency: manual
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
       post_build_script: byod_dolly_test.sh
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -491,14 +526,14 @@
   # variations: TODO(jungong): add GCP variation.
 
 - name: air_example_vicuna_13b_lightning_deepspeed_finetuning
-  python: "3.10"
+  python: "3.13"
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
   frequency: manual
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
       post_build_script: byod_vicuna_test.sh
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 
@@ -510,7 +545,7 @@
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
-  python: "3.10"
+  python: "3.13"
   group: Tune tests
   working_dir: tune_tests
 
@@ -540,7 +575,7 @@
   alert: default
 
 - name: tune_cloud_long_running_cloud_storage
-  python: "3.10"
+  python: "3.13"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
@@ -584,7 +619,7 @@
 ########################
 
 - name: tune_scalability_bookkeeping_overhead
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -614,7 +649,7 @@
         cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -647,7 +682,7 @@
 
 
 - name: tune_scalability_durable_multifile_checkpoints
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -679,7 +714,7 @@
   alert: tune_tests
 
 - name: tune_scalability_long_running_large_checkpoints
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -713,7 +748,7 @@
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -751,7 +786,7 @@
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -779,7 +814,7 @@
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
-  python: "3.10"
+  python: "3.13"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -808,7 +843,7 @@
 # Tune fault tolerance tests
 ############################
 - name: tune_worker_fault_tolerance
-  python: "3.10"
+  python: "3.13"
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
@@ -1733,7 +1768,7 @@
 ########################
 
 - name: training_ingest_benchmark-task=image_classification
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1748,8 +1783,7 @@
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
   variations:
@@ -1895,7 +1929,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_fixed_size
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1913,7 +1947,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
 
   variations:
@@ -1928,7 +1962,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step True --skip_validation_at_epoch_end True --image_classification_data_format=s3_url
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_autoscaling
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1946,7 +1980,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
 
   variations:
@@ -1961,7 +1995,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step True --skip_validation_at_epoch_end True --image_classification_data_format=s3_url
 
 - name: training_ingest_benchmark-task=recsys
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1974,7 +2008,7 @@
       runtime_env:
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_install_torchrec.sh
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
@@ -2000,7 +2034,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
 - name: training_ingest_benchmark-soak_test
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2009,7 +2043,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
   run:
@@ -2018,7 +2052,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --num_epochs=50
 
 - name: train_multinode_persistence
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/multinode_persistence
 
@@ -2058,14 +2092,14 @@
   alert: default
 
 - name: train_async_checkpointing_validation_benchmark
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/async_checkpointing_validation_benchmark
   frequency: nightly
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2075,7 +2109,7 @@
   alert: default
 
 - name: train_colocate_trainer
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
@@ -2098,7 +2132,7 @@
 
 
 - name: torch_local_mode
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/local_mode
 
@@ -2107,7 +2141,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_gpu_2x4_aws.yaml
 
   run:
@@ -2115,7 +2149,7 @@
     script: python torch_local_mode_launcher.py
 
 - name: torch_lightning
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
@@ -2124,7 +2158,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_pytorch_lightning_test.sh
     cluster_compute: compute_aws.yaml
 
@@ -2133,7 +2167,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
 
 - name: huggingface_transformers
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/huggingface_transformers
 
@@ -2142,7 +2176,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
@@ -2151,7 +2185,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
 
 - name: huggingface_accelerate
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/huggingface_accelerate
 
@@ -2160,15 +2194,17 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
+      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
     timeout: 1800
+
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/xgboost_lightgbm
 
@@ -2181,7 +2217,7 @@
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_aws_{{size}}.yaml
 
   run:
@@ -2197,7 +2233,7 @@
   alert: default
 
 - name: train_elastic_e2e_with_node_killing
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/elastic_training
 
@@ -2206,7 +2242,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_gpu_aws.yaml
 
   run:
@@ -2222,7 +2258,7 @@
   alert: default
 
 - name: elastic_benchmark
-  python: "3.10"
+  python: "3.13"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2231,7 +2267,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
 
   run:
@@ -4584,7 +4620,7 @@
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-xgboost # use // to access from repo's root
@@ -4813,7 +4849,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.13"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4821,7 +4857,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4838,7 +4874,7 @@
 
 
 - name: pytorch_fsdp  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.13"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4846,7 +4882,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4863,7 +4899,7 @@
 
 
 - name: tensor_parallel_dtensor  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.13"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4871,7 +4907,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4888,7 +4924,7 @@
 
 
 - name: deepspeed_finetune  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.13"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4896,7 +4932,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4939,7 +4975,7 @@
 
 
 - name: pytorch_profiling  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.13"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4947,7 +4983,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4963,7 +4999,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.13"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4971,7 +5007,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cpu
       post_build_script: byod_huggingface_trl.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -5015,7 +5051,7 @@
 
 - name: e2e_timeseries
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # Use // to access from repo's root.
@@ -5038,7 +5074,7 @@
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57219
   frequency: manual
-  python: "3.12"
+  python: "3.13"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-multimodal-ai-workloads  # use // to access from repo's root
