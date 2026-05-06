@@ -120,16 +120,18 @@ class LLMRouter:
                 await send({"type": "lifespan.shutdown.complete"})
                 return
 
-    async def _read_body(self, receive) -> bytes:
+    async def _read_body(self, receive) -> Tuple[bytes, bool]:
         body = b""
         more_body = True
         while more_body:
             message = await receive()
+            if message["type"] == "http.disconnect":
+                return body, True
             if message["type"] != "http.request":
                 continue
             body += message.get("body", b"")
             more_body = message.get("more_body", False)
-        return body
+        return body, False
 
     async def _send_json(self, send, payload, *, status_code: int = 200):
         body = orjson.dumps(payload)
@@ -173,7 +175,9 @@ class LLMRouter:
         return decoded if isinstance(decoded, str) else None
 
     async def _handle_route_endpoint(self, scope, receive, send):
-        body = await self._read_body(receive)
+        body, disconnected = await self._read_body(receive)
+        if disconnected:
+            return
         body_truncated = self._is_body_truncated(scope)
         try:
             parsed = orjson.loads(body)

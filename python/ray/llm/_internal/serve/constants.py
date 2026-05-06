@@ -62,7 +62,9 @@ RAYLLM_GUIDED_DECODING_BACKEND = os.environ.get(
     "RAYLLM_GUIDED_DECODING_BACKEND", "xgrammar"
 )
 
-# LLM-only feature flag for HAProxy-based direct streaming.
+# LLM-only feature flag for HAProxy-based direct streaming. This is
+# intentionally captured at import time, so it should be set before the Ray
+# cluster / Serve application workers start.
 RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING = (
     os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING", "0") == "1"
 )
