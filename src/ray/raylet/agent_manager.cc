@@ -56,6 +56,8 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
               RayConfig::instance().enable_pipe_based_agent_to_parent_health_check()
                   ? "1"
                   : "0"});
+  env.insert(
+      {"RAY_enable_ray_event", RayConfig::instance().enable_ray_event() ? "1" : "0"});
 
   // Launch the process to create the agent.
   std::error_code ec;

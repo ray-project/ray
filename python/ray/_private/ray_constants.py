@@ -516,6 +516,10 @@ RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
 # this is enabled.
 RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
 
+# Whether to enable Python-side ONE-event publishing (e.g. autoscaler, job events)
+# via the dashboard head HTTP API or EventRecorder.
+RAY_ENABLE_PYTHON_RAY_EVENT = env_bool("RAY_enable_python_ray_event", False)
+
 # Comma separated string containing individual resource
 # to write export API events for. This configuration is only used if
 # RAY_enable_export_api_write is not enabled. Full list of valid
