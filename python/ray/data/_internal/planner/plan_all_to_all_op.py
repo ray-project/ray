@@ -67,6 +67,24 @@ def _plan_hash_shuffle_repartition(
     )
 
 
+def _plan_actorless_hash_shuffle_repartition(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.execution.operators.actorless_hash_shuffle import (
+        ActorlessHashShuffleOperator,
+    )
+
+    return ActorlessHashShuffleOperator(
+        input_physical_op,
+        data_context,
+        key_columns=tuple(logical_op.keys),
+        num_partitions=logical_op.num_outputs,
+        should_sort=logical_op.sort,
+    )
+
+
 def _plan_hash_shuffle_aggregate(
     data_context: DataContext,
     logical_op: Aggregate,
@@ -131,10 +149,17 @@ def plan_all_to_all_op(
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
+            elif (
+                data_context.shuffle_strategy == ShuffleStrategy.ACTORLESS_HASH_SHUFFLE
+            ):
+                return _plan_actorless_hash_shuffle_repartition(
+                    data_context, op, input_physical_dag
+                )
             else:
                 raise ValueError(
                     "Key-based repartitioning only supported for "
                     f"`DataContext.shuffle_strategy=HASH_SHUFFLE` or "
+                    f"`DataContext.shuffle_strategy=ACTORLESS_HASH_SHUFFLE` "
                     f"`DataContext.shuffle_strategy=GPU_SHUFFLE` "
                     f"(got {data_context.shuffle_strategy})"
                 )
