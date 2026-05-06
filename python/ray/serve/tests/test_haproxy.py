@@ -333,6 +333,20 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
+    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
+    # very likely each shard has served at least one request and converged.
+    def all_haproxies_ready():
+        try:
+            return all(
+                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                == 200
+                for _ in range(20)
+            )
+        except Exception:
+            return False
+
+    wait_for_condition(all_haproxies_ready, timeout=20)
+
     # Start a long-running request in background to test draining behavior
     request_result = []
 
@@ -822,7 +836,9 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return "hello"
 
     # Helpers
-    SOCKET_PATH = "/tmp/haproxy-serve/admin.sock"
+    SOCKET_PATH = (
+        f"/tmp/haproxy-serve/{ray.get_runtime_context().get_node_id()}/admin.sock"
+    )
 
     def app_to_backend(app: str) -> str:
         return f"http-{app}"

@@ -118,6 +118,11 @@ void RayEventRecorder::ExportEvents() {
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
       event_key_to_iterator;
   for (auto &event : buffer_) {
+    if (!event->SupportsMerge()) {
+      // Non-mergeable events (e.g. those sent from Python) are sent individually.
+      grouped_events.push_back(std::move(event));
+      continue;
+    }
     auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
     auto [it, inserted] = event_key_to_iterator.try_emplace(key);
     if (inserted) {
@@ -128,7 +133,15 @@ void RayEventRecorder::ExportEvents() {
     }
   }
   for (auto &event : grouped_events) {
-    rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+    auto ray_event_or = std::move(*event).Serialize();
+    if (ray_event_or.has_error()) {
+      // TODO: Add a metric to track the number of events skipped due to
+      // serialization failure.
+      RAY_LOG(ERROR) << "Skipping event that failed to serialize: "
+                     << ray_event_or.message();
+      continue;
+    }
+    rpc::events::RayEvent ray_event = std::move(ray_event_or.value());
     // Set node_id centrally for all events
     ray_event.set_node_id(node_id_.Binary());
     *ray_event_data.mutable_events()->Add() = std::move(ray_event);
