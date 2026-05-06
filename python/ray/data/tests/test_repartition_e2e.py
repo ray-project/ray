@@ -430,11 +430,14 @@ def test_streaming_repartition_with_partial_last_block(
     ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 101
+    target_num_rows_per_block = 20
 
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
-    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
+    ds = ds.repartition(
+        target_num_rows_per_block=target_num_rows_per_block, strict=True
+    )
 
     ds = ds.materialize()
 
@@ -447,7 +450,6 @@ def test_streaming_repartition_with_partial_last_block(
 
     # Verify that all blocks have 20 rows except one block with 1 row
     # The smaller block may appear anywhere in the output order
-    target_num_rows_per_block = 20
     remainder_blocks = [c for c in block_row_counts if c != target_num_rows_per_block]
     assert (
         len(remainder_blocks) == 1
