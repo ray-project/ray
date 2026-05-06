@@ -410,6 +410,36 @@ class TestBuildOpenaiApp:
         ):
             build_openai_app(LLMServingArgs(llm_configs=[llm_config, other_llm_config]))
 
+    @pytest.mark.parametrize(
+        ("builder_kwargs", "match"),
+        [
+            (
+                {"ingress_deployment_config": {"num_replicas": 2}},
+                "does not support ingress_deployment_config",
+            ),
+            (
+                {"ingress_cls_config": {"ingress_extra_kwargs": {"key": "value"}}},
+                "does not support ingress_cls_config",
+            ),
+        ],
+    )
+    def test_direct_streaming_rejects_ingress_config(
+        self,
+        llm_config,
+        disable_placement_bundles,
+        monkeypatch,
+        builder_kwargs,
+        match,
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        with pytest.raises(ValueError, match=match):
+            build_openai_app(LLMServingArgs(llm_configs=[llm_config], **builder_kwargs))
+
 
 class TestIngressScaleToZero:
     """Tests for ingress scale-to-zero behavior when all models have min_replicas=0."""

@@ -2535,6 +2535,9 @@ class Replica:
             return
 
         if self._user_callable_asgi_app is not None:
+            # TODO(eicherseiji): Reuse the normal HTTP request lifecycle here so
+            # direct ASGI serving preserves backpressure, timeouts, cancellation,
+            # tracing, request context, and per-route status metrics.
             req_meta = RequestMetadata(
                 request_id=generate_request_id(),
                 internal_request_id=generate_request_id(),

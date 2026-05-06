@@ -121,6 +121,24 @@ class TestDirectStreamingLLMRouter:
             body_truncated=True,
         )
 
+    @pytest.mark.asyncio
+    async def test_route_endpoint_returns_on_disconnect(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock()
+        messages = [{"type": "http.disconnect"}]
+        sent = []
+
+        async def receive():
+            return messages.pop(0)
+
+        async def send(message):
+            sent.append(message)
+
+        await router._handle_route_endpoint({"headers": []}, receive, send)
+
+        router._pick_replica.assert_not_called()
+        assert sent == []
+
     def test_round_robin_wraps_in_stable_replica_order(self):
         router = _new_direct_router()
         replica_a = _DirectRouterReplica("a")

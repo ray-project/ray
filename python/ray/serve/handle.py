@@ -1088,7 +1088,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
     ) -> Optional["ray.serve._private.request_router.request_router.RequestRouter"]:
         """Temporary: expose the request router used by the HTTP router.
 
-        TODO: Replace with DeploymentHandle.choose_replica() once #60865 lands.
+        TODO(eicherseiji): Replace this with DeploymentHandle.choose_replica()
+        when ray-project/ray#60865 lands.
         """
         if self._router is None:
             return None
