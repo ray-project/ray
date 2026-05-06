@@ -546,7 +546,9 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
 
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
+        assert "option http-buffer-request" in cfg
         assert "wait-for-body" not in cfg
+        assert "tune.bufsize 32768" in cfg
         direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
         direct_backend = direct_backend.split("listen stats", 1)[0]
         assert "http-reuse never" in direct_backend
@@ -576,7 +578,7 @@ def _create_replica_server(port: int, replica_id_header: str):
 
 def _create_router_server(port: int, replica_id_to_return: str):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    calls the router without copying the prompt body."""
+    forwards the buffered request body prefix to the router."""
     app = FastAPI()
     captured = {"bodies": []}
 
@@ -693,10 +695,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
 
-            # The router only needs the app/model selection. Direct streaming
-            # supports one LLM config today, so HAProxy should not copy the
-            # large prompt body through the Lua routing path.
-            assert router_captured["bodies"] == ["{}"]
+            # Direct streaming keeps a bounded request-body path for
+            # prefix-cache-aware routing.
+            assert router_captured["bodies"] == ['{"prompt": "hello"}']
 
             # Repeat to confirm the pin holds across requests.
             for _ in range(3):
@@ -706,7 +707,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                     timeout=5,
                 )
                 assert resp.headers.get("x-replica-id") == "B"
-            assert router_captured["bodies"] == ["{}"] * 4
+            assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
 
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.
