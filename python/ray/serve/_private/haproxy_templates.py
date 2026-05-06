@@ -97,8 +97,13 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    # Clear any client-supplied capacity token before Lua optionally sets the
+    # internal token for the selected backend replica.
+    http-request del-header {{ ingress_request_router_capacity_queue_token_header }} if has_ingress_request_router_app
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    acl has_ingress_request_router_capacity_queue_token var(txn.ingress_request_router_capacity_queue_token) -m found
+    http-request set-header {{ ingress_request_router_capacity_queue_token_header }} %[var(txn.ingress_request_router_capacity_queue_token)] if has_ingress_request_router_capacity_queue_token
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}

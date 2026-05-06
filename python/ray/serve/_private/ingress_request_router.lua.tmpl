@@ -11,6 +11,10 @@ local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
 
+local function extract_json_string(json_body, field)
+    return json_body:match('"' .. field .. '"%s*:%s*"([^"]+)"')
+end
+
 local function call_router(router, body)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
@@ -50,10 +54,6 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
-local function extract_replica_id(json_body)
-    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
-end
-
 local function warn_if_truncated(txn, body)
     local content_length = txn.sf:hdr("content-length")
     if not content_length then
@@ -90,7 +90,8 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         return
     end
 
-    local replica_id = extract_replica_id(http_response_body(response))
+    local response_body = http_response_body(response)
+    local replica_id = extract_json_string(response_body, "replica_id")
     if not replica_id then
         return
     end
@@ -101,5 +102,12 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
     end
 
     txn:set_var("txn.ingress_request_router_target", server_name)
+    local capacity_queue_token = extract_json_string(
+        response_body, "capacity_queue_token")
+    if capacity_queue_token then
+        txn:set_var(
+            "txn.ingress_request_router_capacity_queue_token",
+            capacity_queue_token)
+    end
     txn:set_var("txn.via_ingress_request_router", true)
 end, 0)

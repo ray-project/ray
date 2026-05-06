@@ -7,19 +7,43 @@ distinct from Serve's per-deployment request router.
 """
 
 import asyncio
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import orjson
 from fastapi import FastAPI
 
+import ray
 from ray import serve
 from ray._common.utils import get_or_create_event_loop
+from ray.exceptions import RayActorError
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve._private.constants import (
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
+    SERVE_NAMESPACE,
+)
+from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
+
+DIRECT_ROUTER_OPTIMISTIC_LOAD_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_OPTIMISTIC_LOAD"
+DIRECT_ROUTER_POLL_INTERVAL_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_POLL_INTERVAL_S"
+DIRECT_ROUTER_CAPACITY_QUEUE_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE"
+DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME_ENV = (
+    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME"
+)
+DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_ENV = (
+    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S"
+)
+DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_ENV = (
+    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_S"
+)
+DEFAULT_DIRECT_ROUTER_POLL_INTERVAL_S = 0.05
+DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME = "capacity_queue"
+DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S = 0.05
+DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_S = 5.0
 
 # Placeholder app used only to make Serve wrap this class as ASGI. The actual
 # hot-path ASGI app is late-bound per replica by __serve_build_asgi_app__.
@@ -35,11 +59,31 @@ class LLMRouter:
         llm_deployments=None,
         llm_deployment_names=None,
         llm_configs_pre=None,
+        optimistic_load: bool = False,
+        poll_interval_s: float = DEFAULT_DIRECT_ROUTER_POLL_INTERVAL_S,
+        capacity_queue_enabled: bool = False,
+        capacity_queue_actor_name: str = DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME,
+        capacity_queue_acquire_timeout_s: float = (
+            DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S
+        ),
     ):
         self._default_serve_handles: Dict[str, DeploymentHandle] = {}
         self._llm_configs: Dict[str, LLMConfig] = {}
+        self._di_deployment_names: Dict[str, str] = {}
         self._di_load_cache = {}
         self._di_poller_task = None
+        self._di_optimistic_load = optimistic_load
+        self._di_poll_interval_s = poll_interval_s
+        self._di_capacity_queue_enabled = capacity_queue_enabled
+        self._di_capacity_queue_actor_name = capacity_queue_actor_name
+        self._di_capacity_queue_acquire_timeout_s = capacity_queue_acquire_timeout_s
+        self._di_capacity_queue = None
+        self._di_capacity_queue_full_name: Optional[str] = None
+        self._di_capacity_queue_discovery_lock = asyncio.Lock()
+        self._di_capacity_queue_warned_unavailable = False
+        self._di_capacity_queue_warned_missing_deployment = False
+        self._di_capacity_queue_warned_unknown_replica = False
+        self._di_app_name: Optional[str] = None
 
         self._init_completed = asyncio.Event()
         if llm_deployment_names is not None:
@@ -74,6 +118,7 @@ class LLMRouter:
                     f"LLMServer deployment {name} did not register in time"
                 )
             self._default_serve_handles[cfg.model_id] = handle
+            self._di_deployment_names[cfg.model_id] = name
         self._init_completed.set()
 
     async def __serve_build_asgi_app__(self):
@@ -104,9 +149,7 @@ class LLMRouter:
 
         if path in {"/", "/health"}:
             if not self._init_completed.is_set():
-                await self._send_json(
-                    send, {"status": "initializing"}, status_code=503
-                )
+                await self._send_json(send, {"status": "initializing"}, status_code=503)
                 return
 
             await self._send_json(send, {"status": "ok"})
@@ -174,12 +217,17 @@ class LLMRouter:
             return
 
         try:
-            host, port = await self._pick_replica(model_id)
+            host, port, replica_id, capacity_queue_token = await self._pick_replica(
+                model_id
+            )
         except Exception as e:
             await self._send_json(send, {"error": str(e)}, status_code=503)
             return
 
-        await self._send_json(send, {"host": host, "port": port})
+        response = {"host": host, "port": port, "replica_id": replica_id}
+        if capacity_queue_token is not None:
+            response["capacity_queue_token"] = capacity_queue_token
+        await self._send_json(send, response)
 
     async def _setup(self, llm_deployments: List[DeploymentHandle]):
         for handle in llm_deployments:
@@ -197,12 +245,201 @@ class LLMRouter:
             for replica in replicas:
                 try:
                     load = await replica.get_queue_len(deadline_s=0.5)
-                    self._di_load_cache[replica.replica_id] = load
+                    self._set_replica_load(replica, load)
                 except Exception:
                     pass
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(self._di_poll_interval_s)
 
-    async def _pick_replica(self, model_id: str) -> Tuple[str, int]:
+    def _get_replica_load(self, replica) -> int:
+        return self._di_load_cache.get(replica.replica_id, 0)
+
+    def _set_replica_load(self, replica, load: int):
+        self._di_load_cache[replica.replica_id] = load
+
+    def _record_replica_pick(self, replica):
+        if self._di_optimistic_load:
+            self._set_replica_load(replica, self._get_replica_load(replica) + 1)
+
+    def _choose_best_loaded_replica(self, candidates):
+        best = min(candidates, key=self._get_replica_load)
+        self._record_replica_pick(best)
+        return best
+
+    def _get_app_name(self) -> Optional[str]:
+        if self._di_app_name is not None:
+            return self._di_app_name
+
+        replica_context = _get_internal_replica_context()
+        if replica_context is None:
+            return None
+
+        self._di_app_name = replica_context.app_name
+        return self._di_app_name
+
+    def _try_discover_capacity_queue(self, deployment_name: str) -> bool:
+        if self._di_capacity_queue_full_name is not None:
+            try:
+                self._di_capacity_queue = ray.get_actor(
+                    self._di_capacity_queue_full_name,
+                    namespace=SERVE_NAMESPACE,
+                )
+                return True
+            except Exception:
+                self._di_capacity_queue = None
+                return False
+
+        app_name = self._get_app_name()
+        if app_name is None:
+            return False
+
+        prefix = (
+            f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}" f"{app_name}::" f"{deployment_name}::"
+        )
+        suffix = f"::{self._di_capacity_queue_actor_name}"
+
+        try:
+            actors = ray.util.list_named_actors(all_namespaces=True)
+            for actor_info in actors:
+                if actor_info["namespace"] != SERVE_NAMESPACE:
+                    continue
+                name = actor_info["name"]
+                if name.startswith(prefix) and name.endswith(suffix):
+                    self._di_capacity_queue = ray.get_actor(
+                        name, namespace=SERVE_NAMESPACE
+                    )
+                    self._di_capacity_queue_full_name = name
+                    return True
+        except Exception:
+            pass
+
+        return False
+
+    async def _ensure_capacity_queue(self, deployment_name: str) -> bool:
+        if self._di_capacity_queue is not None:
+            return True
+
+        async with self._di_capacity_queue_discovery_lock:
+            if self._di_capacity_queue is not None:
+                return True
+            return self._try_discover_capacity_queue(deployment_name)
+
+    def _replica_unique_id(self, replica) -> str:
+        replica_id = replica.replica_id
+        return getattr(replica_id, "unique_id", replica_id)
+
+    def _replica_full_id(self, replica) -> str:
+        replica_id = replica.replica_id
+        to_full_id_str = getattr(replica_id, "to_full_id_str", None)
+        if to_full_id_str is not None:
+            return to_full_id_str()
+        return str(replica_id)
+
+    def _replica_route_result(
+        self, replica, capacity_queue_token: Optional[str] = None
+    ) -> Tuple[str, int, str, Optional[str]]:
+        host, port = replica.backend_http_endpoint
+        return host, port, self._replica_full_id(replica), capacity_queue_token
+
+    def _find_replica_by_unique_id(self, replicas, unique_id: str):
+        for replica in replicas:
+            if self._replica_unique_id(replica) == unique_id:
+                return replica
+        return None
+
+    def _safe_release_capacity_token(self, unique_id: str):
+        if self._di_capacity_queue is None:
+            return
+
+        try:
+            self._di_capacity_queue.release.remote(unique_id)
+        except RayActorError:
+            self._di_capacity_queue = None
+            self._di_capacity_queue_full_name = None
+        except Exception:
+            logger.debug(
+                "Failed to release capacity queue token for replica %s.",
+                unique_id,
+                exc_info=True,
+            )
+
+    def _warn_capacity_queue_unavailable_once(self, reason: str):
+        if self._di_capacity_queue_warned_unavailable:
+            return
+        self._di_capacity_queue_warned_unavailable = True
+        logger.warning(
+            "Direct streaming capacity queue unavailable (%s); "
+            "falling back to direct Pow2 routing.",
+            reason,
+        )
+
+    async def _pick_capacity_queue_replica(self, model_id: str, replicas):
+        deployment_name = self._di_deployment_names.get(model_id)
+        if deployment_name is None:
+            if not self._di_capacity_queue_warned_missing_deployment:
+                self._di_capacity_queue_warned_missing_deployment = True
+                logger.warning(
+                    "Direct streaming capacity queue enabled, but deployment "
+                    "name for model %s is unknown; falling back to direct Pow2 "
+                    "routing.",
+                    model_id,
+                )
+            return None
+
+        if not await self._ensure_capacity_queue(deployment_name):
+            self._warn_capacity_queue_unavailable_once(
+                f"actor name {self._di_capacity_queue_actor_name!r} not found"
+            )
+            return None
+
+        acquire_ref = None
+        try:
+            acquire_ref = self._di_capacity_queue.acquire.remote(
+                timeout_s=self._di_capacity_queue_acquire_timeout_s
+            )
+            unique_id = await acquire_ref
+        except asyncio.CancelledError:
+            if acquire_ref is not None:
+                try:
+                    ray.cancel(acquire_ref)
+                except Exception:
+                    pass
+            raise
+        except RayActorError:
+            self._di_capacity_queue = None
+            self._di_capacity_queue_full_name = None
+            self._warn_capacity_queue_unavailable_once("actor died")
+            return None
+        except Exception:
+            logger.warning(
+                "Direct streaming capacity queue acquire failed; "
+                "falling back to direct Pow2 routing.",
+                exc_info=True,
+            )
+            return None
+
+        if unique_id is None:
+            logger.debug(
+                "Direct streaming capacity queue acquire timed out after %.3fs; "
+                "falling back to direct Pow2 routing.",
+                self._di_capacity_queue_acquire_timeout_s,
+            )
+            return None
+
+        replica = self._find_replica_by_unique_id(replicas, unique_id)
+        if replica is None:
+            self._safe_release_capacity_token(unique_id)
+            if not self._di_capacity_queue_warned_unknown_replica:
+                self._di_capacity_queue_warned_unknown_replica = True
+                logger.warning(
+                    "Direct streaming capacity queue returned unknown replica %s; "
+                    "falling back to direct Pow2 routing.",
+                    unique_id,
+                )
+            return None
+
+        return replica, unique_id
+
+    async def _pick_replica(self, model_id: str) -> Tuple[str, int, str, Optional[str]]:
         """Pick a replica via P2C using background-polled load data."""
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
@@ -220,6 +457,14 @@ class LLMRouter:
         ]
         if not backend_http_replicas:
             raise RuntimeError(f"No backend-http-enabled replicas for {model_id}")
+
+        if self._di_capacity_queue_enabled:
+            picked = await self._pick_capacity_queue_replica(
+                base_model_id, backend_http_replicas
+            )
+            if picked is not None:
+                replica, capacity_queue_token = picked
+                return self._replica_route_result(replica, capacity_queue_token)
 
         # Start the background poller on first routing decision. The fast path
         # below reads from the cache only, avoiding per-request queue RPCs.
@@ -241,12 +486,7 @@ class LLMRouter:
             if replica.backend_http_endpoint is not None
         ]
         if not candidates:
-            raise RuntimeError(f"P2C candidates have no backend HTTP endpoint")
+            raise RuntimeError("P2C candidates have no backend HTTP endpoint")
 
-        best = min(
-            candidates,
-            key=lambda replica: self._di_load_cache.get(
-                replica.replica_id, float("inf")
-            ),
-        )
-        return best.backend_http_endpoint
+        best = self._choose_best_loaded_replica(candidates)
+        return self._replica_route_result(best)
