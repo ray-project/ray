@@ -1029,14 +1029,24 @@ class EnvRunnerGroup:
             )
         )
 
-    def probe_unhealthy_env_runners(self) -> List[int]:
+    def probe_unhealthy_env_runners(
+        self, timeout_seconds: Optional[float] = None
+    ) -> List[int]:
         """Checks for unhealthy workers and tries restoring their states.
+
+        Args:
+            timeout_seconds: Per-actor ping timeout. If None (default), uses
+                ``AlgorithmConfig.env_runner_health_probe_timeout_s``. Pass
+                a smaller value when calling this from a tight loop to
+                avoid blocking up to the config default (30s) per probe.
 
         Returns:
             List of IDs of the workers that were restored.
         """
+        if timeout_seconds is None:
+            timeout_seconds = self._remote_config.env_runner_health_probe_timeout_s
         return self._worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            timeout_seconds=timeout_seconds,
             mark_healthy=True,
         )
 

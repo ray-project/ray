@@ -1685,6 +1685,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_eval_workers_all_unhealthy",
+    size = "medium",
+    srcs = ["algorithms/tests/test_eval_workers_all_unhealthy.py"],
+    tags = [
+        "algorithms",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Specific Algorithms
 
 # APPO
