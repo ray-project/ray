@@ -1145,6 +1145,9 @@ class Reconciler:
             cloud_resource_availabilities=(
                 cloud_resource_monitor.get_resource_availabilities()
             ),
+            recoverable_resource_availabilities=(
+                cloud_resource_monitor.get_recoverable_resource_availabilities()
+            ),
         )
 
         # Ask scheduler for updates to the cluster shape.

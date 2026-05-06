@@ -25,6 +25,7 @@ py_test_module_list(
         "tests/test_ippr_provider.py",
         "tests/test_metrics_reporter.py",
         "tests/test_node_provider.py",
+        "tests/test_priority_selection.py",
         "tests/test_ray_installer.py",
         "tests/test_reconciler.py",
         "tests/test_scheduler.py",
