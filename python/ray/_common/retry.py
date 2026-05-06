@@ -17,6 +17,19 @@ R = TypeVar("R")
 P = ParamSpec("P")
 
 
+def _matches_error(pattern: str, error_str: str) -> bool:
+    """True if ``pattern`` is a substring of ``error_str``, or matches as a regex.
+    Substring is tried first so literal patterns are not interpreted as regex.
+    Invalid regex patterns return False instead of raising regex errorin case of unclosed brackets etc.
+    """
+    if pattern in error_str:
+        return True
+    try:
+        return bool(re.search(pattern, error_str))
+    except re.error:
+        return False
+
+
 def call_with_retry(
     f: Callable[P, R],
     description: str,
@@ -52,8 +65,7 @@ def call_with_retry(
         except Exception as e:
             exception_str = str(e)
             is_retryable = match is None or any(
-                pattern in exception_str or bool(re.search(pattern, exception_str))
-                for pattern in match
+                _matches_error(pattern, exception_str) for pattern in match
             )
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary exponential backoff with 20% random jitter.

@@ -6,7 +6,6 @@ import os
 import pathlib
 import platform
 import random
-import re
 import sys
 import threading
 import time
@@ -38,7 +37,7 @@ import pyarrow
 import pyarrow.fs
 
 import ray
-from ray._common.retry import call_with_retry
+from ray._common.retry import _matches_error, call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -1567,8 +1566,7 @@ def iterate_with_retry(
                 f"{e} {e.__cause__}" if (unwrap_cause and e.__cause__) else str(e)
             )
             is_retryable = match is None or any(
-                pattern in error_str or bool(re.search(pattern, error_str))
-                for pattern in match
+                _matches_error(pattern, error_str) for pattern in match
             )
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
