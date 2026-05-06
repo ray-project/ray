@@ -56,52 +56,58 @@ def mock_sglang_wrapper():
 @pytest.fixture
 def mock_sgl_engine():
     """Mock the SGLang engine and its _generate_async method."""
-    with (
-        patch(
-            "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
-        ) as mock_generate_async,
-    ):
-        try:
-            import sglang  # noqa: F401
-        except ImportError:
-            # Mock sglang module if it's not installed in test env.
-            mock_sgl = MagicMock()
-            mock_sgl.Engine = AsyncMock()
-            sys.modules["sglang"] = mock_sgl
-        num_running_requests = 0
-        request_lock = asyncio.Lock()
+    mock_engine_module = MagicMock()
+    mock_engine_module.RayEngine = MagicMock()
 
-        # Configure mock engine's generate behavior to simulate delay
-        async def mock_generate(request):
-            nonlocal num_running_requests
-            async with request_lock:
-                num_running_requests += 1
+    sglang_modules = {
+        "sglang": MagicMock(),
+        "sglang.srt": MagicMock(),
+        "sglang.srt.ray": MagicMock(),
+        "sglang.srt.ray.engine": mock_engine_module,
+    }
 
-            # This will be checked in tests that use max_pending_requests
-            max_pending_requests = getattr(mock_generate, "max_pending_requests", -1)
-            if max_pending_requests > 0:
-                assert num_running_requests <= max_pending_requests
+    with patch.dict(sys.modules, sglang_modules):
+        with (
+            patch(
+                "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
+            ) as mock_generate_async,
+        ):
+            num_running_requests = 0
+            request_lock = asyncio.Lock()
 
-            await asyncio.sleep(0.1)  # Reduced sleep time for faster tests
+            # Configure mock engine's generate behavior to simulate delay
+            async def mock_generate(request):
+                nonlocal num_running_requests
+                async with request_lock:
+                    num_running_requests += 1
 
-            async with request_lock:
-                num_running_requests -= 1
+                # This will be checked in tests that use max_pending_requests
+                max_pending_requests = getattr(
+                    mock_generate, "max_pending_requests", -1
+                )
+                if max_pending_requests > 0:
+                    assert num_running_requests <= max_pending_requests
 
-            # Create a mock SGLang output
-            return {
-                "prompt": request.prompt,
-                "prompt_token_ids": None,
-                "text": f"Response to: {request.prompt}",
-                "meta_info": {
-                    "prompt_tokens": 3,
-                    "completion_tokens": request.params.get("max_new_tokens", 3),
-                    "finish_reason": "stop",
-                },
-                "output_ids": [4, 5, 6],
-            }
+                await asyncio.sleep(0.1)  # Reduced sleep time for faster tests
 
-        mock_generate_async.side_effect = mock_generate
-        yield mock_generate_async
+                async with request_lock:
+                    num_running_requests -= 1
+
+                # Create a mock SGLang output
+                return {
+                    "prompt": request.prompt,
+                    "prompt_token_ids": None,
+                    "text": f"Response to: {request.prompt}",
+                    "meta_info": {
+                        "prompt_tokens": 3,
+                        "completion_tokens": request.params.get("max_new_tokens", 3),
+                        "finish_reason": "stop",
+                    },
+                    "output_ids": [4, 5, 6],
+                }
+
+            mock_generate_async.side_effect = mock_generate
+            yield mock_generate_async
 
 
 def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
@@ -142,7 +148,7 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         "zero_copy_batch": True,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
-        "num_gpus": 4,
+        "num_gpus": 0,
     }
 
 
@@ -246,7 +252,9 @@ async def test_sglang_wrapper(
 async def test_sglang_error_handling(model_llama_3_2_216M):
     """Test error handling when SGLang is not available."""
     with patch.dict(sys.modules, {"sglang": None}):
-        with pytest.raises(ImportError, match="SGLang is not installed"):
+        with pytest.raises(
+            ImportError, match="SGLang with Ray backend is not installed"
+        ):
             SGLangEngineWrapper(
                 model=model_llama_3_2_216M,
                 idx_in_batch_column="__idx_in_batch",
