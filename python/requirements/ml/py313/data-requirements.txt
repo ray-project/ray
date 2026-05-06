@@ -7,7 +7,7 @@ distributed>=2025.5.0
 aioboto3==12.1.0
 crc32c==2.3
 flask_cors
-bokeh==3.1.0
+bokeh==3.8.2
 modin>=0.26.0
 pandas>=2.2.2
 responses>=0.15.0
