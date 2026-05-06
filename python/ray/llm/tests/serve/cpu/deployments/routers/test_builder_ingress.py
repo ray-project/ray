@@ -18,7 +18,6 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
-    _get_direct_streaming_capacity_queue_deployment_options,
     build_openai_app,
     build_openai_ingress_request_router,
 )
@@ -397,13 +396,7 @@ class TestBuildOpenaiApp:
     def test_direct_streaming_passes_router_knobs(self, llm_config, monkeypatch):
         monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_OPTIMISTIC_LOAD", "1")
         monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_POLL_INTERVAL_S", "0.005")
-        monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE", "1")
-        monkeypatch.setenv(
-            "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME", "test_queue"
-        )
-        monkeypatch.setenv(
-            "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S", "0.123"
-        )
+        monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_POLICY", "round_robin")
 
         class FakeBoundDeployment:
             name = "LLMServer:test-model"
@@ -424,33 +417,7 @@ class TestBuildOpenaiApp:
 
         assert init_kwargs["optimistic_load"] is True
         assert init_kwargs["poll_interval_s"] == 0.005
-        assert init_kwargs["capacity_queue_enabled"] is True
-        assert init_kwargs["capacity_queue_actor_name"] == "test_queue"
-        assert init_kwargs["capacity_queue_acquire_timeout_s"] == 0.123
-
-    def test_direct_streaming_capacity_queue_deployment_options(self, monkeypatch):
-        monkeypatch.setenv("RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE", "1")
-        monkeypatch.setenv(
-            "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME", "test_queue"
-        )
-        monkeypatch.setenv(
-            "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACQUIRE_TIMEOUT_S", "0.123"
-        )
-        monkeypatch.setenv(
-            "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_TOKEN_TTL_S", "7.0"
-        )
-
-        options = _get_direct_streaming_capacity_queue_deployment_options()
-
-        assert list(options.keys()) == ["deployment_actors"]
-        assert len(options["deployment_actors"]) == 1
-        actor_config = options["deployment_actors"][0]
-        assert actor_config.name == "test_queue"
-        assert actor_config.init_kwargs == {
-            "acquire_timeout_s": 0.123,
-            "token_ttl_s": 7.0,
-        }
-        assert actor_config.actor_options == {"num_cpus": 0}
+        assert init_kwargs["routing_policy"] == "round_robin"
 
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch

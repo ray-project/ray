@@ -1,4 +1,3 @@
-import asyncio
 import sys
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -16,14 +15,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
-from ray.llm._internal.serve.core.server.llm_server import (
-    LLMServer,
-    _CapacityQueueTokenReleaseMiddleware,
-)
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
-from ray.serve._private.constants import (
-    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
-)
 
 
 class _DirectRouterReplica:
@@ -32,65 +25,13 @@ class _DirectRouterReplica:
         self.backend_http_endpoint = ("127.0.0.1", 8000)
 
 
-class _FakeAcquireMethod:
-    def __init__(self, fn):
-        self._fn = fn
-
-    def remote(self, *args, **kwargs):
-        async def _result():
-            return self._fn(*args, **kwargs)
-
-        return _result()
-
-
-class _FakeReleaseMethod:
-    def __init__(self, fn):
-        self._fn = fn
-
-    def remote(self, *args, **kwargs):
-        self._fn(*args, **kwargs)
-
-
-class _FakeCapacityQueue:
-    def __init__(self, selected_replica_id: Optional[str]):
-        self.selected_replica_id = selected_replica_id
-        self.acquire_kwargs = []
-        self.released = []
-        self.acquire = _FakeAcquireMethod(self._acquire)
-        self.release = _FakeReleaseMethod(self._release)
-
-    def _acquire(self, **kwargs):
-        self.acquire_kwargs.append(kwargs)
-        return self.selected_replica_id
-
-    def _release(self, replica_id: str):
-        self.released.append(replica_id)
-
-    @property
-    def selected_replica_id(self):
-        return self._selected_replica_id
-
-    @selected_replica_id.setter
-    def selected_replica_id(self, value):
-        self._selected_replica_id = value
-
-
 def _new_direct_router(*, optimistic_load: bool = False):
     router = LLMRouter.__new__(LLMRouter)
-    router._di_deployment_names = {}
     router._di_load_cache = {}
     router._di_optimistic_load = optimistic_load
     router._di_poll_interval_s = 0.05
-    router._di_capacity_queue_enabled = False
-    router._di_capacity_queue_actor_name = "capacity_queue"
-    router._di_capacity_queue_acquire_timeout_s = 0.05
-    router._di_capacity_queue = None
-    router._di_capacity_queue_full_name = None
-    router._di_capacity_queue_discovery_lock = asyncio.Lock()
-    router._di_capacity_queue_warned_unavailable = False
-    router._di_capacity_queue_warned_missing_deployment = False
-    router._di_capacity_queue_warned_unknown_replica = False
-    router._di_app_name = None
+    router._di_routing_policy = "pow2"
+    router._di_round_robin_counter = 0
     return router
 
 
@@ -180,103 +121,45 @@ class TestDirectStreamingLLMRouter:
         assert picks == ["a", "a", "a"]
         assert router._di_load_cache == {}
 
-    @pytest.mark.asyncio
-    async def test_capacity_queue_pick_maps_token_to_replica(self):
+    def test_round_robin_candidates_wrap_in_stable_replica_order(self):
         router = _new_direct_router()
-        router._di_deployment_names["model"] = "LLMServer:model"
-        router._di_capacity_queue_acquire_timeout_s = 0.123
-        router._di_capacity_queue = _FakeCapacityQueue("b")
         replica_a = _DirectRouterReplica("a")
         replica_b = _DirectRouterReplica("b")
+        replica_c = _DirectRouterReplica("c")
 
-        picked = await router._pick_capacity_queue_replica(
-            "model", [replica_a, replica_b]
-        )
+        picks = [
+            [
+                r.replica_id
+                for r in router._choose_round_robin_candidates(
+                    [replica_c, replica_a, replica_b]
+                )
+            ]
+            for _ in range(4)
+        ]
 
-        assert picked == (replica_b, "b")
-        assert router._di_capacity_queue.acquire_kwargs == [{"timeout_s": 0.123}]
-        assert router._di_capacity_queue.released == []
+        assert picks == [["a", "b"], ["b", "c"], ["c", "a"], ["a", "b"]]
 
-    @pytest.mark.asyncio
-    async def test_capacity_queue_unknown_token_is_released(self):
+    def test_round_robin_policy_balances_first_choice_without_load(self):
         router = _new_direct_router()
-        router._di_deployment_names["model"] = "LLMServer:model"
-        router._di_capacity_queue = _FakeCapacityQueue("missing")
+        router._di_routing_policy = "round_robin"
         replica_a = _DirectRouterReplica("a")
         replica_b = _DirectRouterReplica("b")
+        replica_c = _DirectRouterReplica("c")
 
-        picked = await router._pick_capacity_queue_replica(
-            "model", [replica_a, replica_b]
-        )
+        picks = []
+        for _ in range(4):
+            candidates = router._choose_round_robin_candidates(
+                [replica_c, replica_a, replica_b]
+            )
+            picks.append(router._choose_best_loaded_replica(candidates).replica_id)
 
-        assert picked is None
-        assert router._di_capacity_queue.released == ["missing"]
+        assert picks == ["a", "b", "c", "a"]
 
-    @pytest.mark.asyncio
-    async def test_capacity_queue_token_release_middleware_releases_on_completion(self):
-        async def app(scope, receive, send):
-            pass
-
-        capacity_queue = _FakeCapacityQueue(None)
-        middleware = _CapacityQueueTokenReleaseMiddleware(
-            app,
-            app_name="default",
-            deployment_name="LLMServer:model",
-            replica_unique_id="replica-a",
-            capacity_queue_actor_name="capacity_queue",
-        )
-        middleware._capacity_queue = capacity_queue
-
-        await middleware(
-            {
-                "type": "http",
-                "headers": [
-                    (
-                        INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER.encode(
-                            "latin-1"
-                        ),
-                        b"replica-a",
-                    )
-                ],
-            },
-            AsyncMock(),
-            AsyncMock(),
-        )
-
-        assert capacity_queue.released == ["replica-a"]
-
-    @pytest.mark.asyncio
-    async def test_capacity_queue_token_release_middleware_skips_mismatch(self):
-        async def app(scope, receive, send):
-            pass
-
-        capacity_queue = _FakeCapacityQueue(None)
-        middleware = _CapacityQueueTokenReleaseMiddleware(
-            app,
-            app_name="default",
-            deployment_name="LLMServer:model",
-            replica_unique_id="replica-a",
-            capacity_queue_actor_name="capacity_queue",
-        )
-        middleware._capacity_queue = capacity_queue
-
-        await middleware(
-            {
-                "type": "http",
-                "headers": [
-                    (
-                        INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER.encode(
-                            "latin-1"
-                        ),
-                        b"other-replica",
-                    )
-                ],
-            },
-            AsyncMock(),
-            AsyncMock(),
-        )
-
-        assert capacity_queue.released == []
+    def test_router_policy_normalization(self):
+        assert LLMRouter._normalize_routing_policy("pow2") == "pow2"
+        assert LLMRouter._normalize_routing_policy("power-of-two") == "pow2"
+        assert LLMRouter._normalize_routing_policy("round-robin") == "round_robin"
+        assert LLMRouter._normalize_routing_policy("rr") == "round_robin"
 
 
 class TestOpenAiIngress:
