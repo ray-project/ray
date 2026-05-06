@@ -67,6 +67,8 @@ _METRICS = [
     "ray_node_disk_usage",
     "ray_node_mem_used",
     "ray_node_mem_total",
+    "ray_node_mem_used_host",
+    "ray_node_mem_total_host",
     "ray_node_cpu_utilization",
     # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
     # , e.g. need to see how users currently depend on them.
@@ -167,6 +169,8 @@ _NODE_METRICS = [
     "ray_node_mem_used",
     "ray_node_mem_available",
     "ray_node_mem_total",
+    "ray_node_mem_total_host",
+    "ray_node_mem_used_host",
     "ray_node_disk_io_read",
     "ray_node_disk_io_write",
     "ray_node_disk_io_read_count",
