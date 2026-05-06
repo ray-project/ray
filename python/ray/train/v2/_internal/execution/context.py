@@ -224,14 +224,20 @@ class TrainContext:
         # Get a consensus across ranks on the remote storage path, so distributed
         # checkpoints will be stored to the same place.
         sync_actor = self.get_synchronization_actor()
-        return ray.get(
-            sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=self.distributed_context.world_rank,
-                world_size=self.distributed_context.world_size,
-                data=checkpoint_dir_name,
-                caller_method_name="ray.train.report",
+        with invoke_context_managers(
+            [
+                callback.on_checkpoint_sync
+                for callback in self.execution_context.train_context_callbacks
+            ]
+        ):
+            return ray.get(
+                sync_actor.broadcast_from_rank_zero.remote(
+                    world_rank=self.distributed_context.world_rank,
+                    world_size=self.distributed_context.world_size,
+                    data=checkpoint_dir_name,
+                    caller_method_name="ray.train.report",
+                )
             )
-        )
 
     # TODO: make retry configurable
     @retry(description="upload checkpoint", max_attempts=3, match=AWS_RETRYABLE_TOKENS)
@@ -283,43 +289,49 @@ class TrainContext:
                     )
                 )
 
-        try:
-            # Persist the checkpoint to the remote storage path.
-            if checkpoint_upload_fn:
-                # Wraps the checkpoint_upload_fn with warning if slow
-                with context_watchdog(
-                    slow_upload_warning, CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
-                ):
-                    persisted_checkpoint = checkpoint_upload_fn(
-                        checkpoint, checkpoint_dir_name
-                    )
-
-                # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
-                if persisted_checkpoint is None or not isinstance(
-                    persisted_checkpoint, ray.train.Checkpoint
-                ):
-                    raise ValueError(
-                        "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
-                    )
-            else:
-                # Wraps the `storage_context.persist_current_checkpoint` with warning if slow
-                with context_watchdog(
-                    slow_upload_warning, DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
-                ):
-                    persisted_checkpoint = (
-                        self.storage_context.persist_current_checkpoint(
+        # Records how long the checkpoint transfer took
+        warn_message = (
+            CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
+            if checkpoint_upload_fn
+            else DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
+        )
+        with invoke_context_managers(
+            [
+                callback.on_checkpoint_transfer
+                for callback in self.execution_context.train_context_callbacks
+            ]
+        ):
+            try:
+                with context_watchdog(slow_upload_warning, warn_message):
+                    if checkpoint_upload_fn:
+                        # Upload the checkpoint using the custom checkpoint_upload_fn
+                        persisted_checkpoint = checkpoint_upload_fn(
                             checkpoint, checkpoint_dir_name
                         )
-                    )
+                    else:
+                        # Upload the checkpoint using PyArrow
+                        persisted_checkpoint = (
+                            self.storage_context.persist_current_checkpoint(
+                                checkpoint, checkpoint_dir_name
+                            )
+                        )
+            except FileNotFoundError:
+                logger.exception(
+                    f"Failed to find local checkpoint ({checkpoint}) when attempting to upload it. "
+                    "This could be caused by multiple workers on a node attempting to upload the "
+                    "same directory, and then one of the workers deletes the directory before the "
+                    "others finish."
+                )
+                raise
 
-        except FileNotFoundError:
-            logger.exception(
-                f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
-                "This could be caused by multiple workers on a node attempting to upload the "
-                "same directory, and then one of the workers deletes the directory before the "
-                "others finish."
+        # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
+        if checkpoint_upload_fn and not isinstance(
+            persisted_checkpoint, ray.train.Checkpoint
+        ):
+            raise ValueError(
+                f"checkpoint_upload_fn must return a `ray.train.Checkpoint`. Actual type is {type(persisted_checkpoint)}"
             )
-            raise
+
         # TODO: consider deleting local checkpoint as async callback instead
         if delete_local_checkpoint_after_upload:
             try:

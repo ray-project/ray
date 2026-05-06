@@ -230,6 +230,35 @@ NETWORK_TOTAL_PANEL = Panel(
     ],
 )
 
+CHECKPOINT_SYNC_TIME_PANEL = Panel(
+    id=16,
+    title="Cumulative Checkpoint Sync Time",
+    description="Cumulative time spent in the cross-rank barrier that synchronizes the checkpoint directory name across all workers. High values indicate workers are spending significant time waiting for each other to reach the synchronization point.",
+    unit="seconds",
+    targets=[
+        Target(
+            expr='sum(ray_train_checkpoint_sync_total_time_s{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", ray_train_worker_world_rank=~"$TrainWorkerWorldRank", ray_train_worker_actor_id=~"$TrainWorkerActorId", {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)',
+            legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+CHECKPOINT_TRANSFER_TIME_PANEL = Panel(
+    id=17,
+    title="Cumulative Checkpoint Transfer Time",
+    description="Cumulative time spent transferring checkpoint files to storage. High values indicate slow storage throughput or large checkpoint sizes.",
+    unit="seconds",
+    targets=[
+        Target(
+            expr='sum(ray_train_checkpoint_transfer_total_time_s{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", ray_train_worker_world_rank=~"$TrainWorkerWorldRank", ray_train_worker_actor_id=~"$TrainWorkerActorId", {global_filters}}}) by (ray_train_run_name, ray_train_worker_world_rank, ray_train_worker_actor_id)',
+            legend="Run Name: {{ray_train_run_name}}, World Rank: {{ray_train_worker_world_rank}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
 TRAIN_GRAFANA_PANELS = []
 
 TRAIN_GRAFANA_ROWS = [
@@ -243,6 +272,9 @@ TRAIN_GRAFANA_ROWS = [
             CONTROLLER_OPERATION_TIME_PANEL,
             # Ray Train Metrics (Worker)
             WORKER_CHECKPOINT_REPORT_TIME_PANEL,
+            #   `ray.train.report(checkpoint)` sync and transfer time
+            CHECKPOINT_SYNC_TIME_PANEL,
+            CHECKPOINT_TRANSFER_TIME_PANEL,
         ],
         collapsed=False,
     ),
@@ -280,6 +312,9 @@ TRAIN_RUN_PANELS = [
 TRAIN_WORKER_PANELS = [
     # Ray Train Metrics (Worker)
     WORKER_CHECKPOINT_REPORT_TIME_PANEL,
+    #   `ray.train.report(checkpoint)` sync and transfer time
+    CHECKPOINT_SYNC_TIME_PANEL,
+    CHECKPOINT_TRANSFER_TIME_PANEL,
     # Core System Resources
     CPU_UTILIZATION_PANEL,
     MEMORY_UTILIZATION_PANEL,
