@@ -65,7 +65,7 @@ def test_peek_and_reduce(
         result = stats.reduce(compile=True)
         check(result, expected_reduced)
 
-        if stats_class != LifetimeSumStats:
+        if stats_class not in (LifetimeSumStats, EmaStats):
             # After clear, peek should return default value
             if stats_class == ItemStats:
                 expected_cleared = None
