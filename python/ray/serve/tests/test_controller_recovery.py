@@ -25,6 +25,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
     request_with_retries,
 )
+from ray.serve.config import GangSchedulingConfig
 from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.util.state import list_actors
 
@@ -286,6 +287,129 @@ def test_controller_recover_initializing_actor(serve_instance):
         return not matching or all(a["state"] == "DEAD" for a in matching)
 
     wait_for_condition(original_actor_dead)
+
+
+def test_controller_recover_split_gang_init(serve_instance):
+    """Controller crash mid-startup of a gang where rank=0 finished its
+    initial ``initialize_and_get_metadata(rank=..., gang_context=...)``
+    call but rank=1 did not. The new controller must force-stop the
+    survivor (rank=0) in the same reconcile pass that drops the orphan
+    (rank=1).
+    """
+
+    rank0_init_done = SignalActor.remote()
+    rank1_unblock = SignalActor.remote()
+    client = serve_instance
+
+    @serve.deployment(
+        num_replicas=2,
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    class V1:
+        async def __init__(self):
+            ctx = serve.context._get_internal_replica_context()
+            rank = ctx.rank.rank if ctx.rank is not None else None
+            if rank == 0:
+                # rank=0 completes its `initialize_and_get_metadata` so
+                # the controller transitions it to RUNNING and records
+                # its `_gang_context`.
+                ray.get(rank0_init_done.send.remote())
+            else:
+                # rank=1 blocks indefinitely; its first
+                # `initialize_and_get_metadata` never returns. The same
+                # signal also blocks any replacement gang's rank=1.
+                await rank1_unblock.wait.remote()
+
+        def __call__(self, request):
+            return os.getpid()
+
+    serve._run(V1.bind(), _blocking=False, name="app")
+
+    # Wait for rank=0 to finish its constructor.
+    ray.get(rank0_init_done.wait.remote())
+
+    deployment_id = DeploymentID(name="V1", app_name="app")
+    controller = client._controller
+
+    def get_replica_states():
+        return ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+
+    # Wait for rank=0 to reach RUNNING in the controller (i.e., its
+    # `initialize_and_get_metadata` returned and was recorded).
+    def rank0_running():
+        states = get_replica_states()
+        return len(states.get([ReplicaState.RUNNING])) >= 1
+
+    wait_for_condition(rank0_running)
+
+    original_running = get_replica_states().get([ReplicaState.RUNNING])
+    assert len(original_running) == 1
+    original_rank0_id = original_running[0].replica_id
+
+    # Kill the controller so the next reconcile happens on the new one.
+    def get_controller_pid():
+        for actor in list_actors(filters=[("state", "=", "ALIVE")]):
+            if actor["name"] == SERVE_CONTROLLER_NAME:
+                return actor["pid"]
+        return None
+
+    controller1_pid = get_controller_pid()
+    ray.kill(client._controller, no_restart=False)
+
+    def controller_replaced():
+        pid = get_controller_pid()
+        return pid is not None and pid != controller1_pid
+
+    wait_for_condition(controller_replaced)
+    new_controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+
+    def get_replica_states_new():
+        return ray.get(
+            new_controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+
+    # The original rank=0 must never re-enter RUNNING after the crash --
+    # its gang_context is recovered via the construction-time probe, the
+    # orphan drop populates `failed_gang_ids`, and the failed_gang_ids
+    # loop force-stops rank=0 in the same reconcile pass. We exit once
+    # we've observed STOPPING for the original rank=0 and a new replica
+    # appearing, which means the whole-gang restart has been triggered.
+    seen_original_rank0_running = False
+    seen_states: set = set()
+    original_replica_ids = {r.replica_id for r in original_running}
+
+    def recovery_progressed():
+        nonlocal seen_original_rank0_running
+        try:
+            states = get_replica_states_new()
+        except Exception:
+            return False
+        for r in states.get([ReplicaState.RUNNING]):
+            seen_states.add(("RUNNING", r.replica_id))
+            if r.replica_id == original_rank0_id:
+                seen_original_rank0_running = True
+                return True
+        for r in states.get([ReplicaState.STOPPING]):
+            seen_states.add(("STOPPING", r.replica_id))
+        observed_original_stopping = ("STOPPING", original_rank0_id) in seen_states
+        new_replica_seen = any(
+            rid not in original_replica_ids for _, rid in seen_states
+        )
+        return observed_original_stopping and new_replica_seen
+
+    try:
+        wait_for_condition(recovery_progressed, timeout=5)
+    finally:
+        # Always unblock rank=1 so the replacement gang can finish startup
+        # and the test's serve_instance fixture can clean up cleanly,
+        # regardless of which assertion below fails first.
+        ray.get(rank1_unblock.send.remote())
+
+    assert not seen_original_rank0_running
+
+    client._wait_for_application_running("app")
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):

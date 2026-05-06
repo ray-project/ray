@@ -723,6 +723,10 @@ class ActorReplicaWrapper:
         # asynchronously verify the actor finished its initial setup before
         # we trigger `initialize_and_get_metadata`.
         self._was_initialized_obj_ref: Optional[ObjectRef] = None
+        # Populated in self.recover() to recover the gang context of an
+        # orphaned actor that never finished `initialize_and_get_metadata`,
+        # so the whole gang can be restarted instead of just the orphan.
+        self._initial_gang_context_obj_ref: Optional[ObjectRef] = None
         # Set to True when `check_ready()` determines the actor cannot be
         # recovered (e.g., the previous controller crashed before the actor
         # finished its initial setup). The reconciler treats this case as a
@@ -1080,6 +1084,11 @@ class ActorReplicaWrapper:
                 deployment_info.ingress,
                 deployment_info.route_prefix,
                 deployment_info.ingress_request_router,
+                # Pass gang_context at construction so the actor can report
+                # its gang identity to the controller during recovery, even
+                # if the previous controller crashed before sending the
+                # first initialize_and_get_metadata.
+                self._gang_context,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1284,6 +1293,15 @@ class ActorReplicaWrapper:
             # don't accidentally drive the bad actor through initialization
             # only to kill it afterwards.
             self._was_initialized_obj_ref = self._actor_handle.was_initialized.remote()
+            # Fire the gang-context probe in parallel. Even an orphaned
+            # actor (one that never ran `initialize_and_get_metadata`)
+            # exposes its gang context here because we pass it at
+            # construction. Recovering this lets us escalate to a whole-
+            # gang restart when the orphan is dropped, instead of leaving
+            # surviving siblings with stale `member_replica_ids`.
+            self._initial_gang_context_obj_ref = (
+                self._actor_handle.get_initial_gang_context.remote()
+            )
 
         return True
 
@@ -1300,6 +1318,30 @@ class ActorReplicaWrapper:
                 f"Failed to kill unrecoverable replica actor "
                 f"{self._replica_id} during controller recovery."
             )
+
+    def _recover_initial_gang_context(self) -> None:
+        """Populate ``self._gang_context`` from the actor's construction-time
+        gang context, so an orphaned gang member exposes its gang identity
+        even if it never finished `initialize_and_get_metadata`.
+
+        Best-effort: if the actor died between the probe being fired in
+        ``recover()`` and being observed here, leave ``self._gang_context``
+        unchanged.
+        """
+        if self._initial_gang_context_obj_ref is None:
+            return
+        gang_ctx_ref = self._initial_gang_context_obj_ref
+        self._initial_gang_context_obj_ref = None
+        try:
+            initial_gang_context = ray.get(gang_ctx_ref)
+        except Exception as e:
+            logger.debug(
+                f"Could not recover initial gang context for "
+                f"{self._replica_id} during controller recovery ({e!r})."
+            )
+            return
+        if initial_gang_context is not None:
+            self._gang_context = initial_gang_context
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -1364,6 +1406,11 @@ class ActorReplicaWrapper:
 
             probe_ref = self._was_initialized_obj_ref
             self._was_initialized_obj_ref = None
+            # Recover the construction-time gang context before either
+            # branch below: orphan drops need gang_id for
+            # `failed_gang_ids`, and survivors need it populated for the
+            # same-pass cleanup loop. Best-effort; failures are swallowed.
+            self._recover_initial_gang_context()
             try:
                 was_initialized = ray.get(probe_ref)
             except Exception as e:
