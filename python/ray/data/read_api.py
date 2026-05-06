@@ -2896,6 +2896,10 @@ def read_hudi(
     *,
     query_type: str = "snapshot",
     filters: Optional[List[Tuple[str, str, str]]] = None,
+    columns: Optional[List[str]] = None,
+    as_of_timestamp: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
     hudi_options: Optional[Dict[str, str]] = None,
     storage_options: Optional[Dict[str, str]] = None,
     num_cpus: Optional[float] = None,
@@ -2909,35 +2913,57 @@ def read_hudi(
     Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
+    Requires ``hudi >= 0.5.0``.
+
     Examples:
+        Snapshot read with a partition filter and column projection:
+
         >>> import ray
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
-        ...     query_type="snapshot",
         ...     filters=[("city", "=", "san_francisco")],
+        ...     columns=["ts", "rider", "fare"],
         ... )
+
+        Time-travel snapshot at a specific commit:
+
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ...     as_of_timestamp="20230115123456789",
+        ... )
+
+        Incremental read between two commits:
 
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
         ...     query_type="incremental",
-        ...     hudi_options={
-        ...         "hoodie.read.file_group.start_timestamp": "20230101123456789",
-        ...         "hoodie.read.file_group.end_timestamp": "20230201123456789",
-        ...     },
+        ...     start_timestamp="20230101123456789",
+        ...     end_timestamp="20230201123456789",
         ... )
 
     Args:
         table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS are supported.
         query_type: The Hudi query type to use. Supported values are ``snapshot`` and ``incremental``.
-        filters: Optional list of filters to apply to the Hudi table when the
-            ``query_type`` is ``snapshot``. Each filter is a tuple of the form
-            ``(column_name, operator, value)``. The operator can be
-            one of ``"="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
-            Currently, only filters on partition columns will be effective.
-        hudi_options: A dictionary of Hudi options to pass to the Hudi reader.
-        storage_options: Extra options that make sense for a particular storage
-            connection. This is used to store connection parameters like credentials,
-            endpoint, etc. See more explanation
+        filters: Optional list of filters to apply. Each filter is a tuple of
+            ``(column_name, operator, value)``. The operator can be one of
+            ``"="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``, ``"IN"``,
+            ``"NOT IN"``. Filters drive partition pruning when the column is a
+            partition column, file-level statistics pruning when the column has
+            statistics, and row-level filtering otherwise. Applies to both
+            snapshot and incremental queries.
+        columns: Optional list of column names to read (projection pushdown).
+            If unset, all columns are read.
+        as_of_timestamp: For snapshot queries, the timestamp to read at. If
+            unset, the latest commit is used.
+        start_timestamp: For incremental queries, the lower-bound timestamp
+            (exclusive). If unset, defaults to the earliest commit.
+        end_timestamp: For incremental queries, the upper-bound timestamp
+            (inclusive). If unset, defaults to the latest commit.
+        hudi_options: Advanced Hudi options passed to both the
+            ``HudiTableBuilder`` (table construction) and ``HudiReadOptions``
+            (per-read behavior such as ``hoodie.read.use.read_optimized.mode``).
+        storage_options: Extra options for a particular storage connection
+            (credentials, endpoint, etc). See
             `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2961,6 +2987,10 @@ def read_hudi(
         table_uri=table_uri,
         query_type=query_type,
         filters=filters,
+        columns=columns,
+        as_of_timestamp=as_of_timestamp,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
         hudi_options=hudi_options,
         storage_options=storage_options,
     )
