@@ -728,7 +728,7 @@ class ActorReplicaWrapper:
         # finished its initial setup). The reconciler treats this case as a
         # silent drop / replace rather than a deploy failure, since the
         # underlying cause is a controller-side crash, not user code.
-        self._recovery_unrecoverable: bool = False
+        self._unrecoverable: bool = False
 
         self._actor_resources: Dict[str, float] = None
         # If the replica is being started, this will be the true version
@@ -834,8 +834,8 @@ class ActorReplicaWrapper:
         return self._gang_context
 
     @property
-    def recovery_unrecoverable(self) -> bool:
-        return self._recovery_unrecoverable
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
 
     @property
     def app_name(self) -> str:
@@ -1374,7 +1374,7 @@ class ActorReplicaWrapper:
                 )
                 logger.warning(msg)
                 self._kill_unrecoverable_actor()
-                self._recovery_unrecoverable = True
+                self._unrecoverable = True
                 return ReplicaStartupStatus.FAILED, msg
 
             if not was_initialized:
@@ -1386,7 +1386,7 @@ class ActorReplicaWrapper:
                 )
                 logger.warning(msg)
                 self._kill_unrecoverable_actor()
-                self._recovery_unrecoverable = True
+                self._unrecoverable = True
                 return ReplicaStartupStatus.FAILED, msg
 
             # Probe succeeded; safe to drive the actor through recovery.
@@ -1971,14 +1971,14 @@ class DeploymentReplica:
         return self._actor.gang_context
 
     @property
-    def recovery_unrecoverable(self) -> bool:
+    def unrecoverable(self) -> bool:
         """Whether `check_ready()` determined the actor cannot be recovered.
 
         When True, the reconciler should drop and replace the replica
         without counting it as a deploy failure (the underlying cause is a
         previous controller crash, not user code).
         """
-        return self._actor.recovery_unrecoverable
+        return self._actor.unrecoverable
 
     def check_started(
         self,
@@ -4221,7 +4221,7 @@ class DeploymentState:
                 # already killed in `check_ready()`, so force-stop to avoid
                 # issuing a graceful shutdown RPC to a dead actor. We still
                 # propagate gang failure tracking so siblings get cleaned up.
-                if replica.recovery_unrecoverable:
+                if replica.unrecoverable:
                     self._stop_replica(replica, graceful_stop=False)
                     if replica.gang_context is not None:
                         failed_gang_ids.add(replica.gang_context.gang_id)

@@ -395,7 +395,7 @@ class MockReplicaActorWrapper:
         self._ingress = False
         self._gang_context = None
         self._gang_pg_index = None
-        self._recovery_unrecoverable = False
+        self._unrecoverable = False
 
     @property
     def is_cross_language(self) -> bool:
@@ -585,14 +585,14 @@ class MockReplicaActorWrapper:
         # Mirror production: the `was_initialized` probe is fired here and
         # observed asynchronously in `check_ready()`. Tests register
         # uninitialized replicas via `uninitialized_replicas_context`.
-        self._recovery_unrecoverable = self.replica_id in uninitialized_replicas_context
+        self._unrecoverable = self.replica_id in uninitialized_replicas_context
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
         # If the controller's async `was_initialized` probe came back False,
         # report a failed-but-unrecoverable startup so the reconciler drops
         # and replaces the replica without recording a deploy failure.
-        if self.recovering and self._recovery_unrecoverable:
+        if self.recovering and self._unrecoverable:
             return (
                 ReplicaStartupStatus.FAILED,
                 f"{self._replica_id} was found alive but never finished "
@@ -653,8 +653,8 @@ class MockReplicaActorWrapper:
         return self._gang_context
 
     @property
-    def recovery_unrecoverable(self) -> bool:
-        return self._recovery_unrecoverable
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
 
 
 @serve.deployment
