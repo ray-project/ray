@@ -236,7 +236,11 @@ void RedisRequestContext::Run() {
   }
 
 RedisContext::RedisContext(instrumented_io_context &io_service)
-    : io_service_(io_service), context_(nullptr), ssl_context_(nullptr) {
+    : io_service_(io_service),
+      context_(nullptr),
+      ssl_context_(nullptr),
+      redis_db_probe_timeout_milliseconds_(
+          RayConfig::instance().redis_db_probe_timeout_milliseconds()) {
   redisSSLContextError ssl_error;
   redisInitOpenSSL();
 
@@ -287,8 +291,7 @@ void RedisContext::Disconnect() {
   redis_async_context_.reset();
 }
 
-Status SetRedisProbeTimeout(redisContext *context) {
-  const auto timeout_ms = RayConfig::instance().redis_db_probe_timeout_milliseconds();
+Status SetRedisProbeTimeout(redisContext *context, int64_t timeout_ms) {
   RAY_CHECK_GT(timeout_ms, 0) << "redis_db_probe_timeout_milliseconds must be positive.";
   struct timeval timeout;
   timeout.tv_sec = timeout_ms / 1000;
@@ -313,12 +316,13 @@ Status RestoreRedisTimeout(redisContext *context) {
 
 Status AuthenticateRedis(redisContext *context,
                          const std::string &username,
-                         const std::string &password) {
+                         const std::string &password,
+                         int64_t redis_db_probe_timeout_milliseconds) {
   if (password == "") {
     RAY_CHECK(username.empty());
     return Status::OK();
   }
-  RAY_RETURN_NOT_OK(SetRedisProbeTimeout(context));
+  RAY_RETURN_NOT_OK(SetRedisProbeTimeout(context, redis_db_probe_timeout_milliseconds));
 
   redisReply *reply;
   if (username.empty()) {
@@ -490,13 +494,25 @@ void RedisContext::ValidateRedisDB() {
 }
 
 bool RedisContext::IsRedisSentinel() {
-  RAY_CHECK_OK(SetRedisProbeTimeout(sync_context()));
+  // Apply the probe timeout for the INFO SENTINEL command,
+  // which is the first command we send to the Redis server if auth is not required.
+  // (AUTH command is applied with the timeout as well.)
+  //
+  // This timeout is specifically to avoid blocking the GCS startup indefinitely
+  // in the case where some Redis providers mischievously don't drop the connection
+  // when they expect a TLS handshake instead of a normal command.
+  // See the misbehaved tcpdump in https://github.com/ray-project/ray/pull/63148.
+  //
+  // Once we confirmed the Redis server behaves normally, we clear the timeout for
+  // not affecting normal operations.
+  RAY_CHECK_OK(
+      SetRedisProbeTimeout(sync_context(), redis_db_probe_timeout_milliseconds_));
 
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
 
-  RAY_CHECK(reply) << "Failed to get Redis info within "
-                   << RayConfig::instance().redis_db_probe_timeout_milliseconds()
-                   << "ms.";
+  RAY_CHECK(reply) << "Failed to get Redis info. The command may have timed out after "
+                   << redis_db_probe_timeout_milliseconds_
+                   << "ms or failed due to a Redis connection error.";
 
   RAY_CHECK_OK(RestoreRedisTimeout(sync_context()));
 
@@ -663,7 +679,8 @@ Status RedisContext::Connect(const std::string &address,
     RAY_CHECK(redisInitiateSSLWithContext(context_.get(), ssl_context_) == REDIS_OK)
         << "Failed to setup encrypted redis: " << context_->errstr;
   }
-  RAY_CHECK_OK(AuthenticateRedis(context_.get(), username, password));
+  RAY_CHECK_OK(AuthenticateRedis(
+      context_.get(), username, password, redis_db_probe_timeout_milliseconds_));
 
   // Connect to async context
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;

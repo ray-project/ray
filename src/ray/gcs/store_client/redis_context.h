@@ -16,6 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -193,6 +194,7 @@ class RedisContext {
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  int64_t redis_db_probe_timeout_milliseconds_;
 };
 
 }  // namespace ray::gcs
