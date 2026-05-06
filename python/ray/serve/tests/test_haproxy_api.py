@@ -496,9 +496,10 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         )
         api = _make_api(temp_dir, {"plain": backend})
 
-        result = api._write_ingress_request_router_lua([backend])
+        lua_path, changed = api._write_ingress_request_router_lua([backend])
 
-        assert result is None
+        assert lua_path is None
+        assert not changed
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
