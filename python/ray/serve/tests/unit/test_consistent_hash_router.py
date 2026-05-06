@@ -9,14 +9,21 @@ from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
+    ReplicaID,
     RequestMetadata,
 )
 from ray.serve._private.request_router import PendingRequest
-from ray.serve._private.test_utils import MockTimer
+from ray.serve._private.test_utils import (
+    FakeCounter,
+    FakeGauge,
+    FakeHistogram,
+    MockTimer,
+)
 from ray.serve._private.utils import generate_request_id
 from ray.serve.experimental.consistent_hash_router import (
     DEFAULT_FALLBACK_REPLICAS,
     DEFAULT_VIRTUAL_NODES,
+    TOP_SESSIONS_MAX,
     ConsistentHashRouter,
     _hash_bytes,
 )
@@ -579,6 +586,176 @@ async def test_two_routers_route_same_session_to_same_replica(router):
             f"Session {sess} diverged: {ranks_a[0][0].replica_id} vs "
             f"{ranks_b[0][0].replica_id}"
         )
+
+
+def _install_fake_metrics(router: ConsistentHashRouter) -> dict:
+    """Swap router metrics for ``Fake*`` equivalents from ``_private/test_utils``."""
+    common = ("application", "deployment", "actor_id", "handle_source")
+    default_tags = {
+        "application": router._deployment_id.app_name,
+        "deployment": router._deployment_id.name,
+        "actor_id": router._self_actor_id,
+        "handle_source": router._handle_source.value,
+    }
+    router.fallback_counter = FakeCounter(tag_keys=common + ("rank",)).set_default_tags(
+        default_tags
+    )
+    router.top_sessions_gauge = FakeGauge(
+        tag_keys=common + ("session_id",)
+    ).set_default_tags(default_tags)
+    router.ring_rebuilds_counter = FakeCounter(tag_keys=common).set_default_tags(
+        default_tags
+    )
+    router.ring_rebuild_duration_ms_histogram = FakeHistogram(
+        tag_keys=common
+    ).set_default_tags(default_tags)
+    return {
+        "fallback": router.fallback_counter,
+        "top_sessions": router.top_sessions_gauge,
+        "ring_rebuilds": router.ring_rebuilds_counter,
+        "ring_rebuild_duration_ms": router.ring_rebuild_duration_ms_histogram,
+        "default_tags": default_tags,
+    }
+
+
+async def _route_session(router, session_id: str):
+    """Route one request end-to-end and return the accepting ``ReplicaID``."""
+    loop = get_or_create_event_loop()
+    pr = _make_request(session_id)
+    chosen = await loop.create_task(router._choose_replica_for_request(pr))
+    router.on_request_routed(pr, chosen.replica_id, result=None)
+    return chosen.replica_id
+
+
+def _ready_replicas(n: int) -> list:
+    reps = [FakeRunningReplica(f"r{i}") for i in range(n)]
+    for r in reps:
+        r.set_queue_len_response(0)
+    return reps
+
+
+@pytest.mark.asyncio
+async def test_ring_rebuild_metrics_fire_once_per_rebuild(router):
+    """Replica-set change fires once; no-op ticks don't."""
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    router.update_replicas(_ready_replicas(3))
+    assert fakes["ring_rebuilds"].get_count(tags) == 1
+    obs = fakes["ring_rebuild_duration_ms"].get_observations(tags)
+    assert len(obs) == 1 and obs[0] >= 0
+
+    router.update_replicas(_ready_replicas(3))
+    assert fakes["ring_rebuilds"].get_count(tags) == 1
+    assert len(fakes["ring_rebuild_duration_ms"].get_observations(tags)) == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_counter_tags_primary_rank(router):
+    """Fresh session on a steady ring lands at rank 0."""
+    router.update_replicas(_ready_replicas(5))
+    fakes = _install_fake_metrics(router)
+
+    await _route_session(router, "sess_xyz")
+
+    tags = {**fakes["default_tags"], "rank": "0"}
+    assert fakes["fallback"].get_count(tags) == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_counter_tags_fallback_rank_when_primary_saturated(router):
+    """Saturated primary tags the rank=1 fallback bucket."""
+    replicas = _ready_replicas(3)
+    router.update_replicas(replicas)
+    fakes = _install_fake_metrics(router)
+
+    ranked = router._lookup_ranked_replicas("sess_fb")
+    primary_id, fallback_id = ranked[0], ranked[1]
+
+    for r in replicas:
+        if r.replica_id == primary_id:
+            r.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+        else:
+            r.set_queue_len_response(0)
+
+    chosen = await _route_session(router, "sess_fb")
+    assert chosen == fallback_id
+
+    tags = {**fakes["default_tags"], "rank": "1"}
+    assert fakes["fallback"].get_count(tags) == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_counter_tags_stale_rank_on_ring_drift(router):
+    """rank=-1 fires when the accepting replica isn't on the current ring."""
+    router.update_replicas(_ready_replicas(3))
+    fakes = _install_fake_metrics(router)
+
+    stale = ReplicaID(unique_id="not_on_ring", deployment_id=DEPLOYMENT_ID)
+    router.on_request_routed(_make_request("sess_x"), stale, result=None)
+
+    tags = {**fakes["default_tags"], "rank": "-1"}
+    assert fakes["fallback"].get_count(tags) == 1
+
+
+@pytest.mark.asyncio
+async def test_top_sessions_gauge_tracks_count_per_session(router):
+    """Three requests for one session yield a gauge of 3."""
+    router.update_replicas(_ready_replicas(3))
+    fakes = _install_fake_metrics(router)
+
+    for _ in range(3):
+        await _route_session(router, "sess_hot")
+
+    tags = {**fakes["default_tags"], "session_id": "sess_hot"}
+    assert fakes["top_sessions"].get_value(tags) == 3
+
+
+@pytest.mark.asyncio
+async def test_top_sessions_lru_evicts_and_zeros_gauge(router):
+    """LRU overflow evicts the LRU entry and zeros its gauge series."""
+    router.update_replicas(_ready_replicas(1))
+    fakes = _install_fake_metrics(router)
+
+    for i in range(TOP_SESSIONS_MAX + 1):
+        await _route_session(router, f"sess_{i}")
+
+    evicted_tags = {**fakes["default_tags"], "session_id": "sess_0"}
+    assert fakes["top_sessions"].get_value(evicted_tags) == 0
+    assert len(router._top_sessions_lru) == TOP_SESSIONS_MAX
+    assert "sess_0" not in router._top_sessions_lru
+
+
+@pytest.mark.asyncio
+async def test_top_sessions_lru_touches_recency_on_repeat_hit(router):
+    """Repeat hit moves session to MRU; overflow evicts an older entry."""
+    router.update_replicas(_ready_replicas(1))
+    _install_fake_metrics(router)
+
+    await _route_session(router, "sess_A")
+    await _route_session(router, "sess_B")
+    await _route_session(router, "sess_A")  # A now MRU, B now LRU
+
+    for i in range(TOP_SESSIONS_MAX - 2):
+        await _route_session(router, f"filler_{i}")
+
+    await _route_session(router, "sess_C")  # overflow -> evicts sess_B
+
+    assert "sess_A" in router._top_sessions_lru
+    assert "sess_B" not in router._top_sessions_lru
+
+
+@pytest.mark.asyncio
+async def test_anonymous_traffic_skips_top_sessions(router):
+    """Session-less request increments rank but skips top-sessions."""
+    router.update_replicas(_ready_replicas(1))
+    fakes = _install_fake_metrics(router)
+
+    await _route_session(router, session_id="")
+
+    assert fakes["fallback"].get_count({**fakes["default_tags"], "rank": "0"}) == 1
+    assert fakes["top_sessions"].values == {}
+    assert router._top_sessions_lru == {}
 
 
 if __name__ == "__main__":

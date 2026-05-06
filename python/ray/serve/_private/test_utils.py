@@ -992,6 +992,7 @@ class FakeGauge:
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
+        return self
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
         merged_tags = self.default_tags.copy()
@@ -1030,6 +1031,7 @@ class FakeCounter:
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
+        return self
 
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         merged_tags = self.default_tags.copy()
@@ -1053,6 +1055,56 @@ class FakeCounter:
             value = value.get(tag_value)
             if value is None:
                 return
+
+        return value
+
+
+class FakeHistogram:
+    """Parallel of ``FakeCounter`` / ``FakeGauge`` for histogram metrics.
+    Records every observation keyed by the merged tag dict, so tests can
+    assert on the sequence of observed values for a given tag set."""
+
+    def __init__(
+        self,
+        name: str = None,
+        tag_keys: Tuple[str] = None,
+        boundaries: list = None,
+    ):
+        self.name = name
+        self.boundaries = boundaries or []
+        self.observations = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.default_tags[key] = tag
+        return self
+
+    def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
+
+        d = self.observations
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
+
+        key = merged_tags[self.tags[-1]]
+        d.setdefault(key, []).append(value)
+
+    def get_observations(self, tags: Dict[str, str]) -> list:
+        value = self.observations
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return None
 
         return value
 
