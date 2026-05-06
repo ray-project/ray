@@ -60,6 +60,9 @@ class KineticaTableSettings:
     collection_name: Optional[str] = None
     """Optional schema/collection name for the table."""
 
+    update_on_existing_pk: bool = True
+    """If True, updates existing records with matching primary keys. If False, insert fails on PK conflict."""
+
 
 class KineticaDatasink(Datasink):
     """
@@ -129,7 +132,12 @@ class KineticaDatasink(Datasink):
                 "append": KineticaSinkMode.APPEND,
                 "overwrite": KineticaSinkMode.OVERWRITE,
             }
-            mode = mode_map.get(mode.lower(), KineticaSinkMode.APPEND)
+            mode_lower = mode.lower()
+            if mode_lower not in mode_map:
+                raise ValueError(
+                    f"Invalid mode '{mode}'. Must be one of: 'create', 'append', 'overwrite'"
+                )
+            mode = mode_map[mode_lower]
 
         self._mode = mode
         self._schema = schema
@@ -445,9 +453,15 @@ class KineticaDatasink(Datasink):
             try:
                 gpudb_table = self._create_gpudb_table(client)
             except Exception as e:
-                logger.warning(
-                    f"Could not create GPUdbTable, falling back to direct insert: {e}"
-                )
+                if self._use_multihead:
+                    logger.warning(
+                        f"Could not create GPUdbTable for multihead ingest, "
+                        f"falling back to direct insert (performance may be degraded): {e}"
+                    )
+                else:
+                    logger.warning(
+                        f"Could not create GPUdbTable, falling back to direct insert: {e}"
+                    )
 
         try:
             for block in blocks:
@@ -464,7 +478,13 @@ class KineticaDatasink(Datasink):
                     try:
                         gpudb_table = self._create_gpudb_table(client)
                     except Exception as e:
-                        logger.warning(f"Could not create GPUdbTable: {e}")
+                        if self._use_multihead:
+                            logger.warning(
+                                f"Could not create GPUdbTable for multihead ingest, "
+                                f"performance may be degraded: {e}"
+                            )
+                        else:
+                            logger.warning(f"Could not create GPUdbTable: {e}")
 
                 for batch in arrow_table.to_batches():
                     records = convert_arrow_batch_to_records(
@@ -511,7 +531,7 @@ class KineticaDatasink(Datasink):
             gpudb_table.insert_records(
                 records,
                 options={
-                    "update_on_existing_pk": "true",
+                    "update_on_existing_pk": "true" if self._table_settings.update_on_existing_pk else "false",
                     "return_individual_errors": "true",
                 },
             )
@@ -545,7 +565,7 @@ class KineticaDatasink(Datasink):
                     data=json_records,
                     list_encoding="json",
                     options={
-                        "update_on_existing_pk": "true",
+                        "update_on_existing_pk": "true" if self._table_settings.update_on_existing_pk else "false",
                         "return_individual_errors": "true",
                     },
                 )

@@ -101,6 +101,10 @@ def arrow_to_kinetica_type(
         if pa.types.is_utf8(arrow_type) or pa.types.is_large_utf8(arrow_type):
             return GPUdbRecordColumn._ColumnType.STRING, []
 
+    # UUID (must come before generic fixed-size binary check)
+    if pa.types.is_fixed_size_binary(arrow_type) and arrow_type.byte_width == 16:
+        return GPUdbRecordColumn._ColumnType.STRING, [GPUdbColumnProperty.UUID]
+
     # Binary types
     if pa.types.is_binary(arrow_type) or pa.types.is_large_binary(arrow_type):
         return GPUdbRecordColumn._ColumnType.BYTES, []
@@ -122,10 +126,6 @@ def arrow_to_kinetica_type(
     # Duration
     if pa.types.is_duration(arrow_type):
         return GPUdbRecordColumn._ColumnType.LONG, []
-
-    # UUID
-    if pa.types.is_fixed_size_binary(arrow_type) and arrow_type.byte_width == 16:
-        return GPUdbRecordColumn._ColumnType.STRING, [GPUdbColumnProperty.UUID]
 
     # List/Array types
     if pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
@@ -399,8 +399,7 @@ def convert_arrow_batch_to_records(
     column_map = {col.name: col for col in columns}
 
     records = []
-    table = pa.Table.from_batches([batch])
-    pydict = table.to_pydict()
+    pydict = batch.to_pydict()
 
     num_rows = batch.num_rows
     col_names = batch.schema.names

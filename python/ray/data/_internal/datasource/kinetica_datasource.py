@@ -41,9 +41,6 @@ def _is_filter_safe(filter_expr: str) -> bool:
     if _UNSAFE_FILTER_CHARS.search(filter_expr):
         return False
 
-    if filter_expr.count(";") > 0:
-        return False
-
     return True
 
 
@@ -272,7 +269,7 @@ class KineticaDatasource(Datasource):
                 if self._filter_expression
                 else {}
             )
-            if self._columns:
+            if self._columns is not None:
                 options["select_columns"] = ",".join(self._columns)
 
             response = client.get_records(
@@ -344,7 +341,7 @@ class KineticaDatasource(Datasource):
             options = {}
             if filter_expression:
                 options["expression"] = filter_expression
-            if columns:
+            if columns is not None:
                 options["select_columns"] = ",".join(columns)
             if sort_by:
                 options["sort_by"] = sort_by
