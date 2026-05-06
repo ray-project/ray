@@ -930,6 +930,40 @@ async def test_start(haproxy_api_cleanup):
 
 
 @pytest.mark.asyncio
+async def test_start_discards_haproxy_output():
+    """HAProxy output must not be left in undrained pipes.
+
+    Request-routing logs can be large during LLM benchmarks; if stdout/stderr
+    are asyncio pipes and nobody drains them, HAProxy can block while writing
+    logs and stop serving traffic.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+        api._wait_for_hap_availability = mock.AsyncMock()
+
+        proc = mock.Mock()
+        proc.returncode = None
+
+        with mock.patch(
+            "ray.serve._private.haproxy.get_haproxy_binary",
+            return_value="/usr/bin/haproxy",
+        ), mock.patch(
+            "ray.serve._private.haproxy.asyncio.create_subprocess_exec",
+            new=mock.AsyncMock(return_value=proc),
+        ) as create_subprocess_exec:
+            started_proc = await api._start_and_wait_for_haproxy()
+
+        assert started_proc is proc
+        create_subprocess_exec.assert_awaited_once()
+        kwargs = create_subprocess_exec.await_args.kwargs
+        assert kwargs["stdout"] == asyncio.subprocess.DEVNULL
+        assert kwargs["stderr"] == asyncio.subprocess.DEVNULL
+
+
+@pytest.mark.asyncio
 async def test_stop(haproxy_api_cleanup):
     """Test HAProxy stop functionality."""
     with tempfile.TemporaryDirectory() as temp_dir:

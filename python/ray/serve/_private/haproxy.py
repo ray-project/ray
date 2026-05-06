@@ -692,8 +692,11 @@ class HAProxyApi(ProxyApi):
 
         proc = await asyncio.create_subprocess_exec(
             *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            # Do not pipe long-running HAProxy logs unless they are actively
+            # drained. A full stderr pipe can block HAProxy and stall both the
+            # data plane and admin socket.
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
         )
 
         try:
