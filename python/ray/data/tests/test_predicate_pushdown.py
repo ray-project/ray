@@ -37,9 +37,11 @@ from ray.data.tests.test_util import (
 from ray.tests.conftest import *  # noqa
 
 # Pattern to match read operators in logical plans.
-# Matches Read[Read<Format>] where format is Parquet, CSV, Range, etc.
+# Matches V1 ``Read[Read<Format>]`` or the V2 ``ListFiles → ReadFiles``
+# chain where the consumer is named ``ReadFiles<Format>`` (e.g.
+# ``ReadFilesParquetV2``).
 READ_OPERATOR_PATTERN = (
-    r"^(Read\[Read\w+\]|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\])"
+    r"^(Read\[Read\w+\]" r"|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\w*\])"
 )
 
 

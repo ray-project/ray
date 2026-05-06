@@ -131,6 +131,14 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
 
 def test_large_file_additional_split(ray_start_10_cpus_shared, tmp_path):
     ctx = ray.data.context.DataContext.get_current()
+    if ctx.use_datasource_v2:
+        pytest.skip(
+            "V2 defers file listing to execution time, so "
+            "``LogicalPlan.initial_num_blocks()`` can't report a "
+            "file-count-based estimate pre-materialization. The "
+            "post-materialize block-split assertions this test also "
+            "makes are still covered by V1."
+        )
     ctx.target_max_block_size = 10 * 1024 * 1024
 
     # ~100MiB of tensor data
