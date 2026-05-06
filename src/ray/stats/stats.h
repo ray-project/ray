@@ -125,7 +125,7 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
     return;
   }
   OpenTelemetryMetricRecorder::GetInstance().Start(
-      /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+      /*endpoint=*/BuildAddress(GetLocalhostIP(), metrics_agent_port),
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
