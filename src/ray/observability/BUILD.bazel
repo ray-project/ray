@@ -175,7 +175,7 @@ ray_cc_library(
         ":metric_interface",
         ":ray_event",
         ":ray_event_recorder_interface",
-        "//src/ray/common:asio",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/rpc:event_aggregator_client",

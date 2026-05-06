@@ -18,7 +18,8 @@ ray_cc_library(
         "ray_syncer_server.h",
     ],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/protobuf:ray_syncer_cc_grpc",
