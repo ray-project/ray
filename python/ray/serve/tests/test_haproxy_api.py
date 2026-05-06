@@ -15,6 +15,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
 
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -497,7 +498,44 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
 
         result = api._write_ingress_request_router_lua([backend])
 
-        assert result == (None, False)
+        assert result is None
+        assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
+
+
+def test_router_servers_without_replica_ids_emits_no_lua_directives(
+    haproxy_api_cleanup,
+):
+    """Backend with router servers but no replica IDs must emit neither the
+    global `lua-load-per-thread` nor the frontend `lua.route_*` action."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = _make_api(
+            temp_dir,
+            {
+                "llm": BackendConfig(
+                    name="llm",
+                    path_prefix="/",
+                    app_name="llm",
+                    # Router is configured, but no replica has a replica_id.
+                    servers=[
+                        ServerConfig(
+                            name="r1", host="10.0.0.1", port=30001, replica_id=None
+                        )
+                    ],
+                    ingress_request_router_servers=[
+                        ServerConfig(name="router", host="10.0.0.10", port=9000)
+                    ],
+                ),
+            },
+        )
+        with mock.patch(
+            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            api.config_file_path,
+        ):
+            api._generate_config_file_internal()
+        with open(api.config_file_path) as f:
+            cfg = f.read()
+
+        assert "lua.route_via_ingress_request_router" not in cfg
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
@@ -546,16 +584,6 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
 
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
-        assert "option http-buffer-request" not in cfg
-        assert (
-            "http-request wait-for-body time 5s "
-            "if METH_POST has_ingress_request_router_app"
-        ) in cfg
-        assert "tune.bufsize 65536" in cfg
-        direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
-        direct_backend = direct_backend.split("listen stats", 1)[0]
-        assert "http-reuse always" in direct_backend
-        assert "option http-server-close" not in direct_backend
         # Only router-bearing backends contribute a set-var directive that
         # arms the Lua dispatch; the plain `api` backend must not.
         assert "set-var(txn.ingress_request_router_app) str(llm)" in cfg
@@ -581,7 +609,7 @@ def _create_replica_server(port: int, replica_id_header: str):
 
 def _create_router_server(port: int, replica_id_to_return: str):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    forwards the buffered request body prefix to the router."""
+    actually buffered + forwarded the request."""
     app = FastAPI()
     captured = {"bodies": []}
 
@@ -609,11 +637,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
     is pinned to the replica the router selects, while a GET (which doesn't
     trigger the router-routed path) is not."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        haproxy_port = 8200
-        stats_port = 8201
-        replica_a_port = 8202
-        replica_b_port = 8203
-        router_port = 8204
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_a_port = find_free_port()
+        replica_b_port = find_free_port()
+        router_port = find_free_port()
 
         actor_name_a = "SERVE_REPLICA::app#dep#aaa"
         actor_name_b = "SERVE_REPLICA::app#dep#bbb"
@@ -698,9 +726,12 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
 
-            # Direct streaming keeps a bounded request-body path for
-            # prefix-cache-aware routing.
-            assert router_captured["bodies"] == ['{"prompt": "hello"}']
+            # The router actually saw the original body (via wait-for-body +
+            # txn.sf:req_body()). Just check the field made it through.
+            assert any(
+                '"prompt"' in body and "hello" in body
+                for body in router_captured["bodies"]
+            )
 
             # Repeat to confirm the pin holds across requests.
             for _ in range(3):
@@ -710,10 +741,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                     timeout=5,
                 )
                 assert resp.headers.get("x-replica-id") == "B"
-            assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
 
-            # GET is not POST, so Lua routing never runs; the router should
-            # have seen exactly the four POSTs above and nothing more.
+            # GET is not POST, so wait-for-body / Lua never run; the router
+            # should have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
             requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5

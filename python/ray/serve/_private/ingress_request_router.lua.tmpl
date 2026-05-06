@@ -2,9 +2,8 @@
 -- router. Templated at config-reload time; placeholders are filled in by
 -- _write_ingress_request_router_lua in haproxy.py.
 --
--- HAProxy buffers up to tune.bufsize. If the request body is larger than the
--- buffered prefix, we still forward that prefix so routers can do best-effort
--- prefix-cache-aware placement.
+-- Bodies exceeding tune.bufsize are truncated; we forward what we have with
+-- X-Body-Truncated since prefix-routing only needs the head of the body.
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 
@@ -61,10 +60,15 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
+-- Router contract: response MUST be a flat JSON object with `replica_id` as a
+-- plain string actor name (no escaped quotes, no nested objects). The regex
+-- relies on this; broaden the parser if the contract grows.
 local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
 
+-- Returns the original Content-Length when `body` is shorter than the
+-- advertised length (truncated by tune.bufsize), or nil otherwise.
 local function truncated_full_length(txn, body)
     local cl = tonumber(txn.sf:hdr("content-length"))
     if cl and #body < cl then

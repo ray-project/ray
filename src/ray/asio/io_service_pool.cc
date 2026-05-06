@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/asio/io_service_pool.h"
+#include "ray/asio/io_service_pool.h"
 
 #include "ray/util/logging.h"
 

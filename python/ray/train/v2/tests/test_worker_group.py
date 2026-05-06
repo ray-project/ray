@@ -1,13 +1,16 @@
 import collections
 import os
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
 from ray._private.state import state as ray_state
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
+from ray.train.v2._internal.callbacks import backend_setup
+from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -243,6 +246,100 @@ def test_start_timeout(monkeypatch):
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
         wg._start()
+
+
+def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
+    """TPU head reservation timeouts should surface as the retryable
+    ``WorkerGroupStartupTimeoutError`` so the controller transitions
+    SCHEDULING -> RESCHEDULING instead of failing the run, matching the
+    behavior of CPU/GPU placement-group timeouts.
+
+    Also verifies that Ray Train's worker-group-start timeout is forwarded
+    to ``SlicePlacementGroup`` so users have a single knob governing how
+    long the cluster has to provide capacity.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
+
+    # SlicePlacementGroup blocks synchronously on a TPU head PG; simulate the
+    # "cluster still autoscaling" scenario where reserve_tpu_slice times out
+    # and capture the timeout that Ray Train passed in.
+    captured_kwargs = {}
+
+    def _raise_timeout(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        raise TimeoutError(
+            "Failed to reserve TPU head for slice with shape: v5litepod-8 "
+            "after 0.1 seconds."
+        )
+
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_timeout)
+    monkeypatch.setattr(
+        wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+
+    tpu_scaling_config = ScalingConfig(
+        num_workers=4,
+        resources_per_worker={"TPU": 4},
+        accelerator_type="TPU-V5LITEPOD",
+        topology="2x4",
+        use_tpu=True,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=tpu_scaling_config),
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    with pytest.raises(WorkerGroupStartupTimeoutError):
+        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
+
+    # Ray Train should forward its own startup timeout to the TPU head wait
+    # rather than relying on the hard-coded default in reserve_tpu_slice.
+    assert captured_kwargs.get("head_reservation_timeout_s") == 0.1
+
+
+def test_tpu_slice_reservation_non_timeout_failure_is_retryable(monkeypatch):
+    """Non-timeout failures from ``SlicePlacementGroup`` (e.g. transient
+    RPC errors) should surface as the retryable
+    ``WorkerGroupStartupFailedError``, matching the precedent of the
+    worker-actor startup path (``RayActorError`` -> ``WorkerGroupStartupFailedError``)
+    so non-timeout startup failures retry consistently across CPU/GPU/TPU.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    def _raise_runtime_error(*args, **kwargs):
+        raise RuntimeError("transient placement group reservation error")
+
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_runtime_error)
+    monkeypatch.setattr(
+        wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+
+    tpu_scaling_config = ScalingConfig(
+        num_workers=4,
+        resources_per_worker={"TPU": 4},
+        accelerator_type="TPU-V5LITEPOD",
+        topology="2x4",
+        use_tpu=True,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=tpu_scaling_config),
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    with pytest.raises(
+        WorkerGroupStartupFailedError, match="Failed to reserve TPU slice"
+    ):
+        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
 
 
 def test_zombie_actor_termination(ray_start_4_cpus):
@@ -702,6 +799,65 @@ def test_worker_group_callback():
     wg.shutdown()
     assert hooks.shutdown_hook_called
     assert hooks.after_worker_group_shutdown_hook_called
+
+
+def _make_backend_setup_callback_with_failing_shutdown(
+    error: Exception,
+) -> BackendSetupCallback:
+    """Build a `BackendSetupCallback` whose backend raises `error` from `on_shutdown`."""
+    failing_backend = MagicMock()
+    failing_backend.on_shutdown.side_effect = error
+    backend_config = MagicMock()
+    backend_config.backend_cls.return_value = failing_backend
+    cb = BackendSetupCallback(backend_config)
+    cb._backend = failing_backend
+    return cb
+
+
+@pytest.mark.parametrize(
+    "shutdown_error",
+    [
+        RayActorError(actor_id="abc", error_msg="actor died"),
+        RayTaskError(
+            function_name="_shutdown_torch",
+            traceback_str="traceback",
+            cause=RuntimeError("NCCL error: remote process exited"),
+            proctitle="test",
+            pid=1,
+            ip="127.0.0.1",
+        ),
+    ],
+    ids=["RayActorError", "RayTaskError"],
+)
+def test_backend_setup_callback_swallows_shutdown_failure(shutdown_error):
+    """Test `BackendSetupCallback` swallows both RayActorError and RayTaskError so
+    `WorkerGroup.shutdown()` does not propagate the cleanup failure.
+    """
+    cb = _make_backend_setup_callback_with_failing_shutdown(shutdown_error)
+    failing_backend = cb._backend
+
+    wg = _default_inactive_worker_group(callbacks=[cb])
+    wg._start()
+
+    with patch.object(backend_setup, "logger") as mock_logger:
+        wg.shutdown()  # must not raise
+
+    failing_backend.on_shutdown.assert_called_once()
+    mock_logger.warning.assert_called_once()
+    msg = mock_logger.warning.call_args.args[0]
+    assert "Graceful shutdown of backend failed" in msg
+    # exc_info=True keeps the underlying NCCL/actor failure in the logs.
+    assert mock_logger.warning.call_args.kwargs.get("exc_info") is True
+
+
+def test_backend_setup_callback_propagates_unexpected_shutdown_error():
+    """Non-Ray exceptions from `on_shutdown` must propagate so they aren't
+    silently masked."""
+    cb = _make_backend_setup_callback_with_failing_shutdown(
+        ValueError("unexpected backend bug")
+    )
+    with pytest.raises(ValueError, match="unexpected backend bug"):
+        cb.before_execution_group_shutdown(MagicMock())
 
 
 @pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
