@@ -5,6 +5,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import (
     Block,
@@ -390,10 +391,23 @@ class RefBundle:
         return len(self.blocks)
 
     def __str__(self) -> str:
+        if self.schema is None:
+            schema_str = "None"
+        else:
+            # PyArrow or PandasBlockSchema — use Dataset.Schema for
+            # consistent formatting with Dataset.schema().
+            from ray.data.dataset import Schema as DatasetSchema
+
+            ds_schema = DatasetSchema(self.schema)
+            fields = ", ".join(
+                f"{name}: {typ}" for name, typ in zip(ds_schema.names, ds_schema.types)
+            )
+            schema_str = f"{{{fields}}}"
+
         lines = [
             f"RefBundle({len(self.blocks)} blocks,",
             f"  {self.num_rows()} rows,",
-            f"  schema={self.schema},",
+            f"  schema={schema_str},",
             f"  owns_blocks={self.owns_blocks},",
             "  blocks=(",
         ]
@@ -407,7 +421,11 @@ class RefBundle:
                 if metadata.num_rows is not None
                 else "unknown rows"
             )
-            bytes_str = f"{metadata.size_bytes} bytes"
+            bytes_str = (
+                memory_string(metadata.size_bytes)
+                if metadata.size_bytes is not None
+                else "unknown bytes"
+            )
             slice_str = (
                 f"slice={block_slice}"
                 if block_slice is not None
@@ -420,6 +438,9 @@ class RefBundle:
         lines.append(")")
 
         return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 @dataclass
