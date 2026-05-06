@@ -79,7 +79,10 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.tensor_extensions.utils import (
+    _create_possibly_ragged_ndarray,
+    create_ragged_ndarray,
+)
 from ray.data._internal.util import (
     _autodetect_parallelism,
     get_compute_strategy_for_read_api,
@@ -3847,8 +3850,37 @@ def from_tf(
     Returns:
         A :class:`MaterializedDataset` that contains the samples stored in the `TensorFlow Dataset`_.
     """  # noqa: E501
-    # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
-    return from_items(list(dataset.as_numpy_iterator()))
+    import tensorflow as tf
+
+    def _contains_ragged_tensor_spec(spec: Any) -> bool:
+        return any(
+            isinstance(type_spec, tf.RaggedTensorSpec)
+            for type_spec in tf.nest.flatten(spec)
+        )
+
+    def _convert_tf_value(value: Any) -> Any:
+        if isinstance(value, tf.RaggedTensor):
+            return create_ragged_ndarray([_convert_tf_value(v) for v in value])
+        if isinstance(value, tf.SparseTensor):
+            return tf.compat.v1.SparseTensorValue(
+                indices=value.indices.numpy(),
+                values=value.values.numpy(),
+                dense_shape=value.dense_shape.numpy(),
+            )
+        if isinstance(value, tf.Tensor):
+            return value.numpy()
+        if isinstance(value, collections.abc.Mapping):
+            return {key: _convert_tf_value(item) for key, item in value.items()}
+        if isinstance(value, tuple):
+            return tuple(_convert_tf_value(item) for item in value)
+        if isinstance(value, list):
+            return [_convert_tf_value(item) for item in value]
+        return value
+
+    if not _contains_ragged_tensor_spec(dataset.element_spec):
+        return from_items(list(dataset.as_numpy_iterator()))
+
+    return from_items([_convert_tf_value(item) for item in dataset])
 
 
 @PublicAPI
