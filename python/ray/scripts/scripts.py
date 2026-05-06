@@ -12,7 +12,7 @@ import urllib.parse
 import warnings
 from collections import deque
 from datetime import datetime
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple, Union
 
 import click
 import colorama
@@ -1351,7 +1351,9 @@ def stop(force: bool, grace_period: int):
     procs_not_gracefully_killed = []
 
     def kill_procs(
-        force: bool, grace_period: int, processes_to_kill: List[str]
+        force: bool,
+        grace_period: int,
+        processes_to_kill: List[List[Union[str, bool]]],
     ) -> Tuple[int, int, List[psutil.Process]]:
         """Find all processes from `processes_to_kill` and terminate them.
 
@@ -1368,9 +1370,19 @@ def stop(force: bool, grace_period: int):
                 gracefully, they are added here.
         """
         process_infos = []
-        for proc in psutil.process_iter(["name", "cmdline"]):
+        pre_stopped = []
+        for proc in psutil.process_iter(["name", "cmdline", "status"]):
             try:
-                process_infos.append((proc, proc.name(), proc.cmdline()))
+                if proc.status() == psutil.STATUS_ZOMBIE:
+                    name = proc.name()
+                    cmdline = proc.cmdline()
+                    for keyword, filter_by_cmd in processes_to_kill:
+                        corpus = name if filter_by_cmd else subprocess.list2cmdline(cmdline)
+                        if keyword in corpus:
+                            pre_stopped.append(proc)
+                            break
+                else:
+                    process_infos.append((proc, proc.name(), proc.cmdline()))
             except psutil.Error:
                 pass
 
@@ -1433,10 +1445,12 @@ def stop(force: bool, grace_period: int):
         # Dedup processes.
         stopped, alive = psutil.wait_procs(stopped, timeout=0)
         procs_to_kill = stopped + alive
-        total_found = len(procs_to_kill)
+        total_found = len(procs_to_kill) + len(pre_stopped)
 
         # Wait for grace period to terminate processes.
-        gone_procs = set()
+        # Seed with zombies so the progress counter can reach total_found
+        # (wait_procs only fires the callback for live->dead transitions).
+        gone_procs = set(pre_stopped)
 
         def on_terminate(proc):
             gone_procs.add(proc)
@@ -1445,7 +1459,8 @@ def stop(force: bool, grace_period: int):
         stopped, alive = psutil.wait_procs(
             procs_to_kill, timeout=grace_period, callback=on_terminate
         )
-        total_stopped = len(stopped)
+        # Zombies were already dead; count them toward the stopped total.
+        total_stopped = len(stopped) + len(pre_stopped)
 
         # For processes that are not killed within the grace period,
         # we send force termination signals.

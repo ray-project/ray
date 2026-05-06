@@ -1,5 +1,6 @@
 """Symmetric Run for Ray."""
 
+import signal
 import socket
 import subprocess
 import sys
@@ -247,8 +248,33 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
                 *ray_start_args,
             ]
 
-            # This command will block until the Ray cluster is stopped.
-            subprocess.run(ray_start_cmd, check=True)
+            worker_start_time = time.monotonic()
+            worker_result = subprocess.run(ray_start_cmd)
+            worker_runtime = time.monotonic() - worker_start_time
+            expected_shutdown_codes = {
+                0,
+                signal.SIGTERM,
+                -signal.SIGTERM,
+                128 + signal.SIGTERM,
+            }
+            STARTUP_FAILURE_THRESHOLD_SEC = 30
+            if worker_result.returncode in expected_shutdown_codes:
+                pass
+            elif worker_runtime < STARTUP_FAILURE_THRESHOLD_SEC:
+                raise click.ClickException(
+                    f"ray start --block exited with code "
+                    f"{worker_result.returncode} after only "
+                    f"{worker_runtime:.1f}s. This usually indicates a worker "
+                    f"startup failure (port conflict, unreachable head node, "
+                    f"or misconfiguration). Check the Ray logs for details."
+                )
+            else:
+                click.echo(
+                    f"ray start --block exited with code "
+                    f"{worker_result.returncode} after {worker_runtime:.0f}s "
+                    f"(treated as cluster teardown).",
+                    err=True,
+                )
 
     except subprocess.CalledProcessError as e:
         click.echo(f"Failed to start Ray: {e}", err=True)
