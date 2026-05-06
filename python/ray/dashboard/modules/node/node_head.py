@@ -236,6 +236,23 @@ class NodeHead(SubprocessModule):
             except Exception:
                 logger.exception("Failed handling updated nodes.")
 
+    async def _delete_agent_kv_keys(self, node_id: str, address: str):
+        keys = [
+            f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
+            f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{address}",
+        ]
+        await asyncio.gather(
+            *(
+                self.gcs_client.async_internal_kv_del(
+                    key,
+                    del_by_prefix=False,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
+                )
+                for key in keys
+            )
+        )
+
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]
         if (
@@ -265,21 +282,7 @@ class NodeHead(SubprocessModule):
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
         if not is_alive:
-            # Remove the agent address from the internal KV.
-            keys = [
-                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
-                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
-            ]
-            tasks = [
-                self.gcs_client.async_internal_kv_del(
-                    key,
-                    del_by_prefix=False,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-                for key in keys
-            ]
-            await asyncio.gather(*tasks)
+            await self._delete_agent_kv_keys(node_id, node["nodeManagerAddress"])
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
@@ -320,6 +323,91 @@ class NodeHead(SubprocessModule):
                         f"{self.get_internal_states()}"
                     )
                     warning_shown = True
+
+    async def _get_all_nodes_from_gcs(self) -> List[dict]:
+        node_infos, _ = await self.gcs_client.async_get_all_node_info(
+            timeout=GCS_RPC_TIMEOUT_SECONDS
+        )
+
+        return await self._loop.run_in_executor(
+            self._node_executor,
+            lambda: [_gcs_node_info_to_dict(m) for m in node_infos.values()],
+        )
+
+    async def _reconcile_node_cache_once(self) -> Dict[str, int]:
+        gcs_nodes = await self._get_all_nodes_from_gcs()
+        if not gcs_nodes:
+            return {"num_pruned": 0, "num_state_corrected": 0, "num_added": 0}
+        gcs_node_ids = {node["nodeId"] for node in gcs_nodes}
+
+        num_pruned = 0
+        for node_id, local_node in list(DataSource.nodes.items()):
+            if node_id in gcs_node_ids:
+                continue
+
+            logger.warning(
+                "Pruning node %s from the dashboard cache because it is "
+                "absent from GCS node info. Last dashboard state=%s.",
+                node_id,
+                local_node.get("state"),
+            )
+            await self._delete_agent_kv_keys(
+                node_id, local_node["nodeManagerAddress"]
+            )
+            DataSource.nodes.pop(node_id, None)
+            self._stubs.pop(node_id, None)
+            if node_id in self._dead_node_queue:
+                self._dead_node_queue.remove(node_id)
+            num_pruned += 1
+
+        num_state_corrected = 0
+        num_added = 0
+        for gcs_node in gcs_nodes:
+            node_id = gcs_node["nodeId"]
+            local_node = DataSource.nodes.get(node_id)
+            if local_node is None:
+                await self._update_node(gcs_node)
+                num_added += 1
+            elif (
+                local_node.get("state") != gcs_node["state"]
+                and local_node.get("state") != "DEAD"
+            ):
+                logger.warning(
+                    "Reconciling node %s: dashboard state=%s, GCS state=%s. "
+                    "A pub/sub update was likely missed.",
+                    node_id,
+                    local_node.get("state"),
+                    gcs_node["state"],
+                )
+                await self._update_node(gcs_node)
+                num_state_corrected += 1
+
+        return {
+            "num_pruned": num_pruned,
+            "num_state_corrected": num_state_corrected,
+            "num_added": num_added,
+        }
+
+    async def _reconcile_nodes_with_gcs(self):
+        interval = node_consts.RAY_DASHBOARD_NODE_RECONCILIATION_INTERVAL_SECONDS
+        if interval <= 0:
+            return
+
+        while True:
+            try:
+                await asyncio.sleep(interval)
+
+                stats = await self._reconcile_node_cache_once()
+                if any(stats.values()):
+                    logger.info(
+                        "Node reconciliation: pruned %d node(s), corrected "
+                        "%d state(s), added %d node(s) missed by pub/sub.",
+                        stats["num_pruned"],
+                        stats["num_state_corrected"],
+                        stats["num_added"],
+                    )
+            except Exception:
+                logger.exception("Error reconciling node state with GCS.")
 
     async def get_nodes_logical_resources(self) -> dict:
 
@@ -753,6 +841,7 @@ class NodeHead(SubprocessModule):
         await super().run()
         coros = [
             self._update_nodes(),
+            self._reconcile_nodes_with_gcs(),
             self._update_node_stats(),
             self._update_node_physical_stats(),
             self._update_actors(),
