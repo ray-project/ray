@@ -251,9 +251,7 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   object_ids_to_eof->push_back(end_of_stream_id);
   for (const auto &object_id : temporarily_owned_refs_) {
-    if (object_id.TaskId() == generator_task_id_ &&
-        object_id.ObjectIndex() >
-            static_cast<ObjectIDIndexType>(end_of_stream_index_ + 2)) {
+    if (IsObjectRefAfterEndOfStream(object_id)) {
       object_ids_to_eof->push_back(object_id);
     }
   }
@@ -263,6 +261,13 @@ ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
   RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
   // Index 1 is reserved for the first task return from a generator task itself.
   return ObjectID::FromIndex(generator_task_id_, 2 + generator_index);
+}
+
+bool ObjectRefStream::IsObjectRefAfterEndOfStream(const ObjectID &object_id) const {
+  RAY_CHECK_NE(end_of_stream_index_, -1);
+  RAY_CHECK_EQ(object_id.TaskId(), generator_task_id_);
+  return object_id.ObjectIndex() >
+         GetObjectRefAtIndex(end_of_stream_index_).ObjectIndex();
 }
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(

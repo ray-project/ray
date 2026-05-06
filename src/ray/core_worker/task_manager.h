@@ -171,6 +171,7 @@ class ObjectRefStream {
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
+  bool IsObjectRefAfterEndOfStream(const ObjectID &object_id) const;
 
   TaskID generator_task_id_;
   ObjectID generator_id_;
