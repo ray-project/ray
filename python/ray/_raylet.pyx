@@ -179,6 +179,12 @@ from ray.includes.global_state_accessor cimport (
     RedisGetKeySync
 )
 
+from ray.includes.flight_store cimport (
+    ReadFromRemoteProcess,
+    WriteToRemoteProcess,
+    ScatterWriteToRemoteProcess,
+)
+
 cimport cpython
 
 include "includes/network_util.pxi"
@@ -199,6 +205,7 @@ include "includes/gcs_subscriber.pxi"
 include "includes/rpc_token_authentication.pxi"
 # Ray Serve-only: Cython timeseries utilities for autoscaling metrics.
 include "includes/timeseries_utils.pxi"
+include "includes/flight_store.pxi"
 
 import ray
 from ray.exceptions import (
@@ -257,6 +264,36 @@ GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Native Flight store integration (RAY_USE_FLIGHT_NATIVE=1).
+# ---------------------------------------------------------------------------
+# Lightweight alternative to the RDT-based ArrowFlightTransport: when set,
+# worker task returns of type pa.Table are intercepted in store_task_outputs
+# and written to the per-process Flight store. The normal object store holds
+# only a tiny transfer-info dict (see _fetch_flight_table). Avoids the
+# owner/system-task overhead of the RDT path at the cost of a custom
+# metadata type.
+import os as _os
+
+_flight_native_enabled = False
+_flight_native_store = None
+_pyarrow_Table = None
+
+if _os.environ.get("RAY_USE_FLIGHT_NATIVE", "0") == "1":
+    try:
+        import pyarrow as _pa
+        _pyarrow_Table = _pa.Table
+        from ray._private.flight_object_store import get_flight_store
+        _flight_native_store = get_flight_store()
+        _flight_native_store.ensure_server()
+        _flight_native_enabled = True
+        logger.info(
+            "Native Flight store enabled: %s",
+            _flight_native_store.get_uri(),
+        )
+    except Exception as _e:
+        logger.warning("Failed to initialize native Flight store: %s", _e)
 
 import warnings
 class NumReturnsWarning(UserWarning):
@@ -4288,6 +4325,40 @@ cdef class CoreWorker:
                 continue
 
             context = worker.get_serialization_context()
+
+            # Native Flight store path (opt-in via RAY_USE_FLIGHT_NATIVE=1).
+            # Faster alternative to the RDT transport for pa.Table returns:
+            # stash the table locally and emit a tiny transfer-info dict as
+            # the object store value. Consumers pick it up via the
+            # OBJECT_METADATA_TYPE_FLIGHT_TABLE branch in serialization.py.
+            if (_flight_native_enabled
+                    and _pyarrow_Table is not None
+                    and tensor_transport is None
+                    and isinstance(output, _pyarrow_Table)):
+                import msgpack as _msgpack
+                _key = return_id.Hex().decode("ascii")
+                _info = _flight_native_store.put_and_get_transfer_info(
+                    _key, output)
+                _ref_bytes = _msgpack.packb(_info, use_bin_type=True)
+                serialized_object = RawSerializedObject(_ref_bytes)
+                data_size = serialized_object.total_bytes
+                metadata_str = ray_constants.OBJECT_METADATA_TYPE_FLIGHT_TABLE
+                metadata = string_to_buffer(metadata_str)
+                contained_id.clear()
+
+                while not self.store_task_output(
+                        serialized_object,
+                        return_id,
+                        c_ref_generator_id,
+                        data_size,
+                        metadata,
+                        contained_id,
+                        caller_address,
+                        &task_output_inlined_bytes,
+                        return_ptr):
+                    pass
+                num_outputs_stored += 1
+                continue
 
             # TODO(kevin85421): We should consider unifying both serialization logic in the future
             # when GPU objects are more stable. We currently separate the logic to ensure

@@ -1,0 +1,9 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "vm_transfer",
+    srcs = ["vm_transfer.cc"],
+    hdrs = ["vm_transfer.h"],
+    strip_include_prefix = "//src",
+    visibility = ["//visibility:public"],
+)

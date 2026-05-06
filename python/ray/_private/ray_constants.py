@@ -358,6 +358,14 @@ OBJECT_METADATA_TYPE_RAW = b"RAW"
 # of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
+# Native Flight store path (opt-in via RAY_USE_FLIGHT_NATIVE=1): when a task
+# returns a pa.Table, the worker stores the table in its Flight store and
+# writes a small transfer-info dict under this metadata type into Ray's
+# normal object store. The consumer detects the marker and fetches the
+# table out-of-band via process_vm_writev (same-node) or Flight DoGet
+# (cross-node).
+OBJECT_METADATA_TYPE_FLIGHT_TABLE = b"FLIGHT_TABLE"
+
 # A constant indicating the debugging part of the metadata (see above).
 OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
