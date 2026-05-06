@@ -135,6 +135,47 @@ class TestSpreadScheduling:
         scheduler.on_replica_stopping(r2_id)
         scheduler.on_deployment_deleted(dep_id)
 
+    @pytest.mark.asyncio
+    async def test_spread_serve_strict_spread_pg(self, ray_cluster):
+        """
+        Verifies STRICT_SPREAD PG strategy runs successfully in the Spread Scheduler
+        and spreads bundles across distinct nodes.
+        """
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=3)
+        cluster.add_node(num_cpus=3)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @ray.remote(num_cpus=0)
+        def get_task_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_strategy="STRICT_SPREAD",
+        )
+        class StrictSpread:
+            async def get_bundle_node_id(self, bundle_index: int):
+                pg = ray.util.get_current_placement_group()
+                return await get_task_node_id.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_bundle_index=bundle_index,
+                    )
+                ).remote()
+
+        handle = serve.run(StrictSpread.bind(), name="strict_spread_app")
+
+        node_0 = await handle.get_bundle_node_id.remote(0)
+        node_1 = await handle.get_bundle_node_id.remote(1)
+
+        assert node_0 != node_1
+
+        serve.delete("strict_spread_app")
+        serve.shutdown()
+
 
 @serve.deployment
 def A():
@@ -284,6 +325,409 @@ class TestPackScheduling:
         assert all(ref.result() == worker1_node_id for ref in refs)
 
         serve.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_strict_pack_pg_label_selector(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies STRICT_PACK strategy with placement_group_bundle_label_selector in Pack Scheduling Mode.
+
+        Since the strategy is STRICT_PACK, both bundles must be scheduled on the same node,
+        and that node must satisfy the label constraints in each selector.
+        """
+        _, _, us_east_node_id, _ = serve_instance_with_labeled_nodes
+
+        @ray.remote(num_cpus=0)
+        def get_task_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            placement_group_bundle_label_selector=[
+                {"gpu-type": "H100", "region": "us-east"}
+            ],
+        )
+        class StrictPackSelector:
+            async def get_bundle_node_id(self, bundle_index: int):
+                pg = ray.util.get_current_placement_group()
+                return await get_task_node_id.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_bundle_index=bundle_index,
+                    )
+                ).remote()
+
+        handle = serve.run(StrictPackSelector.bind(), name="strict_pack_app")
+
+        # Both bundles are scheduled to the same node which matches the label constraints.
+        assert await handle.get_bundle_node_id.remote(0) == us_east_node_id
+        assert await handle.get_bundle_node_id.remote(1) == us_east_node_id
+
+        serve.delete("strict_pack_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_pack_pg_forces_spread(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies that using non-strict PACK PG strategy with label selectors works.
+
+        STRICT_PACK throws NotImplementedError for selectors. However, 'PACK' is considered a
+        'Non-Strict' strategy which forces the scheduler to fall back to 'Spread Mode'.
+        """
+        _, _, us_east_node_id, _ = serve_instance_with_labeled_nodes
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+            placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+        )
+        class PackSelector:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        # If this stayed in the Pack Scheduler, it would raise NotImplementedError.
+        # Because it forces Spread Mode, it succeeds.
+        handle = serve.run(PackSelector.bind(), name="pack_selector_app")
+        assert await handle.get_node_id.remote() == us_east_node_id
+        serve.delete("pack_selector_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_multiple_bundles_selector(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """Verifies multiple bundles with bundle_label_selector are applied correctly."""
+        _, us_west_node_id, us_east_node_id, _ = serve_instance_with_labeled_nodes
+
+        # Helper task to return the node ID it's running on
+        @ray.remote(num_cpus=0)
+        def get_task_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_strategy="SPREAD",
+            placement_group_bundle_label_selector=[
+                {"gpu-type": "H100"},  # matches us-east node
+                {"gpu-type": "A100"},  # matches us-west node
+            ],
+        )
+        class MultiBundleSelector:
+            async def get_bundle_node_id(self, bundle_index: int):
+                pg = ray.util.get_current_placement_group()
+                return await get_task_node_id.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_bundle_index=bundle_index,
+                    )
+                ).remote()
+
+        handle = serve.run(MultiBundleSelector.bind(), name="multi_bundle_app")
+
+        # Verify bundles are scheduled to expected nodes based on label selectors.
+        assert await handle.get_bundle_node_id.remote(0) == us_east_node_id
+        assert await handle.get_bundle_node_id.remote(1) == us_west_node_id
+        serve.delete("multi_bundle_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_multiple_bundles_single_bundle_label_selector(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies that when only one bundle_label_selector is provided for multiple bundles,
+        the label_selector is applied to each bundle uniformly.
+        """
+        _, _, us_east_node_id, _ = serve_instance_with_labeled_nodes
+
+        @ray.remote(num_cpus=0)
+        def get_task_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        @serve.deployment(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            # Use SPREAD to verify the label constraint forces them to same node.
+            placement_group_strategy="SPREAD",
+            placement_group_bundle_label_selector=[
+                {"gpu-type": "H100"},
+            ],
+        )
+        class MultiBundleSelector:
+            async def get_bundle_node_id(self, bundle_index: int):
+                pg = ray.util.get_current_placement_group()
+                return await get_task_node_id.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_bundle_index=bundle_index,
+                    )
+                ).remote()
+
+        handle = serve.run(MultiBundleSelector.bind(), name="multi_bundle_app")
+        assert await handle.get_bundle_node_id.remote(0) == us_east_node_id
+        assert await handle.get_bundle_node_id.remote(1) == us_east_node_id
+        serve.delete("multi_bundle_app")
+
+    @pytest.mark.asyncio
+    async def test_e2e_serve_actor_multiple_fallbacks(
+        self, serve_instance_with_labeled_nodes
+    ):
+        """
+        Verifies that the scheduler can iterate through a label selector and multiple fallback options.
+        """
+        _, us_west_node_id, _, _ = serve_instance_with_labeled_nodes
+
+        @serve.deployment(
+            ray_actor_options={
+                "label_selector": {"region": "invalid-label-1"},
+                "fallback_strategy": [
+                    {"label_selector": {"region": "invalid-label-2"}},
+                    {"label_selector": {"region": "us-west"}},  # Should match
+                ],
+            }
+        )
+        class MultiFallbackActor:
+            def get_node_id(self):
+                return ray.get_runtime_context().get_node_id()
+
+        handle = serve.run(MultiFallbackActor.bind(), name="multi_fallback_app")
+        assert await handle.get_node_id.remote() == us_west_node_id
+        serve.delete("multi_fallback_app")
+
+
+@pytest.mark.asyncio
+async def test_e2e_serve_label_selector(serve_instance_with_labeled_nodes):
+    """
+    Verifies that label selectors work correctly for both Actors and Placement Groups.
+
+    This test also verifies that label selectors are respected when scheduling with a
+    preferred node ID for resource compaction. This test verifies both the Pack and
+    Spread scheduler paths.
+    """
+    _, us_west_node_id, us_east_node_id, _ = serve_instance_with_labeled_nodes
+
+    # Validate a Serve deplyoment utilizes a label_selector when passed to the Ray Actor options.
+    @serve.deployment(ray_actor_options={"label_selector": {"region": "us-west"}})
+    class DeploymentActor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    handle = serve.run(DeploymentActor.bind(), name="actor_app")
+    assert await handle.get_node_id.remote() == us_west_node_id
+    serve.delete("actor_app")
+
+    # Validate placement_group scheduling strategy with placement_group_bundle_label_selector
+    # and PACK strategy.
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="PACK",
+        placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+    )
+    class DeploymentPGPack:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    handle_pack = serve.run(DeploymentPGPack.bind(), name="pg_pack_app")
+    assert await handle_pack.get_node_id.remote() == us_east_node_id
+    serve.delete("pg_pack_app")
+
+    # Validate placement_group scheduling strategy with placement_group_bundle_label_selector
+    # and SPREAD strategy.
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="SPREAD",
+        placement_group_bundle_label_selector=[{"gpu-type": "H100"}],
+    )
+    class DeploymentPGSpread:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
+    assert await handle_spread.get_node_id.remote() == us_east_node_id
+    serve.delete("pg_spread_app")
+
+
+@pytest.mark.asyncio
+async def test_e2e_serve_fallback_strategy(serve_instance_with_labeled_nodes):
+    """
+    Verifies that fallback strategies allow scheduling on alternative nodes when
+    primary constraints fail.
+    """
+    _, _, h100_node_id, _ = serve_instance_with_labeled_nodes
+
+    # Fallback strategy specified for Ray Actor in Serve deployment.
+    @serve.deployment(
+        ray_actor_options={
+            "label_selector": {"region": "unavailable"},
+            "fallback_strategy": [{"label_selector": {"gpu-type": "H100"}}],
+        }
+    )
+    class FallbackDeployment:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    # TODO (ryanaoleary@): Add a test for fallback_strategy in placement group options
+    # when support is added.
+
+    handle = serve.run(FallbackDeployment.bind(), name="fallback_app")
+    assert await handle.get_node_id.remote() == h100_node_id
+    serve.delete("fallback_app")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "use_pg,strategy",
+    [
+        (False, None),  # Actor-level label_selector.
+        (True, "PACK"),  # PG bundle_label_selector with PACK strategy.
+        (True, "STRICT_PACK"),  # PG bundle_label_selector with STRICT_PACK strategy.
+        (True, "SPREAD"),  # PG bundle_label_selector with SPREAD strategy.
+        (
+            True,
+            "STRICT_SPREAD",
+        ),  # PG bundle_label_selector with STRICT_SPREAD strategy.
+    ],
+)
+async def test_e2e_serve_label_selector_unschedulable(
+    serve_instance_with_labeled_nodes, use_pg, strategy
+):
+    """
+    Verifies the interaction between unschedulable a placement_group_bundle_label_selector
+    and different scheduling strategies in the Pack and Spread Serve scheduler.
+    """
+    _, _, _, cluster = serve_instance_with_labeled_nodes
+
+    @serve.deployment
+    def A():
+        return ray.get_runtime_context().get_node_id()
+
+    # Cluster in fixture only contains us-west and us-east.
+    target_label = {"region": "eu-central"}
+
+    if use_pg:
+        app = A.options(
+            num_replicas=1,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy=strategy,
+            placement_group_bundle_label_selector=[target_label],
+        ).bind()
+    else:
+        app = A.options(
+            num_replicas=1,
+            ray_actor_options={"label_selector": target_label},
+        ).bind()
+
+    handle = serve._run(app, name="unschedulable_label_app", _blocking=False)
+
+    def check_status(expected_status):
+        try:
+            status_info = serve.status().applications["unschedulable_label_app"]
+            return status_info.status == expected_status
+        except KeyError:
+            return False
+
+    def verify_resource_request_stuck():
+        """Verifies that the underlying resource request is pending."""
+        # Serve deployment should be stuck DEPLOYING.
+        if not check_status("DEPLOYING"):
+            return False
+
+        # Check PG/Actor is actually pending.
+        if use_pg:
+            pgs = ray.util.state.list_placement_groups()
+            return any(pg["state"] == "PENDING" for pg in pgs)
+        else:
+            actors = ray.util.state.list_actors()
+            return any(a["state"] == "PENDING_CREATION" for a in actors)
+
+    # Serve deployment should remain stuck in deploying because Actor/PG can't be scheduled.
+    wait_for_condition(verify_resource_request_stuck, timeout=30)
+    assert not check_status("RUNNING"), (
+        "Test setup failed: The deployment became RUNNING before the required "
+        "node was added. The label selector constraint was ignored."
+    )
+
+    # Add a suitable node to the cluster.
+    new_node = cluster.add_node(
+        num_cpus=2, labels=target_label, resources={"target_node": 1}
+    )
+    cluster.wait_for_nodes()
+    expected_node_id = ray.get(
+        get_node_id.options(resources={"target_node": 1}).remote()
+    )
+
+    # Validate deployment can now be scheduled since label selector is satisfied.
+    wait_for_condition(lambda: check_status("RUNNING"), timeout=30)
+    assert await handle.remote() == expected_node_id
+
+    serve.delete("unschedulable_label_app")
+    cluster.remove_node(new_node)
+
+
+@pytest.mark.asyncio
+async def test_e2e_serve_fallback_strategy_unschedulable(
+    serve_instance_with_labeled_nodes,
+):
+    """
+    Verifies that an unschedulable fallback_strategy causes the Serve deployment to wait
+    until a suitable node is added to the cluster.
+    """
+    _, _, _, cluster = serve_instance_with_labeled_nodes
+
+    @serve.deployment
+    def A():
+        return ray.get_runtime_context().get_node_id()
+
+    fallback_label = {"region": "me-central2"}
+
+    app = A.options(
+        num_replicas=1,
+        ray_actor_options={
+            "label_selector": {"region": "non-existant"},
+            "fallback_strategy": [{"label_selector": fallback_label}],
+        },
+    ).bind()
+
+    handle = serve._run(app, name="unschedulable_fallback_app", _blocking=False)
+
+    def check_status(expected_status):
+        try:
+            status_info = serve.status().applications["unschedulable_fallback_app"]
+            return status_info.status == expected_status
+        except KeyError:
+            return False
+
+    def verify_resource_request_stuck():
+        """Verifies that the underlying resource request is pending."""
+        # Serve deployment should be stuck DEPLOYING.
+        if not check_status("DEPLOYING"):
+            return False
+
+        actors = ray.util.state.list_actors()
+        return any(a["state"] == "PENDING_CREATION" for a in actors)
+
+    # Serve deployment should remain stuck in deploying because Actor/PG can't be scheduled.
+    wait_for_condition(verify_resource_request_stuck, timeout=30)
+    assert not check_status("RUNNING"), (
+        "Test setup failed: The deployment became RUNNING before the required "
+        "node was added. The label selector constraint was ignored."
+    )
+
+    # Add a node that matches the fallback.
+    new_node = cluster.add_node(
+        num_cpus=2, labels=fallback_label, resources={"fallback_node": 1}
+    )
+    cluster.wait_for_nodes()
+    expected_node_id = ray.get(
+        get_node_id.options(resources={"fallback_node": 1}).remote()
+    )
+
+    # The serve deployment should recover and start running on the fallback node.
+    wait_for_condition(lambda: check_status("RUNNING"), timeout=30)
+    assert await handle.remote() == expected_node_id
+
+    serve.delete("unschedulable_fallback_app")
+    cluster.remove_node(new_node)
 
 
 if __name__ == "__main__":

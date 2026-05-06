@@ -28,7 +28,6 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
-from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
@@ -126,7 +125,7 @@ class LLMServer(LLMServerProtocol):
         deployment = serve.deployment(LLMServer).bind(llm_config)
     """
 
-    _default_engine_cls = VLLMEngine
+    _default_engine_cls = None
 
     async def __init__(
         self,
@@ -229,12 +228,17 @@ class LLMServer(LLMServerProtocol):
     def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
         This is used for testing or escape-hatch for patching purposes.
-        If env variable is not set, it will fallback to the default engine class.
+        If env variable is not set, it will fallback to the default engine class
+        (VLLMEngine, imported lazily to avoid a hard module-level dependency).
         """
         engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
         if engine_cls_path:
             return import_attr(engine_cls_path)
-        return self._default_engine_cls
+        if self._default_engine_cls is not None:
+            return self._default_engine_cls
+        from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
+
+        return VLLMEngine
 
     async def _start_engine(self):
         if self.engine is None:
@@ -683,18 +687,6 @@ class LLMServer(LLMServerProtocol):
         engine_config = llm_config.get_engine_config()
         deployment_options = copy.deepcopy(llm_config.deployment_config)
 
-        # Handle the ray_actor_options that could be passed in to
-        # deployment_options
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
-
-        replica_actor_resources = {
-            "CPU": ray_actor_options.get("num_cpus", 1),
-            "GPU": ray_actor_options.get("num_gpus", 0),
-            **ray_actor_options.get("resources", {}),
-        }
-        if "memory" in ray_actor_options:
-            replica_actor_resources["memory"] = ray_actor_options["memory"]
-
         if (
             "placement_group_bundles" in llm_config.deployment_config
             or "placement_group_strategy" in llm_config.deployment_config
@@ -703,18 +695,31 @@ class LLMServer(LLMServerProtocol):
                 "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
             )
 
-        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
-        # more generic place.
-        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-            engine_config.placement_bundles, replica_actor_resources
-        )
+        # Handle the ray_actor_options that could be passed in to
+        # deployment_options
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
 
-        deployment_options.update(
-            {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
+        if not engine_config.accelerator.requires_deferred_placement_group:
+            replica_actor_resources = {
+                "CPU": ray_actor_options.get("num_cpus", 1),
+                "GPU": ray_actor_options.get("num_gpus", 0),
+                **ray_actor_options.get("resources", {}),
             }
-        )
+            if "memory" in ray_actor_options:
+                replica_actor_resources["memory"] = ray_actor_options["memory"]
+
+            # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
+            # more generic place.
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                engine_config.placement_bundles, replica_actor_resources
+            )
+
+            deployment_options.update(
+                {
+                    "placement_group_bundles": pg_bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env

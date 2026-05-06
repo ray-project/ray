@@ -41,7 +41,7 @@ def convert_notebook(
                 )
             else:
                 # Detect any IPython '!' shell commands in code lines
-                has_bang = any(line.lstrip().startswith("!") for line in lines)
+                has_bang = any(line.lstrip().startswith("!") or line.lstrip().startswith("%") for line in lines)
                 # Start with "serve run" "serve shutdown" "curl" or "anyscale service" commands
                 to_ignore_cmd = (
                     "serve run",

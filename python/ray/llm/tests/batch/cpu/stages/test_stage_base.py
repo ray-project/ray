@@ -74,7 +74,7 @@ def test_wrap_postprocess_success_rows_run_postprocess():
         "__data": {
             "generated_text": "Hello world",
             "num_tokens": 10,
-            "__inference_error__": None,
+            "__inference_error__": "",
         }
     }
     result = wrapped(success_row)
@@ -92,11 +92,11 @@ def test_wrap_postprocess_include_error_column():
     success_row = {
         "__data": {
             "generated_text": "Hello world",
-            "__inference_error__": None,
+            "__inference_error__": "",
         }
     }
     result = wrapped(success_row)
-    assert result == {"response": "Hello world", "__inference_error__": None}
+    assert result == {"response": "Hello world", "__inference_error__": ""}
 
     # Error rows return entire data dict to preserve debugging info
     error_row = {

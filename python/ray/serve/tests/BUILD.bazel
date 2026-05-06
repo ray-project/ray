@@ -32,13 +32,13 @@ py_test_module_list(
 
 # Custom metrics tests.
 py_test_module_list_with_env_variants(
-    size = "small",
+    size = "medium",
     env_variants = {
         "metr_agg_at_controller": {
             "env": {
                 "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-                "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S": "0.5",
+                "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR": "0.001",
                 "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
             },
             "name_suffix": "_metr_agg_at_controller",
@@ -47,7 +47,7 @@ py_test_module_list_with_env_variants(
             "env": {
                 "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "0",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-                "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S": "0.5",
+                "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR": "0.001",
                 "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
             },
             "name_suffix": "_metr_agg_at_replicas",
@@ -84,7 +84,6 @@ py_test_module_list(
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
         "test_serve_with_tracing.py",
-        "test_util.py",
         "test_websockets.py",
     ],
     tags = [
@@ -104,17 +103,23 @@ py_test_module_list(
     files = [
         "test_actor_replica_wrapper.py",
         "test_backpressure.py",
+        "test_backpressure_grpc.py",
         "test_batching.py",
+        "test_broadcast.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller.py",
+        "test_controller_benchmark.py",
         "test_controller_recovery.py",
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
+        "test_deployment_scheduler_downscale.py",
         "test_deployment_topology.py",
         "test_failure.py",
+        "test_failure_2.py",
         "test_grpc_e2e.py",
         "test_grpc_replica_wrapper.py",
+        "test_handle.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -135,7 +140,9 @@ py_test_module_list(
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
+        "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
+        "test_util.py",
     ],
     tags = [
         "exclusive",
@@ -155,7 +162,6 @@ py_test_module_list(
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
-        "test_fastapi.py",
         "test_gcs_failure.py",
         "test_gradio.py",
         "test_replica_ranks.py",
@@ -172,14 +178,40 @@ py_test_module_list(
     ],
 )
 
+# Tracing tests (require fixture data and tracing env var for subprocesses).
+py_test_module_list(
+    size = "medium",
+    data = glob(["fixtures/*.*"]),
+    env = {
+        "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": "ray.serve._private.tracing_utils:default_tracing_exporter",
+        "RAY_SERVE_TRACING_SAMPLING_RATIO": "1.0",
+    },
+    files = [
+        "test_tracing_utils.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Large tests.
 py_test_module_list(
     size = "enormous",
+    data = glob(["test_config_files/**/*"]),
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
+        "test_fastapi.py",
         "test_grpc.py",
         "test_logging.py",
+        "test_logging_2.py",
+        "test_shutdown.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
@@ -198,14 +230,54 @@ py_test_module_list(
     ],
 )
 
+# Logging tests with client IP logging enabled.
+py_test_module_list(
+    size = "enormous",
+    env = {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
+    files = [
+        "test_logging.py",
+        "test_logging_2.py",
+    ],
+    name_suffix = "_with_client_address_logging",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Don't run gang scheduling tests on Windows
+py_test_module_list(
+    size = "enormous",
+    files = [
+        "test_gang_scheduling.py",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Large tests requiring `test_config_files/`.
 py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     files = [
+        "test_capacity_queue_router.py",
         "test_cli.py",
         "test_cli_2.py",
         "test_cli_3.py",
+        "test_cli_4.py",
     ],
     tags = [
         "exclusive",
@@ -241,14 +313,54 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "long",
+    data = glob(["test_config_files/**/*"]),
     env = {
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+        "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS": "5",
+        "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_deploy_app.py",
         "test_deploy_app_2.py",
         "test_metrics.py",
         "test_metrics_2.py",
+        "test_metrics_3.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+        "use_all_core_windows",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Deployment actors tests: split into own target with size=large because
+# the test file has 39 tests including heavyweight crash-recovery tests
+# with 120s waits that exceed the medium/long (900s) timeout under CI load.
+py_test_module_list(
+    size = "large",
+    data = glob(["test_config_files/**/*"]),
+    env = {
+        "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+        "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+    },
+    files = [
+        "test_deployment_actors.py",
+        "test_deployment_actors_recovery.py",
     ],
     tags = [
         "exclusive",
@@ -346,6 +458,7 @@ py_test(
         "test_api_2.py",
         "test_controller_crashes.py",
         "test_failure.py",
+        "test_failure_2.py",
     ],
     tags = [
         "exclusive",
@@ -428,6 +541,46 @@ py_test_module_list_with_env_variants(
     ],
 )
 
+# Test autoscaling with streaming and unary configurations.
+# Regression test for https://github.com/ray-project/ray/issues/61551
+AUTOSCALING_ENV_VARIANTS = {
+    "env_overrides": {
+        "env": {
+            "RAY_SERVE_LOG_TO_STDERR": "0",
+            "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
+            "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
+        },
+        "name_suffix": "_env_overrides",
+    },
+    "throughput_optimized": {
+        "env": {
+            "RAY_SERVE_THROUGHPUT_OPTIMIZED": "1",
+        },
+        "name_suffix": "_throughput_optimized",
+    },
+}
+
+py_test_module_list_with_env_variants(
+    size = "large",
+    args = [
+        "-k",
+        "TestAutoscalingWithRejection",
+    ],
+    env_variants = AUTOSCALING_ENV_VARIANTS,
+    files = [
+        "test_autoscaling_policy.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Test feature flag for task events.
 py_test_module_list(
     size = "small",
@@ -457,7 +610,6 @@ py_test_module_list(
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
-        "test_deployment_scheduler.py",
         "test_gcs_failure.py",
         "test_max_replicas_per_node.py",
         "test_replica_placement_group.py",
@@ -501,6 +653,9 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
+        "test_deployment_scheduler.py",
+        "test_deployment_scheduler_downscale.py",
+        "test_gang_scheduling.py",
         "test_standalone_2.py",
     ],
     name_suffix = "_with_pack_scheduling",
@@ -542,7 +697,7 @@ py_test_module_list(
 # Test currently off-by-default behavior to run replica sync methods in a threadpool.
 # TODO(edoakes): remove this once the FF is flipped on by default.
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
     files = [
         "test_replica_sync_methods.py",
@@ -570,6 +725,122 @@ py_test_module_list(
     name_suffix = "_with_router_in_same_loop",
     tags = [
         "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_direct_ingress.py",
+    ],
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    timeout = "eternal",
+    files = [
+        "test_per_request_headers.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    files = [
+        "test_direct_ingress.py",
+    ],
+    name_suffix = "_with_grpc",
+    tags = [
+        "direct_ingress",
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    timeout = "eternal",
+    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    files = [
+        "test_per_request_headers.py",
+    ],
+    name_suffix = "_with_grpc",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# HAProxy tests (require RAY_SERVE_ENABLE_HA_PROXY=1).
+# Two variants:
+#   - system: uses the system-installed HAProxy binary (/usr/local/sbin/haproxy)
+#   - pip_haproxy: uses the ray-haproxy PyPI package (vendored binary).
+#     Requires ray-haproxy to be installed in CI (see ci/docker/serve.build.Dockerfile).
+py_test_module_list_with_env_variants(
+    size = "large",
+    env_variants = {
+        "system": {
+            "env": {
+                "RAY_SERVE_ENABLE_HA_PROXY": "1",
+                "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+                "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "",
+        },
+        "pip_haproxy": {
+            "env": {
+                "RAY_SERVE_ENABLE_HA_PROXY": "1",
+                "RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY": "1",
+                "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+                "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "_pip_haproxy",
+        },
+    },
+    files = [
+        "test_haproxy.py",
+        "test_haproxy_api.py",
+        "test_metrics_haproxy.py",
+    ],
+    tags = [
+        "exclusive",
+        "haproxy",
         "no_windows",
         "team:serve",
     ],

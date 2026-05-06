@@ -445,11 +445,6 @@ class FIFOMixin:
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 
-    """Backoff parameters for request router."""
-    initial_backoff_s = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
-    backoff_multiplier = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
-    max_backoff_s = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
-
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
     # If this deadline is repeatedly missed, it will be exponentially increased up to
@@ -478,6 +473,9 @@ class RequestRouter(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+        backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+        max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
         *args,
         **kwargs,
     ):
@@ -487,6 +485,11 @@ class RequestRouter(ABC):
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
         self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
+
+        # Backoff parameters for request routing, from RequestRouterConfig.
+        self.initial_backoff_s = initial_backoff_s
+        self.backoff_multiplier = backoff_multiplier
+        self.max_backoff_s = max_backoff_s
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
@@ -613,6 +616,48 @@ class RequestRouter(ABC):
             }
         )
 
+    def _compute_backoff_s(self, attempt: int) -> float:
+        """Compute the backoff time in seconds for a given retry attempt.
+
+        Uses exponential backoff with the class-level backoff parameters.
+
+        Args:
+            attempt: The retry attempt number (0-indexed).
+
+        Returns:
+            The number of seconds to sleep before the next retry.
+        """
+        return min(
+            self.initial_backoff_s * (self.backoff_multiplier**attempt),
+            self.max_backoff_s,
+        )
+
+    def update_backoff_params(
+        self,
+        initial_backoff_s: float,
+        backoff_multiplier: float,
+        max_backoff_s: float,
+    ) -> None:
+        """Update the backoff parameters at runtime.
+
+        Args:
+            initial_backoff_s: Initial backoff time in seconds.
+            backoff_multiplier: Multiplier applied after each retry.
+            max_backoff_s: Maximum backoff time in seconds.
+        """
+        self.initial_backoff_s = initial_backoff_s
+        self.backoff_multiplier = backoff_multiplier
+        self.max_backoff_s = max_backoff_s
+
+    async def _backoff(self, attempt: int) -> None:
+        """Sleep for the appropriate backoff time for a given retry attempt.
+
+        Args:
+            attempt: The retry attempt number (0-indexed).
+        """
+        backoff_s = self._compute_backoff_s(attempt)
+        await asyncio.sleep(backoff_s)
+
     def _update_router_queue_len_gauge(
         self, replica_id: ReplicaID, queue_len: int, *, force: bool = False
     ) -> None:
@@ -644,6 +689,19 @@ class RequestRouter(ABC):
         contents of `RequestRouter.request_router_kwargs`.
         """
         pass
+
+    @property
+    def supports_rejection_protocol(self) -> bool:
+        """Whether this router supports the rejection protocol.
+
+        The rejection protocol is used when replicas may reject requests due to
+        being at capacity. Routers that guarantee capacity
+        should return False to skip the rejection handling.
+
+        Returns:
+            True if rejection protocol should be used, False otherwise.
+        """
+        return True
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -792,6 +850,24 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(replica_id, new_queue_len)
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
+    def decrement_queue_len_cache(self, replica_id: ReplicaID):
+        """Decrement the queue length cache for a replica.
+
+        Called via add_done_callback when a request finishes on a replica,
+        regardless of outcome (success, failure, or cancellation). This is
+        correct: any request that was actually sent occupies a queue slot,
+        and the slot is freed when the request completes for any reason.
+
+        Should NOT be called for rejected requests — on_new_queue_len_info
+        already corrects the cache with the replica's actual queue length.
+        """
+        if self._use_replica_queue_len_cache:
+            current = self._replica_queue_len_cache.get(replica_id)
+            if current is not None:
+                new_queue_len = max(0, current - 1)
+                self._replica_queue_len_cache.update(replica_id, new_queue_len)
+                self._update_router_queue_len_gauge(replica_id, new_queue_len)
+
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 
@@ -819,10 +895,12 @@ class RequestRouter(ABC):
             new_replica_id_set.add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
-            replica_id_set_strs = {r.unique_id for r in new_replica_id_set}
+            added = new_replica_id_set - self._replica_id_set
+            removed = self._replica_id_set - new_replica_id_set
             logger.info(
                 f"Got updated replicas for {self._deployment_id}: "
-                f"{replica_id_set_strs}.",
+                f"{len(new_replica_id_set)} total "
+                f"(+{len(added)} added, -{len(removed)} removed).",
                 extra={"log_to_stderr": False},
             )
 
@@ -1126,11 +1204,7 @@ class RequestRouter(ABC):
                     )
                 else:
                     # Only backoff after the first retry.
-                    backoff_s = min(
-                        self.initial_backoff_s * self.backoff_multiplier**attempt,
-                        self.max_backoff_s,
-                    )
-                    await asyncio.sleep(backoff_s)
+                    await self._backoff(attempt)
                     attempt += 1
         finally:
             if entered_backoff:
@@ -1264,19 +1338,26 @@ class RequestRouter(ABC):
         """Compatibility shim for RunningReplicaInfo datatype."""
         replica_wrappers = []
         for r in running_replicas:
-            try:
-                replica_wrappers.append(self.create_replica_wrapper(r))
-            except ValueError:
-                # NOTE(abrar): ValueError is raised when the actor handle is not found
-                # by ray.get_actor.
+            # Reuse existing wrapper for known replicas to avoid O(n) create_replica_wrapper
+            # calls on every update (e.g. during scaling storms).
+            if r.replica_id in self._replicas:
+                wrapper = self._replicas[r.replica_id]
+                wrapper.update_replica_info(r)
+                replica_wrappers.append(wrapper)
+            else:
+                try:
+                    replica_wrappers.append(self.create_replica_wrapper(r))
+                except ValueError:
+                    # NOTE(abrar): ValueError is raised when the actor handle is not found
+                    # by ray.get_actor.
 
-                # Actor has died (e.g., due to node failure) but controller hasn't
-                # detected it yet. Skip this replica; controller will send an update
-                # when it detects the failure.
-                logger.warning(
-                    f"Failed to get handle to replica {r.replica_id} during router "
-                    "update. The replica actor may have died. Skipping this replica."
-                )
+                    # Actor has died (e.g., due to node failure) but controller hasn't
+                    # detected it yet. Skip this replica; controller will send an update
+                    # when it detects the failure.
+                    logger.warning(
+                        f"Failed to get handle to replica {r.replica_id} during router "
+                        "update. The replica actor may have died. Skipping this replica."
+                    )
         return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
@@ -1332,10 +1413,28 @@ class RequestRouter(ABC):
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
-    ):
+    ) -> None:
         """Called when a request is routed to a replica.
 
         This is used as a callback to update the state of the request router
         after a response is generated.
+        """
+        pass
+
+    def on_request_completed(
+        self,
+        replica_id: ReplicaID,
+        internal_request_id: str,
+    ) -> None:
+        """Called when a request to a replica has completed.
+
+        This lifecycle hook is called after a request finishes (successfully or
+        with an error). It can be used by request routers that need to perform
+        cleanup after a request completes, such as releasing capacity tokens.
+
+        Args:
+            replica_id: The ID of the replica that handled the request.
+            internal_request_id: The internal unique identifier for the request
+                (from RequestMetadata.internal_request_id).
         """
         pass

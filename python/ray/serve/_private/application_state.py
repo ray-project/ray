@@ -1,4 +1,3 @@
-import inspect
 import json
 import logging
 import os
@@ -12,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
@@ -28,6 +27,7 @@ from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -47,8 +47,12 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
-from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingPolicy,
+    GangSchedulingConfig,
+    RequestRouterConfig,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -262,6 +266,7 @@ class ApplicationState:
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
+        self._ingress_request_router_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -331,6 +336,10 @@ class ApplicationState:
         return self._ingress_deployment_name
 
     @property
+    def ingress_request_router_deployment(self) -> Optional[str]:
+        return self._ingress_request_router_deployment_name
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -396,12 +405,15 @@ class ApplicationState:
         else:
             self._update_status(ApplicationStatus.DEPLOYING)
 
-        if deployment_infos is None:
-            self._ingress_deployment_name = None
-        else:
+        ingress_deployment_name = None
+        ingress_request_router_deployment_name = None
+
+        if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
-                    self._ingress_deployment_name = name
+                    ingress_deployment_name = name
+                if info.ingress_request_router:
+                    ingress_request_router_deployment_name = name
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -415,6 +427,10 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
+        self._ingress_deployment_name = ingress_deployment_name
+        self._ingress_request_router_deployment_name = (
+            ingress_request_router_deployment_name
+        )
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -707,6 +723,21 @@ class ApplicationState:
                 for deployment in config.deployments
                 if isinstance(deployment.request_router_config, dict)
             }
+            deployment_to_deployment_actor_classes = {}
+            for deployment in config.deployments:
+                actors = getattr(deployment, "deployment_actors", None)
+                if actors and actors is not DEFAULT.VALUE:
+                    actor_classes = {}
+                    for actor_cfg in actors:
+                        if isinstance(actor_cfg, dict):
+                            name = actor_cfg.get("name")
+                            cls_path = actor_cfg.get("actor_class")
+                            if isinstance(cls_path, str):
+                                actor_classes[name] = cls_path
+                    if actor_classes:
+                        deployment_to_deployment_actor_classes[
+                            deployment.name
+                        ] = actor_classes
 
             # Kick off new build app task
             logger.info(f"Importing and building app '{self._name}'.")
@@ -722,6 +753,7 @@ class ApplicationState:
                 application_autoscaling_policy_function,
                 deployment_to_autoscaling_policy_function,
                 deployment_to_request_router_cls,
+                deployment_to_deployment_actor_classes,
             )
             self._build_app_task_info = BuildAppTaskInfo(
                 obj_ref=build_app_obj_ref,
@@ -840,6 +872,14 @@ class ApplicationState:
                 + traceback.format_exc()
             )
             return None, None, BuildAppStatus.FAILED, error_msg
+        except RayTaskError:
+            return (
+                None,
+                None,
+                BuildAppStatus.FAILED,
+                f"Deploying app '{self._name}' failed with exception:\n"
+                f"{traceback.format_exc()}",
+            )
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
@@ -866,11 +906,28 @@ class ApplicationState:
                 for params in args
                 if params["serialized_request_router_cls"] is not None
             }
+            deployment_to_serialized_deployment_actors = {}
+            for params in args:
+                dep_name = params["deployment_name"]
+                # From proto roundtrip (code-defined actors)
+                info = deployment_infos[dep_name]
+                if info.deployment_config.deployment_actors:
+                    for cfg in info.deployment_config.deployment_actors:
+                        if cfg._serialized_actor_class:
+                            deployment_to_serialized_deployment_actors.setdefault(
+                                dep_name, {}
+                            )[cfg.name] = cfg._serialized_actor_class
+                # From build task (config-only actors)
+                if params.get("serialized_deployment_actors"):
+                    deployment_to_serialized_deployment_actors.setdefault(
+                        dep_name, {}
+                    ).update(params["serialized_deployment_actors"])
             overrided_infos = override_deployment_info(
                 deployment_infos,
                 self._build_app_task_info.config,
                 deployment_to_serialized_autoscaling_policy_def,
                 deployment_to_serialized_request_router_cls,
+                deployment_to_serialized_deployment_actors,
             )
             self._route_prefix = self._check_routes(overrided_infos)
             return (
@@ -947,7 +1004,7 @@ class ApplicationState:
                 and deploy_info.deployment_config.logging_config is None
             ):
                 deploy_info.deployment_config.logging_config = (
-                    self._target_state.config.logging_config
+                    self._target_state.config.logging_config.model_dump()
                 )
             target_state_changed = (
                 self.apply_deployment_info(deployment_name, deploy_info)
@@ -1154,6 +1211,8 @@ class ApplicationStateManager:
             tag_keys=("application",),
         )
 
+        self._app_status_gauge_cache: Dict[str, Tuple[int, float]] = {}
+
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -1344,6 +1403,12 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_deployment
 
+    def get_ingress_request_router_deployment_name(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
+        return self._application_states[name].ingress_request_router_deployment
+
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1386,10 +1451,6 @@ class ApplicationStateManager:
                 if self.get_app_source(name) is source
             }
 
-    def list_app_names(self) -> List[str]:
-        """Return app names without instantiating status objects."""
-        return list(self._application_states.keys())
-
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:
@@ -1410,13 +1471,8 @@ class ApplicationStateManager:
             return None
         return self._application_states[app_name].get_deployment_topology()
 
-    def update(self) -> bool:
-        """
-        Update each application state.
-
-        Returns:
-            bool: True if any application's target state changed during this update.
-        """
+    def update(self):
+        """Update each application state."""
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
@@ -1431,30 +1487,46 @@ class ApplicationStateManager:
                 logger.debug(f"Application '{name}' deleted successfully.")
 
         # Record application status metrics
+        now = time.time()
         for name, app in self._application_states.items():
-            self._application_status_gauge.set(
-                app.status.to_numeric(),
-                tags={"application": name},
+            cached = self._app_status_gauge_cache.get(name)
+            value = app.status.to_numeric()
+
+            # Throttle gauge reporting to avoid redundant FFI calls each control loop.
+            # Two independent conditions trigger a write:
+            #   - value_changed: reports status transitions (e.g. DEPLOYING -> RUNNING)
+            #     immediately, without waiting for the interval to expire.
+            #   - interval_elapsed: refreshes the gauge periodically even when status is
+            #     unchanged, preventing stale/empty time series in Grafana/Prometheus.
+            # We skip ONLY when both say it is safe — value unchanged AND reported recently.
+            value_changed = cached is None or cached[0] != value
+            interval_elapsed = (
+                cached is None
+                or (now - cached[1]) >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
             )
+
+            if not value_changed and not interval_elapsed:
+                continue
+
+            self._application_status_gauge.set(value, tags={"application": name})
+            self._app_status_gauge_cache[name] = (value, now)
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
+                self._app_status_gauge_cache.pop(app_name, None)
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
         if any_target_state_changed:
             self.save_checkpoint()
             self._deployment_state_manager.save_checkpoint()
-        return any_target_state_changed
 
     def shutdown(self) -> None:
         self._shutting_down = True
 
         for app_state in self._application_states.values():
             app_state.delete()
-
-        self._kv_store.delete(CHECKPOINT_KEY)
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all applications have shut down.
@@ -1465,6 +1537,10 @@ class ApplicationStateManager:
         return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
+
+    def delete_checkpoint(self) -> None:
+        """Delete the application state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
@@ -1484,7 +1560,7 @@ class ApplicationStateManager:
         )
 
 
-@ray.remote(num_cpus=0, max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1, max_retries=3, retry_exceptions=True)
 def build_serve_application(
     import_path: str,
     code_version: str,
@@ -1494,11 +1570,13 @@ def build_serve_application(
     application_autoscaling_policy_function: Optional[str],
     deployment_to_autoscaling_policy_function: Dict[str, str],
     deployment_to_request_router_cls: Dict[str, str],
+    deployment_to_deployment_actor_classes: Dict[str, Dict[str, str]],
 ) -> Tuple[Optional[bytes], Optional[List[Dict]], Optional[str]]:
     """Import and build a Serve application.
 
     Args:
-        import_path: import path to top-level bound deployment.
+        import_path: import path to a top-level Serve application object or
+            application builder return value.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
         name: application name. If specified, application will be deployed
@@ -1508,6 +1586,9 @@ def build_serve_application(
         application_autoscaling_policy_function: the application autoscaling policy function name
         deployment_to_autoscaling_policy_function: a dictionary mapping deployment names to autoscaling policy function names
         deployment_to_request_router_cls: a dictionary mapping deployment names to request router class names
+        deployment_to_deployment_actor_classes: mapping of deployment name to
+            {actor_name: actor_class_import_path} for deployment actors
+            specified in the config override (not in code)
 
     Returns:
         Serialized application autoscaling policy def: a serialized autoscaling
@@ -1539,7 +1620,7 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
-        num_ingress_deployments = 0
+        built_app.validate_single_fastapi_ingress()
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)
@@ -1553,12 +1634,30 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
-        for deployment in built_app.deployments:
-            if inspect.isclass(deployment.func_or_class) and issubclass(
-                deployment.func_or_class, ASGIAppReplicaWrapper
+
+        def _append_deploy_args(
+            deployment,
+            *,
+            is_ingress: bool,
+            is_ingress_request_router: bool,
+        ) -> None:
+            if deployment._deployment_config.deployment_actors:
+                for cfg in deployment._deployment_config.deployment_actors:
+                    if not cfg._serialized_actor_class:
+                        cfg._serialize_actor_class()
+
+            serialized_deployment_actors = None
+            if (
+                deployment_to_deployment_actor_classes
+                and deployment.name in deployment_to_deployment_actor_classes
             ):
-                num_ingress_deployments += 1
-            is_ingress = deployment.name == built_app.ingress_deployment_name
+                serialized_deployment_actors = {
+                    actor_name: _get_serialized_def(actor_class_path)
+                    for actor_name, actor_class_path in (
+                        deployment_to_deployment_actor_classes[deployment.name].items()
+                    )
+                }
+
             deployment_to_serialized_autoscaling_policy_def = None
             deployment_to_serialized_request_router_cls = None
             if deployment.name in deployment_to_autoscaling_policy_function:
@@ -1574,24 +1673,32 @@ def build_serve_application(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
+                    ingress_request_router=is_ingress_request_router,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
+                    serialized_deployment_actors=serialized_deployment_actors,
                 )
             )
-        if num_ingress_deployments > 1:
-            return (
-                None,
-                None,
-                (
-                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                ),
+
+        for deployment in built_app.deployments:
+            _append_deploy_args(
+                deployment,
+                is_ingress=deployment.name == built_app.ingress_deployment_name,
+                is_ingress_request_router=False,
+            )
+
+        if built_app.ingress_request_router_deployment is not None:
+            _append_deploy_args(
+                built_app.ingress_request_router_deployment,
+                is_ingress=False,
+                is_ingress_request_router=True,
             )
         return application_serialized_autoscaling_policy_def, deploy_args_list, None
+    except RayServeException as e:
+        return None, None, str(e)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
@@ -1601,10 +1708,13 @@ def build_serve_application(
         )
         return None, None, None
     except Exception:
-        logger.error(
-            f"Exception importing application '{name}'.\n{traceback.format_exc()}"
-        )
-        return None, None, traceback.format_exc()
+        # Wrap the user traceback in a RuntimeError so that user exceptions
+        # which are unpickleable (e.g. NonserializableException) or lose detail
+        # through Ray's serialization round-trip (e.g. SyntaxError) still
+        # propagate their original traceback intact through Ray's retry path.
+        err_str = traceback.format_exc()
+        logger.warning(f"Exception importing application '{name}'.")
+        raise RuntimeError(err_str) from None
 
 
 def override_deployment_info(
@@ -1612,6 +1722,9 @@ def override_deployment_info(
     override_config: Optional[ServeApplicationSchema],
     deployment_to_serialized_autoscaling_policy_def: Optional[Dict[str, bytes]] = None,
     deployment_to_serialized_request_router_cls: Optional[Dict[str, bytes]] = None,
+    deployment_to_serialized_deployment_actors: Optional[
+        Dict[str, Dict[str, bytes]]
+    ] = None,
 ) -> Dict[str, DeploymentInfo]:
     """Override deployment infos with options from app config.
 
@@ -1622,6 +1735,9 @@ def override_deployment_info(
             options to override those loaded from code.
         deployment_to_serialized_autoscaling_policy_def: serialized autoscaling policy def for each deployment
         deployment_to_serialized_request_router_cls: serialized request router cls for each deployment
+        deployment_to_serialized_deployment_actors: mapping of deployment name
+            to {actor_name: serialized_actor_class_bytes} for each deployment
+            actor, produced by the build task
 
     Returns: the updated deployment infos.
 
@@ -1634,7 +1750,7 @@ def override_deployment_info(
     if override_config is None:
         return deployment_infos
 
-    config_dict = override_config.dict(exclude_unset=True)
+    config_dict = override_config.model_dump(exclude_unset=True)
     deployment_override_options = config_dict.get("deployments", [])
 
     # Override options for each deployment listed in the config.
@@ -1650,7 +1766,7 @@ def override_deployment_info(
             )
 
         info = deployment_infos[deployment_name]
-        original_options = info.deployment_config.dict()
+        original_options = info.deployment_config.model_dump()
         original_options["user_configured_option_names"].update(set(options))
 
         # Override `max_ongoing_requests` and `autoscaling_config` if
@@ -1658,7 +1774,7 @@ def override_deployment_info(
         if options.get("num_replicas") == "auto":
             options["num_replicas"] = None
 
-            new_config = AutoscalingConfig.default().dict()
+            new_config = AutoscalingConfig.default().model_dump()
             # If `autoscaling_config` is specified, its values override
             # the default `num_replicas="auto"` configuration
             autoscaling_config = (
@@ -1707,6 +1823,14 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+        override_bundle_label_selector = options.pop(
+            "placement_group_bundle_label_selector",
+            replica_config.placement_group_bundle_label_selector,
+        )
+        override_fallback_strategy = options.pop(
+            "placement_group_fallback_strategy",
+            replica_config.placement_group_fallback_strategy,
+        )
 
         # Record telemetry for container runtime env feature at deployment level
         if override_actor_options.get("runtime_env") and (
@@ -1725,8 +1849,17 @@ def override_deployment_info(
             placement_group_bundles=override_placement_group_bundles,
             placement_group_strategy=override_placement_group_strategy,
             max_replicas_per_node=override_max_replicas_per_node,
+            placement_group_bundle_label_selector=override_bundle_label_selector,
+            placement_group_fallback_strategy=override_fallback_strategy,
         )
         override_options["replica_config"] = replica_config
+
+        if "gang_scheduling_config" in options:
+            gang_scheduling_config = options.get("gang_scheduling_config")
+            if gang_scheduling_config and isinstance(gang_scheduling_config, dict):
+                options["gang_scheduling_config"] = GangSchedulingConfig(
+                    **gang_scheduling_config
+                )
 
         if "request_router_config" in options:
             request_router_config = options.get("request_router_config")
@@ -1747,6 +1880,29 @@ def override_deployment_info(
                     options["request_router_config"] = RequestRouterConfig(
                         **request_router_config
                     )
+
+        if (
+            deployment_to_serialized_deployment_actors
+            and deployment_name in deployment_to_serialized_deployment_actors
+        ):
+            serialized_actors = deployment_to_serialized_deployment_actors[
+                deployment_name
+            ]
+            actors_list = options.get(
+                "deployment_actors",
+                original_options.get("deployment_actors"),
+            )
+            if actors_list:
+                for actor_cfg in actors_list:
+                    if isinstance(actor_cfg, dict):
+                        actor_name = actor_cfg.get("name")
+                        if (
+                            isinstance(actor_name, str)
+                            and actor_name in serialized_actors
+                        ):
+                            actor_cfg["_serialized_actor_class"] = serialized_actors[
+                                actor_name
+                            ]
 
         # Override deployment config options
         options.pop("name", None)

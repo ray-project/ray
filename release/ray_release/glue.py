@@ -535,17 +535,19 @@ def run_release_test_anyscale(
             start_time_unix,
         )
 
-        # Obtain the cluster info again as it is set after the
-        # command was run in case of anyscale jobs
-        result.job_url = runner.job_url()
-        result.job_id = runner.job_id()
-        result.last_logs = runner.get_last_logs()
-
     except Exception as e:
         logger.exception(e)
         buildkite_open_last()
         pipeline_exception = e
         metrics = {}
+
+    # Obtain the cluster info again as it is set after the
+    # command was run in case of anyscale jobs
+    if runner:
+        result.job_url = runner.job_url()
+        result.job_id = runner.job_id()
+        if result.job_id:
+            result.last_logs = runner.get_last_logs()
 
     reset_signal_handling()
 

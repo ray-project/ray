@@ -7,15 +7,13 @@ from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import IngressClsConfig
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.serving_patterns.data_parallel.dp_rank_assigner import (
-    _DPRankAssigner,
-)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
 )
@@ -28,42 +26,30 @@ def build_dp_deployment(
     llm_config: LLMConfig,
     *,
     name_prefix: Optional[str] = None,
+    bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
+    deployment_cls: Optional[type] = None,
 ) -> Application:
     """Build a data parallel attention LLM deployment.
 
     Args:
         llm_config: The LLM configuration.
         name_prefix: The prefix to add to the deployment name.
+        bind_kwargs: Optional extra kwargs to pass to the deployment constructor.
+            Used by PD disaggregation to inject prefill_server handles.
         override_serve_options: The optional serve options to override the
             default options.
+        deployment_cls: Optional deployment class to use. Defaults to DPServer.
 
     Returns:
         The Ray Serve Application for the data parallel attention LLM deployment.
     """
-    dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
-
-    # TODO(rui): figure out a better way to pass in dp_size_per_node.
-    # NOTE: we cannot use engine_kwargs.data_parallel_size_local to specify
-    # the number of ranks per node because that has special semantics in vLLM.
-    # When we make serve's rank asignment node affinity aware, then we won't
-    # need this hack to make the ranks orginally distributed across nodes.
-    dp_size_per_node = llm_config.experimental_configs.get("dp_size_per_node")
-    if dp_size_per_node is None:
-        raise ValueError(
-            "dp_size_per_node must be set in experimental_configs for DP deployment."
-        )
-
-    dp_rank_assigner = _DPRankAssigner.bind(
-        dp_size=dp_size, dp_size_per_node=dp_size_per_node
-    )
-
     return build_llm_deployment(
         llm_config,
         name_prefix=name_prefix,
-        bind_kwargs={"dp_rank_assigner": dp_rank_assigner},
+        bind_kwargs=bind_kwargs,
         override_serve_options=override_serve_options,
-        deployment_cls=DPServer,
+        deployment_cls=deployment_cls or DPServer,
     )
 
 
@@ -134,7 +120,15 @@ def build_dp_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
+    model_id = llm_config.model_id
+    lora_config = llm_config.lora_config
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[dp_deployment],
+        llm_deployments={model_id: dp_deployment},
+        model_cards={model_id: to_model_metadata(model_id, llm_config)},
+        lora_paths=(
+            {model_id: lora_config.dynamic_lora_loading_path}
+            if lora_config is not None
+            else {}
+        ),
         **ingress_cls_config.ingress_extra_kwargs,
     )

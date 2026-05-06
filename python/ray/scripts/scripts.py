@@ -10,6 +10,7 @@ import time
 import urllib
 import urllib.parse
 import warnings
+from collections import deque
 from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
@@ -68,6 +69,67 @@ import psutil
 logger = logging.getLogger(__name__)
 
 
+def _tail_file(path: str, max_lines: int = 200) -> str:
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return "".join(deque(f, maxlen=max_lines))
+
+
+def _log_unexpected_subprocess_exit_details(
+    unexpected_deceased, logs_dir: str, process_exit_logger
+) -> None:
+    """Log unexpected subprocess exits to both structured and console outputs."""
+    lines_for_file = []
+    exit_codes_by_process_type = {}
+    with cli_logger.indented():
+        for process_type, process in unexpected_deceased:
+            cli_logger.error(
+                "{}",
+                cf.bold(str(process_type)),
+                _tags={"exit code": str(process.returncode)},
+            )
+            rc = getattr(process, "returncode", None)
+            rc_str = format_returncode(rc)
+            exit_codes_by_process_type.setdefault(str(process_type), set()).add(rc_str)
+            lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+    try:
+        file_msg = "Some Ray subprocesses exited unexpectedly:\n" + "\n".join(
+            lines_for_file
+        )
+        process_exit_logger.error("%s", file_msg)
+    except Exception as e:
+        cli_logger.warning("Failed to write process exit log: {}", e)
+
+    process_types = sorted({str(t) for t, _p in unexpected_deceased})
+    for process_type in process_types:
+        exit_codes = sorted(exit_codes_by_process_type[process_type])
+        exit_codes_display = ", ".join(exit_codes)
+        for fname in (f"{process_type}.err", f"{process_type}.out"):
+            began_tail_output = False
+            try:
+                fpath = os.path.join(logs_dir, fname)
+                if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
+                    continue
+                cli_logger.newline()
+                cli_logger.error(
+                    "----- BEGIN {} tail (exit code(s)={}) -----",
+                    fname,
+                    exit_codes_display,
+                )
+                began_tail_output = True
+                cli_logger.newline()
+                cli_logger.error("{}", _tail_file(fpath))
+            except Exception as e:
+                cli_logger.error("Failed to tail process log {}: {}", fname, e)
+            finally:
+                if began_tail_output:
+                    cli_logger.newline()
+                    cli_logger.error(
+                        "----- END {} tail (exit code(s)={}) -----",
+                        fname,
+                        exit_codes_display,
+                    )
+
+
 def _check_ray_version(gcs_client):
     import ray._common.usage.usage_lib as ray_usage_lib
 
@@ -80,7 +142,53 @@ def _check_ray_version(gcs_client):
         )
 
 
-@click.group()
+class RayCLI(click.Group):
+    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+
+    This overrides format_commands to split subcommands into "Observability"
+    and "Commands" sections for better readability of ray --help output.
+    """
+
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+            commands.append((subcommand, cmd))
+
+        if len(commands):
+            limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+            observability_commands = []
+            other_commands = []
+
+            observability_names = {
+                "summary",
+                "list",
+                "get",
+                "logs",
+            }
+
+            for subcommand, cmd in commands:
+                help = cmd.get_short_help_str(limit)
+                if subcommand in observability_names:
+                    observability_commands.append((subcommand, help))
+                else:
+                    other_commands.append((subcommand, help))
+
+            if other_commands:
+                with formatter.section("Commands"):
+                    formatter.write_dl(other_commands)
+
+            if observability_commands:
+                with formatter.section("Observability"):
+                    formatter.write_dl(observability_commands)
+
+
+@click.group(cls=RayCLI)
 @click.option(
     "--logging-level",
     required=False,
@@ -558,8 +666,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only "
-    "works when --head is specified",
+    help="manually specify the root temporary dir of the Ray process. Can be "
+    "specified per node.",
 )
 @click.option(
     "--system-config",
@@ -669,13 +777,22 @@ Windows powershell users need additional escaping:
 @click.option(
     "--cgroup-path",
     required=False,
-    hidden=True,
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
     "The process starting ray must have read/write permissions to this path.  "
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
     "This option only works if enable_resource_isolation is True.",
+)
+@click.option(
+    "--proxy-server-url",
+    required=False,
+    type=str,
+    help="[Experimental] The server url to redirect dashboard backend requests to. "
+    "By default, the dashboard requests will be directed to the Ray api server. "
+    "If you have a custom server to serve the dashboard requests, "
+    "you can set this option to override the server url. "
+    "Ex: --proxy-server-url=http://historyserver:8080 ",
 )
 @add_click_logging_options
 @PublicAPI
@@ -725,6 +842,7 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
+    proxy_server_url,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -771,23 +889,32 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-    if temp_dir and not head:
-        cli_logger.warning(
-            f"`--temp-dir={temp_dir}` option will be ignored. "
-            "`--head` is a required flag to use `--temp-dir`. "
-            "temp_dir is only configurable from a head node. "
-            "All the worker nodes will use the same temp_dir as a head node. "
-        )
-        temp_dir = None
+
+    available_memory_bytes = ray._private.utils.estimate_available_memory()
+    object_store_memory = ray._private.utils.resolve_object_store_memory(
+        available_memory_bytes, object_store_memory
+    )
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -807,10 +934,11 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
+        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -834,6 +962,8 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        proxy_server_url=proxy_server_url,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -857,7 +987,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
@@ -1108,13 +1239,13 @@ def start(
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            connect_only=False,
         )
         temp_dir = node.get_temp_dir_path()
-
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
-        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
@@ -1176,29 +1307,15 @@ def start(
             if len(unexpected_deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
-
-                lines_for_file = []
-                with cli_logger.indented():
-                    for process_type, process in unexpected_deceased:
-                        cli_logger.error(
-                            "{}",
-                            cf.bold(str(process_type)),
-                            _tags={"exit code": str(process.returncode)},
-                        )
-                        rc = getattr(process, "returncode", None)
-                        rc_str = format_returncode(rc)
-                        lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
-                try:
-                    file_msg = (
-                        "Some Ray subprocesses exited unexpectedly:\n"
-                        + "\n".join(lines_for_file)
-                    )
-                    process_exit_logger.error("%s", file_msg)
-                except Exception as e:
-                    cli_logger.warning("Failed to write process exit log: {}", e)
+                _log_unexpected_subprocess_exit_details(
+                    unexpected_deceased,
+                    logs_dir,
+                    process_exit_logger,
+                )
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+                cli_logger.flush()
 
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
@@ -1387,6 +1504,89 @@ def stop(force: bool, grace_period: int):
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
     ray._common.utils.reset_ray_address()
+
+
+@cli.command(name="kill-actor")
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--name",
+    required=False,
+    type=str,
+    help="Named actor to kill.",
+)
+@click.option(
+    "--namespace",
+    required=False,
+    type=str,
+    help="Namespace for named actor (when using --name).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="If set, kill the actor forcefully. Otherwise, request graceful termination.",
+)
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    default=False,
+    help="Disable automatic restart of the actor after kill."
+    "NOTE: This flag only takes effect when using --force.",
+)
+def kill_actor(
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
+):
+    """Kill an actor by name.
+    Args:
+        address: Override the address to connect to.
+        name: Named actor to kill.
+        namespace: Namespace for named actor.
+        force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
+        no_restart: If set, the actor will not be restarted after being killed.
+
+    Examples:
+        ray kill-actor MyActor
+        ray kill-actor MyActor --namespace my_namespace
+        ray kill-actor MyActor --force
+        ray kill-actor MyActor --force --no-restart
+    """
+    # Validate input: require a name
+    if not name:
+        raise click.ClickException("Must specify --name to identify the actor.")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    # Respect token-based authentication when enabled.
+    ensure_token_if_auth_enabled(None, create_token_if_missing=False)
+
+    # Connect to the cluster (no driver logging)
+    if not ray.is_initialized():
+        ray.init(address=address, namespace=namespace, log_to_driver=False)
+
+    if not force and no_restart:
+        click.echo(
+            "WARNING: --no-restart flag is only effective with --force (graceful termination does not support controlling actor restart).",
+            err=True,
+        )
+
+    try:
+        actor_handle = ray.get_actor(name, namespace=namespace)
+    except ValueError:
+        raise click.ClickException(
+            f"No named actor found: {name} (namespace={namespace})"
+        )
+    if force:
+        ray.kill(actor_handle, no_restart=no_restart)
+        click.echo(f"Actor killed (force): {name}")
+    else:
+        actor_handle.__ray_terminate__.remote()
+        click.echo(f"Requested graceful termination for actor: {name}")
 
 
 @cli.command()
@@ -2073,11 +2273,10 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    size = os.path.getsize(filename)
-    logger.info(f"Trace file written to {filename} ({size} bytes).")
+    logger.info(f"Trace file written to {filename} in the ray temp directory.")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
@@ -2441,10 +2640,14 @@ def drain_node(
     reason_message: str,
     deadline_remaining_seconds: int,
 ):
-    """
-    This is NOT a public API.
+    """Manually drain a worker node.
 
-    Manually drain a worker node.
+    This is a developer-facing command used to request that GCS gracefully
+    drain a node (e.g., before manual termination). The same underlying API
+    is invoked by autoscaler v2 for idle and preemption-based termination.
+
+    The command is hidden from the top-level `ray --help` output and its
+    interface is not covered by Ray's public API stability guarantees.
     """
     # This should be before get_runtime_context() so get_runtime_context()
     # doesn't start a new worker here.
@@ -2582,8 +2785,15 @@ def healthcheck(address, component, skip_version_check):
     type=str,
     help="The directory to generate the bazel project template to, if provided.",
 )
+@click.option(
+    "--bazel-version",
+    default="6.5.0",
+    required=False,
+    type=str,
+    help="The bazel version to use, if provided.",
+)
 @add_click_logging_options
-def cpp(show_library_path, generate_bazel_project_template_to):
+def cpp(show_library_path, generate_bazel_project_template_to, bazel_version):
     """Show the cpp library path and generate the bazel project template.
 
     This command MUST be run from the ray project root directory if
@@ -2609,15 +2819,6 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
-
-        bazel_version_filename = ".bazelversion"
-
-        if not os.path.exists(bazel_version_filename):
-            raise ValueError(
-                "This command can only be run from the ray project's root directory. "
-                "It expects a .bazelversion file to be present."
-            )
-
         out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
@@ -2635,11 +2836,8 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
-        # This assumes that your current working directory has a .bazelversion file.
-        shutil.copyfile(
-            bazel_version_filename,
-            os.path.join(out_dir, bazel_version_filename),
-        )
+        with open(os.path.join(out_dir, ".bazelversion"), "w") as f:
+            f.write(bazel_version.strip() + "\n")
 
         cli_logger.print(
             "Project template generated to {}",
@@ -2754,6 +2952,7 @@ cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
 cli.add_command(get_auth_token)
+cli.add_command(kill_actor)
 
 try:
     from ray.util.state.state_cli import (
@@ -2780,9 +2979,9 @@ except Exception as e:
 
 
 try:
-    from ray.serve.scripts import serve_cli
+    from ray.serve.scripts import cli as serve_cli_group
 
-    cli.add_command(serve_cli)
+    cli.add_command(serve_cli_group, name="serve")
 except Exception as e:
     logger.debug(f"Integrating ray serve command line tool failed with {e}")
 

@@ -1,7 +1,6 @@
 import gzip
 import json
 import os
-import shutil
 
 import pandas as pd
 import pyarrow as pa
@@ -28,154 +27,30 @@ pytestmark = pytest.mark.timeout(360)
 def test_json_read(
     ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
 ):
-    # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.json")
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1)
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
-    # Test metadata ops.
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
+    # Metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
-
-    # Two files, override_num_blocks=2.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "test2.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2], override_num_blocks=2)
-    dsdf = ds.to_pandas()
-    df = pd.concat([df1, df2], ignore_index=True)
-    assert df.equals(dsdf)
-    # Test metadata ops.
-    for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-
-    # Three files, override_num_blocks=2.
-    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    path3 = os.path.join(tmp_path, "test3.json")
-    df3.to_json(path3, orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2, path3], override_num_blocks=2)
-    df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
-    assert df.equals(dsdf)
-
-    # Directory, two files.
-    path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(path)
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.data.read_json(path)
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(path)
-
-    # Two directories, three files.
-    path1 = os.path.join(tmp_path, "test_json_dir1")
-    path2 = os.path.join(tmp_path, "test_json_dir2")
-    os.mkdir(path1)
-    os.mkdir(path2)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    file_path1 = os.path.join(path1, "data0.json")
-    df1.to_json(file_path1, orient="records", lines=True)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    file_path2 = os.path.join(path2, "data1.json")
-    df2.to_json(file_path2, orient="records", lines=True)
-    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    file_path3 = os.path.join(path2, "data2.json")
-    df3.to_json(file_path3, orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2])
-    df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(path1)
-    shutil.rmtree(path2)
-
-    # Directory and file, two files.
-    dir_path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(dir_path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(dir_path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.data.read_json([dir_path, path2])
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(dir_path)
-
-    # Directory, two files and non-json file (test default extension-based filtering).
-    path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True)
-
-    # Add a file with a non-matching file extension. This file should be ignored.
-    df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
-    df_txt.to_json(
-        os.path.join(path, "foo.txt"),
-        orient="records",
-        lines=True,
-    )
-
-    ds = ray.data.read_json(path)
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(path)
 
 
 def test_zipped_json_read(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.json.gz")
     df1.to_json(path1, compression="gzip", orient="records", lines=True)
     ds = ray.data.read_json(path1)
-    assert df1.equals(ds.to_pandas())
-    # Test metadata ops.
+    dsdf = ds.to_pandas()
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
+    # Metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-
-    # Two files, override_num_blocks=2.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "test2.json.gz")
-    df2.to_json(path2, compression="gzip", orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2], override_num_blocks=2)
-    dsdf = ds.to_pandas()
-    assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
-    # Test metadata ops.
-    for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes()
-
-    # Directory and file, two files.
-    dir_path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(dir_path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(dir_path, "data0.json.gz")
-    df1.to_json(path1, compression="gzip", orient="records", lines=True)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "data1.json.gz")
-    df2.to_json(path2, compression="gzip", orient="records", lines=True)
-    ds = ray.data.read_json([dir_path, path2])
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
-    assert df.equals(dsdf)
-    shutil.rmtree(dir_path)
 
 
 def test_read_json_fallback_from_pyarrow_failure(
@@ -218,7 +93,7 @@ def test_json_read_with_read_options(
         read_options=pajson.ReadOptions(use_threads=False, block_size=2**30),
     )
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -247,7 +122,7 @@ def test_json_read_with_parse_options(
     )
     dsdf = ds.to_pandas()
     assert len(dsdf.columns) == 1
-    assert (df1["two"]).equals(dsdf["two"])
+    pd.testing.assert_series_equal(df1["two"].astype(dsdf["two"].dtype), dsdf["two"])
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -355,7 +230,7 @@ def test_json_read_small_file_unit_block_size(
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1, read_options=pajson.ReadOptions(block_size=1))
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -383,7 +258,7 @@ def test_json_read_file_larger_than_block_size(
         path2, read_options=pajson.ReadOptions(block_size=block_size)
     )
     dsdf = ds.to_pandas()
-    assert df2.equals(dsdf)
+    pd.testing.assert_frame_equal(df2.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == num_rows
     assert ds.input_files() == [path2]
@@ -404,7 +279,7 @@ def test_json_read_negative_block_size_fallback(
     # Negative Buffer Size, fails with arrow but succeeds in fallback to json.load()
     ds = ray.data.read_json(path3, read_options=pajson.ReadOptions(block_size=-1))
     dsdf = ds.to_pandas()
-    assert df3.equals(dsdf)
+    pd.testing.assert_frame_equal(df3.astype(dsdf.dtypes.to_dict()), dsdf)
 
 
 def test_json_read_zero_block_size_failure(

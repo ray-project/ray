@@ -2,6 +2,7 @@ import logging
 import os
 import queue
 import socket
+import sys
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar, Union
@@ -87,6 +88,7 @@ class Worker:
     resources: Dict[str, float]
     distributed_context: Optional[DistributedContext] = None
     log_file_path: Optional[str] = None
+    placement_group_bundle_index: Optional[int] = None
 
     @cached_property
     def _repr(self) -> str:
@@ -139,8 +141,23 @@ class RayTrainWorker:
             raise
 
         def train_fn_with_final_checkpoint_flush():
-            train_fn()
+            result = train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()
+
+            if "torch" in sys.modules:
+                from ray.air._internal.torch_utils import contains_tensor
+
+                if contains_tensor(result):
+                    raise ValueError(
+                        "Returning objects containing Torch tensors from the "
+                        "training function is not supported as it will throw an "
+                        "exception on deserialization. You can either convert "
+                        "the tensors to Python objects (ex: `.numpy()`, "
+                        "`.item()`, etc.) or save tensors as part of the "
+                        "checkpoint files instead."
+                    )
+
+            return result
 
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(
@@ -177,8 +194,17 @@ class RayTrainWorker:
             training_report
         )
 
+        return_value = (
+            execution_context.training_thread_runner.get_return_value()
+            if not running
+            else None
+        )
+
         return WorkerStatus(
-            running=running, error=error, training_report=training_report
+            running=running,
+            error=error,
+            training_report=training_report,
+            return_value=return_value,
         )
 
     def shutdown(self):
@@ -204,6 +230,7 @@ class RayTrainWorker:
         dataset_shard_provider: Optional["DatasetShardProvider"] = None,
         checkpoint: Optional[Checkpoint] = None,
         has_validation_fn: Optional[bool] = None,
+        current_report_index: int = 0,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
         context_callbacks_to_propagate = [
@@ -225,6 +252,7 @@ class RayTrainWorker:
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
             has_validation_fn=has_validation_fn,
+            current_report_index=current_report_index,
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(

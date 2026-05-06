@@ -92,19 +92,15 @@ struct GcsServerMocker {
 
     void GetWorkerFailureCause(
         const LeaseID &lease_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
-        override {
-      ray::rpc::GetWorkerFailureCauseReply reply;
+        const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {
+      rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
     void RequestWorkerLease(
-        const rpc::LeaseSpec &spec,
-        bool grant_or_reject,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size,
-        const bool is_selected_based_on_locality) override {
+        rpc::RequestWorkerLeaseRequest &&request,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
@@ -156,11 +152,6 @@ struct GcsServerMocker {
         reply.set_rejected(true);
         auto resources_data = reply.mutable_resources_data();
         resources_data->set_node_id(node_id.Binary());
-        resources_data->set_resources_normal_task_changed(true);
-        auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-        normal_task_map[kMemory_ResourceLabel] =
-            static_cast<double>(std::numeric_limits<int>::max());
-        resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
       }
 
       if (callbacks.size() == 0) {

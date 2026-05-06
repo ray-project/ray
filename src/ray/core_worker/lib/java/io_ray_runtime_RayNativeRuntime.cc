@@ -26,7 +26,7 @@
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/util/time.h"
 
@@ -121,7 +121,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jbyteArray workerId,
                                                       jint runtimeEnvHash) {
   auto task_execution_callback =
-      [](const rpc::Address &caller_address,
+      [](const rpc::Address &owner_address,
          TaskType task_type,
          const std::string task_name,
          const RayFunction &ray_function,
@@ -135,6 +135,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
+         std::string *actor_repr_name,
          std::string *application_error,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
          const std::string name_of_concurrency_group_to_execute,
@@ -236,7 +237,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 data_size,
                 metadata,
                 contained_object_ids,
-                caller_address,
+                owner_address,
                 &task_output_inlined_bytes,
                 result_ptr));
 
@@ -251,7 +252,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil(), caller_address));
+                result_id, result, ObjectID::Nil(), owner_address));
           }
         }
 

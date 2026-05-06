@@ -1,25 +1,27 @@
 group: rllib tests
 depends_on:
   - forge
-  - ray-core-build
+  - ray-core-build(python=3.10)
   - ray-dashboard-build
 steps:
   # builds
   - name: rllibbuild
     wanda: ci/docker/rllib.build.wanda.yaml
-    depends_on: oss-ci-base_ml-multipy
+    depends_on: oss-ci-base_ml-multipy(python=3.10)
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py3.10
-      IMAGE_TO: rllibbuild-py3.10
+      PYTHON: "3.10"
+      BASE_TYPE: "ml"
+      BUILD_VARIANT: "build"
       RAYCI_IS_GPU_BUILD: "false"
     tags: cibase
 
   - name: rllibgpubuild
     wanda: ci/docker/rllib.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy
+    depends_on: oss-ci-base_gpu-multipy(python=3.10)
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
-      IMAGE_TO: rllibgpubuild-py3.10
+      PYTHON: "3.10"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
       RAYCI_IS_GPU_BUILD: "true"
     tags: cibase
 

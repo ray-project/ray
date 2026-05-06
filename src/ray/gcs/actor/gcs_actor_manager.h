@@ -18,6 +18,7 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -97,6 +98,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
+  /// \param observability_publisher If non-null, used for `PublishError`.
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
@@ -110,7 +112,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
-      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge,
+      pubsub::ObservabilityPublisher *observability_publisher);
 
   ~GcsActorManager() override;
 
@@ -322,7 +325,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   void RestartActor(const ActorID &actor_id,
                     bool need_reschedule,
                     const rpc::ActorDeathCause &death_cause,
-                    std::function<void()> done_callback = nullptr);
+                    std::function<void()> done_callback = nullptr,
+                    std::optional<rpc::events::ActorLifecycleEvent::RestartReason>
+                        restart_reason = std::nullopt);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -370,7 +375,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
     actor_delta.set_end_time(actor.end_time());
     actor_delta.set_repr_name(actor.repr_name());
     actor_delta.set_preempted(actor.preempted());
-    // Acotr's namespace and name are used for removing cached name when it's dead.
+    // Actor's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta.set_ray_namespace(actor.ray_namespace());
     }
@@ -478,6 +483,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
   /// This is used to communicate with raylets where actors are located.
   rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.
@@ -507,7 +513,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
-  int64_t liftime_num_created_actors_ = 0;
+  int64_t lifetime_num_created_actors_ = 0;
 
   // Make sure our unprotected maps are accessed from the same thread.
   // Currently protects actor_to_register_callbacks_.
@@ -567,6 +573,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestRestartPreemptedActor);
   FRIEND_TEST(GcsActorManagerTest, TestGetAllActorInfoLimit);
   FRIEND_TEST(GcsActorManagerTest, TestDestroyWhileRegistering);
+  FRIEND_TEST(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors);
 
   friend class GcsActorManagerTest;
 };

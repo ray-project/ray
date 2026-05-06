@@ -96,13 +96,13 @@ class OpenTelemetryMetricRecorder:
         # Initialize the global metrics provider and meter. We only do this once on
         # the first initialization of the class, because re-setting the meter provider
         # can result in loss of metrics.
-        with self._metrics_initialized_lock:
-            if self._metrics_initialized:
+        with OpenTelemetryMetricRecorder._metrics_initialized_lock:
+            if OpenTelemetryMetricRecorder._metrics_initialized:
                 return
             prometheus_reader = PrometheusMetricReader()
             provider = MeterProvider(metric_readers=[prometheus_reader])
             metrics.set_meter_provider(provider)
-            self._metrics_initialized = True
+            OpenTelemetryMetricRecorder._metrics_initialized = True
 
     def register_gauge_metric(self, name: str, description: str) -> None:
         with self._lock:

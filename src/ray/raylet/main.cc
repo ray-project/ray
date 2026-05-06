@@ -50,6 +50,7 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -255,6 +256,7 @@ int main(int argc, char *argv[]) {
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
+  const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
@@ -287,6 +289,7 @@ int main(int argc, char *argv[]) {
                                         node_id,
                                         system_reserved_cpu_weight,
                                         system_reserved_memory_bytes,
+                                        object_store_memory,
                                         system_pids);
 
   AddProcessToCgroupHook add_process_to_workers_cgroup_hook =
@@ -355,6 +358,8 @@ int main(int argc, char *argv[]) {
       spill_manager_throughput_mb_gauge};
   ray::stats::Count memory_manager_worker_eviction_total_count =
       ray::raylet::GetMemoryManagerWorkerEvictionTotalCountMetric();
+  ray::stats::Count node_manager_unexpected_worker_failure_total_count =
+      ray::raylet::GetNodeManagerUnexpectedWorkerFailureTotalCountMetric();
   ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
   ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
       ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
@@ -404,6 +409,7 @@ int main(int argc, char *argv[]) {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// granting leases.
+  ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -501,6 +507,35 @@ int main(int argc, char *argv[]) {
     RAY_CHECK_OK(status);
     RAY_CHECK(stored_raylet_config.has_value());
     RayConfig::instance().initialize(*stored_raylet_config);
+
+    // Each node should have its own object spilling directory individually
+    // specified. Overwrite head node's object spilling directory with the one
+    // specified on this node.
+    std::string object_spilling_config = RayConfig::instance().object_spilling_config();
+    if (!object_spilling_config.empty()) {
+      try {
+        nlohmann::json config = nlohmann::json::parse(object_spilling_config);
+        if (config.contains("type") && config["type"] == "filesystem") {
+          if (config.contains("params") && config["params"].contains("directory_path")) {
+            // Override with local fallback directory as it has been resolved to the
+            // correct spilling directory already.
+            config["params"]["directory_path"] = fallback_directory;
+            std::string modified_config = config.dump();
+
+            // Re-parse the entire stored config and update object_spilling_config
+            nlohmann::json full_config = nlohmann::json::parse(*stored_raylet_config);
+            full_config["object_spilling_config"] = modified_config;
+            std::string updated_raylet_config = full_config.dump();
+
+            // Re-initialize with the updated config
+            RayConfig::instance().initialize(updated_raylet_config);
+          }
+        }
+      } catch (const std::exception &e) {
+        RAY_LOG(WARNING) << "Failed to parse object_spilling_config: " << e.what();
+      }
+    }
+
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
@@ -616,6 +651,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.resource_dir = resource_dir;
     node_manager_config.ray_debugger_external = ray_debugger_external;
     node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+    node_manager_config.enable_resource_isolation = enable_resource_isolation;
 
     // Configuration for the object manager.
     ray::ObjectManagerConfig object_manager_config;
@@ -877,6 +913,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         resource_usage_gauge,
+        clock,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -1019,7 +1056,8 @@ int main(int argc, char *argv[]) {
         *placement_group_resource_manager,
         std::move(acceptor),
         std::move(socket),
-        memory_manager_worker_eviction_total_count);
+        memory_manager_worker_eviction_total_count,
+        node_manager_unexpected_worker_failure_total_count);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -1073,6 +1111,8 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_manager_address(node_ip_address);
     self_node_info.set_node_name(node_name);
     self_node_info.set_raylet_socket_name(raylet_socket_name);
+    self_node_info.set_temp_dir(temp_dir);
+    self_node_info.set_session_dir(session_dir);
     self_node_info.set_object_store_socket_name(object_manager_config.store_socket_name);
     self_node_info.set_object_manager_port(object_manager->GetServerPort());
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
@@ -1097,6 +1137,8 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
     auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
+
+    RAY_LOG(INFO) << "Setting temp dir to: " << temp_dir;
 
     node_manager->Start(std::move(self_node_info));
   });

@@ -106,9 +106,12 @@ def report(
             If a ValidationTaskConfig, validation is run using fn_kwargs merged with validation_config
             defaults, with fn_kwargs taking precedence on conflicts. If False, no validation.
     """
+    if validation and not checkpoint:
+        raise ValueError("Validation requires a checkpoint to be provided.")
+
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
-            checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
+            checkpoint_upload_mode.default_delete_local_checkpoint_after_upload()
         )
 
     if checkpoint:
@@ -193,6 +196,7 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 @requires_train_worker()
 def get_all_reported_checkpoints(
     consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    timeout_s: Optional[float] = None,
 ) -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
@@ -234,13 +238,15 @@ def get_all_reported_checkpoints(
         consistency_mode: Read semantics for checkpoint retrieval during an ongoing run.
             Defaults to CheckpointConsistencyMode.VALIDATED.
             See :class:`~ray.train.CheckpointConsistencyMode` for more details.
+        timeout_s: Timeout in seconds to collecting checkpoint and validation information.
+            Defaults to None to wait indefinitely.
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
         corresponding metrics reported by the workers.
     """
     return get_train_fn_utils().get_all_reported_checkpoints(
-        consistency_mode=consistency_mode
+        consistency_mode=consistency_mode, timeout_s=timeout_s
     )
 
 

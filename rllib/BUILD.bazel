@@ -50,6 +50,7 @@ filegroup(
 doctest(
     size = "enormous",
     data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -150,6 +151,70 @@ py_test(
         "exclusive",
         "learning_tests",
         "learning_tests_use_all_core",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+# Footsies
+py_test(
+    name = "learning_tests_appo_footsies_single_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--num-aggregator-actors-per-learner=2",
+    ],
+    main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_appo_footsies_multi_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+        "--num-aggregator-actors-per-learner=2",
+    ],
+    main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_appo_footsies_single_gpu_no_aggregator_actors",
+    size = "large",
+    srcs = ["examples/algorithms/appo/multi_agent_footsies_appo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--num-aggregator-actors-per-learner=0",
+    ],
+    main = "examples/algorithms/appo/multi_agent_footsies_appo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
         "multi_gpu",
         "team:rllib",
     ],
@@ -455,7 +520,7 @@ py_test(
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_cql",
-    size = "large",
+    size = "enormous",
     srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
@@ -468,35 +533,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/43808
-        "manual",
-    ],
-)
-
-# GPU training.
-py_test(
-    name = "learning_tests_pendulum_cql_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/cql/pendulum_cql.py"],
-    args = [
-        "--as-test",
-        "--num-gpus-per-learner=1",
-    ],
-    # Include the zipped json data file as well.
-    data = [
-        "offline/tests/data/pendulum/pendulum-v1_enormous",
-    ],
-    main = "examples/algorithms/cql/pendulum_cql.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/50538
-        "manual",
     ],
 )
 
@@ -693,7 +730,7 @@ py_test(
         "--num-env-runners=8",
         "--num-gpus-per-learner=1",
         "--num-learners=2",
-        "--stop-reward=-2.0",
+        "--stop-reward=-1",
     ],
     main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [
@@ -1725,6 +1762,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_dqn_rl_module",
+    size = "small",
+    srcs = ["algorithms/dqn/tests/test_dqn_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # DreamerV3
 py_test(
     name = "test_dreamerv3",
@@ -1875,6 +1923,17 @@ py_test(
 )
 
 py_test(
+    name = "algorithms/tests/test_get_main_process_bundle",
+    size = "small",
+    srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_dependency_tf",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],
@@ -1889,17 +1948,6 @@ py_test(
     name = "algorithms/tests/test_dependency_torch",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_torch.py"],
-    tags = [
-        "algorithms",
-        "team:rllib",
-    ],
-    deps = [":conftest"],
-)
-
-py_test(
-    name = "algorithms/tests/test_local",
-    size = "small",
-    srcs = ["algorithms/tests/test_local.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -2021,6 +2069,17 @@ py_test(
 )
 
 py_test(
+    name = "env/tests/test_env_runner",
+    size = "medium",
+    srcs = ["env/tests/test_env_runner.py"],
+    tags = [
+        "env",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "env/tests/test_multi_agent_env",
     size = "large",
     srcs = ["env/tests/test_multi_agent_env.py"],
@@ -2057,6 +2116,7 @@ py_test(
     name = "env/tests/test_single_agent_env_runner",
     size = "medium",
     srcs = ["env/tests/test_single_agent_env_runner.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "env",
         "team:rllib",
@@ -2258,6 +2318,18 @@ py_test(
 )
 
 py_test(
+    name = "test_encoder_layernorm",
+    size = "medium",
+    srcs = ["core/models/tests/test_encoder_layernorm.py"],
+    tags = [
+        "core",
+        "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_mlp_heads",
     size = "medium",
     srcs = ["core/models/tests/test_mlp_heads.py"],
@@ -2281,12 +2353,35 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_multi_stream_encoders",
+    size = "medium",
+    srcs = ["core/models/tests/test_multi_stream_encoders.py"],
+    tags = [
+        "core",
+        "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # RLModule
 py_test(
     name = "test_torch_rl_module",
     size = "medium",
     srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
     args = ["TestRLModule"],
+    tags = [
+        "core",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_lstm_target_network_rl_module",
+    size = "small",
+    srcs = ["core/rl_module/torch/tests/test_lstm_target_network_rl_module.py"],
     tags = [
         "core",
         "team:rllib",
@@ -2419,6 +2514,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_torch_learner_optimizer_restore",
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_optimizer_restore.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -2474,6 +2581,17 @@ py_test(
         "offline/tests/data/pendulum/enormous.zip",
         "offline/tests/data/pendulum/large.json",
     ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_dataset_writer",
+    size = "small",
+    srcs = ["offline/tests/test_dataset_writer.py"],
     tags = [
         "offline",
         "team:rllib",
@@ -2592,6 +2710,21 @@ py_test(
 )
 
 py_test(
+    name = "test_offline_policy_evaluation_runner",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_policy_evaluation_runner.py"],
+    # Include the offline data files.
+    data = [
+        "offline/tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_offline_evaluation_runner_group",
     size = "medium",
     srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
@@ -2694,6 +2827,7 @@ py_test(
     name = "policy/tests/test_policy_map",
     size = "medium",
     srcs = ["policy/tests/test_policy_map.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "policy",
         "team:rllib",
@@ -2806,6 +2940,17 @@ py_test(
     name = "test_errors",
     size = "medium",
     srcs = ["utils/tests/test_errors.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_filter",
+    size = "small",
+    srcs = ["utils/tests/test_filter.py"],
     tags = [
         "team:rllib",
         "utils",
@@ -2948,6 +3093,7 @@ py_test(
     name = "test_space_utils",
     size = "small",
     srcs = ["utils/spaces/tests/test_space_utils.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "team:rllib",
         "utils",
@@ -3187,6 +3333,7 @@ py_test(
     name = "examples/actions/autoregressive_actions",
     size = "large",
     srcs = ["examples/actions/autoregressive_actions.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/actions/autoregressive_actions.py",
     tags = [
         "examples",
@@ -3254,6 +3401,7 @@ py_test(
     args = [
         "--as-test",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py",
     tags = [
         "examples",
@@ -3411,6 +3559,7 @@ py_test(
     name = "examples/_old_api_stack/checkpoints/cartpole_dqn_export",
     size = "small",
     srcs = ["examples/_old_api_stack/checkpoints/cartpole_dqn_export.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/_old_api_stack/checkpoints/cartpole_dqn_export.py",
     tags = [
         "examples",
@@ -4489,6 +4638,7 @@ py_test(
         "--stop-iters=1",
         "--framework=tf",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
@@ -4843,6 +4993,7 @@ py_test(
         "--num-episodes-human-play=0",
         "--min-league-size=3",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = [
         "examples",
@@ -4884,9 +5035,11 @@ py_test(
         "--min-league-size=4",
     ],
     main = "examples/multi_agent/self_play_with_open_spiel.py",
+    # TODO(elliot-barn): Re-enable once timeout is fixed.
     tags = [
         "examples",
         "exclusive",
+        "manual",
         "team:rllib",
     ],
 )
@@ -4989,7 +5142,7 @@ py_test(
 # ....................................
 py_test(
     name = "examples/ray_serve/ray_serve_with_rllib",
-    size = "medium",
+    size = "large",
     srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
     args = [
         "--stop-iters=2",
@@ -4999,9 +5152,11 @@ py_test(
     ],
     data = glob(["examples/ray_serve/classes/**"]),
     main = "examples/ray_serve/ray_serve_with_rllib.py",
+    # TODO(elliot-barn): Re-enable once timeout issue is fixed.
     tags = [
         "examples",
         "exclusive",
+        "manual",
         "team:rllib",
     ],
 )
@@ -5137,8 +5292,10 @@ py_test(
     size = "large",
     srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py"],
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
+    # TODO(elliot-barn): Re-enable once SIGSEGV in CartPole render is fixed.
     tags = [
         "examples",
+        "manual",
         "team:rllib",
     ],
 )

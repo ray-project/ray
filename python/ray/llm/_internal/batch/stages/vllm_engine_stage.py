@@ -31,6 +31,7 @@ from ray.llm._internal.batch.stages.common import (
     maybe_convert_ndarray_to_list,
     truncate_str,
 )
+from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS as _VLLM_FATAL_ERRORS
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -41,18 +42,6 @@ from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-# vLLM fatal errors that should always be re-raised, never swallowed.
-# EngineDeadError indicates the vLLM engine process has crashed and is
-# unrecoverable - all subsequent requests would fail anyway.
-_VLLM_FATAL_ERRORS: Tuple[Type[Exception], ...] = ()
-try:
-    from vllm.v1.engine.exceptions import EngineDeadError
-
-    _VLLM_FATAL_ERRORS = (EngineDeadError,)
-except ImportError:
-    # vLLM not installed or older version without this exception
-    pass
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
@@ -71,16 +60,18 @@ class vLLMEngineRequest(BaseModel):
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
-    multimodal_data: Optional[MultiModalDataDict]
+    multimodal_data: Optional[MultiModalDataDict] = None
     # The kwargs for the multimodal processor.
-    mm_processor_kwargs: Optional[Dict[str, Any]]
+    mm_processor_kwargs: Optional[Dict[str, Any]] = None
     # The uuids for the multimodal data.
-    multimodal_uuids: Optional[Dict[str, Any]]
+    multimodal_uuids: Optional[Dict[str, Any]] = None
     # The tokenized prompt IDs. If None, then the string prompt will be
     # tokenized by the LLM engine. This is not recommended for performance reasons.
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
+    # The kwargs for tokenization.
+    tokenization_kwargs: Optional[Dict[str, Any]] = None
     # LoRA request.
     lora_request: Optional[Any] = None
 
@@ -131,7 +122,7 @@ class vLLMOutputData(BaseModel):
     """The output of the vLLM engine."""
 
     prompt: str
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     num_input_tokens: int
 
     # Generate fields.
@@ -219,6 +210,7 @@ class vLLMEngineWrapper:
         *args: The positional arguments for the engine.
         max_pending_requests: The maximum number of pending requests in the queue.
         dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
+        log_engine_metrics: Whether to export vLLM metrics to Ray's Prometheus endpoint.
         **kwargs: The keyword arguments for the engine.
     """
 
@@ -227,13 +219,14 @@ class vLLMEngineWrapper:
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         dynamic_lora_loading_path: Optional[str] = None,
+        log_engine_metrics: bool = True,
         **kwargs,
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        # Flag to log deprecation warning only once
         self._guided_decoding_warning_logged = False
+        self._truncate_prompt_tokens_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -284,7 +277,20 @@ class vLLMEngineWrapper:
         )
         # create_engine_config will set default values including `max_num_seqs`.
         self._vllm_config = engine_args.create_engine_config()
-        self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
+
+        stat_loggers = None
+        if log_engine_metrics:
+            from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
+
+            stat_loggers = [RayPrometheusStatLogger]
+            logger.info(
+                "Enabling Ray metrics export for vLLM engine. "
+                "Metrics will be available at Ray's Prometheus endpoint."
+            )
+
+        self.engine = vllm.AsyncLLMEngine.from_engine_args(
+            engine_args, stat_loggers=stat_loggers
+        )
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -379,6 +385,8 @@ class vLLMEngineWrapper:
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
+        tokenization_kwargs = row.pop("tokenization_kwargs", None)
+
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
@@ -423,9 +431,33 @@ class vLLMEngineWrapper:
             vLLMTaskType.CLASSIFY,
             vLLMTaskType.SCORE,
         ):
-            pooling_params = row.pop("pooling_params", {})
+            pooling_params = maybe_convert_ndarray_to_list(
+                row.pop("pooling_params", {})
+            )
+
+            # vLLM 0.16.0 deprecates truncate_prompt_tokens in PoolingParams.
+            # truncate_prompt_tokens must be passed via tokenization_kwargs instead.
+            # TODO (jeffreywang): Remove this in Ray 2.56.0.
+            if "truncate_prompt_tokens" in pooling_params:
+                truncate_value = pooling_params.pop("truncate_prompt_tokens")
+                if not self._truncate_prompt_tokens_warning_logged:
+                    logger.warning(
+                        "Setting truncate_prompt_tokens in pooling_params is "
+                        "deprecated. Please pass "
+                        "tokenization_kwargs={'truncation': True, "
+                        "'max_length': N} via the tokenization_kwargs column instead."
+                    )
+                    self._truncate_prompt_tokens_warning_logged = True
+                if truncate_value == -1:
+                    truncate_value = self._vllm_config.model_config.max_model_len
+
+                if tokenization_kwargs is None:
+                    tokenization_kwargs = {}
+                tokenization_kwargs.setdefault("truncation", True)
+                tokenization_kwargs.setdefault("max_length", truncate_value)
+
             params = vllm.PoolingParams(
-                **maybe_convert_ndarray_to_list(pooling_params),
+                **pooling_params,
                 task=self.task_type,
             )
         else:
@@ -441,6 +473,7 @@ class vLLMEngineWrapper:
             mm_processor_kwargs=mm_processor_kwargs,
             multimodal_uuids=multimodal_uuids,
             params=params,
+            tokenization_kwargs=tokenization_kwargs,
             lora_request=lora_request,
         )
         self.request_id += 1
@@ -480,7 +513,7 @@ class vLLMEngineWrapper:
 
         import vllm
 
-        # TODO (jeffreywang): Consolidate to multimodal_data only
+        # TODO (jeffreywang): Consolidate to multimodal_data only in Ray 2.56.0
         if request.images:
             multi_modal_data = (
                 {**request.multimodal_data, "image": request.images}
@@ -491,7 +524,7 @@ class vLLMEngineWrapper:
             multi_modal_data = request.multimodal_data
 
         if request.prompt_token_ids is not None:
-            llm_prompt = vllm.inputs.data.TokensPrompt(
+            llm_prompt = vllm.inputs.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -499,7 +532,7 @@ class vLLMEngineWrapper:
             )
         else:
             assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
+            llm_prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -507,7 +540,6 @@ class vLLMEngineWrapper:
             )
 
         # Send the request to the LLM engine.
-        # vLLM 0.12.0 uses encode() for pooling/embedding/classification tasks, generate() for text generation
         if self.task_type in (
             vLLMTaskType.EMBED,
             vLLMTaskType.CLASSIFY,
@@ -517,16 +549,15 @@ class vLLMEngineWrapper:
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 pooling_params=request.params,
-                # vLLM 0.12.0 ignores truncate_prompt_tokens in the pooling_params.
-                # TODO (jeffreywang): Remove the following line once
-                # https://github.com/vllm-project/vllm/issues/31012 is fixed.
-                truncate_prompt_tokens=request.params.truncate_prompt_tokens,
+                tokenization_kwargs=request.tokenization_kwargs,
+                lora_request=request.lora_request,
             )
         else:
             stream = self.engine.generate(
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 sampling_params=request.params,
+                lora_request=request.lora_request,
             )
 
         # Consume the stream until the request is finished.
@@ -569,6 +600,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
+        log_engine_metrics: bool = True,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -586,6 +618,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             should_continue_on_error: If True, continue processing when inference fails for
                 a row instead of raising. Failed rows will have '__inference_error__'
                 set to the error message.
+            log_engine_metrics: If True, export vLLM engine metrics (prefix cache hit rate,
+                TTFT, TPOT, KV cache utilization, etc.) to Ray's Prometheus endpoint.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
@@ -630,6 +664,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
+            log_engine_metrics=log_engine_metrics,
             **self.engine_kwargs,
         )
 
@@ -696,7 +731,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
-                "__inference_error__": None,
+                "__inference_error__": "",
             }
         except _VLLM_FATAL_ERRORS as e:
             # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
@@ -732,11 +767,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
             # Include snippet of failed prompt for debuggability
             prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+
+            # Construct default vLLMOutputData for schema consistency with success rows
+            default_output = vLLMOutputData(
+                prompt=prompt,
+                prompt_token_ids=None,
+                num_input_tokens=0,
+            )
             return {
+                **default_output.model_dump(),
+                "request_id": -1,
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": -1,
+                "params": "",
                 "__inference_error__": error_msg,
-                "prompt": prompt,
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -880,6 +925,15 @@ class vLLMEngineStage(StatefulStage):
         placement_group_config = fn_constructor_kwargs.pop(
             "placement_group_config", None
         )
+
+        # If bundle_per_worker is specified inside placement_group_config,
+        # expand it into full bundles list
+        if placement_group_config is not None:
+            bundle_per_worker = placement_group_config.pop("bundle_per_worker", None)
+            if bundle_per_worker is not None:
+                placement_group_config["bundles"] = [
+                    bundle_per_worker.copy() for _ in range(num_bundles_per_replica)
+                ]
         if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.
@@ -948,5 +1002,12 @@ class vLLMEngineStage(StatefulStage):
                 "The pooling parameters. See "
                 "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
                 "for details. If not provided, default pooling parameters will be used."
+            )
+            ret["tokenization_kwargs"] = (
+                "Tokenization keyword arguments passed to the vLLM engine. "
+                "Use this to control prompt truncation, e.g. "
+                '{"truncation": true, "max_length": 512}. '
+                "See https://docs.vllm.ai/en/latest/features/input_processing.html "
+                "for details."
             )
         return ret

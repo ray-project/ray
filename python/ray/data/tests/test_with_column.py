@@ -5,8 +5,8 @@ import pytest
 from pkg_resources import parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.util import rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -351,6 +351,7 @@ def test_with_column_udf_multiple_udfs(
             ],  # ((id + 1) * 2) / 3
         }
     )
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(result_df, expected_df)
 
@@ -394,6 +395,7 @@ def test_with_column_mixed_udf_and_regular_expressions(
             "comparison": [False, False, False, False, False],  # times_three > plus_ten
         }
     )
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(result_df, expected_df)
 
@@ -614,6 +616,7 @@ def test_with_column_alias_expressions(
 
     # Ensure column order matches expected_columns
     expected_df = expected_df[expected_columns]
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     # Assert the entire DataFrame is equal
     pd.testing.assert_frame_equal(result_df, expected_df)

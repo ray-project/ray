@@ -2,12 +2,14 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
-import time
-import anyscale
+import requests
+from openai import OpenAI
+
 import boto3
 import ray
 import yaml
@@ -16,6 +18,7 @@ from anyscale.compute_config.models import ComputeConfig
 from anyscale.service.models import ServiceState
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
+
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +31,7 @@ SECRET_NAME = "llm_release_test_hf_token"
 # Buildkite is also configured to have read access to this bucket
 S3_BUCKET = "rayllm-ci-results"
 S3_PREFIX = "vllm_perf_results"
+ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR = "ANYSCALE_JOB_CLUSTER_COMPUTE_NAME"
 
 
 def check_service_state(
@@ -165,11 +169,25 @@ def start_service(
         logger.info(f"Service '{service_name}' terminated successfully.")
 
 
-def get_current_compute_config():
-    """Get the compute config of the current job."""
-    job_id = os.environ["ANYSCALE_JOB_ID"]
-    job_status = anyscale.job.status(id=job_id)
-    return job_status.config.compute_config
+def get_service_compute_config(
+    compute_config: Optional[str] = None,
+) -> str:
+    """Get the compute config to use when starting the Anyscale Service.
+
+    Release jobs pass the current job's compute config name through the
+    environment. Using that name avoids querying the Jobs API from inside the
+    cluster, where only the cluster CLI token may be available.
+    """
+    service_compute_config = compute_config or os.environ.get(
+        ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR
+    )
+    if service_compute_config is None:
+        raise RuntimeError(
+            "No compute config was provided for the Anyscale Service. Set "
+            f"--compute-config or {ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR}; "
+            "release jobs should provide this automatically."
+        )
+    return service_compute_config
 
 
 def get_applications(serve_config_file: str) -> List[Any]:
@@ -231,3 +249,38 @@ def get_vllm_s3_storage_path() -> str:
     storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
 
     return storage_path
+
+
+def create_openai_client(server_url: str) -> OpenAI:
+    return OpenAI(base_url=f"{server_url}/v1", api_key="fake-key")
+
+
+def wait_for_server_ready(
+    url: str,
+    model_id: str,
+    timeout: int = 300,
+    retry_interval: int = 2,
+) -> None:
+    """Poll the server until it's ready or timeout is reached."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            resp = requests.post(
+                f"{url}/v1/completions",
+                json={
+                    "model": model_id,
+                    "prompt": "test",
+                    "max_tokens": 5,
+                    "temperature": 0,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                print(f"Server at {url} is ready to handle requests!")
+                return
+        except Exception:
+            pass
+
+        print(f"Waiting for server at {url} to be ready...")
+        time.sleep(retry_interval)
+    raise TimeoutError(f"Server at {url} not ready within {timeout}s")

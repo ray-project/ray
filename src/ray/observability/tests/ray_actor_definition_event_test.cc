@@ -35,6 +35,10 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   data.set_placement_group_id("pg_id");
   (*data.mutable_label_selector())["team"] = "core";
   (*data.mutable_label_selector())["tier"] = "prod";
+  data.set_call_site("test_call_site.py:123");
+  data.set_parent_id("parent_actor_id");
+  // Labels (e.g. from Ray Data actor pool) are serialized into ref_ids in the event.
+  (*data.mutable_labels())["__data_operator_id"] = "op_id_0";
 
   auto event = std::make_unique<RayActorDefinitionEvent>(data, "test_session_name");
   auto serialized_event = std::move(*event).Serialize();
@@ -58,6 +62,9 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   ASSERT_EQ(actor_def.placement_group_id(), "pg_id");
   ASSERT_EQ(actor_def.label_selector().at("team"), "core");
   ASSERT_EQ(actor_def.label_selector().at("tier"), "prod");
+  ASSERT_EQ(actor_def.call_site(), "test_call_site.py:123");
+  ASSERT_EQ(actor_def.parent_id(), "parent_actor_id");
+  ASSERT_EQ(actor_def.ref_ids().at("__data_operator_id"), "op_id_0");
 }
 
 }  // namespace observability

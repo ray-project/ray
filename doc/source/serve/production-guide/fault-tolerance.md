@@ -686,5 +686,34 @@ Table:
 
 Note that the PID for the first ProxyActor has changed, indicating that it restarted.
 
+## Environment variables
+
+These environment variables control fault tolerance-related behavior. Set them before starting Ray.
+
+### `RAY_SERVE_KV_TIMEOUT_S`
+
+**Default**: None (no timeout)
+
+Ray Serve persists deployment configurations and state in the Global Control Store (GCS) using its internal KV interface. Each read and write to the GCS KV store uses this timeout. By default, no timeout is set and these operations block until the GCS responds. If the GCS becomes unavailable (for example, during a head node restart), Serve operations that depend on the KV store — such as fetching or updating deployment configs — hang until the GCS recovers.
+
+Setting this value causes those operations to fail fast with a timeout error instead of blocking indefinitely, allowing Serve to detect GCS failures and trigger recovery sooner.
+
+```bash
+export RAY_SERVE_KV_TIMEOUT_S=5
+```
+
+### `LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND` / `LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND`
+
+**Defaults**: `30` / `60` seconds
+
+Ray Serve uses a long-polling mechanism for replicas and proxies to receive configuration updates from the controller. Each long-poll request uses a random timeout between the lower and upper bounds to avoid thundering herd problems when many clients poll simultaneously.
+
+```bash
+export LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND=10
+export LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND=30
+```
+
+Decreasing these values makes replicas and proxies detect controller changes faster, which can speed up recovery after controller restarts. Increasing them reduces the frequency of long-poll requests to the controller.
+
 [KubeRay]: kuberay-index
 [external storage namespace]: kuberay-external-storage-namespace

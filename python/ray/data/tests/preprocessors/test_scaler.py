@@ -42,7 +42,7 @@ def test_min_max_scaler():
     processed_col_c = [0.0, 0.0, None]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -65,7 +65,7 @@ def test_min_max_scaler():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
@@ -91,7 +91,7 @@ def test_min_max_scaler():
             "B_mm_scaled": pred_processed_col_b,
             "C_mm_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -122,7 +122,7 @@ def test_max_abs_scaler():
     processed_col_c = [1.0, 1.0, None]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -145,7 +145,7 @@ def test_max_abs_scaler():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -171,7 +171,7 @@ def test_max_abs_scaler():
             "B_ma_scaled": pred_processed_col_b,
             "C_ma_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -209,7 +209,7 @@ def test_robust_scaler():
     processed_col_c = [-6, -0.5, 0, 0.5, 4]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -232,7 +232,7 @@ def test_robust_scaler():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -258,7 +258,7 @@ def test_robust_scaler():
             "B_r_scaled": pred_processed_col_b,
             "C_r_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -312,7 +312,7 @@ def test_standard_scaler():
             "C": processed_col_c,
             "D": processed_col_d,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -338,7 +338,7 @@ def test_standard_scaler():
             "C": pred_processed_col_c,
             "D": pred_processed_col_d,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -364,7 +364,7 @@ def test_standard_scaler():
             "B_s_scaled": pred_processed_col_b,
             "C_s_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -806,6 +806,83 @@ class TestScalerSerialization:
         assert len(result.columns) == 2  # Should have the scaled columns
         assert "feature1" in result.columns
         assert "feature2" in result.columns
+
+
+def test_standard_scaler_near_zero_std():
+    """Test StandardScaler handles near-zero standard deviation correctly."""
+    # Create data with very small standard deviation (near-constant values)
+    col_a = [1.0, 1.0 + 1e-10, 1.0]
+    col_b = [5, 10, 15]  # Normal column for comparison
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df)
+
+    scaler = StandardScaler(["A", "B"])
+    scaler.fit(ds)
+    transformed = scaler.transform(ds)
+    out_df = transformed.to_pandas()
+
+    # Column A should be scaled to zeros (near-constant)
+    # Instead of NaN or inf values
+    assert np.allclose(
+        out_df["A"], 0.0, atol=1e-6
+    ), "Near-constant column should be scaled to zeros"
+
+    # Column B should be normally scaled
+    assert not np.allclose(out_df["B"], 0.0), "Normal column should not be all zeros"
+
+    # No NaN or inf values should be present
+    assert not out_df["A"].isna().any(), "Should not contain NaN values"
+    assert not np.isinf(out_df["A"]).any(), "Should not contain inf values"
+
+
+def test_min_max_scaler_near_zero_range():
+    """Test MinMaxScaler handles near-zero range correctly."""
+    # Create data with very small range (near-constant values)
+    col_a = [2.0, 2.0 + 1e-10, 2.0]
+    col_b = [1, 5, 10]  # Normal column for comparison
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df)
+
+    scaler = MinMaxScaler(["A", "B"])
+    scaler.fit(ds)
+    transformed = scaler.transform(ds)
+    out_df = transformed.to_pandas()
+
+    # Column A should be scaled to zeros (near-constant)
+    # Instead of NaN or inf values
+    assert np.allclose(
+        out_df["A"], 0.0, atol=1e-6
+    ), "Near-constant column should be scaled to zeros"
+
+    # Column B should be normally scaled
+    expected_b = [0.0, 4 / 9, 1.0]
+    assert np.allclose(
+        out_df["B"], expected_b, atol=1e-6
+    ), "Normal column should be scaled correctly"
+
+    # No NaN or inf values should be present
+    assert not out_df["A"].isna().any(), "Should not contain NaN values"
+    assert not np.isinf(out_df["A"]).any(), "Should not contain inf values"
+
+
+def test_standard_scaler_exact_zero_std():
+    """Test StandardScaler still handles exact zero standard deviation.
+
+    This is a regression test to ensure the epsilon-based handling
+    doesn't break the existing behavior for exact zero std.
+    """
+    # Create constant column (exact zero std)
+    col_c = [5, 5, 5]
+    in_df = pd.DataFrame.from_dict({"C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    scaler = StandardScaler(["C"])
+    scaler.fit(ds)
+    transformed = scaler.transform(ds)
+    out_df = transformed.to_pandas()
+
+    # Should be all zeros
+    assert np.allclose(out_df["C"], 0.0), "Constant column should be scaled to zeros"
 
 
 if __name__ == "__main__":

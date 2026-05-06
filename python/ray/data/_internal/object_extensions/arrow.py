@@ -3,28 +3,14 @@ import typing
 
 import numpy as np
 import pyarrow as pa
-from packaging.version import parse as parse_version
 
 import ray.data._internal.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
-from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import _check_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
-
-
-MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
-
-PYARROW_VERSION = get_pyarrow_version()
-
-
-# TODO delete, since min supported pyarrow >= 9.0
-def _object_extension_type_allowed() -> bool:
-    return (
-        PYARROW_VERSION is not None
-        and PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
-    )
 
 
 # Please see https://arrow.apache.org/docs/python/extending_types.html for more info

@@ -187,6 +187,10 @@ class TorchLearner(Learner):
             assert total_loss == 0
             return {}
 
+        # If all parameters for this module are currently frozen, we can't optimize it.
+        if total_loss.grad_fn is None:
+            return {}
+
         total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
@@ -349,9 +353,19 @@ class TorchLearner(Learner):
                     config=self.config.get_config_for_module(module_id=module_id),
                 )
             if name in self._named_optimizers:
-                self._named_optimizers[name].load_state_dict(
-                    convert_to_torch_tensor(state_dict["state"], device=self._device)
-                )
+                # Keep optimizer param_groups untouched so scalar metadata such as
+                # betas, lr, eps, foreach, capturable preserve their Python types.
+                # Only convert per-parameter optimizer buffers (exp_avg, exp_avg_sq,
+                # step, etc.) to tensors on the learner device.
+                optimizer_state = state_dict["state"]
+                loaded_state = {
+                    **optimizer_state,
+                    "state": convert_to_torch_tensor(
+                        optimizer_state["state"],
+                        device=self._device,
+                    ),
+                }
+                self._named_optimizers[name].load_state_dict(loaded_state)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -369,15 +383,13 @@ class TorchLearner(Learner):
         pin_memory: bool = False,
         use_stream: bool = False,
     ) -> MultiAgentBatch:
-        batch = convert_to_torch_tensor(
+        batch_dict = convert_to_torch_tensor(
             batch.policy_batches,
             device=self._device if to_device else None,
             pin_memory=pin_memory,
             use_stream=use_stream,
         )
-        # TODO (sven): This computation of `env_steps` is not accurate!
-        length = max(len(b) for b in batch.values())
-        batch = MultiAgentBatch(batch, env_steps=length)
+        batch = MultiAgentBatch(batch_dict, env_steps=batch.env_steps())
         return batch
 
     @override(Learner)

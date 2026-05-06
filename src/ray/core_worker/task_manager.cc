@@ -24,8 +24,7 @@
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
-#include "ray/core_worker/actor_manager.h"
-#include "ray/util/exponential_backoff.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -1244,11 +1243,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
-    int32_t delay_ms = task_failed_due_to_oom
-                           ? ExponentialBackoff::GetBackoffMs(
-                                 spec.AttemptNumber(),
-                                 RayConfig::instance().task_oom_retry_delay_base_ms())
-                           : RayConfig::instance().task_retry_delay_ms();
+    uint32_t delay_ms =
+        GetTaskRetryDelayMs(spec.AttemptNumber(), error_info.error_type());
     async_retry_task_callback_(spec, delay_ms);
     return true;
   } else {

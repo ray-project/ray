@@ -79,7 +79,6 @@ from ray.rllib.utils.typing import (
     RLModuleSpecType,
     SampleBatchType,
 )
-from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
@@ -264,6 +263,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus = 0  # @OldAPIStack
         self._fake_gpus = False  # @OldAPIStack
         self.num_cpus_for_main_process = 1
+        self.custom_resources_for_main_process = {}
 
         # `self.framework()`
         self.framework_str = "torch"
@@ -472,7 +472,6 @@ class AlgorithmConfig(_Config):
         # `self.offline_data()`
         self.input_ = "sampler"
         self.offline_data_class = None
-        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -537,7 +536,7 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
-        self.offline_evaluation_type: str = None
+        self.offline_evaluation_type: str = "eval_loss"
         self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
@@ -577,8 +576,6 @@ class AlgorithmConfig(_Config):
         self.checkpoint_trainable_policies_only = False
 
         # `self.debugging()`
-        self.logger_creator = None
-        self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
@@ -661,9 +658,6 @@ class AlgorithmConfig(_Config):
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
-        self.min_time_s_per_reporting = DEPRECATED_VALUE
-        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
-        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self._disable_execution_plan_api = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
@@ -972,7 +966,6 @@ class AlgorithmConfig(_Config):
     def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
         use_copy: bool = True,
     ) -> "Algorithm":
         """Builds an Algorithm from this AlgorithmConfig (or a copy thereof).
@@ -983,8 +976,6 @@ class AlgorithmConfig(_Config):
                 "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             use_copy: Whether to deepcopy `self` and pass the copy to the Algorithm
                 (instead of `self`) as config. This is useful in case you would like to
                 recycle the same AlgorithmConfig over and over, e.g. in a test case, in
@@ -997,8 +988,6 @@ class AlgorithmConfig(_Config):
             self.env = env
             if self.evaluation_config is not None:
                 self.evaluation_config["env"] = env
-        if logger_creator is not None:
-            self.logger_creator = logger_creator
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
@@ -1006,7 +995,6 @@ class AlgorithmConfig(_Config):
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),
-            logger_creator=self.logger_creator,
         )
 
     def build_env_to_module_connector(
@@ -1459,6 +1447,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_cpus_for_main_process: Optional[int] = NotProvided,
+        custom_resources_for_main_process: Optional[dict] = NotProvided,
         num_gpus: Optional[Union[float, int]] = NotProvided,  # @OldAPIStack
         _fake_gpus: Optional[bool] = NotProvided,  # @OldAPIStack
         placement_strategy: Optional[str] = NotProvided,
@@ -1479,6 +1468,8 @@ class AlgorithmConfig(_Config):
                 process that runs `Algorithm.training_step()`.
                 Note: This is only relevant when running RLlib through Tune. Otherwise,
                 `Algorithm.training_step()` runs in the main program (driver).
+            custom_resources_for_main_process: Any custom Ray resources to allocate for the
+                main `Algorithm` process.
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
@@ -1572,6 +1563,8 @@ class AlgorithmConfig(_Config):
 
         if num_cpus_for_main_process is not NotProvided:
             self.num_cpus_for_main_process = num_cpus_for_main_process
+        if custom_resources_for_main_process is not NotProvided:
+            self.custom_resources_for_main_process = custom_resources_for_main_process
         if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:
@@ -3785,8 +3778,6 @@ class AlgorithmConfig(_Config):
     def debugging(
         self,
         *,
-        logger_creator: Optional[Callable[[], Logger]] = NotProvided,
-        logger_config: Optional[dict] = NotProvided,
         log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
@@ -3795,10 +3786,6 @@ class AlgorithmConfig(_Config):
         """Sets the config's debugging settings.
 
         Args:
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-            logger_config: Define logger-specific configuration to be used inside Logger
-                Default value None allows overwriting with nested dicts.
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 also periodically prints out summaries of relevant internal dataflow
@@ -3813,10 +3800,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if logger_creator is not NotProvided:
-            self.logger_creator = logger_creator
-        if logger_config is not NotProvided:
-            self.logger_config = logger_config
         if log_level is not NotProvided:
             self.log_level = log_level
         if log_sys_usage is not NotProvided:
@@ -5396,31 +5379,45 @@ class AlgorithmConfig(_Config):
             )
 
         # Offline evaluation.
-        from ray.rllib.offline.offline_policy_evaluation_runner import (
-            OfflinePolicyEvaluationTypes,
-        )
+        if self.offline_evaluation_interval:
+            if self.offline_evaluation_interval <= 0:
+                self._value_error(
+                    "`offline_evaluation_interval` must be > 0 "
+                    "if offline evaluation should be performed!"
+                )
 
-        offline_eval_types = list(OfflinePolicyEvaluationTypes)
-        if (
-            self.offline_evaluation_type
-            and self.offline_evaluation_type != "eval_loss"
-            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
-        ):
-            self._value_error(
-                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
-                "Available types of offline evaluation are either `'eval_loss' to evaluate "
-                f"the training loss on a validation dataset or {offline_eval_types}."
+            if self.offline_evaluation_type is None:
+                self._value_error(
+                    "If `offline_evaluation_interval > 0`, `offline_evaluation_type` must be set to "
+                    "specify the type of offline evaluation to be performed."
+                )
+
+            from ray.rllib.offline.offline_policy_evaluation_runner import (
+                OfflinePolicyEvaluationTypes,
             )
 
-        from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+            if (
+                self.offline_evaluation_type
+                and self.offline_evaluation_type
+                not in OfflinePolicyEvaluationTypes._value2member_map_
+            ):
+                offline_eval_types = list(OfflinePolicyEvaluationTypes)
+                self._value_error(
+                    f"Unknown offline evaluation type: {self.offline_evaluation_type}."
+                    f"Available types of offline evaluation are {offline_eval_types}."
+                )
 
-        if self.offline_eval_runner_class and not issubclass(
-            self.offline_eval_runner_class, OfflineEvaluationRunner
-        ):
-            self._value_error(
-                "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
-                "from `OfflineEvaluationRunner` class."
+            from ray.rllib.offline.offline_evaluation_runner import (
+                OfflineEvaluationRunner,
             )
+
+            if self.offline_eval_runner_class and not issubclass(
+                self.offline_eval_runner_class, OfflineEvaluationRunner
+            ):
+                self._value_error(
+                    "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
+                    "from `OfflineEvaluationRunner` class."
+                )
 
     @property
     def is_online(self) -> bool:

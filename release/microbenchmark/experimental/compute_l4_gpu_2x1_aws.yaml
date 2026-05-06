@@ -1,0 +1,13 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: g6.4xlarge
+    resources:
+        CPU: 16
+        GPU: 1
+
+worker_nodes:
+    - instance_type: g6.4xlarge
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND

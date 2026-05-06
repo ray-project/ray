@@ -1,4 +1,6 @@
+import copy
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
@@ -10,27 +12,29 @@ if TYPE_CHECKING:
     from ray.data.block import Schema
 
 
-class LogicalOperator(Operator):
+@dataclass(frozen=True, repr=False, eq=False)
+class LogicalOperator(Operator, ABC):
     """Abstract class for logical operators.
 
     A logical operator describes transformation, and later is converted into
     physical operator.
     """
 
-    def __init__(
-        self,
-        name: str,
-        input_dependencies: List["LogicalOperator"],
-        num_outputs: Optional[int] = None,
-    ):
-        super().__init__(
-            name,
-            input_dependencies,
-        )
-        for x in input_dependencies:
-            assert isinstance(x, LogicalOperator), x
+    _name: Optional[str] = field(init=False, default=None, repr=False)
+    _input_dependencies: List["LogicalOperator"] = field(
+        init=False, default_factory=list, repr=False
+    )
+    _num_outputs: Optional[int] = field(default=None, repr=False)
 
-        self._num_outputs: Optional[int] = num_outputs
+    @property
+    def name(self) -> str:
+        return self._name or self.__class__.__name__
+
+    @property
+    @abstractmethod
+    def num_outputs(self) -> Optional[int]:
+        """Expected number of output blocks, if known."""
+        ...
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -41,21 +45,26 @@ class LogicalOperator(Operator):
         `Dataset.repartition(num_blocks=X)`. A more accurate estimation can be given by
         `PhysicalOperator.num_outputs_total()` during execution.
         """
-        if self._num_outputs is not None:
-            return self._num_outputs
-        elif len(self._input_dependencies) == 1:
-            return self._input_dependencies[0].estimated_num_outputs()
+        if self.num_outputs is not None:
+            return self.num_outputs
+        elif len(self.input_dependencies) == 1:
+            return self.input_dependencies[0].estimated_num_outputs()
         return None
 
     # Override the following 3 methods to correct type hints.
 
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        value = self._input_dependencies
+        for x in value:
+            assert isinstance(x, LogicalOperator), x
+        return value
 
-    @property
-    def output_dependencies(self) -> List["LogicalOperator"]:
-        return super().output_dependencies  # type: ignore
+    @input_dependencies.setter
+    def input_dependencies(self, value: List["LogicalOperator"]) -> None:
+        for x in value:
+            assert isinstance(x, LogicalOperator), x
+        object.__setattr__(self, "_input_dependencies", value)
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
@@ -63,11 +72,43 @@ class LogicalOperator(Operator):
     def _apply_transform(
         self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
     ) -> "LogicalOperator":
-        return super()._apply_transform(transform)  # type: ignore
+        input_dependencies = self.input_dependencies
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in input_dependencies
+        ]
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = self._with_new_input_dependencies(transformed_inputs)
+        return transform(target)
+
+    def _with_new_input_dependencies(
+        self, input_dependencies: List["LogicalOperator"]
+    ) -> "LogicalOperator":
+        if "input_dependencies" in {field.name for field in fields(self)}:
+            return replace(self, input_dependencies=input_dependencies)
+
+        target = copy.copy(self)
+        object.__setattr__(target, "_input_dependencies", input_dependencies)
+        return target
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
-        return vars(self)
+        args: Dict[str, Any] = {}
+        for dataclass_field in fields(self):
+            key = dataclass_field.name
+            value = getattr(self, key)
+            # Keep underscore-prefixed keys to preserve legacy export schema.
+            args[key if key.startswith("_") else f"_{key}"] = value
+        args["_name"] = self.name
+        # Preserve legacy export shape even though output deps are no longer tracked.
+        args["_output_dependencies"] = []
+        return args
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""
