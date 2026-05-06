@@ -15,6 +15,11 @@ from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 
+# Synthetic column name produced when ``include_paths=True``. Shared with
+# the V2 datasource and scanner layers so all references are spelled the
+# same way.
+INCLUDE_PATHS_COLUMN_NAME = "path"
+
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_batches
 # Default is specified by PyArrow.
 _ARROW_DEFAULT_BATCH_SIZE = 131_072
@@ -106,7 +111,9 @@ class FileReader(Reader[FileManifest]):
             else set()
         )
         fields = [
-            f for f in self._schema if f.name not in partition_keys and f.name != "path"
+            f
+            for f in self._schema
+            if f.name not in partition_keys and f.name != INCLUDE_PATHS_COLUMN_NAME
         ]
         return pa.schema(fields) if fields else None
 
@@ -197,7 +204,7 @@ class FileReader(Reader[FileManifest]):
             if self._partition_parser is not None:
                 derived_items.extend(self._partition_parser(fragment_path).items())
             if self._include_paths:
-                derived_items.append(("path", fragment_path))
+                derived_items.append((INCLUDE_PATHS_COLUMN_NAME, fragment_path))
 
             for name, value in derived_items:
                 if (

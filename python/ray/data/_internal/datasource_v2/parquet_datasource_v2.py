@@ -27,6 +27,9 @@ from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.readers.file_reader import (
+    INCLUDE_PATHS_COLUMN_NAME,
+)
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     ParquetInMemorySizeEstimator,
 )
@@ -234,8 +237,11 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))
 
-        if self._include_paths and schema.get_field_index("path") == -1:
-            schema = schema.append(pa.field("path", pa.string()))
+        if (
+            self._include_paths
+            and schema.get_field_index(INCLUDE_PATHS_COLUMN_NAME) == -1
+        ):
+            schema = schema.append(pa.field(INCLUDE_PATHS_COLUMN_NAME, pa.string()))
 
         check_for_legacy_tensor_type(schema)
         return schema
