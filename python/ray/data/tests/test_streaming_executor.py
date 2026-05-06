@@ -1349,6 +1349,51 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
+    def test_block_ref_counter_on_block_produced(self, ray_start_regular_shared):
+        """DataOpTask must call on_block_produced for every block it yields.
+
+        This test guards against regressions where an operator creates a DataOpTask
+        but forgets to pass block_ref_counter (as happened with GPUShuffleOperator):
+        _ClosingIterator always calls on_task_completed on output blocks, so a missing
+        on_block_produced call would cause an assertion error at consume time.
+        """
+        from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+        from ray.data._internal.execution.interfaces import PhysicalOperator
+        from ray.data.context import DataContext
+
+        block_sizes = [128 * MiB, 64 * MiB]
+        streaming_gen = create_stub_streaming_gen(block_nbytes=block_sizes)
+
+        counter = BlockRefCounter()
+        owner = PhysicalOperator("owner", [], DataContext.get_current())
+
+        produced_calls = []
+
+        original_on_block_produced = counter.on_block_produced
+
+        def capture_on_block_produced(block_ref, size_bytes, owner_op):
+            produced_calls.append((block_ref, size_bytes, owner_op))
+            original_on_block_produced(block_ref, size_bytes, owner_op)
+
+        counter.on_block_produced = capture_on_block_produced
+
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            block_ref_counter=counter,
+            owner_op=owner,
+        )
+
+        while not task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            task.on_data_ready(None)
+
+        assert len(produced_calls) == len(block_sizes)
+        assert [size for _, size, _ in produced_calls] == pytest.approx(
+            block_sizes, rel=0.01
+        )
+        assert all(op is owner for _, _, op in produced_calls)
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )
