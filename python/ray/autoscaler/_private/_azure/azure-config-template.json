@@ -28,7 +28,21 @@
         },
         "createMsi": {
             "type": "bool",
-            "defaultValue": "true"
+            "defaultValue": true
+        },
+        "createVnet": {
+            "type": "bool",
+            "defaultValue": true,
+            "metadata": {
+                "description": "If false, skip VNET and subnet creation (use existing subnet_id)."
+            }
+        },
+        "createNsg": {
+            "type": "bool",
+            "defaultValue": true,
+            "metadata": {
+                "description": "If false, skip NSG creation (use existing nsg_id)."
+            }
         },
         "roleAssignmentGuid": {
             "type": "string",
@@ -70,6 +84,7 @@
             ]
         },
         {
+            "condition": "[parameters('createNsg')]",
             "type": "Microsoft.Network/networkSecurityGroups",
             "apiVersion": "2024-10-01",
             "name": "[variables('nsgName')]",
@@ -93,6 +108,7 @@
             }
         },
         {
+            "condition": "[parameters('createVnet')]",
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "2024-10-01",
             "name": "[variables('vnetName')]",
@@ -122,10 +138,12 @@
     ],
     "outputs": {
         "subnet": {
+            "condition": "[parameters('createVnet')]",
             "type": "string",
             "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
         },
         "nsg": {
+            "condition": "[parameters('createNsg')]",
             "type": "string",
             "value": "[variables('nsg')]"
         },

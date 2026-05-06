@@ -109,86 +109,100 @@ def _configure_resource_group(config):
         f"/Microsoft.Authorization/roleAssignments/{role_assignment_guid}"
     )
 
+    # Check if user wants to use an existing VNET/subnet instead of creating one.
+    use_existing_subnet = "subnet_id" in config["provider"]
+    use_existing_nsg = "nsg_id" in config["provider"]
+
+    if use_existing_subnet:
+        logger.info(
+            "Using existing subnet: %s", config["provider"]["subnet_id"]
+        )
+    if use_existing_nsg:
+        logger.info(
+            "Using existing NSG: %s", config["provider"]["nsg_id"]
+        )
+
     subnet_mask = config["provider"].get("subnet_mask")
     if subnet_mask is None:
         # choose a random subnet, skipping most common value of 0
         random.seed(unique_id)
         subnet_mask = "10.{}.0.0/16".format(random.randint(1, 254))
-    logger.info("Using subnet mask: %s", subnet_mask)
 
-    # Copy over properties from existing subnet.
-    # Addresses issue (https://github.com/Azure/azure-quickstart-templates/issues/2786)
-    # where existing subnet properties will get overwritten unless explicitly specified
-    # during multiple deployments even if vnet/subnet do not change.
-    # May eventually be fixed by passing empty subnet list if they already exist:
-    # https://techcommunity.microsoft.com/t5/azure-networking-blog/azure-virtual-network-now-supports-updates-without-subnet/ba-p/4067952
-    list_by_rg = get_azure_sdk_function(
-        client=resource_client.resources, function_name="list_by_resource_group"
-    )
-    existing_vnets = list(
-        list_by_rg(
-            resource_group,
-            f"substringof('{unique_id}', name) and "
-            "resourceType eq 'Microsoft.Network/virtualNetworks'",
+    if not use_existing_subnet:
+        logger.info("Using subnet mask: %s", subnet_mask)
+        # Copy over properties from existing subnet.
+        # Addresses issue (https://github.com/Azure/azure-quickstart-templates/issues/2786)
+        # where existing subnet properties will get overwritten unless explicitly specified
+        # during multiple deployments even if vnet/subnet do not change.
+        # May eventually be fixed by passing empty subnet list if they already exist:
+        # https://techcommunity.microsoft.com/t5/azure-networking-blog/azure-virtual-network-now-supports-updates-without-subnet/ba-p/4067952
+        list_by_rg = get_azure_sdk_function(
+            client=resource_client.resources, function_name="list_by_resource_group"
         )
-    )
-    if len(existing_vnets) > 0:
-        vnid = existing_vnets[0].id
-        get_by_id = get_azure_sdk_function(
-            client=resource_client.resources, function_name="get_by_id"
+        existing_vnets = list(
+            list_by_rg(
+                resource_group,
+                f"substringof('{unique_id}', name) and "
+                "resourceType eq 'Microsoft.Network/virtualNetworks'",
+            )
         )
+        if len(existing_vnets) > 0:
+            vnid = existing_vnets[0].id
+            get_by_id = get_azure_sdk_function(
+                client=resource_client.resources, function_name="get_by_id"
+            )
 
-        # Query for supported API versions for Microsoft.Network/virtualNetworks
-        # because resource_client.DEFAULT_API_VERSION is not always supported.
-        # (Example: "2024-11-01" is the default at the time of this writing)
-        # Use "2024-10-01" as a fallback if we can't determine the latest stable version.
-        vnet_api_version = "2024-10-01"
-        try:
-            # Get supported API versions for Microsoft.Network provider
-            providers = resource_client.providers.get("Microsoft.Network")
-            vnet_resource_type = next(
+            # Query for supported API versions for Microsoft.Network/virtualNetworks
+            # because resource_client.DEFAULT_API_VERSION is not always supported.
+            # (Example: "2024-11-01" is the default at the time of this writing)
+            # Use "2024-10-01" as a fallback if we can't determine the latest stable version.
+            vnet_api_version = "2024-10-01"
+            try:
+                # Get supported API versions for Microsoft.Network provider
+                providers = resource_client.providers.get("Microsoft.Network")
+                vnet_resource_type = next(
+                    (
+                        rt
+                        for rt in providers.resource_types
+                        if rt.resource_type == "virtualNetworks"
+                    ),
+                    None,
+                )
+                if vnet_resource_type and vnet_resource_type.api_versions:
+                    stable_versions = [
+                        v for v in vnet_resource_type.api_versions if "preview" not in v
+                    ]
+                    versions_to_consider = (
+                        stable_versions or vnet_resource_type.api_versions
+                    )
+                    vnet_api_version = sorted(versions_to_consider)[-1]
+                    logger.info(
+                        "Using API version: %s for virtualNetworks", vnet_api_version
+                    )
+                else:
+                    logger.warning(
+                        "Could not determine supported API versions for virtualNetworks, using fallback version %s",
+                        vnet_api_version,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to query Microsoft.Network provider: %s. Using fallback API version 2024-10-01",
+                    str(e),
+                )
+
+            subnet = get_by_id(vnid, vnet_api_version).properties["subnets"][0]
+            template_vnet = next(
                 (
-                    rt
-                    for rt in providers.resource_types
-                    if rt.resource_type == "virtualNetworks"
+                    rs
+                    for rs in template["resources"]
+                    if rs["type"] == "Microsoft.Network/virtualNetworks"
                 ),
                 None,
             )
-            if vnet_resource_type and vnet_resource_type.api_versions:
-                stable_versions = [
-                    v for v in vnet_resource_type.api_versions if "preview" not in v
-                ]
-                versions_to_consider = (
-                    stable_versions or vnet_resource_type.api_versions
-                )
-                vnet_api_version = sorted(versions_to_consider)[-1]
-                logger.info(
-                    "Using API version: %s for virtualNetworks", vnet_api_version
-                )
-            else:
-                logger.warning(
-                    "Could not determine supported API versions for virtualNetworks, using fallback version %s",
-                    vnet_api_version,
-                )
-        except Exception as e:
-            logger.warning(
-                "Failed to query Microsoft.Network provider: %s. Using fallback API version 2024-10-01",
-                str(e),
-            )
-
-        subnet = get_by_id(vnid, vnet_api_version).properties["subnets"][0]
-        template_vnet = next(
-            (
-                rs
-                for rs in template["resources"]
-                if rs["type"] == "Microsoft.Network/virtualNetworks"
-            ),
-            None,
-        )
-        if template_vnet is not None:
-            template_subnets = template_vnet["properties"].get("subnets")
-            if template_subnets is not None:
-                template_subnets[0]["properties"].update(subnet["properties"])
+            if template_vnet is not None:
+                template_subnets = template_vnet["properties"].get("subnets")
+                if template_subnets is not None:
+                    template_subnets[0]["properties"].update(subnet["properties"])
 
     # Get or create an MSI name and resource group.
     # Defaults to current resource group if not provided.
@@ -316,6 +330,8 @@ def _configure_resource_group(config):
                 "msiResourceGroup": {"value": msi_resource_group},
                 "createMsi": {"value": not use_existing_msi},
                 "roleAssignmentGuid": {"value": role_assignment_guid},
+                "createVnet": {"value": not use_existing_subnet},
+                "createNsg": {"value": not use_existing_nsg},
             },
         }
     }
@@ -335,8 +351,17 @@ def _configure_resource_group(config):
 
     # append output resource ids to be used with vm creation
     config["provider"]["msi"] = outputs["msi"]["value"]
-    config["provider"]["nsg"] = outputs["nsg"]["value"]
-    config["provider"]["subnet"] = outputs["subnet"]["value"]
+
+    # Use user-provided subnet/NSG IDs if specified, otherwise use template outputs
+    if use_existing_subnet:
+        config["provider"]["subnet"] = config["provider"]["subnet_id"]
+    else:
+        config["provider"]["subnet"] = outputs["subnet"]["value"]
+
+    if use_existing_nsg:
+        config["provider"]["nsg"] = config["provider"]["nsg_id"]
+    else:
+        config["provider"]["nsg"] = outputs["nsg"]["value"]
 
     return config
 

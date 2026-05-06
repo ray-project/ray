@@ -55,6 +55,14 @@ provider:
     # If both options below are true, only the head node will have a public IP address provisioned.
     # use_internal_ips: True
     # use_external_head_ip: True
+    # Set an existing subnet resource ID to deploy into a pre-existing VNET
+    # instead of creating a new one. This is useful for data privacy/compliance
+    # scenarios where you need VMs in a specific network with existing security controls.
+    # When set, Ray will skip VNET/subnet creation entirely.
+    # subnet_id: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>
+    # Set an existing NSG resource ID to use instead of creating a new one.
+    # If not set, Ray will create a default NSG with SSH access.
+    # nsg_id: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/networkSecurityGroups/<nsg>
 
 # How Ray will authenticate with newly launched nodes.
 auth:

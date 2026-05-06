@@ -132,6 +132,8 @@ Provider
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
             :ref:`msi_name <cluster-configuration-msi-name>`: str
             :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
+            :ref:`subnet_id <cluster-configuration-subnet-id>`: str
+            :ref:`nsg_id <cluster-configuration-nsg-id>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
             :ref:`use_external_head_ip <cluster-configuration-use-external-head-ip>`: bool
@@ -1126,6 +1128,76 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: GCP
 
         Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-subnet-id:
+
+``provider.subnet_id``
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available at the provider level. For AWS, use ``SubnetIds`` in the node config
+        to deploy into existing subnets. See the `AWS subnets example <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-subnets.yaml>`_.
+
+    .. tab-item:: Azure
+
+        The full Azure resource ID of an existing subnet to deploy Ray cluster nodes into,
+        instead of creating a new VNET and subnet. When set, Ray skips VNET and subnet
+        creation entirely. This is useful for data privacy and compliance scenarios where
+        nodes must be deployed into a pre-configured network with existing security controls,
+        private endpoints, and service endpoints.
+
+        Example: ``/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>``
+
+        * **Required:** No
+        * **Importance:** Medium
+        * **Type:** String
+        * **Default:** ``null`` (Ray creates a new VNET and subnet)
+
+    .. tab-item:: GCP
+
+        Not available at the provider level. For GCP, use ``networkInterfaces`` with a
+        ``subnetwork`` path in the node config. See the `GCP full example <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/gcp/example-full.yaml>`_.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-nsg-id:
+
+``provider.nsg_id``
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available at the provider level. For AWS, use ``SecurityGroupIds`` in the node config
+        to use existing security groups. See the `AWS security group example <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-security-group.yaml>`_.
+
+    .. tab-item:: Azure
+
+        The full Azure resource ID of an existing Network Security Group (NSG) to use for
+        Ray cluster nodes, instead of creating a new one. When set, Ray skips NSG creation.
+        This is typically used together with ``subnet_id`` when deploying into a pre-existing
+        network. If not set, Ray creates a default NSG with an SSH inbound rule.
+
+        Example: ``/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/networkSecurityGroups/<nsg>``
+
+        * **Required:** No
+        * **Importance:** Medium
+        * **Type:** String
+        * **Default:** ``null`` (Ray creates a new NSG)
+
+    .. tab-item:: GCP
+
+        Not available. GCP firewall rules are managed at the project/network level.
 
     .. tab-item:: vSphere
 
