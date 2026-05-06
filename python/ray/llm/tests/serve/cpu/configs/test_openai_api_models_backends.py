@@ -14,13 +14,10 @@ _OAI_MODELS_MOD = "ray.llm._internal.serve.core.configs.openai_api_models"
 class _VLLMImportBlocker:
     """Meta-path finder that makes every ``vllm.*`` import raise."""
 
-    def find_module(self, fullname, path=None):
+    def find_spec(self, fullname, path=None, target=None):
         if fullname == "vllm" or fullname.startswith("vllm."):
-            return self
+            raise ImportError(f"Mocked: {fullname} is not installed")
         return None
-
-    def load_module(self, fullname):
-        raise ImportError(f"Mocked: {fullname} is not installed")
 
 
 class TestVLLMBackend:
