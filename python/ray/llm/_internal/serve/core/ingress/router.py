@@ -7,7 +7,8 @@ distinct from Serve's per-deployment request router.
 """
 
 import asyncio
-from typing import Dict, List, Tuple
+import re
+from typing import Dict, List, Optional, Tuple
 
 import orjson
 from fastapi import FastAPI
@@ -21,6 +22,8 @@ from ray.serve.handle import DeploymentHandle
 # Placeholder app used only to make Serve wrap this class as ASGI. The actual
 # hot-path ASGI app is late-bound per replica by __serve_build_asgi_app__.
 ingress_request_router_app = FastAPI()
+
+_BODY_TRUNCATED_HEADER = b"x-body-truncated"
 
 
 @serve.ingress(ingress_request_router_app)
@@ -95,7 +98,7 @@ class LLMRouter:
                 )
                 return
 
-            await self._handle_route_endpoint(receive, send)
+            await self._handle_route_endpoint(scope, receive, send)
             return
 
         if path in {"/", "/health"}:
@@ -142,21 +145,57 @@ class LLMRouter:
         )
         await send({"type": "http.response.body", "body": body})
 
-    async def _handle_route_endpoint(self, receive, send):
+    def _get_header(self, scope, header_name: bytes) -> Optional[bytes]:
+        for name, value in scope.get("headers", []):
+            if name.lower() == header_name:
+                return value
+        return None
+
+    def _is_body_truncated(self, scope) -> bool:
+        return self._get_header(scope, _BODY_TRUNCATED_HEADER) is not None
+
+    def _extract_json_string_from_prefix(
+        self, body: bytes, field: str
+    ) -> Optional[str]:
+        pattern = (
+            rb'"' + re.escape(field.encode("utf-8")) + rb'"\s*:\s*"((?:\\.|[^"\\])*)"'
+        )
+        match = re.search(pattern, body)
+        if match is None:
+            return None
+
+        encoded = b'"' + match.group(1) + b'"'
         try:
-            parsed = orjson.loads(await self._read_body(receive))
+            decoded = orjson.loads(encoded)
         except Exception:
-            await self._send_json(send, {"error": "invalid json"}, status_code=400)
-            return
+            return match.group(1).decode("utf-8", errors="ignore")
+
+        return decoded if isinstance(decoded, str) else None
+
+    async def _handle_route_endpoint(self, scope, receive, send):
+        body = await self._read_body(receive)
+        body_truncated = self._is_body_truncated(scope)
+        try:
+            parsed = orjson.loads(body)
+        except Exception:
+            if not body_truncated:
+                await self._send_json(send, {"error": "invalid json"}, status_code=400)
+                return
+            parsed = {}
 
         if not isinstance(parsed, dict):
-            await self._send_json(send, {"error": "invalid json"}, status_code=400)
-            return
+            if not body_truncated:
+                await self._send_json(send, {"error": "invalid json"}, status_code=400)
+                return
+            parsed = {}
 
         default_model_id = (
             next(iter(self._llm_configs.keys())) if self._llm_configs else None
         )
-        model = parsed.get("model", default_model_id)
+        model = parsed.get("model") or self._extract_json_string_from_prefix(
+            body, "model"
+        )
+        model = model or default_model_id
         if model and model not in self._llm_configs:
             base = get_base_model_id(model)
             if base not in self._llm_configs:
@@ -168,7 +207,11 @@ class LLMRouter:
             return
 
         try:
-            host, port, replica_id = await self._pick_replica(model_id)
+            host, port, replica_id = await self._pick_replica(
+                model_id,
+                request_body=body,
+                body_truncated=body_truncated,
+            )
         except Exception as e:
             await self._send_json(send, {"error": str(e)}, status_code=503)
             return
@@ -210,8 +253,18 @@ class LLMRouter:
         self._di_round_robin_counter += 1
         return candidates[index]
 
-    async def _pick_replica(self, model_id: str) -> Tuple[str, int, str]:
-        """Pick a backend HTTP replica using simple round-robin routing."""
+    async def _pick_replica(
+        self,
+        model_id: str,
+        request_body: Optional[bytes] = None,
+        body_truncated: bool = False,
+    ) -> Tuple[str, int, str]:
+        """Pick a backend HTTP replica using simple round-robin routing.
+
+        The request body prefix is accepted here so future prefix-cache-aware
+        policies can route on the same HAProxy path without changing the
+        /internal/route contract again. Round-robin ignores it.
+        """
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:

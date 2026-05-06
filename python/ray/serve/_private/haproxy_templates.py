@@ -28,7 +28,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router and ingress_request_router_lua_path %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
-    tune.bufsize 65536
+    tune.bufsize {{ ingress_request_router_bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
@@ -88,6 +88,7 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
     {%- if has_ingress_request_router %}
+    option http-buffer-request
     # Set txn.ingress_request_router_app to the first matching router-bearing
     # backend. Backends are sorted longest-prefix-first, and the !found guard
     # ensures only the longest match wins.

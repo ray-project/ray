@@ -40,6 +40,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
@@ -72,9 +74,6 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-# Shared by the Lua router call and the frontend `wait-for-body`.
-INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
 
 _LUA_TEMPLATE = string.Template(
     (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
@@ -786,7 +785,7 @@ class HAProxyApi(ProxyApi):
             return None, False
 
         content = _LUA_TEMPLATE.substitute(
-            TIMEOUT_S=INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )
@@ -857,7 +856,10 @@ class HAProxyApi(ProxyApi):
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
                     "ingress_request_router_timeout_s": (
-                        INGRESS_REQUEST_ROUTER_TIMEOUT_S
+                        RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
+                    ),
+                    "ingress_request_router_bufsize": (
+                        RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
                     ),
                 }
             )

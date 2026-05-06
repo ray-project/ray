@@ -3,6 +3,7 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import openai
+import orjson
 import pytest
 
 from ray import serve
@@ -78,6 +79,42 @@ def create_oai_client(llm_config: LLMConfig):
 
 
 class TestDirectStreamingLLMRouter:
+    @pytest.mark.asyncio
+    async def test_route_endpoint_accepts_truncated_body_prefix(self):
+        router = _new_direct_router()
+        router._llm_configs = {"llm_model_id": MagicMock()}
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+        )
+
+        body = b'{"model":"llm_model_id","prompt":"' + (b"x" * 1024)
+        messages = [{"type": "http.request", "body": body, "more_body": False}]
+        sent = []
+
+        async def receive():
+            return messages.pop(0)
+
+        async def send(message):
+            sent.append(message)
+
+        await router._handle_route_endpoint(
+            {"headers": [(b"x-body-truncated", b"1058/90000")]},
+            receive,
+            send,
+        )
+
+        assert sent[0]["status"] == 200
+        assert orjson.loads(sent[1]["body"]) == {
+            "host": "127.0.0.1",
+            "port": 9001,
+            "replica_id": "DeploymentName#replica",
+        }
+        router._pick_replica.assert_awaited_once_with(
+            "llm_model_id",
+            request_body=body,
+            body_truncated=True,
+        )
+
     def test_round_robin_wraps_in_stable_replica_order(self):
         router = _new_direct_router()
         replica_a = _DirectRouterReplica("a")
