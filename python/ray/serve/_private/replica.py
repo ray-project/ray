@@ -2777,6 +2777,20 @@ class ReplicaActor:
             get_component_logger_file_path(),
         )
 
+    async def was_initialized(self) -> bool:
+        """Whether this replica's user callable has finished initializing.
+
+        Used by the controller during recovery to detect actors that were
+        created but never received their initial
+        ``initialize_and_get_metadata(rank=...)`` call (e.g., because the
+        previous controller crashed mid-startup). Such an actor has neither a
+        rank nor a fully-initialized user callable, and recovering it would
+        silently complete its initialization with ``rank=None``, breaking
+        rank tracking. The controller can call this method first and skip /
+        kill the actor when it returns False.
+        """
+        return self._replica_impl._user_callable_initialized
+
     def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         return self._replica_impl.list_outbound_deployments()
 

@@ -17,7 +17,7 @@ import torch
 from pydantic import BaseModel, Field, root_validator
 
 if TYPE_CHECKING:
-    from vllm.multimodal import MultiModalDataDict
+    from vllm.inputs import MultiModalDataDict
 else:
     MultiModalDataDict = Any
 

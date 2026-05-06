@@ -50,6 +50,7 @@ ray_cc_library(
         "ray_event_interface.h",
     ],
     deps = [
+        "//src/ray/common:status",
         "//src/ray/protobuf/public:events_base_event_cc_proto",
     ],
 )
@@ -164,6 +165,32 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "python_event_interface",
+    srcs = [
+        "python_event_interface.cc",
+    ],
+    hdrs = [
+        "python_event_interface.h",
+    ],
+    deps = [
+        ":metric_constants",
+        ":metrics",
+        ":ray_event_interface",
+        ":ray_event_recorder",
+        "//src/ray/common:asio",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/protobuf/public:events_base_event_cc_proto",
+        "//src/ray/rpc:event_aggregator_client",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
     name = "ray_event_recorder",
     srcs = [
         "ray_event_recorder.cc",
@@ -175,7 +202,7 @@ ray_cc_library(
         ":metric_interface",
         ":ray_event",
         ":ray_event_recorder_interface",
-        "//src/ray/common:asio",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/rpc:event_aggregator_client",

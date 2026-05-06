@@ -1,4 +1,5 @@
 import argparse
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -145,7 +146,12 @@ def train_func(config):
             avg_loss = running_loss / max(num_batches, 1)
             weight = model.module.weight.detach().flatten().tolist()
             bias = model.module.bias.detach().flatten().tolist()
-            result = {"loss": avg_loss, "weight": weight, "bias": bias}
+            result = {"loss": avg_loss, "weight": weight, "bias": bias, "step": step}
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                ray.train.report(
+                    result,
+                    checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
+                )
             results.append(result)
             running_loss = 0.0
             num_batches = 0

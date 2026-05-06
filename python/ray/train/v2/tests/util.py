@@ -6,8 +6,9 @@ from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
 import ray
-from ray.train import Checkpoint
+from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
+from ray.train.backend import Backend
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -31,6 +32,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupState,
     WorkerStatus,
 )
+from ray.train.v2._internal.execution.worker_group.execution_group import ReplicaGroup
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
     BackendConfig as BackendConfigSchema,
@@ -54,6 +56,29 @@ from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 
+class MockReplicaGroupBackend(Backend):
+    has_replica_groups = True
+
+
+class MockReplicaGroupBackendConfig(BackendConfig):
+    @property
+    def backend_cls(self):
+        return MockReplicaGroupBackend
+
+
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.count = 0
+
+    def increment(self):
+        self.count += 1
+        return self.count
+
+    def get_count(self):
+        return self.count
+
+
 class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
@@ -70,6 +95,7 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_group_state = None
         self._worker_statuses = {}
         self._replaced_replica_groups: List[int] = []
+        self._replica_groups = None
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
     def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
@@ -84,9 +110,10 @@ class DummyWorkerGroup(WorkerGroup):
         if self._start_failure:
             raise self._start_failure
 
+        workers = [MagicMock() for i in range(num_workers)]
         self._worker_group_state = WorkerGroupState(
             start_time=time_monotonic(),
-            workers=[MagicMock() for i in range(num_workers)],
+            workers=workers,
             placement_group_handle=MagicMock(),
             sync_actor=None,
         )
@@ -94,6 +121,11 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_statuses = {
             i: WorkerStatus(running=True, error=None) for i in range(num_workers)
         }
+
+        self._replica_groups = [
+            ReplicaGroup([workers[i]], resources_per_worker={})
+            for i in range(num_workers)
+        ]
 
     def shutdown(self):
         self._worker_group_state = None

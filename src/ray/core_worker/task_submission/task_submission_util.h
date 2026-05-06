@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
