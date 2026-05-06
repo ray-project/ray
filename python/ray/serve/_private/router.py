@@ -135,6 +135,10 @@ class RouterMetricsManager:
         )
         self.num_queued_requests_gauge.set(0)
 
+        # Counts requests awaiting a replica's accept/reject verdict. Gated
+        # by `wrap_request_assignment`; not exported to the autoscaler.
+        self.num_waiting_for_acceptance = 0
+
         # Track queries sent to replicas for the autoscaling algorithm.
         self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
             int
@@ -193,10 +197,8 @@ class RouterMetricsManager:
             if self._deployment_config is not None
             else -1
         )
-        if (
-            max_queued_requests != -1
-            and self.num_queued_requests >= max_queued_requests
-        ):
+        in_flight = self.num_queued_requests + self.num_waiting_for_acceptance
+        if max_queued_requests != -1 and in_flight >= max_queued_requests:
             # Due to the async nature of request handling, we may reject more requests
             # than strictly necessary. This is more likely to happen during
             # high concurrency. Here's why:
@@ -214,7 +216,7 @@ class RouterMetricsManager:
             # - Request 1 gets assigned and frees queue slot (num_queued_requests=0)
             # - But we already rejected Request 2 which could have been queued
             e = BackPressureError(
-                num_queued_requests=self.num_queued_requests,
+                num_queued_requests=in_flight,
                 max_queued_requests=max_queued_requests,
             )
             logger.warning(e.message)
@@ -243,6 +245,15 @@ class RouterMetricsManager:
             # raised. The finally block ensures that num_queued_requests
             # is correctly decremented in this case.
             self.dec_num_queued_requests()
+
+    @contextmanager
+    def wrap_waiting_for_acceptance(self):
+        """Track a request awaiting a replica's accept/reject verdict."""
+        try:
+            self.num_waiting_for_acceptance += 1
+            yield
+        finally:
+            self.num_waiting_for_acceptance -= 1
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Prune list of replica ids in self.num_queries_sent_to_replicas.
@@ -956,16 +967,9 @@ class AsyncioRouter:
         replica: Optional[RunningReplica] = None
         callback_registered = False
         try:
-            # Resolve request arguments BEFORE incrementing queued requests.
-            # This ensures that queue metrics reflect actual pending work,
-            # not time spent waiting for upstream DeploymentResponse arguments.
-            # See: https://github.com/ray-project/ray/issues/60624
-            if not pr.resolved:
-                resolution_start = time.monotonic()
-                await self._resolve_request_arguments(pr)
-                resolution_ms = (time.monotonic() - resolution_start) * 1000
-                self._objref_resolution_latency_ms.observe(resolution_ms)
-
+            # Request arguments are always already resolved at this point
+            # (`route_and_send_request` resolves them before invoking this).
+            # Hold `num_queued_requests` incremented for the full attempt.
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
                 replica = await self.request_router._choose_replica_for_request(
@@ -1015,25 +1019,30 @@ class AsyncioRouter:
                 )
                 return result
 
-            queue_info = await result.get_rejection_response()
-            self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
-            if queue_info.accepted:
-                self.request_router.on_request_routed(pr, replica.replica_id, result)
-                result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
-                    )
+            with self._metrics_manager.wrap_waiting_for_acceptance():
+                queue_info = await result.get_rejection_response()
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info
                 )
-                return result
+                if queue_info.accepted:
+                    self.request_router.on_request_routed(
+                        pr, replica.replica_id, result
+                    )
+                    result.add_done_callback(
+                        lambda _: self._event_loop.call_soon_threadsafe(
+                            self.request_router.decrement_queue_len_cache,
+                            replica.replica_id,
+                        )
+                    )
+                    return result
 
-            # Request was rejected: cancel so done callbacks fire.
-            # Without this, same-loop (means the router is running on the main event loop,
-            # where the DeploymentHandle lives) gRPC streaming results are
-            # never consumed (no background drain task exists in that mode).
-            # The call stays open, the running request counter is never decremented,
-            # and the autoscaler sees load that blocks downscaling.
-            result.cancel()
+                # Request was rejected: cancel so done callbacks fire.
+                # Without this, same-loop (means the router is running on the main event loop,
+                # where the DeploymentHandle lives) gRPC streaming results are
+                # never consumed (no background drain task exists in that mode).
+                # The call stays open, the running request counter is never decremented,
+                # and the autoscaler sees load that blocks downscaling.
+                result.cancel()
 
         except asyncio.CancelledError:
             # NOTE(edoakes): this is not strictly necessary because there are
@@ -1057,10 +1066,6 @@ class AsyncioRouter:
                     # won't help. Propagate immediately so the caller gets
                     # a fast error.
                     raise self._make_upstream_crash_error(e)
-            elif not pr.resolved:
-                # ActorDiedError during argument resolution — same upstream
-                # cause as above, caught before a replica was even chosen.
-                raise self._make_upstream_crash_error(e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
@@ -1091,6 +1096,22 @@ class AsyncioRouter:
         """
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
+
+        # Resolve request arguments BEFORE incrementing queued requests so that
+        # queue metrics reflect actual pending work, not time spent waiting for
+        # upstream DeploymentResponse arguments.
+        # See: https://github.com/ray-project/ray/issues/60624
+        if not pr.resolved:
+            try:
+                resolution_start = time.monotonic()
+                await self._resolve_request_arguments(pr)
+                resolution_ms = (time.monotonic() - resolution_start) * 1000
+                self._objref_resolution_latency_ms.observe(resolution_ms)
+            except ActorDiedError as e:
+                # ActorDiedError during argument resolution — a chained
+                # DeploymentResponse whose source actor died. Surface
+                # immediately; retrying won't help.
+                raise self._make_upstream_crash_error(e)
 
         is_retry = False
         while True:
