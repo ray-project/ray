@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
@@ -54,9 +54,18 @@ _BLOCKING_MATERIALIZING_OPERATORS = (
 def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
     """Return the executor sink: the unique op with no in-DAG downstream consumers.
 
-    ``build_streaming_topology`` is rooted at the same node passed to
-    ``StreamingExecutor``; that root is the only operator whose
-    ``output_dependencies`` is empty.
+    The sink is identified by having an empty ``output_dependencies`` list.
+    ``build_streaming_topology`` guarantees exactly one such operator exists.
+
+    Args:
+        topology: The operator topology to search.
+
+    Returns:
+        The unique terminal operator.
+
+    Raises:
+        ValueError: If ``topology`` is empty, has no terminal operator, or has
+            more than one terminal operator.
     """
     if not topology:
         raise ValueError("topology must be non-empty")
@@ -75,7 +84,19 @@ def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
 
 
 class ResourceManager:
-    """A class that manages the resource usage of a streaming executor."""
+    """A class that manages the resource usage of a streaming executor.
+
+    Resource usage is polled from operator metrics and refreshed by calling
+    update_usages(), which is called before and after every task dispatch in
+    the scheduling loop. Between calls, usage values are stale snapshots.
+
+    As a result, budgets computed from these values are best-effort estimates,
+    not hard guarantees. An operator can exceed its budget if tasks dispatched
+    in quick succession are not yet reflected in the metrics.
+
+    Ray Core enforces actual resource constraints; Ray Data's backpressure is a
+    soft layer that proactively tries to stay within limits.
+    """
 
     # The interval in seconds at which the global resource limits are refreshed.
     GLOBAL_LIMITS_UPDATE_INTERVAL_S = 1
@@ -426,11 +447,19 @@ class ResourceManager:
         return self._op_resource_allocator.get_budget(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return the allocation of the given operator, or None if the operator
-        doesn't have a designated allocation."""
+        """Return the allocation of the given operator (max of planned grant
+        and current usage), or None if the operator has no designated allocation."""
         if self._op_resource_allocator is None:
             return None
         return self._op_resource_allocator.get_allocation(op)
+
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the signed headroom (planned_grant - usage) for the given operator,
+        or None if the operator has no designated allocation. Negative values mean
+        the op is consuming more than its planned grant."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_signed_headroom(op)
 
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
@@ -543,6 +572,40 @@ class ResourceManager:
         )
 
 
+def _proportional_share(pool: float, op_usage: float, total_usage: float) -> float:
+    """Return op's proportional share of pool; 0 when not applicable.
+
+    Returns 0 in the following two cases:
+    - Not over-subscribed: total_usage <= pool (the even-distribution loop in
+      update_budgets handles the dimension normally).
+    - Nothing to divide: total_usage == 0 (avoids division by zero).
+    """
+    if total_usage <= pool or total_usage == 0:
+        return 0.0
+    return pool * op_usage / total_usage
+
+
+def _is_any_dimension_over_subscribed(
+    usage: "ExecutionResources", pool: "ExecutionResources"
+) -> bool:
+    """Return True iff any tracked dimension (pool > 0) has usage > pool.
+
+    Dimensions where pool == 0 are untracked (e.g. limits.memory not configured)
+    and must be ignored; otherwise actors declaring ray_remote_args={"memory": X}
+    would defeat the short-circuit in update_budgets even though there is nothing
+    meaningful to distribute for that dimension.
+    """
+    return (
+        (pool.cpu > 0 and usage.cpu > pool.cpu)
+        or (pool.gpu > 0 and usage.gpu > pool.gpu)
+        or (
+            pool.object_store_memory > 0
+            and usage.object_store_memory > pool.object_store_memory
+        )
+        or (pool.memory > 0 and usage.memory > pool.memory)
+    )
+
+
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
         if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS) and not op.has_completed():
@@ -652,9 +715,18 @@ class OpResourceAllocator(ABC):
     @abstractmethod
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Returns the budget for the given operator or `None` if the operator
-        has unlimited budget. Operator's budget is defined as:
+        has unlimited budget. Budget is the remaining capacity an operator can
+        consume before hitting backpressure:
 
-            Budget = Allocation - Usage
+            Budget = Allocation - min(Reserved, AdjustedUsage)   (component-wise, ≥ 0)
+
+        where AdjustedUsage is the operator's internal object-store memory plus
+        the portion of output memory that exceeds the output-only reservation.
+        Equivalently: Budget = max(Reserved - AdjustedUsage, 0) + SharedPortion.
+
+        Note: budget is clamped to zero, so it cannot signal over-allocation.
+        Use get_signed_headroom() when a signed value is needed (e.g. autoscaler
+        downscaling).
         """
         ...
 
@@ -667,8 +739,17 @@ class OpResourceAllocator(ABC):
 
     @abstractmethod
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Returns allocation for the given operator or `None` if operator's
-        allocation is unlimited."""
+        """Returns the true allocation for the given operator: the greater of the
+        planned grant and current usage. Returns `None` if the operator has no
+        designated allocation."""
+        ...
+
+    @abstractmethod
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Returns planned_grant - usage for the given operator (component-wise,
+        can be negative). Negative values mean the op is consuming more than its
+        planned grant. Used by the autoscaler for downscaling decisions.
+        Returns `None` if the operator has no designated allocation."""
         ...
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
@@ -771,29 +852,68 @@ class OpResourceAllocator(ABC):
 
 
 class ReservationOpResourceAllocator(OpResourceAllocator):
-    """An OpResourceAllocator implementation that reserves resources for each operator.
+    """An OpResourceAllocator that gives each operator a reserved resource floor.
 
-    This class reserves memory and CPU resources for eligible operators, and considers
-    runtime resource usages to limit the resources that each operator can use.
+    Each scheduling iteration every eligible operator receives:
+        _op_planned_grants[op] = _op_reserved[op] + op_proportional + op_shared
 
-    It works in the following way:
-    1. An operator is eligible for resource reservation, if it has enabled throttling
-       and hasn't completed. Ineligible operators are not throttled, but
-       their usage will be accounted for their upstream eligible operators. E.g., for
-       such a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
-       a group and "map2->streaming_split" as another group.
-    2. For each eligible operator, we reserve `reservation_ratio * global_resources /
-        num_eligible_ops` resources, half of which is reserved only for the operator
-        outputs, excluding pending task outputs.
-    3. Non-reserved resources are shared among all operators.
-    4. In each scheduling iteration, each eligible operator will get "remaining of their
-       own reserved resources" + "remaining of shared resources / num_eligible_ops"
-       resources.
+    ## Variables (with example: CPU=8, reservation_ratio=0.5, Read->Map, 2 eligible ops)
 
-    The `reservation_ratio` is set to 50% by default. Users can tune this value to
-    adjust how aggressive or conservative the resource allocation is. A higher value
-    will make the resource allocation more even, but may lead to underutilization and
-    worse performance. And vice versa.
+    - _op_reserved[op]: guaranteed task-execution floor per op, set by
+      _update_reservation(). Excludes _reserved_for_op_outputs.
+      Example: CPU = 8 * 0.5 / 2 = 2 per op.
+
+    - _reserved_for_op_outputs[op]: object-store-only reservation for output
+      buffering (blocks already pulled out of the op). Kept separate so output
+      memory never crowds out the task-execution budget.
+
+    - _total_shared: resources left after all per-op reservations; distributed
+      among eligible ops each iteration.
+      Example: CPU = 8 - 2*2 = 4.
+
+    - _op_planned_grants[op]: _op_reserved[op] + op_proportional + op_shared,
+      set atomically at the end of update_budgets(). Read by get_signed_headroom()
+      and get_budget(). Excludes _reserved_for_op_outputs (added back in
+      max_task_output_bytes_to_read()).
+      Normal case (each op uses CPU=1): CPU = 2 + 0 + 2 = 4.
+      Shrunk cluster (CPU=4, each op using CPU=3):
+          _op_reserved = 1,  _total_shared = 2,  op_shared_usage = 2 each
+          op_proportional = 2*(2/4) = 1,  op_shared = 0
+          _op_planned_grants = 1+1+0 = 2 => negative headroom signals autoscaler.
+
+    - _output_budgets[op]: cached return value of max_task_output_bytes_to_read(op),
+      i.e. the per-op budget (in bytes) for pulling new output blocks. Populated as
+      a side effect of max_task_output_bytes_to_read() for downstream observability.
+
+    ## Eligibility
+
+    An operator is eligible if throttling is enabled and it hasn't completed.
+    Ineligible operators are unthrottled; their usage is attributed to their nearest
+    eligible upstream op (e.g. in "map1->limit->map2", "limit" rolls up to "map1").
+
+    ## Priority strategy
+
+    When resources are constrained, the allocator favors *upstream* ops; when they
+    are abundant, it favors *downstream* ops. These are different concerns:
+
+    - **Scarcity** (cluster too small to reserve the minimum for every op):
+      `_update_reservation` iterates upstream-to-downstream, and downstream ops
+      fall through to an OSM-only fallback once `remaining` is exhausted. The
+      motivation is liveness — if upstream ops can't run, no data is produced
+      and the whole pipeline starves.
+    - **Surplus** (leftover shared pool after all ops took their planned grants):
+      the leftover-allocation block in `update_budgets` iterates downstream-to-
+      upstream and gives the leftover to the most-downstream uncapped op. The
+      motivation is drainage — granting headroom at the pipeline tail consumes
+      buffered data rather than letting more pile up upstream.
+
+    The two paths are mutually exclusive: scarcity exhausts `remaining`, leaving
+    no surplus to allocate later.
+
+    ## Tuning
+
+    reservation_ratio defaults to 50%. Higher values give more even allocation but
+    risk underutilization; lower values allow more opportunistic sharing.
     """
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
@@ -801,41 +921,40 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
-        # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
+        # See class docstring for definitions and a worked example.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Memory reserved exclusively for the outputs of each operator.
-        # "Op outputs" refer to blocks that have been taken out of an operator,
-        # i.e., `RessourceManager._mem_op_outputs`.
-        #
-        # Note, if we don't reserve memory for op outputs, all the budget may be used by
-        # the pending task outputs, and/or op's internal output buffers (the latter can
-        # happen when `preserve_order=True`).
-        # Then we'll have no budget to pull blocks from the op.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
-        # Total shared resources.
         self._total_shared = ExecutionResources.zero()
-        # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
-        self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Remaining memory budget for generating new task outputs, per operator.
+        self._op_planned_grants: Dict[PhysicalOperator, ExecutionResources] = {}
         self._output_budgets: Dict[PhysicalOperator, float] = {}
-        # Whether each operator has reserved the minimum resources to run
-        # at least one task.
-        # This is used to avoid edge cases where the entire resource limits are not
-        # enough to run one task of each op.
-        # See `test_no_deadlock_on_small_cluster_resources` as an example.
-        self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
         self._idle_detector = self.IdleDetector()
 
-    def _update_reservation(self, limits: ExecutionResources):
+    def _update_reservation(
+        self, limits: ExecutionResources
+    ) -> Tuple[
+        Dict[PhysicalOperator, ExecutionResources],
+        Dict[PhysicalOperator, float],
+        ExecutionResources,
+    ]:
+        """Compute per-op reservations from `limits`.
+
+        Each eligible operator is guaranteed a reserved resource floor regardless
+        of its current usage, so no single operator can starve the others.
+
+        Args:
+            limits: The global resource limits available for allocation.
+
+        Returns:
+            (op_reserved, reserved_for_op_outputs, total_shared)
+        """
         eligible_ops = self._resource_manager.get_eligible_ops()
 
-        self._op_reserved.clear()
-        self._reserved_for_op_outputs.clear()
-        self._reserved_min_resources.clear()
+        op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
+        reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
 
         if len(eligible_ops) == 0:
-            return
+            return op_reserved, reserved_for_op_outputs, ExecutionResources.zero()
 
         remaining = limits.copy()
 
@@ -860,22 +979,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
 
             # Check if the remaining resources are enough for both reserved_for_tasks
-            # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
-            # object_store_memory, because object_store_memory can be oversubscribed,
-            # but CPU/GPU cannot.
-            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
+            # and reserved_for_outputs. We consider CPU, GPU, and logical memory but
+            # not object_store_memory: OSM can be oversubscribed, while Ray Core
+            # tracks CPU/GPU/memory for placement and cannot.
+            if not reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
                 remaining, ignore_object_store_memory=True
             ):
-                self._reserved_min_resources[op] = True
-            else:
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
-                # store memory, but not the CPU and GPU resources.
-                # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
-                # NOTE: we prioritize upstream operators for minimum resource reservation.
-                # ops. It's fine that downstream ops don't get the minimum reservation,
-                # because they can wait for upstream ops to finish and release resources.
-                self._reserved_min_resources[op] = False
+                # store memory and drop the CPU, GPU, and memory reservations
+                # NOTE: we prioritize upstream operators for minimum resource
+                # reservation; it's fine that downstream ops don't get the minimum,
+                # because they can wait for upstream ops to finish and release
+                # resources.
+                # TODO(rayhhome): logical memory is silently dropped from the reservation
+                # in this fallback path. As a result, can_submit_new_task() may
+                # admit memory-bound tasks that Ray Core then cannot place, which
+                # can stall the pipeline.
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
@@ -889,17 +1009,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         " The job may hang forever unless the cluster scales up."
                     )
 
-            self._op_reserved[op] = reserved_for_tasks
-            self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
+            op_reserved[op] = reserved_for_tasks
+            reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
 
             op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
             remaining = remaining.subtract(op_total_reserved)
             remaining = remaining.max(ExecutionResources.zero())
 
-        self._total_shared = remaining
+        return op_reserved, reserved_for_op_outputs, remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        """Return whether the given operator can submit a new task based on budget."""
+        """Return whether the given operator can submit a new task based on budget.
+
+        Used by the streaming executor as the per-op admission gate: when False, the
+        operator stops issuing new tasks until its usage drops back under its planned
+        grant. Returning True when `get_budget` is None preserves the unthrottled
+        behavior for ineligible operators.
+        """
         budget = self.get_budget(op)
 
         if budget is None:
@@ -914,17 +1040,90 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             >= (op.metrics.obj_store_mem_max_pending_output_per_task or 0)
         )
 
+    def _get_adjusted_object_store_usage(self, op: PhysicalOperator) -> float:
+        """OSM usage minus pre-paid bytes already covered by `_reserved_for_op_outputs`.
+
+        Returns: internal_osm_usage + max(op_outputs_usage - _reserved_for_op_outputs, 0)
+        """
+        op_mem_usage = self._resource_manager.get_mem_op_internal(op)
+        op_outputs_usage = self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
+        op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
+        return op_mem_usage
+
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        return self._op_budgets.get(op)
+        # NOTE: uses _op_planned_grants directly (not get_allocation) so that budget
+        # is always based on the planned grant, not max(planned_grant, usage). Using
+        # get_allocation here would inflate the budget when an op is over-budget,
+        # allowing more task submissions precisely when the op is already over-consuming.
+        planned_grant = self._op_planned_grants.get(op)
+        if planned_grant is None:
+            return None
+
+        # Use adjusted_usage so OSM bytes already covered by `_reserved_for_op_outputs`
+        # don't count against the task-execution budget; they're paid out of the
+        # separate output reservation, added back in max_task_output_bytes_to_read().
+        adjusted_usage = self._resource_manager.get_op_usage(op).copy(
+            object_store_memory=self._get_adjusted_object_store_usage(op)
+        )
+
+        # Budget = unused reserved floor + shared grant. Two cases:
+        #   usage ≤ reserved: budget = (reserved - usage) + shared
+        #                            = planned_grant - usage
+        #                            = planned_grant - min(reserved, usage)
+        #   usage > reserved: budget = 0 + shared
+        #                            = planned_grant - reserved
+        #                            = planned_grant - min(reserved, usage)
+        # → budget = planned_grant - min(reserved, adjusted_usage)  [component-wise]
+        budget = planned_grant.subtract(adjusted_usage.min(self._op_reserved[op]))
+
+        # A blocking materializing operator (e.g. `AllToAllOperator`) must accumulate
+        # all of its input data before it can produce any output. This causes its
+        # input buffer to grow beyond its object-store memory budget. To prevent
+        # deadlock we disable object-store memory backpressure for the materializing
+        # operator itself.
+        if self._resource_manager._is_blocking_materializing_op(op):
+            return budget.copy(object_store_memory=float("inf"))
+        return budget
 
     def get_output_budget(self, op: PhysicalOperator) -> Optional[int]:
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        budget = self.get_budget(op)
-        if budget is None:
+        planned_grant = self._op_planned_grants.get(op)
+        if planned_grant is None:
             return None
-        return budget.add(self._resource_manager.get_op_usage(op))
+        # Allocation = resources currently committed to this op: the greater of
+        # what was planned and what in-flight tasks are already holding (since in-flight
+        # resources cannot be reclaimed until those tasks complete).
+        return planned_grant.max(self._resource_manager.get_op_usage(op))
+
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        planned_grant = self._op_planned_grants.get(op)
+        if planned_grant is None:
+            return None
+        # Signed headroom = planned_grant - usage. Negative means the op is consuming
+        # more than its planned grant (e.g. after a cluster shrink), used by the
+        # autoscaler to decide how many actors to remove.
+        headroom = planned_grant.subtract(self._resource_manager.get_op_usage(op))
+
+        # Clamp dimensions where planned_grant is 0 to 0 rather than returning a
+        # spurious negative value. A zero planned grant means the dimension is not
+        # tracked by the allocator (e.g. limits.memory was not set). Actors can still
+        # have non-zero usage for such dimensions (e.g. ray_remote_args={"memory": X}),
+        # which would otherwise produce a false negative headroom and trigger spurious
+        # autoscaler downscaling.
+        return ExecutionResources(
+            cpu=headroom.cpu if planned_grant.cpu > 0 else 0,
+            gpu=headroom.gpu if planned_grant.gpu > 0 else 0,
+            object_store_memory=(
+                headroom.object_store_memory
+                if planned_grant.object_store_memory > 0
+                else 0
+            ),
+            memory=headroom.memory if planned_grant.memory > 0 else 0,
+        )
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""
@@ -934,16 +1133,83 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
+    def _apply_op_grant_caps(
+        self,
+        op: PhysicalOperator,
+        op_proportional: ExecutionResources,
+        op_shared: ExecutionResources,
+        remaining_shared: ExecutionResources,
+        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources],
+        max_resource_usage: ExecutionResources,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Cap and borrow-adjust the proportional and shared grants for one op.
+
+        Performs up to three adjustments in order:
+          1. (only when max_resource_usage is finite) Cap op_proportional so
+             reserved + proportional <= max_resource_usage.
+          2. (always) Borrow from remaining_shared to reach
+             min_scheduling_resources if the current grant falls short.
+          3. (only when max_resource_usage is finite) Cap op_shared so the
+             total grant doesn't exceed max_resource_usage.
+
+        Both caps are necessary because op_proportional and op_shared are drawn from
+        different pools and can each independently push the total over the limit.
+        Example: max=10, total_reserved=3, op_proportional=9 (raw), op_shared=2.
+          After step 1: op_proportional = min(9, 10-3) = 7  (total so far: 10)
+          After step 3: op_shared      = min(2, 10-10) = 0  (total: 10)
+
+        Step 1 must precede step 2 so the borrow shortfall is computed against
+        the capped proportional — i.e., what the op will actually receive.
+        """
+        total_reserved = (
+            self._get_total_reserved(op)
+            if max_resource_usage != ExecutionResources.inf()
+            else None
+        )
+
+        if total_reserved is not None:
+            op_proportional = op_proportional.min(
+                max_resource_usage.subtract(total_reserved).max(
+                    ExecutionResources.zero()
+                )
+            )
+
+        # Borrow from remaining_shared if total grant < min_scheduling_resources.
+        # Applies to all ops regardless of cap.
+        shortfall = (
+            op.min_scheduling_resources()
+            .subtract(op_reserved_remaining[op].add(op_proportional).add(op_shared))
+            .max(ExecutionResources.zero())
+        )
+        if not shortfall.is_zero() and op_shared.add(shortfall).satisfies_limit(
+            remaining_shared
+        ):
+            op_shared = op_shared.add(shortfall)
+
+        if total_reserved is not None:
+            op_usage = self._resource_manager.get_op_usage(op)
+            current_allocation = total_reserved.add(op_proportional).max(op_usage)
+            op_shared = op_shared.min(
+                max_resource_usage.subtract(current_allocation).max(
+                    ExecutionResources.zero()
+                )
+            )
+
+        return op_proportional, op_shared
+
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        if op not in self._op_budgets:
+        budget = self.get_budget(op)
+        if budget is None:
             return None
 
-        res = self._op_budgets[op].object_store_memory
-        # Add the remaining of `_reserved_for_op_outputs`.
+        res = budget.object_store_memory
+        # Add the unused portion of _reserved_for_op_outputs: space that was
+        # pre-reserved for output buffering but not yet occupied. This is the
+        # remaining headroom into which new output blocks can be pulled without
+        # crowding out the task-execution budget.
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
-
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
         if math.isinf(res):
             self._output_budgets[op] = res
@@ -956,110 +1222,142 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._output_budgets[op] = res
         return res
 
+    def _compute_proportional_grants(
+        self,
+        eligible_ops: List[PhysicalOperator],
+        op_shared_usage: Dict[PhysicalOperator, ExecutionResources],
+        total_shared_usage: ExecutionResources,
+    ) -> Dict[PhysicalOperator, ExecutionResources]:
+        """Proportional share of the shared pool per op, used to derive a usage-weighted
+        planned grant when the shared pool is over-subscribed.
+
+        When the shared pool is over-subscribed (e.g. after a cluster shrink),
+        distributing it equally — or not at all — would collapse every op's planned
+        grant to the reserved floor regardless of how much each op was actually
+        demanding. Distributing the pool in proportion to each op's shared-pool usage
+        gives ops asking for more a larger fair share, so each op's planned grant (and
+        the autoscaler's downscaling target) tracks its relative demand instead of
+        forcing every op down to the floor.
+
+        Returns non-zero only for over-subscribed dimensions (collective shared-pool
+        usage > shared pool).
+        """
+        grants = {}
+        for op in eligible_ops:
+            u = op_shared_usage[op]
+            grants[op] = ExecutionResources(
+                cpu=_proportional_share(
+                    self._total_shared.cpu, u.cpu, total_shared_usage.cpu
+                ),
+                gpu=_proportional_share(
+                    self._total_shared.gpu, u.gpu, total_shared_usage.gpu
+                ),
+                object_store_memory=_proportional_share(
+                    self._total_shared.object_store_memory,
+                    u.object_store_memory,
+                    total_shared_usage.object_store_memory,
+                ),
+                memory=_proportional_share(
+                    self._total_shared.memory, u.memory, total_shared_usage.memory
+                ),
+            )
+        return grants
+
     def update_budgets(
         self,
         *,
         limits: ExecutionResources,
     ):
-        # Remaining resources to be distributed across operators
-        remaining_shared = self._update_reservation(limits)
+        (
+            self._op_reserved,
+            self._reserved_for_op_outputs,
+            self._total_shared,
+        ) = self._update_reservation(limits)
 
-        self._op_budgets.clear()
+        # Per-op unused reserved floor (reserved - usage, clamped at 0). Used by
+        # _apply_op_grant_caps to compute the shortfall when borrowing from the
+        # shared pool to reach min_scheduling_resources.
+        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
+        op_planned_grants: Dict[PhysicalOperator, ExecutionResources] = {}
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
+            self._op_planned_grants = op_planned_grants
             return
 
-        # Remaining of shared resources.
-        remaining_shared = self._total_shared
+        # Shared-pool usage per op (usage beyond reserved floor).
+        # total_shared_usage is the sum across ops, used to detect over-subscribed dimensions.
+        op_shared_usage: Dict[PhysicalOperator, ExecutionResources] = {}
+        total_shared_usage = ExecutionResources.zero()
         for op in eligible_ops:
-            # Calculate the memory usage of the operator.
-            op_mem_usage = 0
-            # Add the memory usage of the operator itself,
-            # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager.get_mem_op_internal(op)
-            # Add the portion of op outputs usage that has
-            # exceeded `_reserved_for_op_outputs`.
-            op_outputs_usage = self._resource_manager.get_mem_op_outputs(
-                op, include_ineligible_downstream=True
-            )
-            op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
-
+            # Adjusted OSM: output bytes within _reserved_for_op_outputs are pre-paid
+            # and must not reduce remaining_shared.
             op_usage = self._resource_manager.get_op_usage(op).copy(
-                object_store_memory=op_mem_usage
+                object_store_memory=self._get_adjusted_object_store_usage(op)
             )
-
             op_reserved = self._op_reserved[op]
-            # How much of the reserved resources are remaining.
-            op_reserved_remaining = op_reserved.subtract(op_usage).max(
+            # The following calculates how much of the reserved resources are remaining.
+            op_reserved_remaining[op] = op_reserved.subtract(op_usage).max(
                 ExecutionResources.zero()
             )
-
-            self._op_budgets[op] = op_reserved_remaining
-            # How much of the reserved resources are exceeded.
-            # If exceeded, we need to subtract from the remaining shared resources.
+            # The following calculates how much of the op's usage exceeds its reservation, i.e. how much
+            # it is drawing from the shared pool.
             op_reserved_exceeded = op_usage.subtract(op_reserved).max(
                 ExecutionResources.zero()
             )
-            remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
+            op_shared_usage[op] = op_reserved_exceeded
+            total_shared_usage = total_shared_usage.add(op_shared_usage[op])
 
-        remaining_shared = remaining_shared.max(ExecutionResources.zero())
+        # Remaining shared resources after per-op reservations.
+        remaining_shared = self._total_shared.subtract(total_shared_usage).max(
+            ExecutionResources.zero()
+        )
+
+        # Short-circuit in the common case (no over-subscription) to avoid allocating
+        # N ExecutionResources objects whose values would all be zero anyway.
+        if _is_any_dimension_over_subscribed(total_shared_usage, self._total_shared):
+            # For over-subscribed dimensions (collective usage > shared pool, e.g. after a
+            # cluster shrink), distribute the shared pool proportionally to each op's usage.
+            op_proportional_grants = self._compute_proportional_grants(
+                eligible_ops, op_shared_usage, total_shared_usage
+            )
+        else:
+            op_proportional_grants = {}
+
+        # Cache per-op max requirements for consistent cap values across both loops below.
+        op_max_resources = {
+            op: op.min_max_resource_requirements()[1] for op in eligible_ops
+        }
 
         # Allocate the remaining shared resources to each operator.
+        # op_proportional and op_shared are mutually exclusive per dimension:
+        # when over-subscribed, remaining_shared = 0 so op_shared = 0.
         for i, op in enumerate(reversed(eligible_ops)):
-            # By default, divide the remaining shared resources equally.
+            op_proportional = op_proportional_grants.get(op, ExecutionResources.zero())
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
-            # But if the op's budget is less than `min_scheduling_resources`,
-            # it will be useless. So we'll let the downstream operator
-            # borrow some resources from the upstream operator, if remaining_shared
-            # is still enough.
-            to_borrow = (
-                op.min_scheduling_resources()
-                .subtract(self._op_budgets[op].add(op_shared))
-                .max(ExecutionResources.zero())
-            )
-            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(
-                remaining_shared
-            ):
-                op_shared = op_shared.add(to_borrow)
 
-            # Cap op_shared so that total allocation doesn't exceed max_resource_usage.
-            # Total allocation = max(total_reserved, op_usage) + op_shared
-            # This ensures excess resources stay in remaining_shared for other operators.
-            _, max_resource_usage = op.min_max_resource_requirements()
-            if max_resource_usage != ExecutionResources.inf():
-                total_reserved = self._get_total_reserved(op)
-                op_usage = self._resource_manager.get_op_usage(op)
-                current_allocation = total_reserved.max(op_usage)
-                max_shared = max_resource_usage.subtract(current_allocation).max(
-                    ExecutionResources.zero()
-                )
-                op_shared = op_shared.min(max_shared)
+            op_proportional, op_shared = self._apply_op_grant_caps(
+                op,
+                op_proportional,
+                op_shared,
+                remaining_shared,
+                op_reserved_remaining,
+                op_max_resources[op],
+            )
 
             remaining_shared = remaining_shared.subtract(op_shared)
-            assert remaining_shared.is_non_negative(), (
-                remaining_shared,
-                op,
-                op_shared,
-                to_borrow,
+            assert remaining_shared.is_non_negative(), (remaining_shared, op, op_shared)
+            op_planned_grants[op] = self._op_reserved[op].add(
+                op_proportional.add(op_shared)
             )
 
-            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
-
-        # Give any remaining shared resources to the most downstream uncapped op.
-        # This can happen when some ops have their shared allocation capped.
+        # Capped ops can't absorb extra shared resources (the cap immediately re-clips
+        # their grant), so any leftover shared pool goes to an uncapped op. The choice
+        # of "most downstream" follows the surplus-favors-downstream rule documented
+        # in the class docstring's "Priority strategy" section.
         if eligible_ops and not remaining_shared.is_zero():
             for op in reversed(eligible_ops):
-                _, max_resource_usage = op.min_max_resource_requirements()
-                if max_resource_usage == ExecutionResources.inf():
-                    self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
+                if op_max_resources[op] == ExecutionResources.inf():
+                    op_planned_grants[op] = op_planned_grants[op].add(remaining_shared)
                     break
 
-        # A materializing operator like `AllToAllOperator` waits for all its input
-        # operator's outputs before processing data. This often forces the input
-        # operator to exceed its object store memory budget. To prevent deadlock, we
-        # disable object store memory backpressure for the input operator.
-        for op in eligible_ops:
-            if self._resource_manager._is_blocking_materializing_op(op):
-                self._op_budgets[op] = self._op_budgets[op].copy(
-                    object_store_memory=float("inf")
-                )
+        self._op_planned_grants = op_planned_grants

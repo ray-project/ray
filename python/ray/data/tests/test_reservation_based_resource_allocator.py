@@ -102,8 +102,8 @@ class TestReservationOpResourceAllocator:
         # o1 and o4 are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
-        assert o1 not in allocator._op_budgets
-        assert o4 not in allocator._op_budgets
+        assert allocator.get_allocation(o1) is None
+        assert allocator.get_allocation(o4) is None
         # Test reserved resources for o2 and o3.
         assert allocator._op_reserved[o2] == ExecutionResources(4, 0, 125)
         assert allocator._op_reserved[o3] == ExecutionResources(4, 0, 125)
@@ -112,8 +112,8 @@ class TestReservationOpResourceAllocator:
         # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(8, 0, 500)
         # Test budgets.
-        assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
-        assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
+        assert allocator.get_budget(o2) == ExecutionResources(8, 0, 375)
+        assert allocator.get_budget(o3) == ExecutionResources(8, 0, 375)
         # Test max_task_output_bytes_to_read.
         assert allocator.max_task_output_bytes_to_read(o2) == 500
         assert allocator.max_task_output_bytes_to_read(o3) == 500
@@ -149,21 +149,30 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
+        # cpu_budget[o2] = planned_grant(7) - min(reserved(4), usage(6)) = 7 - 4 = 3
         # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
-        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
+        assert allocator.get_budget(o2) == ExecutionResources(3, 0, 113)
+        # cpu_budget[o3] = planned_grant(7) - min(reserved(4), usage(2)) = 7 - 2 = 5
         # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
-        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
+        assert allocator.get_budget(o3) == ExecutionResources(5, 0, 207)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
         assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
-        # Test get_allocation.
-        # allocation = budget + usage
-        # budget[o2] = (3, 0, 113), budget[o3] = (5, 0, 207)
-        # usage[o2] = (6, 0, 500), usage[o3] = (2, 0, 125)
-        assert allocator.get_allocation(o2) == ExecutionResources(9, 0, 613)
-        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 332)
+        # Test get_allocation = max(planned_grant, usage).
+        # planned_grant[o2] = (4, 0, 125) + op_shared = (4, 0, 125) + (3, 0, 113)
+        #   = (7, 0, 238); usage[o2] = (6, 0, 500) → max = (7, 0, 500)
+        # planned_grant[o3] = (4, 0, 125) + (3, 0, 112) = (7, 0, 237);
+        #   usage[o3] = (2, 0, 125) → max = (7, 0, 237)
+        assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 500)
+        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
+        # Test get_signed_headroom = planned_grant - usage (component-wise, can be negative).
+        # o2: CPU headroom = 7 - 6 = 1 (within grant); OSM headroom = 238 - 500 = -262
+        #     (over grant on OSM: in-flight outputs exceed the planned memory allocation).
+        # o3: CPU headroom = 7 - 2 = 5; OSM headroom = 237 - 125 = 112 (within grant).
+        assert allocator.get_signed_headroom(o2) == ExecutionResources(1, 0, 238 - 500)
+        assert allocator.get_signed_headroom(o3) == ExecutionResources(5, 0, 237 - 125)
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -190,20 +199,183 @@ class TestReservationOpResourceAllocator:
 
         # Test budgets.
         # memory_budget[o2] = 0 + 100/2 = 50
-        assert allocator._op_budgets[o2] == ExecutionResources(1.5, 0, 50)
+        assert allocator.get_budget(o2) == ExecutionResources(1.5, 0, 50)
         # memory_budget[o3] = 70 + 100/2 = 120
-        assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
+        assert allocator.get_budget(o3) == ExecutionResources(2.5, 0, 120)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
         assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
-        # Test get_allocation.
-        # allocation = budget + usage
-        # budget[o2] = (1.5, 0, 50), budget[o3] = (2.5, 0, 120)
-        # usage[o2] = (6, 0, 500), usage[o3] = (2, 0, 125)
-        assert allocator.get_allocation(o2) == ExecutionResources(7.5, 0, 550)
-        assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 245)
+        # Test get_allocation = max(planned_grant, usage).
+        # planned_grant[o2] = (3, 0, 100) + op_shared(1.5, 0, 50) = (4.5, 0, 150);
+        #   usage[o2] = (6, 0, 500) → max = (6, 0, 500)
+        # planned_grant[o3] = (4.5, 0, 150); usage[o3] = (2, 0, 125) → max = (4.5, 0, 150)
+        assert allocator.get_allocation(o2) == ExecutionResources(6, 0, 500)
+        assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
+
+    def test_get_signed_headroom_on_cpu(self, restore_data_context):
+        """get_signed_headroom returns planned_grant - usage; can go negative on CPU."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        for op in [o2, o3]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+            )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        global_limits = ExecutionResources(cpu=8, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        # o1 and o4 are topology infrastructure only; both have
+        # ``throttling_disabled=True`` so they are ineligible
+        # for allocation and don't affect the budgets.
+        # o2 uses 5 CPUs while o3 is idle.
+        # _update_reservation: reserved=2 per op, _total_shared=4.
+        # op_shared_usage loop: o2 exceeds reserved by 3,
+        #   total_shared_usage=3 → remaining_shared = max(4-3, 0) = 1.
+        # distribution loop (downstream-first): o3 gets 0.5, o2 gets 0.5.
+        # planned_grant[o2] = reserved + op_shared = 2 + 0.5 = 2.5
+        # signed_headroom = 2.5 - 5 = -2.5 (over-budget, autoscaler can downscale)
+        op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
+        op_usages[o3] = ExecutionResources.zero()
+
+        allocator.update_budgets(limits=global_limits)
+
+        headroom2 = allocator.get_signed_headroom(o2)
+        assert headroom2 is not None
+        assert headroom2.cpu == -2.5, headroom2
+
+        # At moderate usage (3 CPUs), still within planned grant.
+        # o2 exceeds reserved by 1, remaining_shared = 3; each op gets 1.5 shared.
+        # planned_grant[o2] = 2 + 1.5 = 3.5; signed_headroom = 3.5 - 3 = 0.5
+        op_usages[o2] = ExecutionResources(cpu=3, gpu=0, object_store_memory=0)
+        allocator.update_budgets(limits=global_limits)
+        assert allocator.get_signed_headroom(o2).cpu == 0.5
+
+    def test_get_signed_headroom_untracked_memory_dimension(self, restore_data_context):
+        """Actors declaring logical memory should not trigger spurious downscaling when
+        limits.memory is 0 (memory dimension not tracked by the allocator)."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1, "memory": 1_000_000})
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        # limits has no memory dimension (memory=None → 0), as is common when
+        # users specify explicit resource limits or in test setups.
+        global_limits = ExecutionResources(cpu=8, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(
+            side_effect=lambda op: ExecutionResources(
+                cpu=2, memory=2_000_000  # actor is running and using memory
+            )
+            if op is o2
+            else ExecutionResources.zero()
+        )
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        headroom = allocator.get_signed_headroom(o2)
+        assert headroom is not None
+        # planned_grant.memory = 0 (not tracked), usage.memory = 2MB.
+        # Without the fix: headroom.memory = -2MB → spurious downscaling.
+        # With the fix: headroom.memory = 0 (clamped).
+        assert headroom.memory == 0, headroom
+        # CPU headroom should still work normally (planned_grant.cpu > 0).
+        assert headroom.cpu > 0, headroom
+
+    def test_allocation_includes_leftover_shared_for_uncapped_op(
+        self, restore_data_context
+    ):
+        """When capped ops leave shared pool remainder, the uncapped op absorbs it.
+        Both get_allocation() and get_budget() reflect the full grant."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        # o2 capped (small max), o3 uncapped so it receives leftover shared in update_budgets.
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources(cpu=2, gpu=0, object_store_memory=float("inf")),
+            )
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        # _op_reserved[o2]=2 (capped), _op_reserved[o3]=4, _total_shared=10.
+        # distribution loop: o3 gets 5 shared; o2 gets 5 but capped at max=2 → op_shared=0,
+        #   leaving remaining_shared=5.
+        # Leftover loop: o3 (uncapped) absorbs the remaining 5.
+        # allocation[o3] = 4 + 5 + 5 = 14; budget[o3] = 14 - min(4, 0) = 14.
+        assert allocator.get_allocation(o3).cpu == 14
+        assert allocator.get_budget(o3).cpu == 14
 
     def test_reserve_min_resource_requirements(self, restore_data_context):
         """Test that we'll reserve at least min_resource_requirements
@@ -430,10 +602,10 @@ class TestReservationOpResourceAllocator:
         #       remaining_shared = (5.5, 0)
         # - After loop, remaining (5.5, 0) given to most downstream op (o3):
         #       o3 budget = (8.5, 110) + (5.5, 0) = (14, 110)
-        assert allocator._op_budgets[o2] == ExecutionResources(
+        assert allocator.get_budget(o2) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
-        assert allocator._op_budgets[o3] == ExecutionResources(
+        assert allocator.get_budget(o3) == ExecutionResources(
             cpu=14, object_store_memory=110
         )
 
@@ -487,10 +659,10 @@ class TestReservationOpResourceAllocator:
         # Both ops are capped (max cpu=4), so remaining CPU is not given to any op.
         # o2: reserved_remaining (2, 10) + capped op_shared (0, 100) = (2, 110)
         # o3: reserved_remaining (2, 10) + capped op_shared (0, 100) = (2, 110)
-        assert allocator._op_budgets[o2] == ExecutionResources(
+        assert allocator.get_budget(o2) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
-        assert allocator._op_budgets[o3] == ExecutionResources(
+        assert allocator.get_budget(o3) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
 
@@ -525,15 +697,15 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        assert o1 not in allocator._op_budgets
-        assert o2 in allocator._op_budgets
-        assert o3 not in allocator._op_budgets
+        assert allocator.get_allocation(o1) is None
+        assert allocator.get_allocation(o2) is not None
+        assert allocator.get_allocation(o3) is None
 
         o2.mark_execution_finished()
         allocator.update_budgets(
             limits=global_limits,
         )
-        assert o2 not in allocator._op_budgets
+        assert allocator.get_allocation(o2) is None
 
     def test_gpu_allocation(self, restore_data_context):
         """Test GPU allocation for GPU vs non-GPU operators.
@@ -585,8 +757,8 @@ class TestReservationOpResourceAllocator:
 
         # Both unbounded operators get shared GPU allocation
         # GPU flows through normal allocation, both get GPU budget > 0
-        assert allocator._op_budgets[o2].gpu > 0
-        assert allocator._op_budgets[o3].gpu > 0
+        assert allocator.get_budget(o2).gpu > 0
+        assert allocator.get_budget(o3).gpu > 0
 
     def test_multiple_gpu_operators(self, restore_data_context):
         """Test GPU allocation for multiple GPU operators."""
@@ -634,8 +806,8 @@ class TestReservationOpResourceAllocator:
         # Both operators are capped at their max of 1 GPU
         # o2: using 1 GPU, reserved 1, so reserved_remaining = 0, gets 0 shared (capped)
         # o3: using 0 GPU, reserved 1, so reserved_remaining = 1, gets 0 shared (capped)
-        assert allocator._op_budgets[o2].gpu == 0
-        assert allocator._op_budgets[o3].gpu == 1
+        assert allocator.get_budget(o2).gpu == 0
+        assert allocator.get_budget(o3).gpu == 1
 
     def test_gpu_usage_exceeds_global_limits(self, restore_data_context):
         """Test that GPU budget is 0 when usage exceeds limits."""
@@ -676,7 +848,7 @@ class TestReservationOpResourceAllocator:
 
         # When usage (2) exceeds limits (1), the budget should be 0
         # because reserved_remaining = reserved - usage = negative, clamped to 0
-        assert allocator._op_budgets[o2].gpu == 0
+        assert allocator.get_budget(o2).gpu == 0
 
     def test_gpu_unbounded_operator_can_autoscale(self, restore_data_context):
         """Test that unbounded GPU operators (max_size=None) get GPU budget for autoscaling.
@@ -722,9 +894,9 @@ class TestReservationOpResourceAllocator:
 
         # The unbounded GPU operator should get GPU budget > 0 so it can autoscale
         # With 8 GPUs available and 1 used, there should be budget for more
-        assert allocator._op_budgets[o2].gpu > 0, (
+        assert allocator.get_budget(o2).gpu > 0, (
             f"Unbounded GPU operator should get GPU budget for autoscaling, "
-            f"but got {allocator._op_budgets[o2].gpu}"
+            f"but got {allocator.get_budget(o2).gpu}"
         )
 
     def test_actor_pool_gpu_operator_gets_gpu_budget_in_cpu_pipeline(
@@ -848,11 +1020,11 @@ class TestReservationOpResourceAllocator:
         )
 
         # o2 is capped at 2 GPUs (its max)
-        assert allocator._op_budgets[o2].gpu == 2
+        assert allocator.get_budget(o2).gpu == 2
 
         # o3 (unbounded) gets remaining GPUs after o2's excess is returned
         # With 8 total GPUs and o2 capped at 2, o3 gets 6
-        assert allocator._op_budgets[o3].gpu == 6
+        assert allocator.get_budget(o3).gpu == 6
 
     @pytest.mark.parametrize("max_actors", [4, float("inf")])
     def test_gpu_not_reserved_for_non_gpu_operators(
@@ -1108,7 +1280,7 @@ class TestReservationOpResourceAllocator:
         """
         allocator = resource_manager._op_resource_allocator
 
-        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_planned_grants.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
             cpu=3, object_store_memory=200
@@ -1121,12 +1293,12 @@ class TestReservationOpResourceAllocator:
         assert allocator._total_shared == ExecutionResources(
             cpu=6, object_store_memory=800
         )
-        assert allocator._op_budgets[o6] == ExecutionResources(
+        assert allocator.get_budget(o6) == ExecutionResources(
             cpu=6, object_store_memory=600
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
-        assert allocator._op_budgets[o8] == ExecutionResources(
+        assert allocator.get_budget(o8) == ExecutionResources(
             cpu=6, object_store_memory=float("inf")
         )
 
@@ -1151,12 +1323,12 @@ class TestReservationOpResourceAllocator:
 
         resource_manager._update_allocated_budgets()
 
-        assert allocator._op_budgets[o6] == ExecutionResources(
+        assert allocator.get_budget(o6) == ExecutionResources(
             cpu=4, object_store_memory=350
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
-        assert allocator._op_budgets[o8] == ExecutionResources(
+        assert allocator.get_budget(o8) == ExecutionResources(
             cpu=4, object_store_memory=float("inf")
         )
 
@@ -1177,7 +1349,7 @@ class TestReservationOpResourceAllocator:
         | op8 | 50/163           | 50/163           | 0            |
         +-----+------------------+------------------+--------------+
         """
-        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_planned_grants.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
             cpu=3.75, object_store_memory=213
@@ -1191,14 +1363,271 @@ class TestReservationOpResourceAllocator:
             cpu=7.5, object_store_memory=850
         )
         # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
-        assert allocator._op_budgets[o6] == ExecutionResources(
+        assert allocator.get_budget(o6) == ExecutionResources(
             cpu=5.5, object_store_memory=381
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
-        assert allocator._op_budgets[o8] == ExecutionResources(
+        assert allocator.get_budget(o8) == ExecutionResources(
             cpu=5.5, object_store_memory=float("inf")
         )
+
+    def test_proportional_shared_distribution_when_over_subscribed(
+        self, restore_data_context
+    ):
+        """When total shared-pool usage exceeds the shared pool, planned grants are
+        distributed proportionally to each op's actual usage rather than giving
+        everyone an equal even share of zero."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        for op in [o2, o3]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+            )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        # 4 CPUs total: reservation_ratio * limits / N = 0.5 * 4 / 2 = 1 per op,
+        # so _op_reserved = 1 CPU per op and _total_shared = 4 - 2*1 = 2 CPUs.
+        global_limits = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        allocator.update_budgets(limits=global_limits)
+
+        # With no usage, verify initial state:
+        # _op_reserved = (1, 0, 125) each; _total_shared = (2, 0, 500).
+        assert allocator._op_reserved[o2] == ExecutionResources(1, 0, 125)
+        assert allocator._op_reserved[o3] == ExecutionResources(1, 0, 125)
+        assert allocator._total_shared == ExecutionResources(2, 0, 500)
+
+        # Now simulate a cluster shrink: ops are using more CPU shared resources
+        # than the shared pool has. o2 uses 3 CPUs, o3 uses 1.5 CPUs.
+        # Reserved = 1 CPU each. Shared-pool usage: o2 = 2, o3 = 0.5.
+        # Total shared usage = 2.5, but _total_shared = 2 → over-subscribed.
+        op_usages[o2] = ExecutionResources(cpu=3, gpu=0, object_store_memory=0)
+        op_internal_usage[o2] = 0
+        op_outputs_usages[o2] = 0
+        op_usages[o3] = ExecutionResources(cpu=1.5, gpu=0, object_store_memory=0)
+        op_internal_usage[o3] = 0
+        op_outputs_usages[o3] = 0
+
+        allocator.update_budgets(limits=global_limits)
+
+        # CPU is over-subscribed: remaining_shared.cpu = 0.
+        # Proportional grants:
+        #   o2: 2 * (2 / 2.5) = 1.6
+        #   o3: 2 * (0.5 / 2.5) = 0.4
+        # planned_grant[o2] = op_reserved(1) + proportional(1.6) + even(0) = 2.6
+        # planned_grant[o3] = op_reserved(1) + proportional(0.4) + even(0) = 1.4
+        pg2 = allocator._op_planned_grants[o2]
+        pg3 = allocator._op_planned_grants[o3]
+        assert abs(pg2.cpu - 2.6) < 1e-9, pg2.cpu
+        assert abs(pg3.cpu - 1.4) < 1e-9, pg3.cpu
+        # The two grants should sum to the total shared pool.
+        assert abs(pg2.cpu + pg3.cpu - 4.0) < 1e-9
+
+        # signed_headroom = planned_grant - usage:
+        # o2: 2.6 - 3 = -0.4 (over-budget, autoscaler should downscale)
+        # o3: 1.4 - 1.5 = -0.1 (also over-budget)
+        headroom2 = allocator.get_signed_headroom(o2)
+        headroom3 = allocator.get_signed_headroom(o3)
+        assert headroom2 is not None
+        assert headroom3 is not None
+        assert abs(headroom2.cpu - (-0.4)) < 1e-9, headroom2.cpu
+        assert abs(headroom3.cpu - (-0.1)) < 1e-9, headroom3.cpu
+
+        # Verify non-over-subscribed dimensions behave identically to before.
+        # OSM total_shared_usage = 0 (ops use 0 OSM), so not over-subscribed.
+        # remaining_shared.osm = 500, distributed evenly.
+        assert abs(pg2.object_store_memory - 375) < 1, pg2.object_store_memory
+        assert abs(pg3.object_store_memory - 375) < 1, pg3.object_store_memory
+
+    def test_proportional_grant_capped_by_max_resource_usage(
+        self, restore_data_context
+    ):
+        """Over-subscribed proportional grants must be capped by max_resource_usage.
+
+        Without the fix, op_proportional can exceed max_resource_usage - total_reserved,
+        causing planned_grant > max_resource_usage and suppressing correct downscaling
+        (signed_headroom stays 0 instead of going negative).
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        # o2 has a hard cap of 2 CPUs total; o3 is uncapped.
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources(cpu=2, gpu=0, object_store_memory=float("inf")),
+            )
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        # 4 CPUs: reservation_ratio * limits / N = 0.5 * 4 / 2 = 1 CPU per op,
+        # so _op_reserved = 1 CPU per op and _total_shared = 4 - 2*1 = 2 CPUs.
+        global_limits = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3, o4], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+
+        # Simulate cluster shrink: ops are over-subscribed on CPU.
+        # o2 uses 5 CPUs (shared usage = 4.5), o3 uses 0.5 CPUs (shared usage = 0).
+        # Total shared usage = 4.5 >> _total_shared = 2 → over-subscribed.
+        op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
+        op_usages[o3] = ExecutionResources(cpu=0.5, gpu=0, object_store_memory=0)
+
+        allocator.update_budgets(limits=global_limits)
+
+        pg2 = allocator._op_planned_grants[o2]
+
+        # planned_grant[o2] must not exceed max_resource_usage.cpu = 2.
+        assert (
+            pg2.cpu <= 2.0 + 1e-9
+        ), f"planned_grant[o2].cpu={pg2.cpu} exceeds max_resource_usage.cpu=2"
+
+        # signed_headroom[o2] should be negative (over-budget → downscaling signal).
+        headroom2 = allocator.get_signed_headroom(o2)
+        assert headroom2 is not None
+        assert (
+            headroom2.cpu < 0
+        ), f"Expected negative signed_headroom for o2 (over max), got {headroom2.cpu}"
+
+    def test_proportional_shared_distribution_when_memory_over_subscribed(
+        self, restore_data_context
+    ):
+        """Logical memory (not just CPU) must drive proportional shared distribution.
+
+        When memory is the over-subscribed dimension, the allocator should
+        distribute the memory shared pool proportionally to each op's memory usage,
+        producing memory-aware negative `signed_headroom` for downscaling. CPU is
+        kept under-subscribed to confirm dimensions are tracked independently.
+
+        Memory values are in bytes (and integer-rounded by `ExecutionResources`),
+        so we use byte-scale values to keep proportional shares non-degenerate.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1, "memory": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1, "memory": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        for op in [o2, o3]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+            )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        # CPU=8, memory=4000 (bytes), OSM=1000. With ratio=0.5 / N=2 →
+        # default_reserved per op = (cpu=2, memory=1000, osm=250).
+        # reserved_for_outputs = (0, 0, 125), so _op_reserved per op =
+        # (cpu=2, memory=1000, osm=125) and _total_shared = (cpu=4, memory=2000, osm=500).
+        global_limits = ExecutionResources(
+            cpu=8, gpu=0, object_store_memory=1000, memory=4000
+        )
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        allocator.update_budgets(limits=global_limits)
+
+        assert allocator._op_reserved[o2] == ExecutionResources(2, 0, 125, memory=1000)
+        assert allocator._op_reserved[o3] == ExecutionResources(2, 0, 125, memory=1000)
+        assert allocator._total_shared == ExecutionResources(4, 0, 500, memory=2000)
+
+        # Simulate memory pressure (e.g. larger-than-expected actor footprints):
+        # o2 uses memory=3000, o3 uses memory=1500. CPU stays at 0 (not over-subscribed).
+        # Shared-pool memory usage: o2 = max(3000-1000, 0) = 2000,
+        # o3 = max(1500-1000, 0) = 500. Total = 2500 > _total_shared.memory = 2000
+        # → over-subscribed on memory only.
+        op_usages[o2] = ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=0, memory=3000
+        )
+        op_usages[o3] = ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=0, memory=1500
+        )
+
+        allocator.update_budgets(limits=global_limits)
+
+        # Memory is over-subscribed: remaining_shared.memory = 0.
+        # Proportional grants on memory:
+        #   o2: 2000 * (2000 / 2500) = 1600
+        #   o3: 2000 * (500 / 2500)  = 400
+        # planned_grant.memory = _op_reserved.memory(1000) + proportional + even(0).
+        pg2 = allocator._op_planned_grants[o2]
+        pg3 = allocator._op_planned_grants[o3]
+        assert pg2.memory == 2600, pg2.memory
+        assert pg3.memory == 1400, pg3.memory
+        # The two grants should sum to the total memory (reserved + shared).
+        assert pg2.memory + pg3.memory == 4000
+
+        # signed_headroom on memory: planned_grant - usage.
+        # o2: 2600 - 3000 = -400, o3: 1400 - 1500 = -100 → both signal downscaling.
+        headroom2 = allocator.get_signed_headroom(o2)
+        headroom3 = allocator.get_signed_headroom(o3)
+        assert headroom2 is not None
+        assert headroom3 is not None
+        assert headroom2.memory == -400, headroom2.memory
+        assert headroom3.memory == -100, headroom3.memory
+
+        # CPU is not over-subscribed (usage = 0 each); falls through the
+        # even-distribution path and remains positive.
+        assert headroom2.cpu > 0, headroom2.cpu
+        assert headroom3.cpu > 0, headroom3.cpu
 
 
 if __name__ == "__main__":
