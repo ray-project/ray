@@ -136,12 +136,52 @@ cdef class ObjectRef(BaseID):
         Additionally, future.running() will always be ``False`` even if the
         underlying task is running.
         """
+        if self._tensor_transport is not None:
+            return self._rdt_future()
+
         py_future = concurrent.futures.Future()
 
         self._on_completed(
             functools.partial(_set_future_helper, py_future=py_future))
 
         # A hack to keep a reference to the object ref for ref counting.
+        py_future.object_ref = self
+        return py_future
+
+    # Shared executor for all RDT fetches to avoid thread exhaustion
+    # when many RDT refs are awaited concurrently (e.g., via asyncio.gather).
+    _rdt_executor = concurrent.futures.ThreadPoolExecutor()
+
+    def _rdt_future(self) -> concurrent.futures.Future:
+        """Wrap an RDT ObjectRef with a concurrent.futures.Future.
+
+        RDT objects require out-of-band tensor transfers that use blocking
+        operations (threading.Condition waits). We run ray.get in a shared
+        thread pool so that the caller (and any event loop) is never blocked.
+        """
+        py_future = concurrent.futures.Future()
+        obj_ref = self
+
+        def _rdt_get():
+            try:
+                result = ray.get(obj_ref)
+                _set_future_helper(result, py_future=py_future)
+            except Exception as e:
+                if py_future.done():
+                    return
+                # Convert StopIteration to RuntimeError to prevent
+                # segfaults due to CPython's PEP 479 behavior when
+                # the future is awaited (see #11030, #8841).
+                if isinstance(e, (StopIteration, StopAsyncIteration)):
+                    exc = RuntimeError(f"generator raised {type(e).__name__}")
+                    exc.__cause__ = e
+                    py_future.set_exception(exc)
+                else:
+                    py_future.set_exception(e)
+
+        ObjectRef._rdt_executor.submit(_rdt_get)
+
+        # Keep a reference to the object ref for ref counting.
         py_future.object_ref = self
         return py_future
 

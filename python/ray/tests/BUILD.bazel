@@ -632,6 +632,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_rdt_await.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
     ],
