@@ -8,7 +8,7 @@ tf-keras==2.20.0
 --extra-index-url https://download.pytorch.org/whl/cu128  # for GPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-2.7.0+cu128.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 # specifying explicit plus-notation below so pip overwrites the existing cpu verisons
-torch==2.7.0+cu128
+torch==2.7.1+cpu
 torchvision==0.22.0+cu128
 torch-scatter==2.1.2+pt27cu128
 torch-sparse==0.6.18+pt27cu128
