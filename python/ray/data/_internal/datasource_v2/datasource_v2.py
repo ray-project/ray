@@ -161,3 +161,13 @@ class DataSourceV2(ABC, Generic[InputSplit]):
             Configured Scanner instance.
         """
         ...
+
+    def resolve_partitioning(self, sample: InputSplit) -> Optional[Any]:
+        """Return a partitioning descriptor derived from ``sample``, or ``None``.
+
+        Override this for file-based sources whose partition keys must be
+        discovered from a sample path (e.g. hive layouts where field names
+        are not known up front). The resolved descriptor is passed into
+        :meth:`create_scanner`.
+        """
+        return None
