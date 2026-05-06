@@ -68,7 +68,10 @@ def test_fit_with_categoricals(ray_start_6_cpus):
     result = trainer.fit()
     checkpoint = result.checkpoint
     model = LightGBMTrainer.get_model(checkpoint)
-    assert model.pandas_categorical == [["A", "B"]]
+    # categorical features have their discrete values listed, while
+    #   numeric features have an empty `values` list.
+    feature_infos = model.dump_model()["feature_infos"]
+    assert feature_infos["categorical_column"]["values"]
 
 
 def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):

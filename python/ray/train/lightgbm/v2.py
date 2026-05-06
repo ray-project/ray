@@ -20,6 +20,7 @@ class LightGBMTrainer(DataParallelTrainer):
         :skipif: True
 
         import lightgbm as lgb
+        import pyarrow as pa
 
         import ray.data
         import ray.train
@@ -35,10 +36,14 @@ class LightGBMTrainer(DataParallelTrainer):
                 ray.train.get_dataset_shard("train"),
                 ray.train.get_dataset_shard("validation"),
             )
-            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
-            train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
-            eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
+            train_table = pa.concat_tables(
+                train_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
+            )
+            eval_table = pa.concat_tables(
+                eval_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
+            )
+            train_X, train_y = train_table.drop(["y"]), train_table.column("y")
+            eval_X, eval_y = eval_table.drop(["y"]), eval_table.column("y")
 
             train_set = lgb.Dataset(train_X, label=train_y)
             eval_set = lgb.Dataset(eval_X, label=eval_y)

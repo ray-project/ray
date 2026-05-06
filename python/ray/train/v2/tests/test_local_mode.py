@@ -129,24 +129,49 @@ def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
         num_boost_round: int = 10,
     ):
         remaining_iters = num_boost_round
+        # pandas `category` dtype becomes Arrow `dictionary` type after the
+        # ray.data round-trip. LightGBM's pyarrow ingestion only accepts numeric
+        # column types, so decode dictionary columns to their integer codes and
+        # tell LightGBM via `categorical_feature` to treat them as categorical.
+        def _decode_dict(table: pa.Table) -> pa.Table:
+            arrays = [
+                c.combine_chunks().indices if pa.types.is_dictionary(c.type) else c
+                for c in table.columns
+            ]
+            return pa.Table.from_arrays(arrays, names=table.column_names)
+
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
         train_table = pa.concat_tables(
             train_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
         )
+        categorical_features = [
+            n
+            for n, t in zip(train_table.column_names, train_table.schema.types)
+            if pa.types.is_dictionary(t)
+        ]
+        train_table = _decode_dict(train_table)
 
-        eval_ds_iters = {
-            k: ray.train.get_dataset_shard(k)
+        eval_tables = {
+            k: _decode_dict(
+                pa.concat_tables(
+                    ray.train.get_dataset_shard(k).iter_batches(
+                        batch_format="pyarrow", batch_size=None
+                    )
+                )
+            )
             for k in dataset_keys
             if k != TRAIN_DATASET_KEY
         }
-        eval_tables = {
-            k: pa.concat_tables(d.iter_batches(batch_format="pyarrow", batch_size=None))
-            for k, d in eval_ds_iters.items()
-        }
+
+        dataset_kwargs = (
+            {"categorical_feature": categorical_features}
+            if categorical_features
+            else {}
+        )
 
         train_X = train_table.drop([label_column])
         train_y = train_table.column(label_column)
-        train_set = lightgbm.Dataset(train_X, label=train_y)
+        train_set = lightgbm.Dataset(train_X, label=train_y, **dataset_kwargs)
 
         # NOTE: Include the training dataset in the evaluation datasets.
         # This allows `train-*` metrics to be calculated and reported.
@@ -156,7 +181,7 @@ def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
         for eval_name, eval_table in eval_tables.items():
             eval_X = eval_table.drop([label_column])
             eval_y = eval_table.column(label_column)
-            valid_sets.append(lightgbm.Dataset(eval_X, label=eval_y))
+            valid_sets.append(lightgbm.Dataset(eval_X, label=eval_y, **dataset_kwargs))
             valid_names.append(eval_name)
 
         # Add network params of the worker group to enable distributed training.
