@@ -34,6 +34,7 @@ class PubSubHandlerTest : public ::testing::Test {
  public:
   PubSubHandlerTest() {
     fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
+    fake_obs_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
 
     // Create a publisher with specific channels (matching GCS server setup).
     auto inner_publisher = std::make_unique<pubsub::Publisher>(
@@ -43,10 +44,7 @@ class PubSubHandlerTest : public ::testing::Test {
             rpc::ChannelType::GCS_JOB_CHANNEL,
             rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
             rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-            rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
-            rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-            rpc::ChannelType::RAY_LOG_CHANNEL,
-            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
+            rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
         /*get_time_ms=*/[]() { return 0.0; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -55,17 +53,36 @@ class PubSubHandlerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
 
+    auto obs_inner = std::make_unique<pubsub::Publisher>(
+        /*channels=*/
+        std::vector<rpc::ChannelType>{rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                      rpc::ChannelType::RAY_LOG_CHANNEL,
+                                      rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
+        /*periodical_runner=*/*fake_obs_periodical_runner_,
+        /*get_time_ms=*/[]() { return 0.0; },
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+        /*publisher_id=*/NodeID::FromRandom());
+
+    observability_publisher_ =
+        std::make_unique<pubsub::ObservabilityPublisher>(std::move(obs_inner));
+
     pubsub_handler_ =
-        std::make_unique<InternalPubSubHandler>(io_service_, *gcs_publisher_);
+        std::make_unique<ControlPlanePubSubHandler>(io_service_, *gcs_publisher_);
+    observability_pubsub_handler_ = std::make_unique<ObservabilityPubSubHandler>(
+        io_service_, *observability_publisher_);
   }
 
  protected:
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
+  std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
 
  private:
   instrumented_io_context io_service_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
+  std::unique_ptr<FakePeriodicalRunner> fake_obs_periodical_runner_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
 };
 
 TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
@@ -160,7 +177,7 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorPublishesToSubscribedErrorChannel)
 
   rpc::GcsSubscriberCommandBatchReply sub_reply;
   Status sub_status;
-  pubsub_handler_->HandleGcsSubscriberCommandBatch(
+  observability_pubsub_handler_->HandleGcsSubscriberCommandBatch(
       sub_req,
       &sub_reply,
       [&sub_status](const Status &status, std::function<void()>, std::function<void()>) {
@@ -174,7 +191,7 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorPublishesToSubscribedErrorChannel)
 
   rpc::ReportJobErrorReply err_reply;
   Status err_status;
-  pubsub_handler_->HandleReportJobError(
+  observability_pubsub_handler_->HandleReportJobError(
       err_req,
       &err_reply,
       [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
@@ -188,7 +205,7 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorPublishesToSubscribedErrorChannel)
   poll_req.set_max_processed_sequence_id(0);
   rpc::GcsSubscriberPollReply poll_reply;
   Status poll_status;
-  pubsub_handler_->HandleGcsSubscriberPoll(
+  observability_pubsub_handler_->HandleGcsSubscriberPoll(
       poll_req,
       &poll_reply,
       [&poll_status](const Status &status, std::function<void()>, std::function<void()>) {
@@ -209,7 +226,7 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorRejectsInvalidJobIdLength) {
 
   rpc::ReportJobErrorReply err_reply;
   Status err_status;
-  pubsub_handler_->HandleReportJobError(
+  observability_pubsub_handler_->HandleReportJobError(
       err_req,
       &err_reply,
       [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
@@ -218,7 +235,7 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorRejectsInvalidJobIdLength) {
   ASSERT_TRUE(err_status.IsInvalidArgument()) << err_status;
 
   err_req.mutable_job_error()->set_job_id("short");
-  pubsub_handler_->HandleReportJobError(
+  observability_pubsub_handler_->HandleReportJobError(
       err_req,
       &err_reply,
       [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
@@ -229,8 +246,3 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorRejectsInvalidJobIdLength) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

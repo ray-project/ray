@@ -11,7 +11,10 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER
+from ray.serve._private.constants import (
+    SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_SESSION_ID,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import generate_request_id
 
@@ -167,6 +170,38 @@ def test_reuse_request_id(serve_instance):
             await asyncio.gather(*tasks)
 
     asyncio.run(main())
+
+
+class TestSessionIdHeader:
+    @pytest.fixture
+    def session_id_app(self, serve_instance):
+        @serve.deployment
+        class Model:
+            def __call__(self) -> str:
+                return ray.serve.context._get_serve_request_context().session_id
+
+        handle = serve.run(Model.bind())
+        return handle
+
+    @pytest.mark.parametrize(
+        "header_key",
+        [
+            SERVE_SESSION_ID,  # underscore form
+            "x-session-id",  # hyphenated form
+            "X-Session-Id",  # title-cased hyphenated form
+        ],
+    )
+    def test_header_forms(self, session_id_app, header_key):
+        session_id = "sess_user_42"
+        resp = httpx.get(get_application_url(), headers={header_key: session_id})
+        assert resp.status_code == 200
+        assert resp.text == session_id
+
+    def test_handle_option(self, session_id_app):
+        handle = session_id_app
+        assert handle.options(session_id="from-handle").remote().result() == (
+            "from-handle"
+        )
 
 
 if __name__ == "__main__":

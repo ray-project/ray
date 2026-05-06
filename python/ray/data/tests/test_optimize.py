@@ -291,9 +291,9 @@ def test_optimize_lazy_reuse_base_data(
 
 def test_require_preserve_order(ray_start_regular_shared):
     ds1 = ray.data.range(100).map_batches(lambda x: x).zip(ray.data.range(100))
-    assert ds1._plan.require_preserve_order()
+    assert ds1._logical_plan.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
-    assert not ds2._plan.require_preserve_order()
+    assert not ds2._logical_plan.require_preserve_order()
 
 
 if __name__ == "__main__":

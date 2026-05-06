@@ -1,10 +1,9 @@
 import functools
 import logging
+import pickle
 import time
 import typing
-from collections import deque
 from typing import (
-    Deque,
     Dict,
     Iterator,
     List,
@@ -13,12 +12,11 @@ from typing import (
     Union,
 )
 
-import pyarrow as pa
-
 import ray
 import ray.exceptions
 from ray.actor import ActorHandle
 from ray.data import ExecutionOptions
+from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -35,7 +33,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.stats import OpRuntimeMetrics
-from ray.data.block import BlockStats, to_stats
+from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -44,6 +42,8 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Arrow schema metadata key for the rapidsmpf partition ID.
+_GPU_PARTITION_ID_KEY = b"_gpu_partition_id"
 
 # ---------------------------------------------------------------------------
 # GPU shuffle actor
@@ -73,6 +73,7 @@ class GPUShuffleActor:
         columns: Optional[List[str]] = None,
         rmm_pool_size: Union[int, str, None] = None,
         spill_memory_limit: Union[int, str, None] = "auto",
+        should_sort: bool = False,
     ):
         from ray.data._internal.gpu_shuffle.rapidsmpf_backend import (
             BulkRapidsMPFShuffler,
@@ -86,6 +87,9 @@ class GPUShuffleActor:
             spill_memory_limit=spill_memory_limit,
         )
         self._columns = columns
+        self._key_columns = key_columns
+        self._should_sort = should_sort
+        self._arrow_schema = None
 
     # ------------------------------------------------------------------
     # UCXX communicator setup
@@ -124,19 +128,22 @@ class GPUShuffleActor:
     # Insert / extract interface (called by GPUShuffleOperator)
     # ------------------------------------------------------------------
 
-    def insert_batch(self, batch: pa.Table) -> int:
-        """Hash-partition *batch* and route shards to peers.
+    def insert_batch(self, block: Block) -> int:
+        """Hash-partition *block* and route shards to peers.
 
-        Returns the number of rows in the incoming batch so the driver can
+        Returns the number of rows in the incoming block so the driver can
         track throughput without serialising the data back.
         """
         import cudf
 
-        df = cudf.DataFrame.from_arrow(batch)
-        # This is a fallback in case `infer_schema` is None, we need to then
-        # infer from the first batch.
+        table = BlockAccessor.for_block(block).to_arrow()
+        df = cudf.DataFrame.from_arrow(table)
         if self._columns is None:
+            # save columns from first batch, if not already set
             self._columns = list(df.columns)
+        if self._arrow_schema is None:
+            # save arrow schema from first batch
+            self._arrow_schema = table.schema
         self._shuffler.insert_chunk(table=df, column_names=self._columns)
         return len(df)
 
@@ -148,27 +155,54 @@ class GPUShuffleActor:
 
         Follows the Ray Data streaming generator protocol: yield block then
         BlockMetadataWithSchema for each output partition.
+
+        The partition ID from ``rapidsmpf``'s ``extract()`` is embedded in each
+        block's Arrow schema metadata under ``_gpu_partition_id`` so the operator
+        can reorder bundles into correct partition order on the driver side,
+        regardless of GPU completion order.
         """
         self._shuffler.insert_finished()
 
+        import pyarrow as pa
         from rapidsmpf.utils.cudf import pylibcudf_to_cudf_dataframe
 
         from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
-        for _, partition in self._shuffler.extract():
+        for partition_id, partition in self._shuffler.extract():
             exec_stats_builder = BlockExecStats.builder()
-            cdf = pylibcudf_to_cudf_dataframe(
-                partition, column_names=self._columns
-            ).copy(deep=True)
-            # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
-            block = cdf.to_arrow(preserve_index=False)
+            if partition.num_columns() == 0:
+                # rapidsmpf returns a zero-column table when no rows were
+                # routed to this partition. Emit an empty arrow table, so every
+                # partition id produces exactly one block, so downstream queues
+                # that require contiguous key ranges (e.g. ReorderingBundleQueue)
+                # don't stall.
+                block = pa.Table.from_pylist([], schema=self._arrow_schema)
+            else:
+                cdf = pylibcudf_to_cudf_dataframe(
+                    partition, column_names=self._columns
+                ).copy(deep=True)
+                # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
+                if self._should_sort and len(cdf) > 0:
+                    cdf = cdf.sort_values(by=self._key_columns)
+                block = cdf.to_arrow(preserve_index=False)
+
+            existing_metadata = block.schema.metadata or {}
+            tagged_schema = block.schema.with_metadata(
+                {**existing_metadata, _GPU_PARTITION_ID_KEY: str(partition_id).encode()}
+            )
             exec_stats = exec_stats_builder.build()
             stats = yield block
             if stats:
                 object.__setattr__(
                     exec_stats, "block_ser_time_s", stats.object_creation_dur_s
                 )
-            yield BlockMetadataWithSchema.from_block(block, block_exec_stats=exec_stats)
+            block_meta = BlockMetadataWithSchema.from_block(
+                block, block_exec_stats=exec_stats
+            )
+            bm = BlockMetadataWithSchema.from_metadata(
+                block_meta.metadata, schema=tagged_schema
+            )
+            yield pickle.dumps(bm)
 
 
 def _wait_for_refs_with_timeout(
@@ -227,6 +261,7 @@ class GPURankPool:
         rmm_pool_size: Union[int, str, None],
         spill_memory_limit: Union[int, str, None],
         setup_timeout_s: float,
+        should_sort: bool = False,
     ):
         self._nranks = nranks
         self._total_nparts = total_nparts
@@ -235,7 +270,13 @@ class GPURankPool:
         self._rmm_pool_size = rmm_pool_size
         self._spill_memory_limit = spill_memory_limit
         self._setup_timeout_s = setup_timeout_s
+        self._should_sort = should_sort
         self._actors: List[ActorHandle] = []
+        self._shutdown: bool = False
+
+    @property
+    def is_shutdown(self) -> bool:
+        return self._shutdown
 
     @property
     def nranks(self) -> int:
@@ -274,6 +315,7 @@ class GPURankPool:
                 columns=self._columns,
                 rmm_pool_size=self._rmm_pool_size,
                 spill_memory_limit=self._spill_memory_limit,
+                should_sort=self._should_sort,
             )
             for _ in range(self._nranks)
         ]
@@ -328,6 +370,7 @@ class GPURankPool:
             for actor in self._actors:
                 ray.kill(actor)
         self._actors.clear()
+        self._shutdown = True
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +429,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         key_columns: Tuple[str, ...],
         columns: Optional[List[str]] = None,
         num_partitions: Optional[int] = None,
+        should_sort: bool = False,
     ):
         nranks = _derive_num_gpu_ranks(data_context)
         target_num_partitions = (
@@ -414,13 +458,14 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             rmm_pool_size=data_context.gpu_shuffle_rmm_pool_size,
             spill_memory_limit=data_context.gpu_shuffle_spill_memory_limit,
             setup_timeout_s=data_context.gpu_shuffle_setup_timeout_s,
+            should_sort=should_sort,
         )
 
         self._next_block_idx: int = 0
         self._insert_tasks: Dict[int, MetadataOpTask] = {}
         self._extraction_tasks: Dict[int, DataOpTask] = {}
         self._finalization_started: bool = False
-        self._output_queue: Deque[RefBundle] = deque()
+        self._output_queue: ReorderingBundleQueue = ReorderingBundleQueue()
         self._shuffled_blocks_stats: List[BlockStats] = []
         self._output_blocks_stats: List[BlockStats] = []
 
@@ -478,15 +523,32 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._finalization_started = True
-        # Running count of partitions extracted across all ranks.
-        # In the CPU path each partition has its own finalize task so
-        # partition_id naturally counts completed partitions.  Here a
-        # single rank yields many partitions, so we maintain an explicit
-        # counter to keep the metrics aligned.
+        # Running count of partitions extracted, used for metrics only.
+        # Real partition_id is read from each block's Arrow schema metadata
+        # ("_gpu_partition_id"), embedded by the actor because rapidsmpf's
+        # extract() uses wait_any() and yields in completion order, not
+        # partition order.
         self._num_partitions_reduced = 0
 
         def _on_bundle_ready(bundle: RefBundle) -> None:
-            partition_id = self._num_partitions_reduced
+            assert (
+                bundle.schema is not None
+                and _GPU_PARTITION_ID_KEY in bundle.schema.metadata
+            ), (
+                "Bundle is missing _gpu_partition_id in schema metadata. "
+                "Was finish_and_extract modified to skip tagging?"
+            )
+            partition_id = int(bundle.schema.metadata[_GPU_PARTITION_ID_KEY].decode())
+            clean_meta = {
+                k: v
+                for k, v in bundle.schema.metadata.items()
+                if k != _GPU_PARTITION_ID_KEY
+            }
+            bundle = RefBundle(
+                bundle.blocks,
+                schema=bundle.schema.with_metadata(clean_meta or None),
+                owns_blocks=bundle.owns_blocks,
+            )
             self._num_partitions_reduced += 1
 
             # Register a logical reduce "task" for this partition, mirroring
@@ -496,8 +558,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 partition_id, empty_bundle, task_id=None
             )
 
-            # Add finalized block to the output queue
-            self._output_queue.append(bundle)
+            # Add to the reordering queue keyed by partition_id so output is
+            # always emitted in partition order (0, 1, 2, ...) regardless of
+            # the order GPU actors finish.
+            self._output_queue.add(bundle, key=partition_id)
+            self._output_queue.finalize(key=partition_id)
 
             # Update Finalize Metrics on task output generated
             self._reduce_metrics.on_output_queued(bundle)
@@ -535,6 +600,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             rank: int = -1,
         ) -> None:
             self._extraction_tasks.pop(rank, None)
+            if not self._extraction_tasks:
+                # release GPU actors so downstream operators can acquire those GPUs
+                self._rank_pool.shutdown()
 
         for rank_idx, actor in enumerate(self._rank_pool.actors):
             block_gen = actor.finish_and_extract.options(
@@ -557,10 +625,10 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def has_next(self) -> bool:
         self._try_finalize()
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        bundle = self._output_queue.popleft()
+        bundle = self._output_queue.get_next()
         self._reduce_metrics.on_output_dequeued(bundle)
         self._reduce_metrics.on_output_taken(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
@@ -595,7 +663,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # ------------------------------------------------------------------
 
     def current_logical_usage(self) -> ExecutionResources:
-        return ExecutionResources(gpu=self._rank_pool.nranks)
+        pool = self._rank_pool
+        if pool.is_shutdown:
+            return ExecutionResources(gpu=0)
+        gpus = len(pool.actors) or pool.nranks
+        return ExecutionResources(gpu=gpus)
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
@@ -610,7 +682,15 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
         n = len(self._rank_pool.actors)
-        return ActorPoolInfo(running=n, pending=0, restarting=0)
+        return ActorPoolInfo(
+            running=n,
+            pending=0,
+            restarting=0,
+            active=n,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
     # ------------------------------------------------------------------
     # SubProgressBarMixin
