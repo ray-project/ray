@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -14,8 +15,83 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer,
+    _CapacityQueueTokenReleaseMiddleware,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+from ray.serve._private.constants import (
+    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
+)
+
+
+class _DirectRouterReplica:
+    def __init__(self, replica_id: str):
+        self.replica_id = replica_id
+        self.backend_http_endpoint = ("127.0.0.1", 8000)
+
+
+class _FakeAcquireMethod:
+    def __init__(self, fn):
+        self._fn = fn
+
+    def remote(self, *args, **kwargs):
+        async def _result():
+            return self._fn(*args, **kwargs)
+
+        return _result()
+
+
+class _FakeReleaseMethod:
+    def __init__(self, fn):
+        self._fn = fn
+
+    def remote(self, *args, **kwargs):
+        self._fn(*args, **kwargs)
+
+
+class _FakeCapacityQueue:
+    def __init__(self, selected_replica_id: Optional[str]):
+        self.selected_replica_id = selected_replica_id
+        self.acquire_kwargs = []
+        self.released = []
+        self.acquire = _FakeAcquireMethod(self._acquire)
+        self.release = _FakeReleaseMethod(self._release)
+
+    def _acquire(self, **kwargs):
+        self.acquire_kwargs.append(kwargs)
+        return self.selected_replica_id
+
+    def _release(self, replica_id: str):
+        self.released.append(replica_id)
+
+    @property
+    def selected_replica_id(self):
+        return self._selected_replica_id
+
+    @selected_replica_id.setter
+    def selected_replica_id(self, value):
+        self._selected_replica_id = value
+
+
+def _new_direct_router(*, optimistic_load: bool = False):
+    router = LLMRouter.__new__(LLMRouter)
+    router._di_deployment_names = {}
+    router._di_load_cache = {}
+    router._di_optimistic_load = optimistic_load
+    router._di_poll_interval_s = 0.05
+    router._di_capacity_queue_enabled = False
+    router._di_capacity_queue_actor_name = "capacity_queue"
+    router._di_capacity_queue_acquire_timeout_s = 0.05
+    router._di_capacity_queue = None
+    router._di_capacity_queue_full_name = None
+    router._di_capacity_queue_discovery_lock = asyncio.Lock()
+    router._di_capacity_queue_warned_unavailable = False
+    router._di_capacity_queue_warned_missing_deployment = False
+    router._di_capacity_queue_warned_unknown_replica = False
+    router._di_app_name = None
+    return router
 
 
 @pytest.fixture(name="llm_config")
@@ -53,6 +129,154 @@ def create_oai_client(llm_config: LLMConfig):
     yield client
 
     serve.shutdown()
+
+
+class TestDirectStreamingLLMRouter:
+    def test_missing_load_entries_start_at_zero(self):
+        router = _new_direct_router()
+        hot = _DirectRouterReplica("hot")
+        missing = _DirectRouterReplica("missing")
+        router._set_replica_load(hot, 5)
+
+        assert router._get_replica_load(missing) == 0
+        assert router._choose_best_loaded_replica([hot, missing]) is missing
+
+    def test_optimistic_load_balances_repeated_identical_candidates(self):
+        router = _new_direct_router(optimistic_load=True)
+        replica_a = _DirectRouterReplica("a")
+        replica_b = _DirectRouterReplica("b")
+
+        picks = [
+            router._choose_best_loaded_replica([replica_a, replica_b]).replica_id
+            for _ in range(4)
+        ]
+
+        assert picks == ["a", "b", "a", "b"]
+        assert router._di_load_cache == {"a": 2, "b": 2}
+
+    def test_poll_reconciliation_overwrites_optimistic_load(self):
+        router = _new_direct_router(optimistic_load=True)
+        replica_a = _DirectRouterReplica("a")
+        replica_b = _DirectRouterReplica("b")
+
+        assert router._choose_best_loaded_replica([replica_a, replica_b]) is replica_a
+        assert router._di_load_cache["a"] == 1
+
+        router._set_replica_load(replica_a, 7)
+
+        assert router._di_load_cache["a"] == 7
+        assert router._choose_best_loaded_replica([replica_a, replica_b]) is replica_b
+
+    def test_non_optimistic_mode_does_not_increment_load(self):
+        router = _new_direct_router(optimistic_load=False)
+        replica_a = _DirectRouterReplica("a")
+        replica_b = _DirectRouterReplica("b")
+
+        picks = [
+            router._choose_best_loaded_replica([replica_a, replica_b]).replica_id
+            for _ in range(3)
+        ]
+
+        assert picks == ["a", "a", "a"]
+        assert router._di_load_cache == {}
+
+    @pytest.mark.asyncio
+    async def test_capacity_queue_pick_maps_token_to_replica(self):
+        router = _new_direct_router()
+        router._di_deployment_names["model"] = "LLMServer:model"
+        router._di_capacity_queue_acquire_timeout_s = 0.123
+        router._di_capacity_queue = _FakeCapacityQueue("b")
+        replica_a = _DirectRouterReplica("a")
+        replica_b = _DirectRouterReplica("b")
+
+        picked = await router._pick_capacity_queue_replica(
+            "model", [replica_a, replica_b]
+        )
+
+        assert picked == (replica_b, "b")
+        assert router._di_capacity_queue.acquire_kwargs == [{"timeout_s": 0.123}]
+        assert router._di_capacity_queue.released == []
+
+    @pytest.mark.asyncio
+    async def test_capacity_queue_unknown_token_is_released(self):
+        router = _new_direct_router()
+        router._di_deployment_names["model"] = "LLMServer:model"
+        router._di_capacity_queue = _FakeCapacityQueue("missing")
+        replica_a = _DirectRouterReplica("a")
+        replica_b = _DirectRouterReplica("b")
+
+        picked = await router._pick_capacity_queue_replica(
+            "model", [replica_a, replica_b]
+        )
+
+        assert picked is None
+        assert router._di_capacity_queue.released == ["missing"]
+
+    @pytest.mark.asyncio
+    async def test_capacity_queue_token_release_middleware_releases_on_completion(self):
+        async def app(scope, receive, send):
+            pass
+
+        capacity_queue = _FakeCapacityQueue(None)
+        middleware = _CapacityQueueTokenReleaseMiddleware(
+            app,
+            app_name="default",
+            deployment_name="LLMServer:model",
+            replica_unique_id="replica-a",
+            capacity_queue_actor_name="capacity_queue",
+        )
+        middleware._capacity_queue = capacity_queue
+
+        await middleware(
+            {
+                "type": "http",
+                "headers": [
+                    (
+                        INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER.encode(
+                            "latin-1"
+                        ),
+                        b"replica-a",
+                    )
+                ],
+            },
+            AsyncMock(),
+            AsyncMock(),
+        )
+
+        assert capacity_queue.released == ["replica-a"]
+
+    @pytest.mark.asyncio
+    async def test_capacity_queue_token_release_middleware_skips_mismatch(self):
+        async def app(scope, receive, send):
+            pass
+
+        capacity_queue = _FakeCapacityQueue(None)
+        middleware = _CapacityQueueTokenReleaseMiddleware(
+            app,
+            app_name="default",
+            deployment_name="LLMServer:model",
+            replica_unique_id="replica-a",
+            capacity_queue_actor_name="capacity_queue",
+        )
+        middleware._capacity_queue = capacity_queue
+
+        await middleware(
+            {
+                "type": "http",
+                "headers": [
+                    (
+                        INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER.encode(
+                            "latin-1"
+                        ),
+                        b"other-replica",
+                    )
+                ],
+            },
+            AsyncMock(),
+            AsyncMock(),
+        )
+
+        assert capacity_queue.released == []
 
 
 class TestOpenAiIngress:
