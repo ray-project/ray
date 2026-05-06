@@ -5,6 +5,7 @@ from typing import Any, List, Tuple
 from pydantic import BaseModel, field_validator
 
 from .base import CallbackBase
+from ray.llm._internal.common.utils.cloud_utils import CloudFileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +75,6 @@ class CloudDownloader(CallbackBase):
 
     def on_before_download_model_files_distributed(self) -> None:
         """Download files from cloud storage to local paths before model files are downloaded."""
-        from ray.llm._internal.common.utils.cloud_utils import CloudFileSystem
-
         paths = self.kwargs["paths"]
         start_time = time.monotonic()
         for cloud_uri, local_path in paths:
