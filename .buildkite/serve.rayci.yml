@@ -234,7 +234,7 @@ steps:
     depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: HAProxy tests (pip)"
-    parallelism: 2
+    parallelism: 3
     tags:
       - serve
       - python
