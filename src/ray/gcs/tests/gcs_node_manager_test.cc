@@ -88,8 +88,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 
   // Test the node definition event + alive node lifecycle event
   ASSERT_EQ(register_events.size(), 2);
-  auto ray_event_0 = std::move(*register_events[0]).Serialize();
-  auto ray_event_1 = std::move(*register_events[1]).Serialize();
+  auto ray_event_0 = std::move(*register_events[0]).Serialize().value();
+  auto ray_event_1 = std::move(*register_events[1]).Serialize().value();
   ASSERT_EQ(ray_event_0.event_type(), rpc::events::RayEvent::NODE_DEFINITION_EVENT);
   ASSERT_EQ(ray_event_0.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_0.severity(), rpc::events::RayEvent::INFO);
@@ -122,7 +122,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   node_manager.UpdateAliveNode(NodeID::FromBinary(node->node_id()), sync_message);
   auto drain_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(drain_events.size(), 1);
-  auto ray_event_02 = std::move(*drain_events[0]).Serialize();
+  auto ray_event_02 = std::move(*drain_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_02.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_02.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_02.severity(), rpc::events::RayEvent::INFO);
@@ -151,7 +151,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   // Test the dead node lifecycle event
   auto unregister_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(unregister_events.size(), 1);
-  auto ray_event_03 = std::move(*unregister_events[0]).Serialize();
+  auto ray_event_03 = std::move(*unregister_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_03.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_03.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_03.severity(), rpc::events::RayEvent::INFO);

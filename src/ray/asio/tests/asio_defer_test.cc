@@ -15,7 +15,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/asio_chaos.h"
+#include "ray/asio/asio_chaos.h"
 #include "ray/common/ray_config.h"
 
 bool EnsureBelow(const std::string &method_name, int64_t min_val, int64_t max_val) {

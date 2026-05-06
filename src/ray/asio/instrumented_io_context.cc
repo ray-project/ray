@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 
 #include <string>
 #include <utility>
 
-#include "ray/common/asio/asio_chaos.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_chaos.h"
+#include "ray/asio/asio_util.h"
 #include "ray/stats/metric.h"
 
 namespace {
