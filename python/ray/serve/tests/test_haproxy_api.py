@@ -17,10 +17,7 @@ from fastapi import FastAPI, Request, Response
 
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
-from ray.serve._private.constants import (
-    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
-    RAY_SERVE_ENABLE_HA_PROXY,
-)
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 from ray.serve._private.haproxy import (
     BackendConfig,
     HAProxyApi,
@@ -601,9 +598,6 @@ def _create_replica_server(port: int, replica_id_header: str):
     @app.post("/{path:path}")
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
-        res.headers["x-capacity-queue-token"] = req.headers.get(
-            INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER, ""
-        )
         body = await req.body()
         return {"replica": replica_id_header, "echo": body.decode("utf-8")}
 
@@ -613,7 +607,6 @@ def _create_replica_server(port: int, replica_id_header: str):
 def _create_router_server(
     port: int,
     replica_id_to_return: str,
-    capacity_queue_token_to_return: Optional[str] = None,
 ):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
     actually buffered + forwarded the request."""
@@ -624,10 +617,7 @@ def _create_router_server(
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
-        response = {"replica_id": replica_id_to_return}
-        if capacity_queue_token_to_return is not None:
-            response["capacity_queue_token"] = capacity_queue_token_to_return
-        return response
+        return {"replica_id": replica_id_to_return}
 
     def ready():
         return (
@@ -665,7 +655,6 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
         router, router_thread, router_captured = _create_router_server(
             router_port,
             replica_id_to_return=actor_name_b,  # always pick B
-            capacity_queue_token_to_return="bbb",
         )
 
         try:
@@ -737,7 +726,6 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
             )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
-            assert resp.headers.get("x-capacity-queue-token") == "bbb"
 
             # The router actually saw the original body (via wait-for-body +
             # txn.sf:req_body()). Just check the field made it through.
@@ -754,7 +742,6 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                     timeout=5,
                 )
                 assert resp.headers.get("x-replica-id") == "B"
-                assert resp.headers.get("x-capacity-queue-token") == "bbb"
 
             # GET is not POST, so wait-for-body / Lua never run; the router
             # should have seen exactly the four POSTs above and nothing more.

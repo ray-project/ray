@@ -21,11 +21,6 @@ SERVE_LOGGER_NAME = "ray.serve"
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
 
-# Internal header set by HAProxy after an ingress request router returns a
-# capacity queue token. Backends that participate in capacity-queue routing use
-# this to release the token after the proxied request completes.
-INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER = "x-ray-serve-capacity-queue-token"
-
 # Reserved runtime_env keys used to hydrate deployment actor context.
 # Unlike replicas which use _set_internal_replica_context() during init,
 # deployment actors are user-defined Ray actors. Serve controller can't

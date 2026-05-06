@@ -1,4 +1,3 @@
-import asyncio
 import sys
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -21,9 +20,6 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
-from ray.serve._private.constants import (
-    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
-)
 
 
 class _DirectRouterReplica:
@@ -32,65 +28,13 @@ class _DirectRouterReplica:
         self.backend_http_endpoint = ("127.0.0.1", 8000)
 
 
-class _FakeAcquireMethod:
-    def __init__(self, fn):
-        self._fn = fn
-
-    def remote(self, *args, **kwargs):
-        async def _result():
-            return self._fn(*args, **kwargs)
-
-        return _result()
-
-
-class _FakeReleaseMethod:
-    def __init__(self, fn):
-        self._fn = fn
-
-    def remote(self, *args, **kwargs):
-        self._fn(*args, **kwargs)
-
-
-class _FakeCapacityQueue:
-    def __init__(self, selected_replica_id: Optional[str]):
-        self.selected_replica_id = selected_replica_id
-        self.acquire_kwargs = []
-        self.released = []
-        self.acquire = _FakeAcquireMethod(self._acquire)
-        self.release = _FakeReleaseMethod(self._release)
-
-    def _acquire(self, **kwargs):
-        self.acquire_kwargs.append(kwargs)
-        return self.selected_replica_id
-
-    def _release(self, replica_id: str):
-        self.released.append(replica_id)
-
-    @property
-    def selected_replica_id(self):
-        return self._selected_replica_id
-
-    @selected_replica_id.setter
-    def selected_replica_id(self, value):
-        self._selected_replica_id = value
-
-
 def _new_direct_router(*, optimistic_load: bool = False):
     router = LLMRouter.__new__(LLMRouter)
-    router._di_deployment_names = {}
     router._di_load_cache = {}
     router._di_optimistic_load = optimistic_load
     router._di_poll_interval_s = 0.05
-    router._di_capacity_queue_enabled = False
-    router._di_capacity_queue_actor_name = "capacity_queue"
-    router._di_capacity_queue_acquire_timeout_s = 0.05
-    router._di_capacity_queue = None
-    router._di_capacity_queue_full_name = None
-    router._di_capacity_queue_discovery_lock = asyncio.Lock()
-    router._di_capacity_queue_warned_unavailable = False
-    router._di_capacity_queue_warned_missing_deployment = False
-    router._di_capacity_queue_warned_unknown_replica = False
-    router._di_app_name = None
+    router._di_routing_policy = "pow2"
+    router._di_round_robin_counter = 0
     return router
 
 
