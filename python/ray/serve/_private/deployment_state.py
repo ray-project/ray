@@ -5488,9 +5488,6 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
 
-        # TODO(jiaodong): Need to add some logic to prevent new replicas
-        # from being created once shutdown signal is sent.
-
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
@@ -5650,6 +5647,12 @@ class DeploymentStateManager:
         Returns:
             bool: Whether the target state has changed.
         """
+        if self._shutting_down:
+            logger.warning(
+                f"Ignoring deploy request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
+            return False
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
                 deployment_id
@@ -5688,6 +5691,13 @@ class DeploymentStateManager:
         self, deployment_id: DeploymentID, target_num_replicas: int
     ):
         """Set target number of replicas for a deployment."""
+        if self._shutting_down:
+            logger.warning(
+                f"Ignoring set_target_num_replicas request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
+            return
+
         self._validate_deployment_state_for_num_replica_update(deployment_id)
 
         deployment_state = self._deployment_states[deployment_id]
@@ -5856,6 +5866,13 @@ class DeploymentStateManager:
         Returns:
             True if the deployment was autoscaled, False otherwise.
         """
+        if self._shutting_down:
+            logger.warning(
+                f"Ignoring autoscale request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
+            return False
+
         if deployment_id not in self._deployment_states:
             return False
 

@@ -4069,6 +4069,58 @@ def test_shutdown(mock_deployment_state_manager):
     assert dsm.is_ready_for_shutdown()
 
 
+def test_shutdown_blocks_deploy(mock_deployment_state_manager):
+    """After shutdown, deploy() should be a no-op and not create new deployments."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    dsm.shutdown()
+
+    b_info_1, _ = deployment_info(num_replicas=3)
+    assert not dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+
+    dsm.update()
+    assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+    assert dsm.is_ready_for_shutdown()
+
+
+def test_shutdown_blocks_autoscale(mock_deployment_state_manager):
+    """After shutdown, autoscale() should be a no-op."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    b_info_1, _ = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.update()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+
+    dsm.shutdown()
+
+    assert not dsm.autoscale(TEST_DEPLOYMENT_ID, 5)
+    assert ds._target_state.target_num_replicas == 0
+
+
+def test_shutdown_blocks_set_target_num_replicas(mock_deployment_state_manager):
+    """After shutdown, set_target_num_replicas() should be a no-op."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    b_info_1, _ = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.update()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+
+    dsm.shutdown()
+
+    dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 10)
+    assert ds._target_state.target_num_replicas == 0
+
+
 def test_shutdown_does_not_delete_checkpoint(mock_deployment_state_manager):
     """Tests checkpoint must survive `shutdown() and `is_ready_for_shutdown().
     Only an explicit `delete_checkpoint() call should remove it.
