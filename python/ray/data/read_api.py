@@ -525,13 +525,13 @@ def _read_datasource_v2(
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
 
     read_op = ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
+        input_dependencies=[list_files_op],
     )
 
     stats = DatasetStats(metadata={"Read": []}, parent=None)

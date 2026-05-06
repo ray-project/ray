@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, field, replace
+from dataclasses import InitVar, dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -55,8 +55,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     right_columns_suffix: Optional[str] = None
     partition_size_hint: Optional[int] = None
     aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(
         self,
@@ -64,6 +62,9 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         right_input_op: LogicalOperator,
         num_partitions: int,
     ):
+        super().__post_init__()
+        assert isinstance(left_input_op, LogicalOperator), left_input_op
+        assert isinstance(right_input_op, LogicalOperator), right_input_op
         try:
             join_type_enum = JoinType(self.join_type)
         except ValueError:
@@ -73,12 +74,13 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
 
         object.__setattr__(self, "join_type", join_type_enum)
+        object.__setattr__(self, "name", self.__class__.__name__)
         object.__setattr__(
             self,
-            "_input_dependencies",
+            "input_dependencies",
             [left_input_op, right_input_op],
         )
-        object.__setattr__(self, "_num_outputs", num_partitions)
+        object.__setattr__(self, "num_outputs", num_partitions)
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]

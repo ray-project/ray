@@ -25,9 +25,9 @@ class Write(AbstractMap):
     min_rows_per_bundled_input: Optional[int] = field(init=False)
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
+        super().__post_init__()
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if isinstance(self.datasink_or_legacy_datasource, Datasink):
             min_rows_per_bundled_input = (
@@ -42,4 +42,5 @@ class Write(AbstractMap):
         object.__setattr__(
             self, "min_rows_per_bundled_input", min_rows_per_bundled_input
         )
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "name", self.__class__.__name__)
+        object.__setattr__(self, "num_outputs", None)

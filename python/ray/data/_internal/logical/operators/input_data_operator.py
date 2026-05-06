@@ -1,5 +1,5 @@
 import functools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -20,20 +20,14 @@ class InputData(LogicalOperator, SourceOperator):
     """
 
     input_data: List[RefBundle]
-    _input_dependencies: list[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(self):
-        object.__setattr__(self, "_num_outputs", len(self.input_data))
+        super().__post_init__()
+        object.__setattr__(self, "name", self.__class__.__name__)
+        object.__setattr__(self, "num_outputs", len(self.input_data))
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
     def infer_metadata(self) -> BlockMetadata:
         return self._cached_output_metadata

@@ -209,7 +209,6 @@ class LimitPushdownRule(Rule):
                     if isinstance(op.scanner, SupportsLimitPushdown):
                         return replace(
                             op,
-                            input_op=op.input_dependency,
                             scanner=op.scanner.push_limit(limit),
                         )
                     return op
@@ -242,7 +241,4 @@ class LimitPushdownRule(Rule):
         if isinstance(original_op, AbstractMap) and is_dataclass(original_op):
             return replace(original_op, input_dependencies=[new_input])
 
-        # Use copy and replace input dependencies approach
-        new_op = copy.copy(original_op)
-        new_op.input_dependencies = [new_input]
-        return new_op
+        return original_op._with_new_input_dependencies([new_input])
