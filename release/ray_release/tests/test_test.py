@@ -449,6 +449,32 @@ def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
     assert Test._get_human_specified_tests("") == {"//test01", "//test02"}
 
 
+@patch("ray_release.test.Test._gen_microcheck_step_ids_for_prefix")
+@patch("ray_release.test.Test._get_human_specified_tests")
+@patch("ray_release.test.Test._get_changed_tests")
+def test_gen_microcheck_step_ids_for_prefixes_dedups_prefix_independent_calls(
+    mock_get_changed_tests,
+    mock_get_human_specified_tests,
+    mock_gen_for_prefix,
+) -> None:
+    mock_get_changed_tests.return_value = {"//changed"}
+    mock_get_human_specified_tests.return_value = {"//human"}
+    mock_gen_for_prefix.side_effect = lambda prefix, _c, _h: {f"step-{prefix}"}
+
+    result = Test.gen_microcheck_step_ids_for_prefixes(
+        [LINUX_TEST_PREFIX, WINDOWS_TEST_PREFIX, MACOS_TEST_PREFIX], ""
+    )
+
+    assert result == {
+        f"step-{LINUX_TEST_PREFIX}",
+        f"step-{WINDOWS_TEST_PREFIX}",
+        f"step-{MACOS_TEST_PREFIX}",
+    }
+    mock_get_changed_tests.assert_called_once_with("")
+    mock_get_human_specified_tests.assert_called_once_with("")
+    assert mock_gen_for_prefix.call_count == 3
+
+
 def test_gen_microcheck_tests() -> None:
     test_harness = [
         {

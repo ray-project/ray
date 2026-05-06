@@ -223,8 +223,46 @@ class Test(dict):
         with the given test prefix. This is used to determine the buildkite steps in
         the microcheck pipeline.
         """
+        return cls.gen_microcheck_step_ids_for_prefixes([prefix], bazel_workspace_dir)
+
+    @classmethod
+    def gen_microcheck_step_ids_for_prefixes(
+        cls, prefixes: List[str], bazel_workspace_dir: str
+    ) -> Set[str]:
+        """
+        Generate the union of microcheck buildkite step ids across multiple OS
+        prefixes. The git/bazel-query work that determines changed and human-specified
+        tests does not depend on the prefix, so it runs once for the whole call instead
+        of once per prefix.
+        """
+        changed_tests = cls._get_changed_tests(bazel_workspace_dir)
+        human_specified_tests = cls._get_human_specified_tests(bazel_workspace_dir)
+
         step_ids = set()
-        test_targets = cls.gen_microcheck_tests(prefix, bazel_workspace_dir)
+        for prefix in prefixes:
+            step_ids.update(
+                cls._gen_microcheck_step_ids_for_prefix(
+                    prefix, changed_tests, human_specified_tests
+                )
+            )
+        return step_ids
+
+    @classmethod
+    def _gen_microcheck_step_ids_for_prefix(
+        cls,
+        prefix: str,
+        changed_tests: Set[str],
+        human_specified_tests: Set[str],
+    ) -> Set[str]:
+        """
+        Per-prefix worker for gen_microcheck_step_ids_for_prefixes. Accepts the
+        prefix-independent test sets so callers can compute them once and reuse them
+        across prefixes.
+        """
+        high_impact_tests = cls._gen_high_impact_tests(prefix)
+        test_targets = high_impact_tests.union(changed_tests, human_specified_tests)
+
+        step_ids = set()
         for test_target in test_targets:
             test = cls.gen_from_name(f"{prefix}{test_target}")
             if not test:
