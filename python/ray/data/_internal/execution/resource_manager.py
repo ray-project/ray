@@ -341,28 +341,6 @@ class ResourceManager:
             ExecutionResources.zero(),
         )
 
-    def get_mem_op_internal(self, op: PhysicalOperator) -> int:
-        """Return the memory usage of pending task outputs for the given operator."""
-        return self._mem_op_internal[op]
-
-    def get_mem_op_outputs(
-        self,
-        op: PhysicalOperator,
-        include_ineligible_downstream: bool = False,
-    ) -> int:
-        """Return the memory usage of the outputs of the given operator."""
-        # Outputs usage of the current operator.
-        op_outputs_usage = self._mem_op_outputs[op]
-
-        if not include_ineligible_downstream:
-            return op_outputs_usage
-
-        # Also account the downstream ineligible operators' memory usage.
-        return (
-            op_outputs_usage
-            + self._get_downstream_ineligible_ops_usage(op).object_store_memory
-        )
-
     def get_op_usage_str(self, op: PhysicalOperator, *, verbose: bool) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
@@ -381,8 +359,8 @@ class ResourceManager:
 
         if verbose:
             usage_str += (
-                f" (in={memory_string(self.get_mem_op_internal(op))},"
-                f"out={memory_string(self.get_mem_op_outputs(op))})"
+                f" (in={memory_string(self._mem_op_internal[op])},"
+                f"out={memory_string(self._mem_op_outputs[op])})"
             )
             if self._op_resource_allocator is not None:
                 allocation = self._op_resource_allocator.get_allocation(op)
@@ -940,8 +918,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         res = self._op_budgets[op].object_store_memory
         # Add the remaining of `_reserved_for_op_outputs`.
-        op_outputs_usage = self._resource_manager.get_mem_op_outputs(
-            op, include_ineligible_downstream=True
+        op_outputs_usage = (
+            self._resource_manager._mem_op_outputs[op]
+            + self._resource_manager._get_downstream_ineligible_ops_usage(
+                op
+            ).object_store_memory
         )
 
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
@@ -976,11 +957,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage = 0
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager.get_mem_op_internal(op)
+            op_mem_usage += self._resource_manager._mem_op_internal[op]
             # Add the portion of op outputs usage that has
             # exceeded `_reserved_for_op_outputs`.
-            op_outputs_usage = self._resource_manager.get_mem_op_outputs(
-                op, include_ineligible_downstream=True
+            op_outputs_usage = (
+                self._resource_manager._mem_op_outputs[op]
+                + self._resource_manager._get_downstream_ineligible_ops_usage(
+                    op
+                ).object_store_memory
             )
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
 
