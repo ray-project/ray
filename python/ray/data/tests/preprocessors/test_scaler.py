@@ -42,7 +42,7 @@ def test_min_max_scaler():
     processed_col_c = [0.0, 0.0, None]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -65,7 +65,7 @@ def test_min_max_scaler():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
@@ -91,7 +91,7 @@ def test_min_max_scaler():
             "B_mm_scaled": pred_processed_col_b,
             "C_mm_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -122,7 +122,7 @@ def test_max_abs_scaler():
     processed_col_c = [1.0, 1.0, None]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -145,7 +145,7 @@ def test_max_abs_scaler():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -171,7 +171,7 @@ def test_max_abs_scaler():
             "B_ma_scaled": pred_processed_col_b,
             "C_ma_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -209,7 +209,7 @@ def test_robust_scaler():
     processed_col_c = [-6, -0.5, 0, 0.5, 4]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -232,7 +232,7 @@ def test_robust_scaler():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -258,7 +258,7 @@ def test_robust_scaler():
             "B_r_scaled": pred_processed_col_b,
             "C_r_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -312,7 +312,7 @@ def test_standard_scaler():
             "C": processed_col_c,
             "D": processed_col_d,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -338,7 +338,7 @@ def test_standard_scaler():
             "C": pred_processed_col_c,
             "D": pred_processed_col_d,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
@@ -364,7 +364,7 @@ def test_standard_scaler():
             "B_s_scaled": pred_processed_col_b,
             "C_s_scaled": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 

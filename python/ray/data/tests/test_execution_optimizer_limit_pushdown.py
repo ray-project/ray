@@ -39,10 +39,11 @@ def _check_valid_plan_and_result(
 class _DummyLogicalOperator(LogicalOperator):
     def __init__(self, input_dependencies, name=None, num_outputs=None):
         super().__init__(
-            _name=name or self.__class__.__name__,
-            _input_dependencies=input_dependencies,
             _num_outputs=num_outputs,
         )
+        object.__setattr__(self, "_input_dependencies", input_dependencies)
+        if name is not None:
+            object.__setattr__(self, "_name", name)
 
     @property
     def num_outputs(self):
@@ -52,18 +53,18 @@ class _DummyLogicalOperator(LogicalOperator):
 def test_limit_pushdown_recreates_frozen_download():
     input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
     download_op = Download(
-        input_op=input_op,
         uri_column_names=["uri"],
         output_bytes_column_names=["bytes"],
+        input_dependencies=[input_op],
     )
-    limit_op = Limit(download_op, 1)
+    limit_op = Limit(1, input_dependencies=[download_op])
 
     result = LimitPushdownRule()._push_limit_down(limit_op)
 
     assert isinstance(result, Download)
-    assert isinstance(result.input_dependency, Limit)
-    assert result.input_dependency.limit == 1
-    assert result.input_dependency.input_dependency is input_op
+    assert isinstance(result.input_dependencies[0], Limit)
+    assert result.input_dependencies[0].limit == 1
+    assert result.input_dependencies[0].input_dependencies[0] is input_op
 
 
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
