@@ -205,7 +205,13 @@ def get_prerequisite_step(
             return bare_key
         return f"{bare_key}--python{tag_parts[py_index][2:]}"
 
-    if image_name == "ray-llm":
+    if image_name == "ray-torch":
+        tag_suffix = "-".join(tag_parts[py_index + 1 :]) if py_index is not None else ""
+        if tag_suffix == "cpu":
+            bare_key = config["release_image_step_ray_torch_cpu"]
+        else:
+            bare_key = config["release_image_step_ray_torch_cuda"]
+    elif image_name == "ray-llm":
         bare_key = config["release_image_step_ray_llm"]
     else:
         # ray: pick cpu or cuda key based on tag suffix

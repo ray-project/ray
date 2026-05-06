@@ -38,6 +38,8 @@ release_image_step:
   ray_cuda: anyscalecudabuild
   ray_ml: anyscalemlbuild
   ray_llm: anyscalellmbuild
+  ray_torch_cpu: anyscaletorchcpubuild
+  ray_torch_cuda: anyscaletorchcudabuild
 """
 
 
@@ -61,6 +63,8 @@ def test_init_global_config() -> None:
         assert config["release_image_step_ray_cuda"] == "anyscalecudabuild"
         assert config["release_image_step_ray_ml"] == "anyscalemlbuild"
         assert config["release_image_step_ray_llm"] == "anyscalellmbuild"
+        assert config["release_image_step_ray_torch_cpu"] == "anyscaletorchcpubuild"
+        assert config["release_image_step_ray_torch_cuda"] == "anyscaletorchcudabuild"
         assert config["byod_ecr"] == "029272617770.dkr.ecr.us-west-2.amazonaws.com"
         assert config["byod_ecr_region"] == "us-west-2"
         assert config["byod_gcp_cr"] == "us-west1-docker.pkg.dev/anyscale-oss-ci"

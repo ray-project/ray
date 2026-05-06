@@ -109,6 +109,41 @@
       cluster:
         ray_version: 2.50.0
 
+- name: hello_world_torch
+  python: "3.13"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world_torch.py
+
+  variations:
+    - __suffix__: cpu
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cpu
+        cluster_compute: hello_world_compute_config.yaml
+    - __suffix__: cu128
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cu128
+        cluster_compute: hello_world_compute_config_gpu.yaml
+    - __suffix__: cu130
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cu130
+        cluster_compute: hello_world_compute_config_gpu.yaml
+
 - name: hello_world_custom_byod
   python: "3.10"
   team: reef
@@ -1085,7 +1120,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1125,7 +1160,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1165,7 +1200,7 @@
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: long_running_many_jobs
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1209,7 +1244,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1219,7 +1254,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1240,7 +1275,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1250,7 +1285,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1271,7 +1306,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1280,7 +1315,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -1297,7 +1332,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   team: serve
 
@@ -1306,7 +1341,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -1323,7 +1358,7 @@
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   team: serve
 
@@ -1332,7 +1367,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -1434,7 +1469,7 @@
 ########################
 
 - name: pytest_serve_scale_replicas
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1445,6 +1480,8 @@
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    byod:
+      type: torch-cu128
 
   run:
     timeout: 7200
@@ -1462,7 +1499,7 @@
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_multi_deployment_1k_noop_replica
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1473,6 +1510,8 @@
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    byod:
+      type: torch-cpu
 
   run:
     timeout: 7200
@@ -1483,8 +1522,8 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py312
-      python: "3.12"
+#    - __suffix__: aws.py312
+#      python: "3.13"
     - __suffix__: aws.haproxy
       cluster:
         byod:
@@ -1504,7 +1543,7 @@
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1513,7 +1552,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1541,7 +1580,7 @@
             - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
 
 - name: serve_controller_benchmark_haproxy
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1557,6 +1596,7 @@
         # to use that here.
         - RAY_SERVE_ENABLE_HA_PROXY=1
         - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+      type: torch-cpu
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1585,7 +1625,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1596,6 +1636,8 @@
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    byod:
+      type: torch-cpu
 
   run:
     timeout: 7200
@@ -1613,7 +1655,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_throughput_optimized_microbenchmarks
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1626,6 +1668,7 @@
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
         - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+      type: torch-cpu
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1694,7 +1737,7 @@
           --router-type capacity_queue
 
 - name: pytest_serve_resnet_benchmark
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1703,7 +1746,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -3787,6 +3830,7 @@
         cluster_compute: agent_stress_compute_gce.yaml
 
 - name: k8s_serve_ha_test
+  python: "3.13"
   group: k8s-test
   working_dir: k8s_tests
 
@@ -4661,14 +4705,14 @@
 
 - name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: torch-cu128
       post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4687,14 +4731,14 @@
 
 - name: multi_agent_a2a  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/multi_agent_a2a
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: torch-cu128
       post_build_script: byod_multi_agent_a2a.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4712,7 +4756,7 @@
 
 - name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.12"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/model_multiplexing_forecast  # use // to access from repo's root
@@ -4737,7 +4781,7 @@
 
 - name: model_composition_recsys  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.12"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/model_composition_recsys  # use // to access from repo's root
@@ -4762,7 +4806,7 @@
 
 - name: asynchronous_inference  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/asynchronous-inference
@@ -4788,7 +4832,7 @@
 
 - name: video_analysis_pipeline  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.10"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/video-analysis
