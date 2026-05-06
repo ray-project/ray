@@ -15,6 +15,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticUndefined
 
 from ray import cloudpickle
 from ray._common import ray_option_utils
@@ -234,6 +235,28 @@ class DeploymentConfig(BaseModel):
     user_configured_option_names: Set[str] = set()
 
     model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
+
+    def __setstate__(self, state):
+        # Pydantic v2 stores field values in `__dict__` and does not re-apply
+        # class-level defaults on unpickle. The Serve controller checkpoints
+        # `DeploymentConfig` to its KV store via cloudpickle, so when a
+        # checkpoint written by an older Ray version is loaded by a newer
+        # version that has added optional fields with defaults, those fields
+        # are absent from the restored `__dict__` and accessing them raises
+        # AttributeError. Fill any missing fields with their declared defaults
+        # so the recovered model behaves like a freshly-constructed one.
+        # `get_default(call_default_factory=True)` returns a fresh value per
+        # call (it `smart_deepcopy`s static defaults and re-invokes factories),
+        # so static mutable defaults are not shared across recovered instances.
+        super().__setstate__(state)
+        for name, field in type(self).model_fields.items():
+            if name in self.__dict__:
+                continue
+            default = field.get_default(call_default_factory=True)
+            if default is PydanticUndefined:
+                # Required field with no default — don't fabricate a value.
+                continue
+            self.__dict__[name] = default
 
     @field_validator("user_config")
     @classmethod

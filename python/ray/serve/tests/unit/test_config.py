@@ -1270,6 +1270,47 @@ def test_rolling_update_percentage_proto_roundtrip():
     assert deserialized.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
 
 
+def test_deployment_config_setstate_fills_missing_fields():
+    """Cross-version cloudpickle recovery fills missing fields with defaults.
+
+    The Serve controller checkpoints `DeploymentConfig` to its KV store via
+    cloudpickle. When a newer Ray version loads a checkpoint written by an
+    older version that pre-dated a field, Pydantic v2 does not re-apply
+    class-level defaults on unpickle and accessing the missing field raises
+    `AttributeError`. `__setstate__` should patch missing fields with their
+    declared defaults so the recovered model is usable.
+    """
+    config = DeploymentConfig(num_replicas=7)
+    state = config.__getstate__()
+    assert "rolling_update_percentage" in state["__dict__"]
+
+    # Simulate a checkpoint written by an older Ray version that did not
+    # have this field by stripping it from the pickled state.
+    del state["__dict__"]["rolling_update_percentage"]
+
+    recovered = DeploymentConfig.__new__(DeploymentConfig)
+    recovered.__setstate__(state)
+
+    # Missing field is filled with the class-level default instead of raising.
+    assert recovered.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
+    # Previously-set fields are preserved.
+    assert recovered.num_replicas == 7
+
+    # Full cloudpickle round-trip on the recovered instance still works.
+    repickled = cloudpickle.loads(cloudpickle.dumps(recovered))
+    assert repickled.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
+    assert repickled.num_replicas == 7
+
+
+def test_deployment_config_pickle_roundtrip_preserves_explicit_values():
+    """Adding __setstate__ must not overwrite explicit values on a normal round-trip."""
+    config = DeploymentConfig(rolling_update_percentage=0.5, num_replicas=7)
+    repickled = cloudpickle.loads(cloudpickle.dumps(config))
+    assert repickled.rolling_update_percentage == 0.5
+    assert repickled.num_replicas == 7
+    assert repickled == config
+
+
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
 def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
