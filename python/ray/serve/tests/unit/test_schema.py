@@ -21,6 +21,7 @@ from ray.serve.config import (
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
+    ApplyStrategy,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
@@ -991,6 +992,28 @@ class TestServeDeploySchema:
         else:
             s = ServeDeploySchema.model_validate(deploy_config_dict)
             assert s.target_capacity == output_val
+
+    def test_apply_strategy_defaults_to_replace(self):
+        config = ServeDeploySchema.model_validate({"applications": []})
+        assert config.apply_strategy == ApplyStrategy.REPLACE
+
+    def test_apply_strategy_accepts_merge(self):
+        config = ServeDeploySchema.model_validate(
+            {"applications": [], "apply_strategy": "merge"}
+        )
+        assert config.apply_strategy == ApplyStrategy.MERGE
+
+    def test_apply_strategy_accepts_replace(self):
+        config = ServeDeploySchema.model_validate(
+            {"applications": [], "apply_strategy": "replace"}
+        )
+        assert config.apply_strategy == ApplyStrategy.REPLACE
+
+    def test_apply_strategy_rejects_invalid(self):
+        with pytest.raises(ValidationError):
+            ServeDeploySchema.model_validate(
+                {"applications": [], "apply_strategy": "invalid"}
+            )
 
 
 class TestLoggingConfig:

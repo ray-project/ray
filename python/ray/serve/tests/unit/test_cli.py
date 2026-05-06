@@ -133,6 +133,32 @@ class TestDeploy:
             ).model_dump(exclude_unset=True)
         ]
 
+    def test_deploy_with_merge_flag(self, fake_serve_client):
+        runner = CliRunner()
+        result = runner.invoke(deploy, ["my_module:my_app", "--merge"])
+        assert result.exit_code == 0, result.output
+        assert fake_serve_client.deployed_config["apply_strategy"] == "merge"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
+    def test_deploy_yaml_with_merge_flag(self, fake_serve_client):
+        runner = CliRunner()
+        config = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "import_path": "module.app",
+                    "route_prefix": "/app1",
+                }
+            ]
+        }
+        with NamedTemporaryFile("w", suffix=".yaml") as f:
+            yaml.dump(config, f)
+            f.flush()
+            result = runner.invoke(deploy, [f.name, "--merge"])
+
+        assert result.exit_code == 0, result.output
+        assert fake_serve_client.deployed_config["apply_strategy"] == "merge"
+
 
 class TestEnumSerialization:
     """Test that enum representer correctly serializes enums in YAML dumps."""

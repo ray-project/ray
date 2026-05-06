@@ -195,6 +195,30 @@ You can add, remove or update entries under the `applications` field to add, rem
 The in-place update behavior for an application when you resubmit a config is the same as the single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
 
+### Per-application upsert with `--merge`
+
+The `--merge` flag changes `serve deploy` to upsert mode. Applications in the config are created or updated, and applications not in the config are left untouched:
+
+```console
+$ serve deploy my_app.yaml --merge
+```
+
+In merge mode, top level fields such as `http_options`, `grpc_options`, `proxy_location`, `target_capacity`, and `logging_config` are only applied if you explicitly set them in the YAML. If you omit them, the cluster's running options are preserved.
+
+You can also set the strategy directly in the YAML config:
+
+```yaml
+apply_strategy: merge
+applications:
+  - name: my_new_app
+    import_path: my_module:app
+    route_prefix: /my-app
+```
+
+:::{tip}
+Use `--merge` for per-application iteration on shared clusters. Use the default `replace` mode when you want a single config file to be the authoritative source of truth for the entire cluster.
+:::
+
 
 
 (serve-config-migration)=

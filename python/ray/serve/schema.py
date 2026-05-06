@@ -983,6 +983,13 @@ class HTTPOptionsSchema(BaseModel):
         return v
 
 
+class ApplyStrategy(str, Enum):
+    """Strategy for how `serve deploy` applies the submitted config."""
+
+    REPLACE = "replace"
+    MERGE = "merge"
+
+
 @PublicAPI(stability="stable")
 class ServeDeploySchema(BaseModel):
     """
@@ -1017,6 +1024,15 @@ class ServeDeploySchema(BaseModel):
         ..., description="The set of applications to run on the Ray cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    apply_strategy: ApplyStrategy = Field(
+        default=ApplyStrategy.REPLACE,
+        description=(
+            "Strategy for applying the config. 'replace' (default) treats the "
+            "config as the full goal state and deletes any declarative apps not "
+            "in the list. 'merge' upserts apps from the config and leaves all "
+            "other existing apps untouched."
+        ),
+    )
 
     @field_validator("applications")
     @classmethod

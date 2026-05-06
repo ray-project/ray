@@ -96,6 +96,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.schema import (
     APIType,
     ApplicationDetails,
+    ApplyStrategy,
     DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
@@ -1121,20 +1122,34 @@ class ServeController:
             deployment_time = time.time()
 
         new_config_checkpoint = {}
-
         _, curr_config, _ = self._read_config_checkpoint()
+        is_merge = config.apply_strategy == ApplyStrategy.MERGE
+        ServeUsageTag.REST_API_APPLY_STRATEGY.record(config.apply_strategy.value)
+        if is_merge:
+            logger.info("Applying config (merge)")
+        else:
+            logger.info("Applying config (replace)")
 
-        self._target_capacity_direction = calculate_target_capacity_direction(
-            curr_config=curr_config,
-            new_config=config,
-            curr_target_capacity_direction=self._target_capacity_direction,
-        )
-        log_target_capacity_change(
-            self._target_capacity,
-            config.target_capacity,
-            self._target_capacity_direction,
-        )
-        self._target_capacity = config.target_capacity
+        # In merge mode, start from the existing checkpoint so that apps not
+        # in the submitted config are preserved.
+        if is_merge and curr_config is not None:
+            new_config_checkpoint = {
+                app.name: app.model_dump(exclude_unset=True)
+                for app in curr_config.applications
+            }
+
+        if not is_merge or "target_capacity" in config.model_fields_set:
+            self._target_capacity_direction = calculate_target_capacity_direction(
+                curr_config=curr_config,
+                new_config=config,
+                curr_target_capacity_direction=self._target_capacity_direction,
+            )
+            log_target_capacity_change(
+                self._target_capacity,
+                config.target_capacity,
+                self._target_capacity_direction,
+            )
+            self._target_capacity = config.target_capacity
 
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
@@ -1159,12 +1174,13 @@ class ServeController:
 
         # Declaratively apply the new set of applications.
         # This will delete any applications no longer in the config that were
-        # previously deployed via the REST API.
+        # previously deployed via the REST API if is_merge is False
         self.application_state_manager.apply_app_configs(
             config.applications,
             deployment_time=deployment_time,
             target_capacity=self._target_capacity,
             target_capacity_direction=self._target_capacity_direction,
+            delete_missing_apps=not is_merge,
         )
 
         self.application_state_manager.save_checkpoint()

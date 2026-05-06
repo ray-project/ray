@@ -907,5 +907,99 @@ def test_get_app_handle(serve_instance):
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
 
 
+def test_deploy_merge_then_replace(serve_instance):
+    """Test that merge upserts apps without deleting existing ones,
+    and a subsequent replace deletes apps not in the config."""
+    client = serve_instance
+
+    # Deploy app1 and app2 in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    # Merge deploy app3 only. app1 and app2 should survive.
+    merge_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app3",
+                    "route_prefix": "/app3",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                },
+            ],
+            "apply_strategy": "merge",
+        }
+    )
+    client.deploy_apps(merge_config)
+
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="app3",
+    )
+    # app1 and app2 should still be running.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="app1",
+    )
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="5 pizzas please!",
+        app_name="app2",
+    )
+
+    # Verify all three apps show up in instance details.
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "app1" in details["applications"]
+    assert "app2" in details["applications"]
+    assert "app3" in details["applications"]
+
+    # Replace deploy with app2 only. app1 and app3 should be deleted.
+    replace_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                    "deployments": [
+                        {
+                            "name": "Adder",
+                            "user_config": {"increment": 3},
+                        },
+                        {
+                            "name": "Multiplier",
+                            "user_config": {"factor": 4},
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    client.deploy_apps(replace_config)
+
+    def only_app2_remains():
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        return (
+            "app1" not in details["applications"]
+            and "app3" not in details["applications"]
+            and details["applications"]["app2"]["status"] == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(only_app2_remains)
+
+    # Confirm app2 still works.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="5 pizzas please!",
+        app_name="app2",
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

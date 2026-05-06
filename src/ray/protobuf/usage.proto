@@ -106,6 +106,8 @@ enum TagKey {
   SERVE_NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE = 34;
   // Whether a custom autoscaling policy was used ("1" if used)
   SERVE_CUSTOM_AUTOSCALING_POLICY_USED = 35;
+  // The apply strategy used in serve deploy ("replace" or "merge")
+  SERVE_REST_API_APPLY_STRATEGY = 36;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

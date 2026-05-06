@@ -38,6 +38,7 @@ from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
+    ApplyStrategy,
     LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -338,6 +339,18 @@ def _generate_config_from_file_or_import_path(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
+@click.option(
+    "--merge",
+    is_flag=True,
+    default=False,
+    help=(
+        "Treat the config as a partial overlay: applications in the config "
+        "are upserted, and existing applications not in the config are left "
+        "untouched. Top level fields (http_options, grpc_options, etc.) are "
+        "only applied if explicitly set. Without this flag, the config is "
+        "treated as the full goal state and missing apps are deleted."
+    ),
+)
 def deploy(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -346,6 +359,7 @@ def deploy(
     working_dir: str,
     name: Optional[str],
     address: str,
+    merge: bool,
 ):
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -360,6 +374,9 @@ def deploy(
         arguments=args_dict,
         runtime_env=final_runtime_env,
     )
+
+    if merge:
+        config.apply_strategy = ApplyStrategy.MERGE
 
     ServeSubmissionClient(address).deploy_applications(
         config.model_dump(exclude_unset=True),
