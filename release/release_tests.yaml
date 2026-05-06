@@ -845,7 +845,7 @@
 #######################
 
 - name: long_running_actor_deaths
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -883,7 +883,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_actor_tasks
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -923,7 +923,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_drivers
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -965,7 +965,7 @@
         cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_tasks
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1005,7 +1005,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1045,7 +1045,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_node_failures
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1352,7 +1352,7 @@
 # Runtime env tests
 ########################
 - name: runtime_env_rte_many_tasks_actors
-  python: "3.10"
+  python: "3.13"
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -1381,7 +1381,7 @@
 
 
 - name: runtime_env_wheel_urls
-  python: "3.10"
+  python: "3.13"
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -2279,7 +2279,7 @@
 ########################
 
 - name: shuffle_100gb
-  python: "3.10"
+  python: "3.13"
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2306,7 +2306,7 @@
 
 
 - name: stress_test_placement_group
-  python: "3.10"
+  python: "3.13"
   group: core-multi-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2332,7 +2332,7 @@
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
-  python: "3.10"
+  python: "3.13"
   group: core-multi-test
   working_dir: nightly_tests
 
@@ -2357,7 +2357,7 @@
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: microbenchmark
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2386,7 +2386,7 @@
       python: "3.12"
 
 - name: compiled_graphs
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2559,6 +2559,7 @@
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
 
 - name: dask_on_ray_100gb_sort
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2584,7 +2585,7 @@
 
 
 - name: stress_test_state_api_scale
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2637,7 +2638,7 @@
 
 
 - name: shuffle_20gb_with_state_api
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2665,7 +2666,7 @@
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
 - name: stress_test_many_tasks
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2710,7 +2711,7 @@
           cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 - name: stress_test_dead_actors
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2758,7 +2759,7 @@
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
 - name: threaded_actors_stress_test
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2819,7 +2820,7 @@
 #         timeout: 600
 
 - name: stress_test_many_runtime_envs
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2848,7 +2849,7 @@
         frequency: manual
 
 - name: single_node_oom
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2882,6 +2883,7 @@
 
 
 - name: dask_on_ray_1tb_sort
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2902,11 +2904,11 @@
 
 
 - name: many_nodes_actor_test_on_v2
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: benchmarks
 
-  frequency: nightly-3x
+  frequency: nightly
   team: core
   cluster:
     anyscale_sdk_2026: true
@@ -2946,7 +2948,7 @@
 #
 
 - name: pg_autoscaling_regression_test
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2970,7 +2972,7 @@
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
-  python: "3.10"
+  python: "3.13"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -3001,7 +3003,7 @@
 #########################
 
 - name: single_node
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3029,7 +3031,7 @@
         cluster_compute: single_node_gce.yaml
 
 - name: object_store
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3058,7 +3060,7 @@
         cluster_compute: object_store_gce.yaml
 
 - name: small_objects
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3082,7 +3084,7 @@
     - __suffix__: aws
 
 - name: large_objects
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3106,11 +3108,11 @@
     - __suffix__: aws
 
 - name: many_actors
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
-  frequency: nightly-3x
+  frequency: nightly
   team: core
   env: aws_perf
   cluster:
@@ -3136,7 +3138,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3157,7 +3159,7 @@
 
 
 - name: many_tasks
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3187,7 +3189,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3218,7 +3220,7 @@
 
 
 - name: many_pgs_smoke_test
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3239,7 +3241,7 @@
 
 
 - name: many_nodes
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3268,7 +3270,7 @@
         cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
-  python: "3.10"
+  python: "3.13"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3340,7 +3342,7 @@
 ##################
 
 - name: chaos_many_tasks_baseline
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3365,7 +3367,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_tasks_kill_raylet
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3391,7 +3393,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_tasks_terminate_instance
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3412,7 +3414,7 @@
     - __suffix__: aws
 
 - name: chaos_many_tasks_iptable_failure_injection
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3444,7 +3446,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors_baseline
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3469,7 +3471,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors_kill_raylet
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3495,7 +3497,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors_terminate_instance
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3516,7 +3518,7 @@
     - __suffix__: aws
 
 - name: chaos_many_actors_iptable_failure_injection
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3548,7 +3550,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_streaming_generator_baseline
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3573,7 +3575,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_streaming_generator_kill_raylet
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3599,7 +3601,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_streaming_generator_terminate_instance
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3620,7 +3622,7 @@
     - __suffix__: aws
 
 - name: chaos_streaming_generator_iptable_failure_injection
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3652,7 +3654,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_object_ref_borrowing_baseline
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3677,7 +3679,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_object_ref_borrowing_kill_raylet
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3703,7 +3705,7 @@
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_object_ref_borrowing_terminate_instance
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -3724,7 +3726,7 @@
     - __suffix__: aws
 
 - name: chaos_object_ref_borrowing_iptable_failure_injection
-  python: "3.10"
+  python: "3.13"
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -4099,7 +4101,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
 - name: autoscaler_aws
-  python: "3.10"
+  python: "3.13"
   group: autoscaler-test
   working_dir: autoscaling_tests
 
