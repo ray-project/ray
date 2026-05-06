@@ -24,7 +24,6 @@ from ray.serve._private.haproxy import (
     BackendConfig,
     HAProxyApi,
     HAProxyConfig,
-    HAProxyManager,
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
@@ -496,10 +495,9 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         )
         api = _make_api(temp_dir, {"plain": backend})
 
-        lua_path, changed = api._write_ingress_request_router_lua([backend])
+        result = api._write_ingress_request_router_lua([backend])
 
-        assert lua_path is None
-        assert not changed
+        assert result is None
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
@@ -961,40 +959,6 @@ async def test_start(haproxy_api_cleanup):
 
 
 @pytest.mark.asyncio
-async def test_start_discards_haproxy_output():
-    """HAProxy output must not be left in undrained pipes.
-
-    Request-routing logs can be large during LLM benchmarks; if stdout/stderr
-    are asyncio pipes and nobody drains them, HAProxy can block while writing
-    logs and stop serving traffic.
-    """
-    with tempfile.TemporaryDirectory() as temp_dir:
-        api = HAProxyApi(
-            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
-            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
-        )
-        api._wait_for_hap_availability = mock.AsyncMock()
-
-        proc = mock.Mock()
-        proc.returncode = None
-
-        with mock.patch(
-            "ray.serve._private.haproxy.get_haproxy_binary",
-            return_value="/usr/bin/haproxy",
-        ), mock.patch(
-            "ray.serve._private.haproxy.asyncio.create_subprocess_exec",
-            new=mock.AsyncMock(return_value=proc),
-        ) as create_subprocess_exec:
-            started_proc = await api._start_and_wait_for_haproxy()
-
-        assert started_proc is proc
-        create_subprocess_exec.assert_awaited_once()
-        kwargs = create_subprocess_exec.await_args.kwargs
-        assert kwargs["stdout"] == asyncio.subprocess.DEVNULL
-        assert kwargs["stderr"] == asyncio.subprocess.DEVNULL
-
-
-@pytest.mark.asyncio
 async def test_stop(haproxy_api_cleanup):
     """Test HAProxy stop functionality."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -1258,81 +1222,6 @@ async def test_update_and_reload(haproxy_api_cleanup):
             timeout=5,
             retry_interval_ms=100,
         )
-
-
-@pytest.mark.asyncio
-async def test_reload_skips_graceful_reload_when_config_unchanged(
-    haproxy_api_cleanup,
-):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
-        socket_path = os.path.join(temp_dir, "admin.sock")
-
-        backend = BackendConfig(
-            name="backend",
-            path_prefix="/",
-            app_name="backend_app",
-            servers=[
-                ServerConfig(
-                    name="server",
-                    host="127.0.0.1",
-                    port=9999,
-                    replica_id="replica-id",
-                )
-            ],
-            ingress_request_router_servers=[
-                ServerConfig(name="router", host="127.0.0.1", port=9000)
-            ],
-        )
-        config = HAProxyConfig(
-            http_options=HTTPOptions(
-                host="127.0.0.1",
-                port=8000,
-            ),
-            stats_port=8404,
-            socket_path=socket_path,
-        )
-        api = HAProxyApi(
-            cfg=config,
-            backend_configs={backend.name: backend},
-            config_file_path=config_file_path,
-        )
-        haproxy_api_cleanup(api)
-        api._graceful_reload = mock.AsyncMock()
-
-        await api.reload()
-        api._graceful_reload.assert_awaited_once()
-
-        await api.reload()
-        api._graceful_reload.assert_awaited_once()
-
-        backend2 = BackendConfig(
-            name="backend_2",
-            path_prefix="/api",
-            app_name="backend_app_2",
-            servers=[ServerConfig(name="server2", host="127.0.0.1", port=9998)],
-        )
-        api.set_backend_configs({backend.name: backend, backend2.name: backend2})
-
-        await api.reload()
-        assert api._graceful_reload.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_haproxy_manager_health_check_uses_process_liveness():
-    manager = HAProxyManager.__new__(HAProxyManager)
-    manager._haproxy = mock.Mock()
-    manager._haproxy._is_running.return_value = True
-    manager._haproxy.is_running = mock.AsyncMock(
-        side_effect=AssertionError("admin socket should not be used")
-    )
-
-    assert await manager.check_health()
-    manager._haproxy._is_running.assert_called_once()
-    manager._haproxy.is_running.assert_not_awaited()
-
-    manager._haproxy._is_running.return_value = False
-    assert not await manager.check_health()
 
 
 @pytest.mark.asyncio
