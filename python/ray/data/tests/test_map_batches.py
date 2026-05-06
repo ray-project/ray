@@ -15,6 +15,7 @@ import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
@@ -852,6 +853,102 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     # Rows with a=1.5 should have float a, with b=None
     assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
+def test_map_batches_set_label_selector(ray_start_regular_shared):
+    """Verify that label_selector is correctly set in the Ray remote args."""
+    ds = ray.data.range(10)
+    test_selector = {"instance-type": "cpu-large"}
+
+    # map_batches with TaskPoolStrategy
+    ds_task = ds.map_batches(
+        lambda x: x, compute=TaskPoolStrategy(), label_selector=test_selector
+    )
+    assert (
+        ds_task._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        == test_selector
+    )
+
+    # map_batches with ActorPoolStrategy
+    class DummyActor:
+        def __call__(self, batch):
+            return batch
+
+    ds_actor = ds.map_batches(
+        DummyActor, compute=ActorPoolStrategy(size=1), label_selector=test_selector
+    )
+    assert (
+        ds_actor._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        == test_selector
+    )
+
+    # Validate label_selector set for dataset flat_map
+    ds_flat = ds.flat_map(lambda x: [x], label_selector=test_selector)
+    assert (
+        ds_flat._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        == test_selector
+    )
+
+    # Validate label_selector set for dataset filter
+    ds_filter = ds.filter(lambda x: True, label_selector=test_selector)
+    assert (
+        ds_filter._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        == test_selector
+    )
+
+    # Validate label_selector set for map_groups
+    ds_grouped = ds.groupby("id").map_groups(lambda x: x, label_selector=test_selector)
+    assert (
+        ds_grouped._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        == test_selector
+    )
+
+
+def test_map_batches_label_schedules(ray_start_cluster):
+    """Verify that tasks and actors are scheduled on the expected labeled nodes."""
+    ray.shutdown()  # shutdown shared instance
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 1})
+
+    # Two worker nodes with distinct labels
+    cluster.add_node(num_cpus=2, labels={"region": "us-west"}, resources={"worker1": 1})
+    cluster.add_node(num_cpus=2, labels={"region": "us-east"}, resources={"worker2": 1})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    worker1_id = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    worker2_id = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+
+    class NodeIdActor:
+        def __call__(self, batch):
+            node_id = ray.get_runtime_context().get_node_id()
+            return {"node_id": [node_id] * len(batch["id"])}
+
+    def get_execution_node_id(batch):
+        node_id = ray.get_runtime_context().get_node_id()
+        return {"node_id": [node_id] * len(batch["id"])}
+
+    ds = ray.data.range(10, override_num_blocks=2)
+
+    # Test TaskPoolStrategy routing to us-west
+    res_task = ds.map_batches(
+        get_execution_node_id,
+        compute=TaskPoolStrategy(),
+        label_selector={"region": "us-west"},
+    ).take_all()
+    assert all(row["node_id"] == worker1_id for row in res_task)
+
+    # Test ActorPoolStrategy routing to us-east
+    res_actor = ds.map_batches(
+        NodeIdActor,
+        compute=ActorPoolStrategy(size=1),
+        label_selector={"region": "us-east"},
+    ).take_all()
+    assert all(row["node_id"] == worker2_id for row in res_actor)
 
 
 if __name__ == "__main__":

@@ -244,6 +244,26 @@ def test_read_datasource_basic_functionality(
     assert rows_same(df, expected_df)
 
 
+def test_read_datasource_label_selector(shutdown_only):
+    """Verify that label_selector is correctly captured in the logical plan for reads."""
+
+    class DummyDatasource(Datasource):
+        def get_read_tasks(self, parallelism):
+            return []
+
+        def estimate_inmemory_data_size(self):
+            return None
+
+    test_selector = {"instance-type": "spot"}
+
+    # Test read_datasource sets label selector correctly
+    ds = ray.data.read_datasource(DummyDatasource(), label_selector=test_selector)
+
+    logical_op = ds._plan._logical_plan.dag
+    assert "label_selector" in logical_op.ray_remote_args
+    assert logical_op.ray_remote_args["label_selector"] == test_selector
+
+
 if __name__ == "__main__":
     import sys
 

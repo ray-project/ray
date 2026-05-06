@@ -322,6 +322,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -407,6 +408,8 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
+            label_selector: The label selector requirements for each node that runs a
+                parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -442,6 +445,7 @@ class Dataset:
             num_gpus,
             memory,
             ray_remote_args,
+            label_selector,
         )
 
         plan = self._plan.copy()
@@ -502,6 +506,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         udf_modifying_row_count: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -683,6 +688,8 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
+            label_selector: The label selector requirements for each node that runs a
+                parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
             udf_modifying_row_count: If your UDF produces the same number of output rows
                 as it receives, set this parameter to False. It allows Ray Data to
@@ -756,6 +763,7 @@ class Dataset:
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
+            label_selector=label_selector,
             concurrency=concurrency,
             udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
@@ -777,6 +785,7 @@ class Dataset:
         num_cpus: Optional[float],
         num_gpus: Optional[float],
         memory: Optional[float],
+        label_selector: Optional[Dict[str, str]],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
         udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
@@ -807,6 +816,9 @@ class Dataset:
 
         if memory is not None:
             ray_remote_args["memory"] = memory
+
+        if label_selector is not None:
+            ray_remote_args["label_selector"] = label_selector
 
         batch_format = _apply_batch_format(batch_format)
 
@@ -1345,6 +1357,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -1424,6 +1437,8 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
+            label_selector: The label selector requirements for each node that runs a
+                parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -1457,6 +1472,7 @@ class Dataset:
             num_gpus,
             memory,
             ray_remote_args,
+            label_selector,
         )
 
         plan = self._plan.copy()
@@ -1488,6 +1504,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -1558,6 +1575,8 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
+            label_selector: The label selector requirements for each node that runs a
+                parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -1595,6 +1614,7 @@ class Dataset:
             num_gpus,
             memory,
             ray_remote_args,
+            label_selector,
         )
 
         # Initialize Filter operator arguments with proper types
