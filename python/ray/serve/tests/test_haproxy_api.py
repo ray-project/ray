@@ -548,7 +548,7 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
         assert "backend api-via-ingress-request-router" not in cfg
         assert "option http-buffer-request" in cfg
         assert "wait-for-body" not in cfg
-        assert "tune.bufsize 32768" in cfg
+        assert "tune.bufsize 65536" in cfg
         direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
         direct_backend = direct_backend.split("listen stats", 1)[0]
         assert "http-reuse never" in direct_backend

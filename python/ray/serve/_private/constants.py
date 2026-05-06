@@ -799,7 +799,7 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # request body. Bodies longer than this are truncated and forwarded with an
 # X-Body-Truncated header so routers can do best-effort prefix matching.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
-    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 32768
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 65536
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
