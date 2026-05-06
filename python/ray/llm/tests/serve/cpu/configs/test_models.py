@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
@@ -416,6 +417,57 @@ class TestAcceleratorConfigLogic:
 
         tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         assert tpu_accel_with_topo.requires_deferred_placement_group is True
+
+
+class TestApplyCheckpointInfo:
+    """Test that apply_checkpoint_info normalises model paths for HF config loading."""
+
+    @pytest.fixture
+    def mock_hf_config(self):
+        hf_config = MagicMock()
+        hf_config.architectures = ["Qwen2ForCausalLM"]
+        del hf_config.vision_config
+        return hf_config
+
+    def _make_llm_config(self, model_id="org/model"):
+        return LLMConfig(model_loading_config=ModelLoadingConfig(model_id=model_id))
+
+    @pytest.mark.parametrize(
+        "input_id,expected_id",
+        [
+            ("org/repo:Q5_K_M", "org/repo"),
+            ("org/plain-model", "org/plain-model"),
+        ],
+    )
+    @patch("transformers.PretrainedConfig.from_pretrained")
+    def test_model_id_normalisation(
+        self, mock_from_pretrained, mock_hf_config, input_id, expected_id
+    ):
+        mock_from_pretrained.return_value = mock_hf_config
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info(input_id)
+
+        calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
+        assert all(
+            arg == expected_id for arg in calls
+        ), f"Expected {expected_id!r}, got {calls}"
+
+    @patch("transformers.PretrainedConfig.from_pretrained")
+    def test_local_gguf_file_uses_parent_directory(
+        self, mock_from_pretrained, mock_hf_config, tmp_path
+    ):
+        mock_from_pretrained.return_value = mock_hf_config
+        config = self._make_llm_config()
+
+        gguf_path = str(tmp_path / "model-Q5_K_M.gguf")
+
+        config.apply_checkpoint_info(gguf_path)
+
+        calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
+        assert all(
+            arg == str(tmp_path) for arg in calls
+        ), f"Expected parent directory {str(tmp_path)!r}, got {calls}"
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 from typing import (
     Any,
@@ -30,6 +31,7 @@ from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
 )
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -308,8 +310,20 @@ class LLMConfig(BaseModelExtended):
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
-        self._infer_supports_vision(model_id_or_path)
-        self._set_model_architecture(model_id_or_path)
+        # GGUF models use a repo:quantization format (e.g. "org/repo:Q5_K_M")
+        # that HuggingFace's config loader rejects due to the colon. For local
+        # GGUF files the weights path is a .gguf file, not the directory that
+        # contains config.json. Normalise both cases before the HF calls.
+        drive, tail = os.path.splitdrive(model_id_or_path)
+        if model_id_or_path.lower().endswith(".gguf"):
+            hf_path = os.path.dirname(model_id_or_path) or "."
+        elif ":" in tail:
+            hf_path = drive + get_base_model_id(tail)
+        else:
+            hf_path = model_id_or_path
+
+        self._infer_supports_vision(hf_path)
+        self._set_model_architecture(hf_path)
 
     def get_or_create_callback(self) -> Optional[CallbackBase]:
         """Get or create the callback instance for this process.
