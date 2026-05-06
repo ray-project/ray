@@ -645,6 +645,76 @@ class ReportHead(SubprocessModule):
         redirect_url = f"/api/v0/logs/file?{query}"
         raise aiohttp.web.HTTPFound(redirect_url)
 
+    @routes.get("/worker/jax_profile")
+    async def jax_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the JAX profile trace for a specific worker.
+
+        Params:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                port: Required. The port where JAX profiler server is listening.
+                ip or node_id: Required. The IP address or hex ID of the node.
+                duration: Optional. Duration in seconds for profiling (default: 5).
+
+        Returns:
+            JSON response with the path where trace files are saved.
+        """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
+
+        pid = req.query.get("pid")
+        port = req.query.get("port")
+        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
+
+        if not pid:
+            raise ValueError("pid is required")
+        if not port:
+            raise ValueError("port is required")
+        if not node_id_hex and not ip:
+            raise ValueError("ip or node_id is required")
+
+        if node_id_hex:
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
+            )
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at node_id {node_id_hex}"
+                )
+        else:
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at IP {ip}"
+                )
+
+        node_id, ip, http_port, grpc_port = addrs
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
+
+        duration_s = int(req.query.get("duration", 5))
+        port = int(port)
+        pid = int(pid)
+
+        logger.info(
+            f"Sending JAX profiling request to {build_address(ip, grpc_port)}, pid {pid}, port {port}"
+        )
+
+        reply = await reporter_stub.JaxProfiling(
+            reporter_pb2.JaxProfilingRequest(pid=pid, port=port, duration=duration_s)
+        )
+
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+        logger.info("Returning profiling response, location {}".format(reply.output))
+
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="JAX profiling finished.",
+            trace_directory=reply.output,
+        )
+
     @routes.get("/memory_profile")
     async def memory_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Retrieves the memory profile for a specific worker or task.

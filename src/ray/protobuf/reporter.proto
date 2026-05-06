@@ -76,6 +76,19 @@ message MemoryProfilingReply {
   optional string warning = 3;
 }
 
+// JAX profiler request
+message JaxProfilingRequest {
+  uint32 pid = 1;
+  uint32 port = 2;
+  optional uint32 duration = 3;
+}
+
+// JAX profiler result
+message JaxProfilingReply {
+  bool success = 1;
+  string output = 2;
+}
+
 message ReportOCMetricsRequest {
   repeated opencensus.proto.metrics.v1.Metric metrics = 1;
   bytes worker_id = 2;
@@ -95,6 +108,7 @@ service ReporterService {
   rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
   rpc GpuProfiling(GpuProfilingRequest) returns (GpuProfilingReply);
   rpc MemoryProfiling(MemoryProfilingRequest) returns (MemoryProfilingReply);
+  rpc JaxProfiling(JaxProfilingRequest) returns (JaxProfilingReply);
   // Health check to validate whether the service is running
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckReply);
 }
