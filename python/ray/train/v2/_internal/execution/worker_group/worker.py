@@ -140,6 +140,10 @@ class RayTrainWorker:
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        logger.info(
+            f"Rank {get_train_context().get_world_rank()}: Launching training function."
+        )
+
         def train_fn_with_final_checkpoint_flush():
             result = train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()
