@@ -67,6 +67,7 @@ class InputDataBuffer(PhysicalOperator):
         # references, and Ray won't be able to reconstruct downstream objects.
         bundle = self._input_data[self._input_data_index]
         self._input_data_index += 1
+        self._track_bundle_produced(bundle)
         return bundle
 
     def get_stats(self) -> StatsDict:

@@ -120,6 +120,10 @@ class OpBufferQueue:
         except IndexError:
             return None
 
+    def __iter__(self):
+        for q in self._queues:
+            yield from q
+
     def clear(self):
         for q in self._queues:
             q.clear()
@@ -595,8 +599,13 @@ def update_operator_states(topology: Topology) -> None:
         # This is needed when the limit is reached, and `mark_execution_finished`
         # is called manually.
         if op.has_execution_finished():
+            counter = op._block_ref_counter
             for input_queue in op_state.input_queues:
                 # Drain input queue
+                if counter is not None:
+                    for bundle in input_queue:
+                        for block_ref, _ in bundle.blocks:
+                            counter.on_task_completed(block_ref)
                 input_queue.clear()
 
 

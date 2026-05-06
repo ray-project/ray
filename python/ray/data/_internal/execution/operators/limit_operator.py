@@ -40,6 +40,9 @@ class LimitOperator(OneToOneOperator):
         assert not self.has_completed()
         assert input_index == 0, input_index
         if self._limit_reached():
+            if self._block_ref_counter is not None:
+                for block_ref, _ in refs.blocks:
+                    self._block_ref_counter.on_task_completed(block_ref)
             return
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
@@ -73,10 +76,20 @@ class LimitOperator(OneToOneOperator):
                 )
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
+                if self._block_ref_counter is not None:
+                    self._block_ref_counter.on_block_produced(
+                        block, metadata.size_bytes or 0, self
+                    )
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
+        if self._block_ref_counter is not None:
+            forwarded = set(out_blocks)
+            for block_ref, _ in refs.blocks:
+                if block_ref not in forwarded:
+                    self._block_ref_counter.on_task_completed(block_ref)
+
         self._cur_output_bundles += 1
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),

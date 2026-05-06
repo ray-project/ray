@@ -190,6 +190,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
+        # Propagate the block reference counter to all operators
+        counter = self._resource_manager.block_ref_counter
+        for op in self._topology:
+            op.set_block_ref_counter(counter)
+
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -693,6 +698,11 @@ class _ClosingIterator(OutputIterator):
         try:
             op, state = self._executor._output_node
             bundle = state.get_output_blocking(output_split_idx)
+
+            # Untrack blocks leaving the pipeline so the counter doesn't grow unbounded.
+            counter = self._executor._resource_manager.block_ref_counter
+            for block_ref, _ in bundle.blocks:
+                counter.on_task_completed(block_ref)
 
             # Update progress-bars
             if self._executor._progress_manager:

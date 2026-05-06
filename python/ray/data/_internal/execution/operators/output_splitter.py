@@ -205,6 +205,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 b = replace(b, output_split_idx=i)
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
+        # Untrack any blocks truncated by the equal-split remainder before clearing.
+        for bundle in self._buffer:
+            self._track_bundle_consumed(bundle)
         # Drain truncated remainder through the metrics layer.
         # A bare self._buffer.clear() would bypass on_input_dequeued,
         # orphaning RefBundle references in _metrics._internal_inqueues
@@ -311,6 +314,36 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         max_n = max(output_distribution)
         return sum([max_n - n for n in output_distribution])
 
+    def _track_bundle_split(
+        self, original: RefBundle, left: RefBundle, right: RefBundle
+    ) -> None:
+        """Update the block ref counter after a _split() call.
+
+        _split() reuses existing ObjectRefs for blocks that fall cleanly on one
+        side of the boundary, but calls _split_block() for the one block that
+        straddles it, producing two brand-new ObjectRefs. This method:
+          - Registers new refs (absent from `original`) with on_block_produced.
+          - Untracks the original ref that was physically split (absent from
+            both `left` and `right`) with on_task_completed.
+        """
+        if self._block_ref_counter is None:
+            return
+        original_refs = {ref for ref, _ in original.blocks}
+        output_refs = {ref for ref, _ in left.blocks} | {ref for ref, _ in right.blocks}
+
+        # Register new references produced by the split.
+        for bundle in (left, right):
+            for ref, meta in bundle.blocks:
+                if ref not in original_refs:
+                    self._block_ref_counter.on_block_produced(
+                        ref, meta.size_bytes or 0, self
+                    )
+
+        # Untrack the split original block.
+        for ref, _ in original.blocks:
+            if ref not in output_refs:
+                self._block_ref_counter.on_task_completed(ref)
+
     def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
         output = []
         acc = 0
@@ -322,6 +355,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 acc += b.num_rows()
             else:
                 left, right = _split(b, nrow - acc)
+                self._track_bundle_split(b, left, right)
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)

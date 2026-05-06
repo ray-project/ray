@@ -1,10 +1,12 @@
 import gc
 from typing import List
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
@@ -16,7 +18,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.progress.base_progress import NoopSubProgressBar
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import (
     _get_blocks,
@@ -215,6 +217,198 @@ def test_input_data_buffer_does_not_free_inputs():
     # `InputDataBuffer` should still hold a reference to the input block even after
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
+
+
+class TestAllToAllOperatorBlockRefCounter:
+    """Tests for BlockRefCounter integration in AllToAllOperator.all_inputs_done().
+
+    Uses plain object() as fake ObjectRefs — RefBundle validation is bypassed by
+    populating _input_buffer directly with _FakeBundle stubs. No Ray required.
+    """
+
+    class _FakeBundle:
+        """Minimal RefBundle stand-in for all_inputs_done tests.
+
+        Exposes .blocks, .block_refs, num_rows(), and size_bytes() so that
+        FIFOBundleQueue metrics tracking doesn't crash on add().
+        """
+
+        def __init__(self, blocks):
+            self.blocks = tuple(blocks)
+            self.block_refs = [ref for ref, _ in self.blocks]
+
+        def num_rows(self):
+            return len(self.blocks)
+
+        def size_bytes(self):
+            return sum(m.size_bytes for _, m in self.blocks)
+
+    def _fake_bundle(self, refs_with_sizes):
+        return self._FakeBundle(
+            [
+                (
+                    ref,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=size, input_files=None, exec_stats=None
+                    ),
+                )
+                for ref, size in refs_with_sizes
+            ]
+        )
+
+    def _make_op(self):
+        input_op = InputDataBuffer(DataContext.get_current(), [])
+        upstream = InputDataBuffer(DataContext.get_current(), [])
+        op = AllToAllOperator(
+            bulk_fn=MagicMock(),
+            input_op=input_op,
+            data_context=DataContext.get_current(),
+        )
+        counter = BlockRefCounter()
+        op._block_ref_counter = counter
+        op._metrics = MagicMock()
+        op.start(ExecutionOptions())
+        return op, upstream, counter
+
+    def test_passthrough_bulk_fn_does_not_mutate_counter(self):
+        """A bulk_fn that returns the same ObjectRefs (e.g. randomize_blocks)
+        must not crash or alter the counter — blocks stay tracked under their
+        original owners.
+        """
+        op, upstream, counter = self._make_op()
+
+        ref1, ref2 = object(), object()
+        counter.on_block_produced(ref1, 100, upstream)
+        counter.on_block_produced(ref2, 200, upstream)
+
+        b1 = self._fake_bundle([(ref1, 100)])
+        b2 = self._fake_bundle([(ref2, 200)])
+
+        # Simulate passthrough: bulk_fn returns the same refs in different order.
+        op._bulk_fn = lambda refs, ctx: ([b2, b1], {})
+        op._input_buffer.add(b1)
+        op._input_buffer.add(b2)
+        op.all_inputs_done()
+
+        # No crash, and both refs still tracked under their original owner.
+        assert counter.get_object_store_memory_usage(upstream) == 300
+        assert counter.get_object_store_memory_usage(op) == 0
+
+    def test_materializing_bulk_fn_transfers_attribution(self):
+        """A bulk_fn that produces new ObjectRefs (e.g. sort) must register
+        the new refs under AllToAllOperator and untrack the consumed inputs.
+        """
+        op, upstream, counter = self._make_op()
+
+        in_ref = object()
+        counter.on_block_produced(in_ref, 100, upstream)
+        in_bundle = self._fake_bundle([(in_ref, 100)])
+
+        out_ref = object()
+        out_bundle = self._fake_bundle([(out_ref, 250)])
+
+        op._bulk_fn = lambda refs, ctx: ([out_bundle], {})
+        op._input_buffer.add(in_bundle)
+        op.all_inputs_done()
+
+        # Input consumed, output registered under op.
+        assert counter.get_object_store_memory_usage(upstream) == 0
+        assert counter.get_object_store_memory_usage(op) == 250
+
+
+class TestMarkExecutionFinishedBlockRefCounter:
+    """Tests for BlockRefCounter integration in InternalQueueOperatorMixin.mark_execution_finished().
+
+    Verifies that blocks still buffered in internal queues are untracked when
+    an operator finishes early (e.g. LimitOperator discarding buffered blocks).
+    """
+
+    class _FakeBundle:
+        def __init__(self, blocks):
+            self.blocks = tuple(blocks)
+            self.block_refs = [ref for ref, _ in self.blocks]
+
+        def num_rows(self):
+            return len(self.blocks)
+
+        def size_bytes(self):
+            return sum(m.size_bytes for _, m in self.blocks)
+
+    def _fake_bundle(self, refs_with_sizes):
+        return self._FakeBundle(
+            [
+                (
+                    ref,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=size, input_files=None, exec_stats=None
+                    ),
+                )
+                for ref, size in refs_with_sizes
+            ]
+        )
+
+    def _make_op(self):
+        input_op = InputDataBuffer(DataContext.get_current(), [])
+        upstream = InputDataBuffer(DataContext.get_current(), [])
+        op = AllToAllOperator(
+            bulk_fn=MagicMock(),
+            input_op=input_op,
+            data_context=DataContext.get_current(),
+        )
+        counter = BlockRefCounter()
+        op._block_ref_counter = counter
+        op._metrics = MagicMock()
+        op.start(ExecutionOptions())
+        return op, upstream, counter
+
+    def test_fifo_queue_blocks_untracked_on_finish(self):
+        """Blocks buffered in FIFOBundleQueue input/output queues are untracked
+        when mark_execution_finished() is called.
+        """
+        op, upstream, counter = self._make_op()
+
+        in_ref = object()
+        counter.on_block_produced(in_ref, 100, upstream)
+        op._input_buffer.add(self._fake_bundle([(in_ref, 100)]))
+
+        out_ref = object()
+        counter.on_block_produced(out_ref, 200, op)
+        op._output_buffer.add(self._fake_bundle([(out_ref, 200)]))
+
+        op.mark_execution_finished()
+
+        assert counter.get_object_store_memory_usage(upstream) == 0
+        assert counter.get_object_store_memory_usage(op) == 0
+
+    def test_rebundle_queue_blocks_untracked_on_finish(self):
+        """Blocks in both _pending_bundles and _ready_bundles of a RebundleQueue
+        are untracked when mark_execution_finished() is called. This exercises
+        RebundleQueue.__iter__ which covers both internal deques.
+        """
+        from ray.data._internal.execution.bundle_queue.bundler import (
+            EstimateSize,
+            RebundleQueue,
+        )
+
+        op, upstream, counter = self._make_op()
+
+        # Replace input buffer with a RebundleQueue (as used by TaskPoolMapOperator).
+        rebundle_queue = RebundleQueue(EstimateSize(min_rows_per_bundle=1000))
+        op._input_buffer = rebundle_queue
+
+        # Put one bundle in _pending_bundles (threshold not yet reached).
+        pending_ref = object()
+        counter.on_block_produced(pending_ref, 100, upstream)
+        rebundle_queue._pending_bundles.append(self._fake_bundle([(pending_ref, 100)]))
+
+        # Put one bundle directly in _ready_bundles (already merged).
+        ready_ref = object()
+        counter.on_block_produced(ready_ref, 200, upstream)
+        rebundle_queue._ready_bundles.append(self._fake_bundle([(ready_ref, 200)]))
+
+        op.mark_execution_finished()
+
+        assert counter.get_object_store_memory_usage(upstream) == 0
 
 
 if __name__ == "__main__":

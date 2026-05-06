@@ -732,7 +732,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             if should_broadcast_schemas:
                 self._has_schemas_broadcasted[input_index] = True
 
-            def _on_partitioning_done(cur_shuffle_task_idx: int):
+            def _on_partitioning_done(cur_shuffle_task_idx: int, block_ref: ObjectRef):
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
                 self._shuffling_resource_usage = (
                     self._shuffling_resource_usage.subtract(
@@ -773,6 +773,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 # Update Shuffle progress bar
                 self._shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
 
+                # Untrack the input block now that the shuffle task has consumed it.
+                if self._block_ref_counter is not None:
+                    self._block_ref_counter.on_task_completed(block_ref)
+
             # TODO update metrics
             task = self._shuffling_tasks[input_index][
                 cur_shuffle_task_idx
@@ -780,7 +784,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 task_index=cur_shuffle_task_idx,
                 object_ref=input_block_partition_shards_metadata_tuple_ref,
                 task_done_callback=functools.partial(
-                    _on_partitioning_done, cur_shuffle_task_idx
+                    _on_partitioning_done, cur_shuffle_task_idx, block_ref
                 ),
                 task_resource_bundle=ExecutionResources.from_resource_dict(
                     shuffle_task_resource_bundle
@@ -998,6 +1002,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
                 operator_name=self.name,
+                block_ref_counter=self._block_ref_counter,
+                owner_op=self,
             )
             self._finalizing_tasks[partition_id] = data_task
 

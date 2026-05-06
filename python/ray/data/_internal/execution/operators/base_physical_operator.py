@@ -69,6 +69,15 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         and then clears internal input and output queues.
         """
         super().mark_execution_finished()
+        # Untrack any blocks still sitting in the queues before clearing them,
+        # so the BlockRefCounter doesn't overestimate memory (e.g. when a downstream limit
+        # operator terminates early and discards buffered blocks).
+        for input_queue in self._input_queues:
+            for bundle in input_queue:
+                self._track_bundle_consumed(bundle)
+        for output_queue in self._output_queues:
+            for bundle in output_queue:
+                self._track_bundle_consumed(bundle)
         self.clear_internal_input_queue()
         self.clear_internal_output_queue()
 
@@ -181,12 +190,34 @@ class AllToAllOperator(
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
+
+        # Snapshot input refs before calling bulk_fn. Some bulk_fns (e.g.
+        # randomize_blocks) reuse input ObjectRefs unchanged — diffing against
+        # output_refs prevents double-registering already-tracked refs and
+        # incorrectly untracking forwarded refs.
+        input_refs = {ref for bundle in self._input_buffer for ref, _ in bundle.blocks}
+
         output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
+
+        output_refs = {ref for bundle in output_buffer for ref, _ in bundle.blocks}
+
+        for bundle in output_buffer:
+            for ref, meta in bundle.blocks:
+                if ref not in input_refs:
+                    if self._block_ref_counter is not None:
+                        self._block_ref_counter.on_block_produced(
+                            ref, meta.size_bytes or 0, self
+                        )
+
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()
             self._metrics.on_input_dequeued(refs, input_index=0)
+            if self._block_ref_counter is not None:
+                for ref, _ in refs.blocks:
+                    if ref not in output_refs:
+                        self._block_ref_counter.on_task_completed(ref)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)

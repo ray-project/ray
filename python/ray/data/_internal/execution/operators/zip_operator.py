@@ -253,21 +253,25 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         output_refs: collections.deque[RefBundle] = collections.deque()
         input_owned = all(b.owns_blocks for b in left_input)
         for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
-            output_refs.append(
-                RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
-                    owns_blocks=input_owned,
-                    schema=meta_with_schema.schema,
-                )
+            bundle = RefBundle(
+                [
+                    (
+                        block,
+                        meta_with_schema.metadata,
+                    )
+                ],
+                owns_blocks=input_owned,
+                schema=meta_with_schema.schema,
             )
+            self._track_bundle_produced(bundle)
+            output_refs.append(bundle)
         stats = {self._name: to_stats(output_metadata_schema)}
 
-        # Clean up inputs.
+        # Untrack consumed input blocks and clean up.
+        for bundle in left_input:
+            self._track_bundle_consumed(bundle)
+        for bundle in right_input:
+            self._track_bundle_consumed(bundle)
         for ref in left_input:
             ref.destroy_if_owned()
         for ref in right_input:

@@ -65,6 +65,11 @@ class ThreadSafeBundleQueue(BundleQueue):
         with self._lock:
             return self._inner.has_next()
 
+    def __iter__(self):
+        with self._lock:
+            bundles = list(self._inner)
+        yield from bundles
+
     def clear(self):
         with self._lock:
             self._inner.clear()
