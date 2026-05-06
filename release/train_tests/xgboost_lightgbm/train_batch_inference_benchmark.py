@@ -5,6 +5,7 @@ import pandas as pd
 import time
 from typing import Dict
 
+import pyarrow as pa
 import xgboost as xgb
 import lightgbm as lgb
 
@@ -84,10 +85,13 @@ def xgboost_train_loop_function(config: Dict):
 
 def lightgbm_train_loop_function(config: Dict):
     train_ds_iter = ray.train.get_dataset_shard("train")
-    train_df = train_ds_iter.materialize().to_pandas()
+    train_table = pa.concat_tables(
+        train_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
+    )
 
     label_column, params = config["label_column"], config["params"]
-    train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+    train_X = train_table.drop([label_column])
+    train_y = train_table.column(label_column)
     train_set = lgb.Dataset(train_X, label=train_y)
 
     report_callback = config["report_callback_cls"]

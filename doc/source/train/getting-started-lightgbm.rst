@@ -217,9 +217,13 @@ Convert this into a native `lightgbm.Dataset <https://lightgbm.readthedocs.io/en
     :skipif: True
 
     def get_dataset(dataset_name: str) -> lightgbm.Dataset:
+        import pyarrow as pa
+
         shard = ray.train.get_dataset_shard(dataset_name)
-        df = shard.materialize().to_pandas()
-        X, y = df.drop("target", axis=1), df["target"]
+        table = pa.concat_tables(
+            shard.iter_batches(batch_format="pyarrow", batch_size=None)
+        )
+        X, y = table.drop(["target"]), table.column("target")
         return lightgbm.Dataset(X, label=y)
 
     def train_func():

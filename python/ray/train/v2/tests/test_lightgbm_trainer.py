@@ -2,6 +2,7 @@ import math
 
 import lightgbm
 import pandas as pd
+import pyarrow as pa
 import pytest
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -64,15 +65,38 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         num_boost_round: int = 10,
     ):
         remaining_iters = num_boost_round
+        # pandas `category` dtype becomes Arrow `dictionary` type after the
+        # ray.data round-trip. LightGBM's pyarrow ingestion only accepts numeric
+        # column types, so decode dictionary columns to their integer codes and
+        # tell LightGBM via `categorical_feature` to treat them as categorical.
+        def _decode_dict(table: pa.Table) -> pa.Table:
+            arrays = [
+                c.combine_chunks().indices if pa.types.is_dictionary(c.type) else c
+                for c in table.columns
+            ]
+            return pa.Table.from_arrays(arrays, names=table.column_names)
+
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-        train_df = train_ds_iter.materialize().to_pandas()
-
-        eval_df = valid_dataset.materialize().to_pandas()
-        eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
-        valid_set = lightgbm.Dataset(eval_X, label=eval_y)
-
-        train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
-        train_set = lightgbm.Dataset(train_X, label=train_y)
+        train_table = _decode_dict(
+            pa.concat_tables(
+                train_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
+            )
+        )
+        eval_table = _decode_dict(
+            pa.concat_tables(
+                valid_dataset.iter_batches(batch_format="pyarrow", batch_size=None)
+            )
+        )
+        train_X = train_table.drop([label_column])
+        train_y = train_table.column(label_column)
+        train_set = lightgbm.Dataset(
+            train_X, label=train_y, categorical_feature=["categorical_column"]
+        )
+        eval_X = eval_table.drop([label_column])
+        eval_y = eval_table.column(label_column)
+        valid_set = lightgbm.Dataset(
+            eval_X, label=eval_y, categorical_feature=["categorical_column"]
+        )
 
         # Add network params of the worker group to enable distributed training.
         config.update(ray.train.lightgbm.get_network_params())
@@ -127,7 +151,14 @@ def test_fit_with_categoricals(ray_start_6_cpus):
     result = trainer.fit()
     checkpoint = result.checkpoint
     model = RayTrainReportCallback.get_model(checkpoint)
-    assert model.pandas_categorical == [["A", "B"]]
+    # Confirm LightGBM treated `categorical_column` as categorical: in the
+    # dumped model, categorical features have their discrete values listed,
+    # while numeric features have an empty `values` list.
+    feature_infos = model.dump_model()["feature_infos"]
+    assert feature_infos["categorical_column"]["values"], (
+        "categorical_column was treated as numeric, not categorical: "
+        f"{feature_infos['categorical_column']!r}"
+    )
     validation_scores = ray.get(collector.get_validation_scores.remote())
     assert validation_scores[0]["binary_logloss"] == pytest.approx(
         validation_scores[1]["binary_logloss"], abs=1e-6
