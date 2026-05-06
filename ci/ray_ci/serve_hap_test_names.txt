@@ -49,8 +49,6 @@
 //python/ray/serve/tests:test_replica_request_context
 //python/ray/serve/tests:test_replica_sync_methods_with_run_sync_in_threadpool
 //python/ray/serve/tests:test_request_timeout
-//python/ray/serve/tests:test_runtime_env
-//python/ray/serve/tests:test_runtime_env_2
 //python/ray/serve/tests:test_serve_with_tracing
 //python/ray/serve/tests:test_streaming_response
 //python/ray/serve/tests:test_target_capacity
