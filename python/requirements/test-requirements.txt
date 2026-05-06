@@ -47,7 +47,7 @@ pygame==2.5.2
 Pygments==2.18.0
 pymongo==4.3.2
 pyspark==3.4.1
-pytest==7.4.4
+pytest==9.0.3
 pytest-asyncio==0.17.2
 pytest-aiohttp==1.1.0
 pytest-httpserver==1.1.3
