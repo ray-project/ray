@@ -57,7 +57,7 @@ class ProcessorConfig(BaseModelExtended):
         default_factory=dict,
         description="[Experimental] Experimental configurations."
         "Supported keys:\n"
-        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 16.",
     )
 
     @field_validator("concurrency")

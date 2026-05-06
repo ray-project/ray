@@ -116,6 +116,7 @@ from ray.serve._private.http_util import (
     convert_object_to_asgi_messages,
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
+    parse_session_id_header,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -1055,12 +1056,14 @@ class Replica:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        is_ingress_request_router: bool = False,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
         self._ingress = ingress
+        self._is_ingress_request_router = is_ingress_request_router
         self._route_prefix = route_prefix
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
@@ -1970,7 +1973,7 @@ class Replica:
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress:
+        if not self._ingress and not self._is_ingress_request_router:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -2022,15 +2025,20 @@ class Replica:
 
             raise RuntimeError(err_msg)
 
-        # Fetch configs
-        self._http_options, self._grpc_options = ray.get(
-            [
-                self._controller_handle.get_http_config.remote(),
-                self._controller_handle.get_grpc_config.remote(),
-            ]
-        )
+        if self._ingress:
+            self._http_options, self._grpc_options = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_grpc_config.remote(),
+                ]
+            )
+        else:
+            self._http_options = ray.get(
+                self._controller_handle.get_http_config.remote()
+            )
+            self._grpc_options = None
 
-        grpc_enabled = is_grpc_enabled(self._grpc_options)
+        grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
 
         # Allocate and start HTTP server
         async def start_http_server(port):
@@ -2055,7 +2063,8 @@ class Replica:
             protocol=RequestProtocol.HTTP,
         )
 
-        # Allocate and start gRPC server if enabled
+        # Allocate and start gRPC server for ingress replicas if enabled.
+        # Ingress request router replicas only need HTTP for /internal/route.
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
@@ -2128,6 +2137,7 @@ class Replica:
                     _internal_request_id=request_metadata.internal_request_id,
                     app_name=self._deployment_id.app_name,
                     multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    session_id=request_metadata.session_id,
                     grpc_context=request_metadata.grpc_context,
                     _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress
@@ -2541,6 +2551,7 @@ class Replica:
         )
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
+        session_id = parse_session_id_header(headers)
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -2550,6 +2561,7 @@ class Replica:
             app_name=self._deployment_id.app_name,
             # TODO(edoakes): populate the multiplexed model ID.
             multiplexed_model_id="",
+            session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
@@ -2709,6 +2721,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        is_ingress_request_router: bool = False,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2725,6 +2738,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            is_ingress_request_router=is_ingress_request_router,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -2762,6 +2776,20 @@ class ReplicaActor:
             ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
+
+    async def was_initialized(self) -> bool:
+        """Whether this replica's user callable has finished initializing.
+
+        Used by the controller during recovery to detect actors that were
+        created but never received their initial
+        ``initialize_and_get_metadata(rank=...)`` call (e.g., because the
+        previous controller crashed mid-startup). Such an actor has neither a
+        rank nor a fully-initialized user callable, and recovering it would
+        silently complete its initialization with ``rank=None``, breaking
+        rank tracking. The controller can call this method first and skip /
+        kill the actor when it returns False.
+        """
+        return self._replica_impl._user_callable_initialized
 
     def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         return self._replica_impl.list_outbound_deployments()

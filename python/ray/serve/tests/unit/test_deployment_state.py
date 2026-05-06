@@ -59,6 +59,7 @@ from ray.serve._private.test_utils import (
     MockPlacementGroup,
     dead_replicas_context,
     replica_rank_context,
+    uninitialized_replicas_context,
 )
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
@@ -1790,6 +1791,70 @@ def test_reconfigure_throttling(mock_deployment_state_manager):
     assert (
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+    )
+
+
+@pytest.mark.parametrize(
+    ("num_replicas", "percentage", "expected_stopping"),
+    [
+        # The existing case: 50% of 10 replicas is 5.
+        (10, 0.5, 5),
+        # Test default percentage (20%) of 10 replicas is 2.
+        (10, None, 2),
+        # Test rounding down: 50% of 3 replicas is 1.5 -> 1.
+        (3, 0.5, 1),
+        # Test minimum of 1: 20% of 4 replicas is 0.8 -> 0, but minimum is 1.
+        (4, 0.2, 1),
+        # Test percentage that isn't a clean divisor.
+        (10, 0.21, 2),
+        # Test 100% update. All old replicas should be stopping.
+        (5, 1.0, 5),
+    ],
+)
+def test_rolling_update_percentage_configurable(
+    mock_deployment_state_manager, num_replicas, percentage, expected_stopping
+):
+    """Test that rolling_update_percentage controls how many replicas update per wave."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    deploy_kwargs = {"num_replicas": num_replicas, "version": "1"}
+    if percentage is not None:
+        deploy_kwargs["rolling_update_percentage"] = percentage
+
+    b_info_1, v1 = deployment_info(**deploy_kwargs)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(
+        ds, total=num_replicas, by_state=[(ReplicaState.RUNNING, num_replicas, v1)]
+    )
+
+    # Deploy new version and check that the correct number of replicas are
+    # transitioning.
+    deploy_kwargs["version"] = "2"
+    b_info_2, v2 = deployment_info(**deploy_kwargs)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+    dsm.update()
+
+    expected_running_v1 = num_replicas - expected_stopping
+    # When there are 0 running v1 replicas, the check_counts `by_state`
+    # entry should be omitted.
+    expected_by_state = [
+        (ReplicaState.STOPPING, expected_stopping, v1),
+        (ReplicaState.STARTING, expected_stopping, v2),
+    ]
+    if expected_running_v1 > 0:
+        expected_by_state.insert(0, (ReplicaState.RUNNING, expected_running_v1, v1))
+
+    check_counts(
+        ds,
+        total=num_replicas + expected_stopping,
+        by_state=expected_by_state,
     )
 
 
@@ -3827,6 +3892,76 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     assert mocked_replica.replica_id != new_mocked_replica_version2.replica_id
 
 
+def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
+    """Test replica actor was found alive but never finished initialization.
+
+    Mirrors the production scenario where the previous controller crashed
+    between actor creation and the first
+    `initialize_and_get_metadata(rank=...)` call. `recover()` is non-
+    blocking: the new controller fires `was_initialized` asynchronously,
+    `check_ready()` observes the False response in the reconcile loop,
+    kills the actor, and the reconciler replaces it with a fresh replica.
+    The controller-side deploy-failure counter must NOT be bumped, since
+    the underlying cause is a previous controller crash, not user code.
+    """
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, v1 = deployment_info(version="1")
+    target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert target_state_changed
+    dsm.save_checkpoint()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    mocked_replica = ds._replicas.get()[0]
+    replica_id = mocked_replica.replica_id
+
+    mocked_replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # Mark this replica as not-yet-initialized so that the new controller's
+    # async `was_initialized` probe will return False.
+    uninitialized_replicas_context.add(replica_id)
+
+    new_dsm = create_dsm([replica_id.to_full_id_str()])
+    new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # `recover()` is non-blocking: the replica enters RECOVERING and the
+    # probe is observed in the reconcile loop.
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+    starting_failures_before = new_ds._replica_constructor_retry_counter
+
+    # Next update cycle: probe says False -> the replica is force-stopped
+    # (STOPPING) and a fresh replica is started in its place (STARTING) in
+    # the same reconcile pass.
+    new_dsm.update()
+    check_counts(
+        new_ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v1)],
+    )
+    # The drop must not bump the deploy-failure counter -- the underlying
+    # cause is a previous controller crash, not user code.
+    assert new_ds._replica_constructor_retry_counter == starting_failures_before
+    # The fresh replica should have a new replica id.
+    starting_replicas = new_ds._replicas.get(states=[ReplicaState.STARTING])
+    assert len(starting_replicas) == 1
+    assert starting_replicas[0].replica_id != replica_id
+
+    # Drain the STOPPING replica and confirm we're left with just the
+    # replacement.
+    stopping_replica = new_ds._replicas.get(states=[ReplicaState.STOPPING])[0]
+    stopping_replica._actor.set_done_stopping()
+    new_dsm.update()
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+
+    uninitialized_replicas_context.remove(replica_id)
+
+
 def test_actor_died_before_recover(mock_deployment_state_manager):
     """Test replica actor died before controller could recover it.
 
@@ -4126,6 +4261,105 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+def test_get_deployment_ids(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    assert dsm.get_deployment_ids() == []
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    info2, _ = deployment_info(version="2", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID_2, info2)
+
+    assert dsm.get_deployment_ids() == [TEST_DEPLOYMENT_ID, TEST_DEPLOYMENT_ID_2]
+
+
+def test_get_node_id_to_alive_replica_ids(mock_deployment_state_manager):
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    cluster_node_info_cache.add_node(node1)
+    cluster_node_info_cache.add_node(node2)
+
+    info1, v1 = deployment_info(version="1", num_replicas=2)
+    info2, v2 = deployment_info(version="2", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID_2, info2)
+
+    ds1 = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds2 = dsm._deployment_states[TEST_DEPLOYMENT_ID_2]
+
+    dsm.update()
+    check_counts(ds1, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+    check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, v2)])
+
+    replicas1 = ds1._replicas.get()
+    replicas2 = ds2._replicas.get()
+    replicas1[0]._actor.set_node_id(node1)
+    replicas1[1]._actor.set_node_id(node2)
+    replicas2[0]._actor.set_node_id(node1)
+
+    node_id_to_alive_replica_ids = dsm.get_node_id_to_alive_replica_ids()
+    assert type(node_id_to_alive_replica_ids) is dict
+    assert node_id_to_alive_replica_ids == {
+        node1: {
+            replicas1[0].replica_id.unique_id,
+            replicas2[0].replica_id.unique_id,
+        },
+        node2: {replicas1[1].replica_id.unique_id},
+    }
+
+    replicas1[0]._actor.set_ready()
+    replicas1[1]._actor.set_ready()
+    replicas2[0]._actor.set_node_id(None)
+    replicas2[0]._actor.set_ready()
+    dsm.update()
+
+    node_id_to_alive_replica_ids = dsm.get_node_id_to_alive_replica_ids()
+    assert type(node_id_to_alive_replica_ids) is dict
+    assert node_id_to_alive_replica_ids == {
+        node1: {replicas1[0].replica_id.unique_id},
+        node2: {replicas1[1].replica_id.unique_id},
+    }
+
+
+def test_dump_replica_states_for_testing(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert dsm._dump_replica_states_for_testing(TEST_DEPLOYMENT_ID) is ds._replicas
+
+    with pytest.raises(KeyError):
+        dsm._dump_replica_states_for_testing(TEST_DEPLOYMENT_ID_2)
+
+
+def test_stop_one_running_replica_for_testing(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_ready()
+    dsm.update()
+    assert len(ds._replicas.get([ReplicaState.RUNNING])) == 1
+
+    dsm._stop_one_running_replica_for_testing(TEST_DEPLOYMENT_ID)
+
+    assert len(ds._replicas.get([ReplicaState.RUNNING])) == 0
+    assert len(ds._replicas.get([ReplicaState.STOPPING])) == 1
 
 
 class TestAutoscaling:

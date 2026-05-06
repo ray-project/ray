@@ -30,12 +30,14 @@
 #include "mock/ray/gcs/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client_kv.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
@@ -69,6 +71,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> fake_observability_publisher_;
   ray::observability::FakeGauge fake_placement_group_gauge_;
   ray::observability::FakeHistogram
       fake_placement_group_creation_latency_in_ms_histogram_;
@@ -102,6 +105,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                                                *function_manager_,
                                                                *raylet_client_pool_,
                                                                *worker_client_pool_);
+    fake_observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
@@ -122,7 +127,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *client_pool_,
                                       kv_manager_->GetInstance(),
                                       io_service_,
-                                      /*gcs_publisher=*/nullptr));
+                                      /*gcs_publisher=*/nullptr,
+                                      fake_observability_publisher_.get()));
   }
 
  public:

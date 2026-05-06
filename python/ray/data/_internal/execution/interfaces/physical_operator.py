@@ -1,5 +1,6 @@
 import abc
 import logging
+import pickle
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -77,7 +78,6 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-
         is_actor_task = not self.get_task_id().actor_id().is_nil()
 
         ray.cancel(
@@ -252,7 +252,7 @@ class DataOpTask(OpTask):
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
                 # will timeout and possible cancel the download. To avoid this issue,
                 # we set the timeout to a small non-zero value.
-                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
             except ray.exceptions.GetTimeoutError:
@@ -268,6 +268,9 @@ class DataOpTask(OpTask):
                 )
                 break
 
+            meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
+                meta_with_schema_bytes
+            )
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
@@ -378,7 +381,8 @@ class PhysicalOperator(Operator):
         target_max_block_size_override: Optional[int] = None,
         num_output_splits: int = 1,
     ):
-        super().__init__(name, input_dependencies)
+        self._name = name
+        self._input_dependencies = input_dependencies
         self._output_dependencies: List["PhysicalOperator"] = []
 
         for input in input_dependencies:
@@ -433,8 +437,29 @@ class PhysicalOperator(Operator):
     # Override the following methods to correct type hints.
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        return self._input_dependencies
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole physical DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self._name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:

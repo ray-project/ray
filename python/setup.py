@@ -218,12 +218,23 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
+    pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 9.0.0",
+        "pyarrow >= 17.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
+    pydantic_deps = [
+        "pydantic>=2.5.0,<3; python_version < '3.14'",
+        "pydantic>=2.13.0,<3; python_version >= '3.14'",
+    ]
+    tune_base_deps = [
+        "pandas",
+        "tensorboardX>=1.9",
+        "requests",
+        *pyarrow_deps,
+        "fsspec",
+    ]
+
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -254,7 +265,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
-            pydantic_dep,
+            *pydantic_deps,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -268,15 +279,12 @@ if setup_spec.type == SetupType.RAY:
             "starlette",
             "fastapi",
             "watchfiles",
+            "mmh3",
         ],
         "tune": [
-            "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
-            pydantic_dep,
-            "tensorboardX>=1.9",
-            "requests",
-            *pyarrow_deps,
-            "fsspec",
+            *tune_base_deps,
+            *pydantic_deps,
         ],
     }
 
@@ -323,7 +331,10 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
+    # Train currently depends on Tune, so keep it as a superset of the Tune
+    # extra. If Tune drops its temporary pydantic dependency in the future,
+    # add `pydantic_deps` explicitly here as part of that refactor.
+    setup_spec.extras["train"] = list(setup_spec.extras["tune"])
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
@@ -843,6 +854,7 @@ if __name__ == "__main__":
                 "includes/*.pxd",
                 "*.pxd",
                 "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+                "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },
         include_package_data=True,

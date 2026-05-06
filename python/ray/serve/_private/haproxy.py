@@ -44,6 +44,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_STATS_PORT,
     RAY_SERVE_HAPROXY_SYSLOG_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
@@ -84,6 +85,12 @@ def get_haproxy_binary() -> str:
 
     Raises ``FileNotFoundError`` if no usable binary is found.
     """
+    binary = _resolve_haproxy_binary()
+    logger.info(f"Using HAProxy binary: {binary}")
+    return binary
+
+
+def _resolve_haproxy_binary() -> str:
     if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
         return RAY_SERVE_HAPROXY_BINARY_PATH
 
@@ -396,7 +403,7 @@ class HAProxyConfig:
     enable_hap_optimization: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
     maxconn: int = RAY_SERVE_HAPROXY_MAXCONN
     nbthread: int = RAY_SERVE_HAPROXY_NBTHREAD
-    stats_port: int = 8404
+    stats_port: int = RAY_SERVE_HAPROXY_STATS_PORT
     stats_uri: str = "/stats"
     metrics_port: int = RAY_SERVE_HAPROXY_METRICS_PORT
     metrics_uri: str = "/metrics"
@@ -1027,6 +1034,7 @@ class HAProxyManager(ProxyActorInterface):
                 LongPollNamespace.FALLBACK_TARGETS: self.update_fallback_targets,
             },
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         is_head = self._node_id == get_head_node_id()
@@ -1038,8 +1046,23 @@ class HAProxyManager(ProxyActorInterface):
             f"logger with logging config: {logging_config}"
         )
 
+        # Scope paths under node_id so co-located managers (multi-raylet
+        # test clusters on one host) don't overwrite each other's files.
+        def _per_node(path: str) -> str:
+            d, f = os.path.split(path)
+            return os.path.join(d, self._node_id, f)
+
         self._haproxy = HAProxyApi(
-            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+            cfg=HAProxyConfig(
+                http_options=http_options,
+                is_head=is_head,
+                socket_path=_per_node(RAY_SERVE_HAPROXY_SOCKET_PATH),
+                server_state_base=os.path.join(
+                    RAY_SERVE_HAPROXY_SERVER_STATE_BASE, self._node_id
+                ),
+                server_state_file=_per_node(RAY_SERVE_HAPROXY_SERVER_STATE_FILE),
+            ),
+            config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
