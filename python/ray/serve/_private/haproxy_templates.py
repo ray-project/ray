@@ -158,12 +158,11 @@ backend {{ backend.name or 'unknown' }}
 {%- if backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
-    # Direct-streaming responses are long-lived chunked streams. Reusing
-    # backend connections here can leave HAProxy holding closed server-side
-    # sockets and stall subsequent streams, so keep the pinned data-plane
-    # path one-request-per-backend-connection.
-    http-reuse never
-    option http-server-close
+    # Keep the pinned data-plane path on the same connection policy as the
+    # primary backend. For streamed responses, forcing server-close can leave
+    # HAProxy holding unread server-side FINs under a burst while worker
+    # threads are still routing other requests.
+    http-reuse always
     # use-server falls through to LB if the pinned server is DOWN.
     option redispatch
     {%- if backend.timeout_connect_s is not none %}
