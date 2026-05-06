@@ -554,8 +554,8 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
         assert "tune.bufsize 65536" in cfg
         direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
         direct_backend = direct_backend.split("listen stats", 1)[0]
-        assert "http-reuse never" in direct_backend
-        assert "option http-server-close" in direct_backend
+        assert "http-reuse always" in direct_backend
+        assert "option http-server-close" not in direct_backend
         # Only router-bearing backends contribute a set-var directive that
         # arms the Lua dispatch; the plain `api` backend must not.
         assert "set-var(txn.ingress_request_router_app) str(llm)" in cfg
