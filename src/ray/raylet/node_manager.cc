@@ -2624,7 +2624,6 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     for (size_t i = 0; i < object_ids.size(); ++i) {
       reply->add_successes(false);
     }
-    FreeLocalObjects(object_ids);
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
