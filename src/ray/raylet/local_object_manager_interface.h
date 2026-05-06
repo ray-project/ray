@@ -68,6 +68,13 @@ class LocalObjectManagerInterface {
 
   virtual void ReleaseFreedLocalObject(const ObjectID &object_id) = 0;
 
+  /// Return ids of pinned objects whose owner matches, skipping freed entries.
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
+      const WorkerID &worker_id) const = 0;
+
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
+      const NodeID &node_id) const = 0;
+
   virtual std::string DebugString() const = 0;
 };
 
