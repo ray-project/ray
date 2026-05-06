@@ -43,6 +43,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.protocol import ProtocolsProvider
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -503,6 +504,7 @@ class TestParseUri:
         [
             ("gcs://file.zip", Protocol.GCS, "file.zip"),
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+            ("http://test.com/file.zip", Protocol.HTTP, "http_test_com_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
             ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
@@ -514,6 +516,11 @@ class TestParseUri:
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
+                "package-0.0.1-py2.py3-none-any.whl",
+            ),
+            (
+                "http://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
+                Protocol.HTTP,
                 "package-0.0.1-py2.py3-none-any.whl",
             ),
         ],
@@ -784,10 +791,10 @@ class TestS3Protocol:
             assert transport_params["client"] == mock_unsigned_client
 
 
-def test_https_handler_requires_smart_open(monkeypatch):
+def test_http_handler_requires_smart_open(monkeypatch):
     monkeypatch.setitem(sys.modules, "smart_open", None)
     with pytest.raises(ImportError):
-        ProtocolsProvider._handle_https_protocol()
+        ProtocolsProvider._handle_http_protocol()
 
 
 def test_https_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
@@ -827,6 +834,72 @@ def test_https_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
     assert tp["headers"]["User-Agent"].startswith("ray-runtime-env-curl")
     assert tp["headers"]["Accept"] == "*/*"
     assert tp["timeout"] == 60
+
+
+def test_http_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
+    payload = b"dummy-zip-content"
+    captured = {}
+
+    class DummyResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+    def fake_open(uri, mode, transport_params=None):
+        captured["uri"] = uri
+        captured["mode"] = mode
+        captured["transport_params"] = transport_params
+        return DummyResponse(payload)
+
+    monkeypatch.setitem(
+        sys.modules, "smart_open", types.SimpleNamespace(open=fake_open)
+    )
+
+    dest_file = tmp_path / "downloaded_via_smart_open.zip"
+    ProtocolsProvider.download_remote_uri(
+        protocol="http",
+        source_uri="http://example.com/test.zip",
+        dest_file=str(dest_file),
+    )
+
+    assert dest_file.read_bytes() == payload
+    assert captured["uri"] == "http://example.com/test.zip"
+    assert captured["mode"] == "rb"
+    tp = captured["transport_params"]
+    assert tp is not None
+    assert "headers" in tp
+    assert tp["headers"]["User-Agent"].startswith("ray-runtime-env-curl")
+    assert tp["headers"]["Accept"] == "*/*"
+    assert tp["timeout"] == 60
+
+
+def test_upload_working_dir_zip_with_upload_fn(tmp_path):
+    """Test that upload_working_dir_if_needed uses upload_fn for local zip files."""
+    # Create a temporary zip file
+    zip_path = tmp_path / "test_package.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("hello.py", "print('hello')")
+
+    captured_calls = []
+
+    def mock_upload_fn(path, excludes=None, is_file=False):
+        captured_calls.append({"path": path, "excludes": excludes, "is_file": is_file})
+
+    runtime_env = {"working_dir": str(zip_path)}
+    result = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, upload_fn=mock_upload_fn
+    )
+
+    # Verify upload_fn was called with is_file=True
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["path"] == str(zip_path)
+    assert captured_calls[0]["is_file"] is True
+
+    # Verify the working_dir was replaced with a GCS URI
+    expected_uri = get_uri_for_package(zip_path)
+    assert result["working_dir"] == expected_uri
 
 
 @pytest.mark.asyncio
