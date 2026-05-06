@@ -160,6 +160,11 @@ bool ObjectRefStream::IsFinished() const {
 
 std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
   const auto &object_id = GetObjectRefAtIndex(next_index_);
+  // EOF is never inserted into refs_written_to_stream_; TryReadNextItem uses
+  // IsFinished() instead. Match that so peek/wait agree at the sentinel index.
+  if (IsFinished()) {
+    return {object_id, true};
+  }
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     return {object_id, false};
   } else {
