@@ -588,7 +588,20 @@ def update_operator_states(topology: Topology) -> None:
         # internal queues are properly cleared via clear_internal_input_queue()
         # and clear_internal_output_queue().
         terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
-        if dependents_completed or terminal_completed:
+        # Guard on the explicit _is_execution_marked_finished flag rather
+        # than has_execution_finished(). has_execution_finished() returns
+        # True either when the explicit flag is set OR via an
+        # auto-detection fallback (inputs complete AND no active tasks AND
+        # internal input queue empty). has_completed() (and therefore
+        # terminal_completed) itself requires has_execution_finished() to
+        # be True, so an auto-detection-based guard would make the
+        # terminal_completed branch unreachable and skip the mixin's
+        # queue-clearing override. The explicit flag is flipped by the
+        # very call we are guarding, giving us the intended exactly-once
+        # semantics for both branches.
+        if (
+            dependents_completed or terminal_completed
+        ) and not op._is_execution_marked_finished:
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.
