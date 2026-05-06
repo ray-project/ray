@@ -2105,6 +2105,20 @@ py_test(
 )
 
 py_test(
+    name = "test_iceberg_checkpoint",
+    size = "medium",
+    srcs = ["tests/test_checkpoint_for_iceberg.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_read_datasource",
     size = "small",
     srcs = ["tests/test_read_datasource.py"],

@@ -6,7 +6,7 @@ import heapq
 import itertools
 import logging
 from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import pyarrow as pa
 from packaging import version
@@ -75,7 +75,6 @@ if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
-    from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
@@ -487,33 +486,43 @@ class IcebergDatasource(Datasource):
 
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
-        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(
+        chunks = IcebergDatasource._distribute_tasks_into_equal_chunks(
             plan_files, parallelism
-        ):
-            unique_deletes: Set[DataFile] = set(
-                itertools.chain.from_iterable(
-                    [task.delete_files for task in chunk_tasks]
+        )
+
+        for chunk_tasks in chunks:
+            if chunk_tasks:
+                unique_deletes = set(
+                    itertools.chain.from_iterable(
+                        [task.delete_files for task in chunk_tasks]
+                    )
                 )
-            )
-            # Get a rough estimate of the number of deletes by just looking at
-            # position deletes. Equality deletes are harder to estimate, as they
-            # can delete multiple rows.
-            position_delete_count = sum(
-                delete.record_count
-                for delete in unique_deletes
-                if delete.content == DataFileContent.POSITION_DELETES
-            )
-            metadata = BlockMetadata(
-                num_rows=sum(task.file.record_count for task in chunk_tasks)
-                - position_delete_count,
-                size_bytes=sum(task.file.file_size_in_bytes for task in chunk_tasks),
-                input_files=[task.file.file_path for task in chunk_tasks],
-                exec_stats=None,
-            )
+                position_delete_count = sum(
+                    delete.record_count
+                    for delete in unique_deletes
+                    if delete.content == DataFileContent.POSITION_DELETES
+                )
+
+                num_rows = (
+                    sum(task.file.record_count for task in chunk_tasks)
+                    - position_delete_count
+                )
+                size_bytes = sum(task.file.file_size_in_bytes for task in chunk_tasks)
+                input_files = [task.file.file_path for task in chunk_tasks]
+            else:
+                num_rows = 0
+                size_bytes = 0
+                input_files = []
+
             read_tasks.append(
                 ReadTask(
-                    read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
-                    metadata=metadata,
+                    read_fn=lambda t=chunk_tasks: get_read_task(t),
+                    metadata=BlockMetadata(
+                        num_rows=num_rows,
+                        size_bytes=size_bytes,
+                        input_files=input_files,
+                        exec_stats=None,
+                    ),
                     schema=pya_schema,
                     per_task_row_limit=per_task_row_limit,
                 )

@@ -1,6 +1,7 @@
 """
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
+
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
@@ -390,7 +391,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         if schema is not None:
             table_schema = self._table.metadata.schema()
 
+            # Use Iceberg's schema update API to evolve table schema
             def _update_schema():
+                # union_by_name merges old and new schemas, automatically adding new columns
                 with self._table.update_schema() as update:
                     self._update_schema_with_union(update, schema, table_schema)
 
@@ -443,10 +446,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 block_schemas.append(pa_table.schema)
 
                 # Extract join key values for copy-on-write upsert
+                per_block_upsert_keys = None
                 if use_copy_on_write_upsert:
                     upsert_cols = self._get_upsert_cols()
                     if len(upsert_cols) > 0:
-                        upsert_keys_tables.append(pa_table.select(upsert_cols))
+                        per_block_upsert_keys = pa_table.select(upsert_cols)
+                        upsert_keys_tables.append(per_block_upsert_keys)
 
                 # Write data files to storage with retry for transient errors
                 def _write_data_files():
@@ -467,6 +472,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     max_backoff_s=iceberg_config.write_file_retry_max_backoff_s,
                 )
                 all_data_files.extend(data_files)
+            else:
+                pass
 
         # Combine all upsert key tables into one
         from ray.data._internal.arrow_ops.transform_pyarrow import concat
@@ -520,20 +527,31 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         t_start = time.perf_counter()
         logger.info("[on_write_complete] Starting commit phase (mode=%s)", self._mode)
 
+        write_returns = write_result.write_returns
+        valid_results = [r for r in write_returns if r and r.data_files]
+
+        if not valid_results:
+            logger.info("[on_write_complete] No data to commit to Iceberg table.")
+            return
+
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
         upsert_keys_tables: List["pa.Table"] = []
+        seen_data_file_paths = set()
 
-        for write_return in write_result.write_returns:
-            if not write_return:
-                continue
-
-            if write_return.data_files:  # Only add schema if we have data files
-                all_data_files.extend(write_return.data_files)
-                all_schemas.extend(write_return.schemas)
-                if write_return.upsert_keys is not None:
-                    upsert_keys_tables.append(write_return.upsert_keys)
+        for result in valid_results:
+            if result.data_files:
+                for df in result.data_files:
+                    file_path = getattr(df, "file_path", None)
+                    if file_path is not None:
+                        if file_path in seen_data_file_paths:
+                            continue
+                        seen_data_file_paths.add(file_path)
+                    all_data_files.append(df)
+                all_schemas.extend(result.schemas)
+                if result.upsert_keys is not None:
+                    upsert_keys_tables.append(result.upsert_keys)
 
         logger.info(
             "[on_write_complete] Collected results: %d data files, %d schema blocks, "

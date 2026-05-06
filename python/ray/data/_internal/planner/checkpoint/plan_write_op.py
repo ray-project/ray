@@ -1,5 +1,7 @@
+import logging
+import uuid
 import warnings
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -15,6 +17,7 @@ from ray.data._internal.planner.plan_write_op import (
     generate_collect_write_stats_fn,
 )
 from ray.data.block import Block, BlockAccessor
+from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import (
     CheckpointWriter,
     PendingCheckpoint,
@@ -23,9 +26,11 @@ from ray.data.checkpoint.interfaces import (
     InvalidCheckpointingOperators,
 )
 from ray.data.context import DataContext
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import _split_base_and_ext
+
+logger = logging.getLogger(__name__)
 
 
 def _validate_id_column_exists(id_column: str, block: Block) -> None:
@@ -132,8 +137,8 @@ def plan_write_op_with_checkpoint_writer(
             collect_stats_fn,
         ]
     else:
-        # Non-file datasink (SQL, Mongo, etc.): fall back to non-atomic checkpoint
-        # No 2-phase commit - write checkpoint after data write
+        # Non-file datasink (SQL, Mongo, Iceberg, etc.): fall back to non-atomic
+        # checkpoint. No 2-phase commit - write checkpoint after data write.
         # This might cause duplicate writes if the write operation is retried.
         warnings.warn(
             f"Checkpointing with non-file datasink ({type(datasink).__name__}) "
@@ -150,6 +155,13 @@ def plan_write_op_with_checkpoint_writer(
             collect_stats_fn,
         ]
         pre_transformations = []
+
+        # Iceberg datasink special handling: wrap on_write_complete at the planner
+        # layer to merge previously checkpointed WriteResults into the current commit
+        if _is_iceberg_datasink(datasink):
+            _wrap_iceberg_on_write_complete(
+                datasink, data_context.checkpoint_config
+            )
 
     physical_op = _plan_write_op_internal(
         op,
@@ -308,8 +320,8 @@ def _generate_non_atomic_write_checkpoint_transform(
 ) -> BlockMapTransformFn:
     """Generate transform for writing checkpoints AFTER data write (non-file datasinks).
 
-    This is a fallback for non-file datasinks (SQL, Mongo, etc.) that don't
-    support deletions. Unlike file-based sinks where we can delete orphaned
+    This is a fallback for non-file datasinks (SQL, Mongo, Iceberg, etc.) that don't
+    support file-level deletions. Unlike file-based sinks where we can delete orphaned
     data files during recovery, these sinks have no way to undo a write once
     data has been inserted into rows or documents.
 
@@ -318,15 +330,19 @@ def _generate_non_atomic_write_checkpoint_transform(
     before checkpoint write, the same data will be written again on retry
     without removing the old data.
 
+    For Iceberg datasinks, this transform additionally writes a .meta.pkl file
+    containing the IcebergWriteResult metadata, paired with the .parquet checkpoint
+    file via a shared file_id. This enables recovery of write results for the
+    Iceberg commit on retry.
+
     For idempotent operations (upserts with unique keys), this is safe. For
     non-idempotent operations (inserts), duplicates may result.
-
-    TODO: For datasinks that support deletions (e.g., SQL DELETE by ID), we
-    could store written IDs in pending checkpoints and delete them on recovery,
-    avoiding duplicates even for non-idempotent operations.
     """
 
     def write_checkpoint(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        # Get the current task's write return (returned by datasink.write())
+        write_return = ctx.kwargs.get("_datasink_write_return")
+
         # Combine all blocks
         block_list, combined_block = _combine_blocks(blocks)
         ba = BlockAccessor.for_block(combined_block)
@@ -336,15 +352,90 @@ def _generate_non_atomic_write_checkpoint_transform(
             id_column = data_context.checkpoint_config.id_column
             _validate_id_column_exists(id_column, combined_block)
 
-            # Write checkpoint directly (no 2-phase commit)
-            # No data_file_path since non-file datasinks don't have file paths
-            checkpoint_writer.write_block_checkpoint(ba)
+            # Generate a checkpoint file_id to pair .parquet and .meta.pkl files
+            file_id = str(uuid.uuid4())
+
+            # If write_return is an IcebergWriteResult, write .meta.pkl first.
+            # .meta.pkl must be written before .parquet so that if .parquet exists
+            # during recovery, .meta.pkl is guaranteed to exist too (but not vice versa).
+            if _is_iceberg_write_result(write_return):
+                from ray.data.checkpoint.iceberg_checkpoint import (
+                    write_iceberg_checkpoint_metadata,
+                )
+
+                write_iceberg_checkpoint_metadata(
+                    filesystem=checkpoint_writer.filesystem,
+                    checkpoint_path_unwrapped=checkpoint_writer.checkpoint_path_unwrapped,
+                    file_id=file_id,
+                    write_result=write_return,
+                )
+
+            # Write the row ID checkpoint .parquet using the same file_id
+            checkpoint_writer.write_block_checkpoint(
+                ba,
+                checkpoint_file_id=file_id,
+            )
 
         return iter(block_list)
 
     return BlockMapTransformFn(
         write_checkpoint,
         is_udf=False,
-        # NOTE: No need for block-shaping
         disable_block_shaping=True,
     )
+
+
+def _is_iceberg_write_result(write_return) -> bool:
+    """Check if a write return is an IcebergWriteResult.
+
+    Uses duck typing to avoid importing IcebergDatasink at module level
+    (which would pull in pyiceberg as a hard dependency).
+    """
+    if write_return is None:
+        return False
+    return (
+        hasattr(write_return, "data_files")
+        and hasattr(write_return, "upsert_keys")
+        and hasattr(write_return, "schemas")
+        and type(write_return).__name__ == "IcebergWriteResult"
+    )
+
+
+def _is_iceberg_datasink(datasink: Datasink) -> bool:
+    """Check if a datasink is an IcebergDatasink.
+
+    Uses class name check to avoid importing IcebergDatasink at module level.
+    """
+    return type(datasink).__name__ in ("IcebergDatasink", "_FailOnceIcebergDatasink")
+
+
+def _wrap_iceberg_on_write_complete(
+    datasink: Datasink,
+    checkpoint_config: Optional[CheckpointConfig],
+) -> None:
+    """Wrap the datasink's on_write_complete to merge recovered IcebergWriteResults.
+
+    This is called at plan time (once) to transparently inject checkpoint recovery
+    into the Iceberg commit flow. When on_write_complete is called after all workers
+    finish, the wrapper first loads any previously checkpointed IcebergWriteResults,
+    deduplicates them against current results, and merges them into write_returns
+    before the original on_write_complete performs the Iceberg commit.
+
+    Args:
+        datasink: The IcebergDatasink to wrap.
+        checkpoint_config: The checkpoint configuration for loading previous results.
+    """
+    original_on_write_complete = datasink.on_write_complete
+
+    def wrapped_on_write_complete(write_result: WriteResult) -> None:
+        from ray.data.checkpoint.iceberg_checkpoint import (
+            merge_recovered_iceberg_write_results,
+        )
+
+        # Merge previously checkpointed WriteResults into the current results
+        write_result.write_returns = merge_recovered_iceberg_write_results(
+            write_result.write_returns, checkpoint_config
+        )
+        return original_on_write_complete(write_result)
+
+    datasink.on_write_complete = wrapped_on_write_complete

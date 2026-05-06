@@ -11,7 +11,7 @@ from pyarrow.fs import FileType
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data._internal.util import call_with_retry
+from ray._common.retry import call_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.context import DataContext
@@ -57,7 +57,7 @@ class CheckpointWriter:
         self.write_num_threads = self.ckpt_config.write_num_threads
 
     @abstractmethod
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(self, block: BlockAccessor, checkpoint_file_id: str = None, **kwargs):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
@@ -158,34 +158,44 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
 
         return pa.table({self.id_col: id_column_data})
 
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(
+        self, block: BlockAccessor, checkpoint_file_id: str = None, **kwargs
+    ):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
         This is used for non-file datasinks (SQL, MongoDB, etc.) where there's
         no predictable file path to store in checkpoint metadata.
 
+        Iceberg-specific metadata files (e.g., .meta.pkl for Iceberg WriteResult recovery)
+        are handled separately by the planner layer, not by this writer.
+
         Args:
             block: The block accessor containing the data to checkpoint.
+            checkpoint_file_id: Optional deterministic file ID for the checkpoint.
+                If provided, the parquet file will be named {checkpoint_file_id}.parquet.
+                This allows external callers (e.g., planner layer) to pair the parquet
+                file with other metadata files using the same ID.
         """
         if block.num_rows() == 0:
             return
 
-        file_name = f"{uuid.uuid4()}.parquet"
+        file_id = checkpoint_file_id or str(uuid.uuid4())
+        file_name = f"{file_id}.parquet"
         ckpt_file_path = os.path.join(self.checkpoint_path_unwrapped, file_name)
 
         checkpoint_ids_table = self._prepare_checkpoint_table_from_block(block)
 
-        def _write():
-            pq.write_table(
-                checkpoint_ids_table,
-                ckpt_file_path,
-                filesystem=self.filesystem,
-            )
-
         try:
+            def _write_parquet():
+                pq.write_table(
+                    checkpoint_ids_table,
+                    ckpt_file_path,
+                    filesystem=self.filesystem,
+                )
+
             call_with_retry(
-                _write,
+                _write_parquet,
                 description=f"Write checkpoint file: {file_name}",
                 match=DataContext.get_current().retried_io_errors,
             )
