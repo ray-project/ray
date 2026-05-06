@@ -85,6 +85,12 @@ def get_haproxy_binary() -> str:
 
     Raises ``FileNotFoundError`` if no usable binary is found.
     """
+    binary = _resolve_haproxy_binary()
+    logger.info(f"Using HAProxy binary: {binary}")
+    return binary
+
+
+def _resolve_haproxy_binary() -> str:
     if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
         return RAY_SERVE_HAPROXY_BINARY_PATH
 
