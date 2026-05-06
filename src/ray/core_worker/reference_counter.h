@@ -48,15 +48,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
       rpc::Address rpc_address,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
-      std::function<bool(const NodeID &node_id)> is_node_dead,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
-      bool lineage_pinning_enabled = false)
+      bool lineage_pinning_enabled = false,
+      std::function<bool(const NodeID &node_id)> is_node_dead = nullptr,
+      std::function<void(const ObjectID &object_id, const std::vector<NodeID> &locations)>
+          spread_free_local_objects = nullptr)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
+        spread_free_local_objects_(std::move(spread_free_local_objects)),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -789,6 +792,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// the primary or spilled location of an object. If the node died, then
   /// the object will be added to the buffer objects to recover.
   const std::function<bool(const NodeID &node_id)> is_node_dead_;
+
+  /// Called to send free local object RPCs to all raylets that hold a copy of
+  /// the object.
+  const std::function<void(const ObjectID &object_id,
+                           const std::vector<NodeID> &locations)>
+      spread_free_local_objects_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

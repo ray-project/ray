@@ -83,7 +83,6 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       RAY_CHECK(msg.has_worker_object_eviction_message());
       const auto &object_eviction_msg = msg.worker_object_eviction_message();
       const auto obj_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(obj_id);
       core_worker_subscriber_->Unsubscribe(
           rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, obj_id.Binary());
     };
@@ -92,7 +91,11 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
                                                      const Status &) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedObject(obj_id);
+      ReleaseFreedLocalObject(obj_id);
+      // TODO(aaronscalene) currently just frees objects directly here, will wire
+      // in better way in the following PR that gets rid of this owner dead
+      // callback dependency
+      on_objects_freed_({obj_id});
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
@@ -108,7 +111,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
+void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
   // Only free the object if it is not already freed.
   auto it = local_objects_.find(object_id);
   if (it == local_objects_.end() || it->second.is_freed_) {
@@ -147,15 +150,9 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   }
 }
 
+// TODO(aaronscalene): Deal with ProcessSpilledObjectsDeleteQueue within FlushFreeObjects
 void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
-    RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()
-                   << " out-of-scope objects";
-    // TODO(irabbani): CORE-1640 will modify as much as the plasma API as is
-    // reasonable to remove usage of vectors in favor of sets.
-    std::vector<ObjectID> objects_to_delete(objects_pending_deletion_.begin(),
-                                            objects_pending_deletion_.end());
-    on_objects_freed_(objects_to_delete);
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);

@@ -91,10 +91,10 @@ class ActorManagerTest : public ::testing::Test {
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &node_id) { return true; },
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
-            /*lineage_pinning_enabled=*/true)) {
+            /*lineage_pinning_enabled=*/true,
+            [](const NodeID &node_id) { return true; })) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
 

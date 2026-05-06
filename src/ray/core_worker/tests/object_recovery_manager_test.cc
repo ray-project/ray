@@ -143,7 +143,6 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            /*is_node_dead=*/[](const NodeID &) { return false; },
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             /*lineage_pinning_enabled=*/lineage_enabled)),

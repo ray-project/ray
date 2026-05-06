@@ -34,12 +34,14 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
@@ -4621,4 +4623,45 @@ void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   to_resubmit_.push(std::move(task_to_retry));
 }
 
+std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
+    const NodeID &node_id) {
+  if (node_id == GetCurrentNodeId()) {
+    return local_raylet_rpc_client_;
+  }
+  auto node_info =
+      gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
+  if (!node_info) {
+    return nullptr;
+  }
+  auto address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node_info->node_manager_address(), node_info->node_manager_port());
+  return raylet_client_pool_->GetOrConnectByAddress(address);
+}
+
+void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
+                                        const std::vector<NodeID> &locations) {
+  io_service_.post(
+      [this, object_id, locations]() {
+        rpc::FreeLocalObjectsRequest request;
+        request.add_object_ids(object_id.Binary());
+
+        for (const auto &node_id : locations) {
+          auto client = GetRayletRpcClient(node_id);
+          if (client == nullptr) {
+            continue;
+          }
+          client->FreeLocalObjects(
+              request,
+              [object_id, node_id](const Status &status,
+                                   const rpc::FreeLocalObjectsReply &reply) {
+                if (!status.ok()) {
+                  RAY_LOG(WARNING).WithField(object_id)
+                      << "FreeLocalObjects RPC to node " << node_id
+                      << " failed: " << status.ToString();
+                }
+              });
+        }
+      },
+      "CoreWorker.SpreadFreeLocalObjects");
+}
 }  // namespace ray::core

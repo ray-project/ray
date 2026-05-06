@@ -66,7 +66,8 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)                  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetAgentPIDs)                   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(KillLocalActor)                 \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FreeLocalObjects)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -206,6 +207,10 @@ class NodeManagerServiceHandler {
   virtual void HandleCancelLocalTask(CancelLocalTaskRequest request,
                                      CancelLocalTaskReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleFreeLocalObjects(FreeLocalObjectsRequest request,
+                                      FreeLocalObjectsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

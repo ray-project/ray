@@ -346,6 +346,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                              rpc::FreeLocalObjectsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;

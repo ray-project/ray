@@ -53,13 +53,11 @@ class ReferenceCountTest : public ::testing::Test {
     subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
     owned_object_count_metric_ = std::make_shared<ray::observability::FakeGauge>();
     owned_object_size_metric_ = std::make_shared<ray::observability::FakeGauge>();
-    rc = std::make_unique<ReferenceCounter>(
-        addr,
-        publisher_.get(),
-        subscriber_.get(),
-        [](const NodeID &node_id) { return false; },
-        *owned_object_count_metric_,
-        *owned_object_size_metric_);
+    rc = std::make_unique<ReferenceCounter>(addr,
+                                            publisher_.get(),
+                                            subscriber_.get(),
+                                            *owned_object_count_metric_,
+                                            *owned_object_size_metric_);
   }
 
   virtual void TearDown() {
@@ -87,14 +85,12 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
     subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
     owned_object_count_metric_ = std::make_shared<ray::observability::FakeGauge>();
     owned_object_size_metric_ = std::make_shared<ray::observability::FakeGauge>();
-    rc = std::make_unique<ReferenceCounter>(
-        addr,
-        publisher_.get(),
-        subscriber_.get(),
-        [](const NodeID &node_id) { return false; },
-        *owned_object_count_metric_,
-        *owned_object_size_metric_,
-        /*lineage_pinning_enabled=*/true);
+    rc = std::make_unique<ReferenceCounter>(addr,
+                                            publisher_.get(),
+                                            subscriber_.get(),
+                                            *owned_object_count_metric_,
+                                            *owned_object_size_metric_,
+                                            /*lineage_pinning_enabled=*/true);
   }
 
   virtual void TearDown() {
@@ -320,14 +316,13 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             client_factory)),
         owned_object_count_metric_(std::make_shared<ray::observability::FakeGauge>()),
         owned_object_size_metric_(std::make_shared<ray::observability::FakeGauge>()),
-        rc_(
-            address_,
+        rc_(address_,
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &node_id) { return true; },
             *owned_object_count_metric_,
             *owned_object_size_metric_,
-            /*lineage_pinning_enabled=*/false) {}
+            /*lineage_pinning_enabled=*/false,
+            /*is_node_dead=*/[](const NodeID &node_id) { return true; }) {}
 
   ~MockWorkerClient() override {
     if (!failed_) {
@@ -890,13 +885,11 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
   auto owned_object_count_metric = std::make_shared<ray::observability::FakeGauge>();
   auto owned_object_size_metric = std::make_shared<ray::observability::FakeGauge>();
-  auto rc = std::make_shared<ReferenceCounter>(
-      rpc::Address(),
-      publisher.get(),
-      subscriber.get(),
-      /*is_node_dead=*/[](const NodeID &) { return false; },
-      *owned_object_count_metric,
-      *owned_object_size_metric);
+  auto rc = std::make_shared<ReferenceCounter>(rpc::Address(),
+                                               publisher.get(),
+                                               subscriber.get(),
+                                               *owned_object_count_metric,
+                                               *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService());
 
