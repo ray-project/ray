@@ -253,6 +253,104 @@ def _parse_args(
     return options, parser.rargs
 
 
+def _extract_uv_prefix_args(
+    raw_args: List[str], parser: optparse.OptionParser
+) -> List[str]:
+    """Return the uv run prefix arguments from raw argv.
+
+    This scanner operates on the original unmodified argv to avoid edge cases where
+    optparse can rewrite unconsumed args (e.g. unknown ``--flag=value`` becoming
+    ``["--flag", "value"]``). We include uv options up to the command boundary:
+
+    - First positional token for script-style runs
+    - End of options marker ``--``
+    - Immediately after ``-m/--module`` value for module-style runs
+    """
+    if not raw_args:
+        return []
+
+    known_options = set()
+    options_requiring_value = set()
+    boolean_options = set()
+
+    for option in parser.option_list:
+        flags = option._short_opts + option._long_opts
+        known_options.update(flags)
+        if option.takes_value():
+            options_requiring_value.update(flags)
+        else:
+            boolean_options.update(flags)
+
+    for group in parser.option_groups:
+        for option in group.option_list:
+            flags = option._short_opts + option._long_opts
+            known_options.update(flags)
+            if option.takes_value():
+                options_requiring_value.update(flags)
+            else:
+                boolean_options.update(flags)
+
+    uv_args: List[str] = []
+    i = 0
+
+    while i < len(raw_args):
+        token = raw_args[i]
+
+        if token == "--":
+            break
+
+        if not token.startswith("-"):
+            # First positional token is command boundary.
+            break
+
+        uv_args.append(token)
+
+        option_name = token.split("=", 1)[0]
+        if "=" in token:
+            # In module mode, command begins immediately after the module value.
+            if option_name in {"-m", "--module"}:
+                break
+            i += 1
+            continue
+
+        if option_name in options_requiring_value and i + 1 < len(raw_args):
+            uv_args.append(raw_args[i + 1])
+            i += 2
+
+            # In module mode, command begins immediately after the module value.
+            if option_name in {"-m", "--module"}:
+                break
+            continue
+
+        # Keep unknown options as part of uv prefix as long as they appear
+        # before the command boundary.
+        if option_name not in known_options:
+            if i + 1 < len(raw_args) and not raw_args[i + 1].startswith("-"):
+                uv_args.append(raw_args[i + 1])
+                i += 2
+                continue
+            i += 1
+            continue
+
+        if option_name in boolean_options:
+            i += 1
+            continue
+
+        i += 1
+
+    return uv_args
+
+
+def _has_explicit_python_option(args: List[str]) -> bool:
+    """Return whether uv prefix args already include an explicit Python pin."""
+    for token in args:
+        if token in {"-p", "--python"}:
+            return True
+        if token.startswith("--python="):
+            return True
+    return False
+
+
 def _check_working_dir_files(
     uv_run_args: optparse.Values, runtime_env: Dict[str, Any]
 ) -> None:
@@ -351,20 +449,17 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "'uv run' environment e.g. by including them in your pyproject.toml."
         )
 
-    # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
-    args_to_parse = cmdline[2:]  # Remove 'uv run' prefix
-    original_length = len(
-        args_to_parse
-    )  # Save before parsing (parser modifies in-place)
-
+    # Extract arguments after `uv run`.
+    raw_args = cmdline[2:]  # Immutable snapshot for prefix reconstruction.
+    args_to_parse = raw_args.copy()  # Mutable copy for parser internals.
     parser = _create_uv_run_parser()
-    (options, command) = _parse_args(parser, args_to_parse)
+    (options, _) = _parse_args(parser, args_to_parse)
 
-    # Calculate how many arguments were consumed by the parser.
-    # Since disable_interspersed_args() is set, parsing stops at the first
-    # unrecognized argument (the command), so all consumed args are uv options.
-    args_consumed = original_length - len(command)
-    uv_run_args = cmdline[: 2 + args_consumed]
+    # Preserve uv prefix from original argv. Parsing is used only for semantic
+    # values (e.g. --python, --directory, --module).
+    uv_run_args = [cmdline[0], cmdline[1]]
+    uv_run_args.extend(_extract_uv_prefix_args(raw_args, parser))
+    has_explicit_python = _has_explicit_python_option(uv_run_args)
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
@@ -384,7 +479,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # 2. env_vars["UV_PYTHON"]
     # 3. current os.environ["UV_PYTHON"]
     # 4. platform.python_version() (since uv run uses the same Python as the driver)
-    if not options.python:
+    if not options.python and not has_explicit_python:
         env_vars = runtime_env.get("env_vars") or {}
         uv_python = (
             env_vars.get("UV_PYTHON")
