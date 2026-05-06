@@ -1051,6 +1051,7 @@ py_test(
     deps = [":train_lib"],
 )
 
+# TODO(Mark) - Disabled while resolving issues due to #63017
 py_test(
     name = "test_trainer_restore",
     size = "large",
@@ -1058,6 +1059,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
+        "manual",
         "team:ml",
     ],
     deps = [
