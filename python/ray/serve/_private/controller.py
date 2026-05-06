@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    DEFAULT_HTTP_HOST,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -207,8 +208,23 @@ class ServeController:
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
             )
-
             http_options.location = DeploymentMode.HeadOnly
+
+        if self._ha_proxy_enabled:
+            if http_options.host == "0.0.0.0" and DEFAULT_HTTP_HOST != "0.0.0.0":
+                logger.info(
+                    "RAY_SERVE_ENABLE_HA_PROXY=1: HTTPOptions.host defaults "
+                    f"to '0.0.0.0' (overriding RAY_SERVE_DEFAULT_HTTP_HOST="
+                    f"{DEFAULT_HTTP_HOST!r}) so HAProxy on remote nodes can "
+                    "reach replica backends."
+                )
+            elif http_options.host not in (None, "0.0.0.0"):
+                logger.warning(
+                    f"HTTPOptions.host={http_options.host!r} is not reachable "
+                    "from HAProxy on other nodes. Replica HTTP ports should "
+                    "bind to '0.0.0.0' (the default when "
+                    "RAY_SERVE_ENABLE_HA_PROXY=1) so cross-node routing works."
+                )
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
