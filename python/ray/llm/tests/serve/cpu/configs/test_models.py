@@ -6,8 +6,6 @@ import pytest
 
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.accelerators import (
-    CPUAccelerator,
-    GPUAccelerator,
     TPUAccelerator,
     TPUConfig,
 )
@@ -403,19 +401,34 @@ class TestAcceleratorConfigLogic:
         assert isinstance(engine_config.accelerator, TPUAccelerator)
         assert engine_config.accelerator_type == "TPU-V6E"
 
-    def test_requires_deferred_placement_group(self):
-        """Test that requires_deferred_placement_group correctly identifies deferred PG requirements."""
-        cpu_accel = CPUAccelerator()
-        assert cpu_accel.requires_deferred_placement_group is False
+    def test_tpu_accelerator_get_placement_group_bundle_label_selector(self):
+        """Test that TPUAccelerator correctly generates topology labels for Serve."""
+        tpu_accel_no_topology = TPUAccelerator(TPUConfig(kind="tpu"))
+        assert (
+            tpu_accel_no_topology.get_placement_group_bundle_label_selector("TPU-V6E")
+            is None
+        )
 
-        gpu_accel = GPUAccelerator()
-        assert gpu_accel.requires_deferred_placement_group is False
+        tpu_accel_with_topology = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        assert tpu_accel_with_topology.get_placement_group_bundle_label_selector(
+            "TPU-V6E"
+        ) == {
+            "ray.io/tpu-topology": "4x4",
+            "ray.io/accelerator-type": "TPU-V6E",
+        }
 
-        tpu_accel_no_topo = TPUAccelerator(TPUConfig(kind="tpu"))
-        assert tpu_accel_no_topo.requires_deferred_placement_group is False
+    def test_tpu_accelerator_get_remote_options(self):
+        """Test that TPUAccelerator get_remote_options returns an empty resources dict and label selector."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu"))
 
-        tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
-        assert tpu_accel_with_topo.requires_deferred_placement_group is True
+        options_no_type = tpu_accel.get_remote_options()
+        assert options_no_type == {"resources": {}}
+
+        options_with_type = tpu_accel.get_remote_options("TPU-V6E")
+        assert options_with_type == {
+            "resources": {},
+            "label_selector": {"ray.io/accelerator-type": "TPU-V6E"},
+        }
 
 
 if __name__ == "__main__":

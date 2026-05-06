@@ -162,7 +162,10 @@ class MockVLLMEngine(LLMEngine):
 
         # Generate streaming response
         async for response in self._generate_chat_response(
-            request=request, prompt_text=prompt_text.strip(), max_tokens=max_tokens
+            request=request,
+            prompt_text=prompt_text.strip(),
+            max_tokens=max_tokens,
+            raw_request_info=raw_request_info,
         ):
             yield response
 
@@ -324,11 +327,19 @@ class MockVLLMEngine(LLMEngine):
         yield response
 
     async def _generate_chat_response(
-        self, request: ChatCompletionRequest, prompt_text: str, max_tokens: int
+        self,
+        request: ChatCompletionRequest,
+        prompt_text: str,
+        max_tokens: int,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
         """Generate mock chat completion response."""
 
-        request_id = request.request_id or f"chatcmpl-{random.randint(1000, 9999)}"
+        request_id = (
+            (raw_request_info.request_id if raw_request_info else None)
+            or getattr(request, "request_id", None)
+            or f"chatcmpl-{random.randint(1000, 9999)}"
+        )
         # # Use request.model if provided, otherwise fall back to llm_config.model_id
         model_name = request.model or self.llm_config.model_id
         lora_prefix = (

@@ -36,6 +36,7 @@ def ray_tpu_cluster():
                 "ray.io/tpu-slice-name": "test-slice",
                 "ray.io/tpu-worker-id": str(i),
                 "ray.io/tpu-pod-type": pod_type,
+                "ray.io/accelerator-type": "TPU-V6E",
             }
             resources = {"TPU": 4, "accelerator_type:TPU-V6E": 4}
 
@@ -50,6 +51,6 @@ def ray_tpu_cluster():
                 env_vars=env_vars,
             )
 
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, ignore_reinit_error=True)
         yield cluster
         ray.shutdown()

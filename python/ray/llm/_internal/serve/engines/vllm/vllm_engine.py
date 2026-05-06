@@ -279,6 +279,10 @@ class VLLMEngine(LLMEngine):
         from vllm.entrypoints.openai.api_server import init_app_state
 
         callback = self.llm_config.get_or_create_callback()
+        if callback.ctx.placement_group:
+            # Ensure existing PG for the Serve deployment is scheduled
+            # before attempting to initialize the engine.
+            await callback.ctx.placement_group.ready()
         await callback.run_callback("on_before_node_init")
         if callback.ctx.run_init_node:
             await initialize_node(self.llm_config)

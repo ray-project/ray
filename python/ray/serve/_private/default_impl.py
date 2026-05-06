@@ -41,8 +41,10 @@ from ray.serve._private.utils import (
     get_head_node_id,
     inside_ray_client_context,
     resolve_deployment_response,
+    resolve_tpu_slice_kwargs,
 )
 from ray.util.placement_group import PlacementGroup
+from ray.util.tpu import slice_placement_group
 
 # NOTE: Please read carefully before changing!
 #
@@ -61,6 +63,24 @@ CreatePlacementGroupFn = Callable[[CreatePlacementGroupRequest], PlacementGroup]
 def _default_create_placement_group(
     request: CreatePlacementGroupRequest,
 ) -> PlacementGroup:
+    """Creates a placement group for the given request."""
+    tpu_kwargs = resolve_tpu_slice_kwargs(
+        request.bundle_label_selector, request.bundles
+    )
+    if tpu_kwargs is not None:
+        # If TPU-specific bundle label selectors are present, we utilize
+        # Slice PG utility to ensure atomic scheduling of co-located slices.
+        tpu_topology, tpu_version, worker_bundle = tpu_kwargs
+        slice_pg = slice_placement_group(
+            topology=tpu_topology,
+            accelerator_version=tpu_version,
+            resources_per_bundle=worker_bundle,
+            strategy=request.strategy,
+            name=request.name,
+            lifetime="detached",
+        )
+        return slice_pg.placement_group
+
     return ray.util.placement_group(
         request.bundles,
         request.strategy,

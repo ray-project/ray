@@ -14,134 +14,89 @@ from ray.llm._internal.serve.core.configs.accelerators import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import PGCreationMockEngine
+from ray.serve._private.utils import resolve_tpu_slice_kwargs
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from ray.util.placement_group import PlacementGroup, placement_group_table
 
 
-def test_tpu_slice_placement_group_creation_default_resources(ray_tpu_cluster):
-    """
-    Verifies that requesting a multi-host TPU topology correctly intercepts
-    standard PG creation and returns a PACK SlicePlacementGroup.
-    """
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
-        accelerator_type="TPU-V6E",
-        accelerator_config={"kind": "tpu", "topology": "4x4"},
-    )
-
-    engine_config = llm_config.get_engine_config()
-    pg = engine_config.get_or_create_pg()
-
-    assert isinstance(pg, PlacementGroup)
-
-    pg_table = placement_group_table(pg)
-    assert pg_table["strategy"] == "PACK"
-
-    # 4x4 v6e = 16 chips. We default to 1 TPU chip per bundle.
-    assert len(pg_table["bundles"]) == 16
-    for bundle in pg_table["bundles"].values():
-        assert "TPU" in bundle
-        assert bundle["TPU"] == 1
-
-    # Let the backend tear down its own resources if it has any
-    engine_config.accelerator.shutdown()
-    try:
-        ray.util.remove_placement_group(pg)
-    except Exception:
-        pass  # Already cleaned up by the wrapper
-
-
-def test_tpu_slice_placement_group_creation_host_resources(ray_tpu_cluster):
-    """
-    Verifies that explicitly providing host-level bundles via
-    placement_group_config correctly overrides the 1-chip default.
-    """
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
-        accelerator_type="TPU-V6E",
-        accelerator_config={"kind": "tpu", "topology": "4x4"},
-        placement_group_config={
-            "strategy": "STRICT_SPREAD",
-            "bundles": [{"TPU": 4}],
-        },
-    )
-
-    engine_config = llm_config.get_engine_config()
-    pg = engine_config.get_or_create_pg()
-
-    assert isinstance(pg, PlacementGroup)
-
-    pg_table = placement_group_table(pg)
-    assert pg_table["strategy"] == "STRICT_SPREAD"
-    # We should provision 4 host-level bundles instead of the default 16 chip-level bundles.
-    assert len(pg_table["bundles"]) == 4
-    for bundle in pg_table["bundles"].values():
-        assert "TPU" in bundle
-        assert bundle["TPU"] == 4
-
-    # Let the backend tear down its own resources if it has any
-    engine_config.accelerator.shutdown()
-    try:
-        ray.util.remove_placement_group(pg)
-    except Exception:
-        pass  # Already cleaned up by the wrapper
-
-
-def test_single_tpu_fallback(ray_tpu_cluster):
+def test_tpu_serve_deployment_single_tpu_fallback(ray_tpu_cluster):
     """
     Verifies that requesting a TPU without a topology gracefully
-    falls back to standard single-host bundle packing.
+    falls back to standard single-host bundle packing without
+    triggering the slice placement group interception.
     """
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
+        # Explicitly omit topology
+        accelerator_config={"kind": "tpu"},
+        engine_kwargs={"tensor_parallel_size": 1},
     )
 
-    engine_config = llm_config.get_engine_config()
-    pg = engine_config.get_or_create_pg()
+    app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
 
-    pg_table = placement_group_table(pg)
-
-    # Verify it falls back to the default PACK strategy for 1 GPU/TPU
-    assert len(pg_table["bundles"]) == 1
-    assert pg_table["strategy"] == "PACK"
-
-    # Let the backend tear down its own resources if it has any
-    engine_config.accelerator.shutdown()
+    serve.start(http_options={"port": 0})
     try:
-        ray.util.remove_placement_group(pg)
-    except Exception:
-        pass  # Already cleaned up by the wrapper
+        serve.run(app, name="single_tpu_app", route_prefix="/single_tpu")
+        pg_table = ray.util.placement_group_table()
+        active_pgs = list(
+            {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
+        )
+
+        # Ensure we only have standard PGs, no TPU Head PGs
+        tpu_head_resource = "TPU-v6e-16-head"
+        head_pgs = [
+            pg
+            for pg in active_pgs
+            if len(pg["bundles"]) == 1
+            and tpu_head_resource in list(pg["bundles"].values())[0]
+        ]
+        assert len(head_pgs) == 0
+
+        # Verify the deployment PG has the default PACK strategy and 1 TPU
+        deployment_pgs = [
+            pg
+            for pg in active_pgs
+            if any("TPU" in bundle for bundle in pg["bundles"].values())
+        ]
+        assert len(deployment_pgs) >= 1
+
+        target_pg = deployment_pgs[0]
+        assert target_pg["strategy"] == "PACK"
+
+        # Verify it allocated 1 TPU per bundle
+        for bundle in target_pg["bundles"].values():
+            if "TPU" in bundle:
+                assert bundle["TPU"] == 1
+
+    finally:
+        serve.shutdown()
 
 
-def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
+def test_tpu_accelerator_remote_options_scheduling(ray_tpu_cluster):
     """
-    Verifies that specifying bundle_per_worker correctly expands to bundles,
-    includes the accelerator hint for TPU, and correctly identifies TPU usage.
+    Verifies that TPUAccelerator.get_remote_options returns a label_selector,
+    and successfully schedules a task without causing Ray Core validation errors.
     """
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
-        accelerator_config={"kind": "tpu", "topology": "4x4"},
-        placement_group_config={
-            "bundle_per_worker": {"TPU": 1},
-        },
-        engine_kwargs={
-            "tensor_parallel_size": 2,
-        },
+        accelerator_config={"kind": "tpu"},
     )
-
     engine_config = llm_config.get_engine_config()
 
-    # Validate the accelerator backend was correctly inferred
-    assert isinstance(engine_config.accelerator, TPUAccelerator)
+    options = engine_config.accelerator.get_remote_options("TPU-V6E")
 
-    bundles = engine_config.placement_bundles
-    assert len(bundles) == 2
-    for bundle in bundles:
-        assert bundle["TPU"] == 1
-        assert "accelerator_type:TPU-V6E" in bundle
-        assert bundle["accelerator_type:TPU-V6E"] == 0.001
+    # Ensure it returns the expected options (i.e. label_selector only)
+    assert options == {
+        "resources": {},
+        "label_selector": {"ray.io/accelerator-type": "TPU-V6E"},
+    }
+
+    @ray.remote(**options)
+    def probe_metadata():
+        return True
+
+    assert ray.get(probe_metadata.remote()) is True
 
 
 def test_accelerator_inference_logic():
@@ -150,7 +105,6 @@ def test_accelerator_inference_logic():
     when no explicit accelerator_config is provided, and passes it
     correctly to the engine.
     """
-    # TPU string correctly infers TPUConfig and TPUAccelerator
     cfg1 = LLMConfig(
         model_loading_config={"model_id": "test"},
         accelerator_type="TPU-V6E",
@@ -180,88 +134,120 @@ def test_accelerator_inference_logic():
     assert isinstance(cfg4.get_engine_config().accelerator, CPUAccelerator)
 
 
-def test_tpu_slice_placement_group_creation_heterogeneous_tpu_bundles_fail():
+def test_tpu_deployment_options_bundle_selector_injection():
     """
-    Verifies that a ValueError is raised when heterogeneous TPU bundles are provided.
-    """
-    accelerator = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
-
-    with pytest.raises(ValueError, match="Heterogeneous TPU bundles are not supported"):
-        accelerator.create_placement_group(
-            bundles=[{"TPU": 4}, {"TPU": 2}],
-            strategy="PACK",
-            name="test-pg",
-            accelerator_type_str="TPU-V6E",
-        )
-
-
-def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_pass(
-    ray_tpu_cluster,
-):
-    """
-    Verifies that CPU-only driver bundles are ignored and do not trigger an error
-    if subsequent TPU bundles are homogeneous.
-    """
-    accelerator = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
-
-    pg = accelerator.create_placement_group(
-        bundles=[{"CPU": 2}, {"TPU": 4}, {"TPU": 4}],
-        strategy="PACK",
-        name="test-pg",
-        accelerator_type_str="TPU-V6E",
-    )
-
-    # Verify valid PG creation
-    assert isinstance(pg, PlacementGroup)
-
-    accelerator.shutdown()
-    try:
-        ray.util.remove_placement_group(pg)
-    except Exception:
-        pass
-
-
-def test_tpu_serve_deployment_default_chip_level_bundles(ray_tpu_cluster):
-    """
-    Verifies that a Serve deployment created for a multi-host TPU slice defaults
-    to chip-level bundles when no placement_group_config is specified.
+    Verifies that LLMServer.get_deployment_options correctly injects TPU topology
+    labels into the placement group bundle selectors and creates the expected bundles.
     """
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
         accelerator_config={"kind": "tpu", "topology": "4x4"},
+        engine_kwargs={"tensor_parallel_size": 16},
+    )
+
+    options = LLMServer.get_deployment_options(llm_config)
+
+    # Ensure PG creation is no longer deferred
+    assert "placement_group_bundles" in options
+    assert "placement_group_bundle_label_selector" in options
+
+    pg_bundles = options["placement_group_bundles"]
+    selectors = options["placement_group_bundle_label_selector"]
+
+    # 4x4 topology = 16 chips
+    # Default is 4 bundles of 4 TPUs
+    assert len(pg_bundles) == 4
+    assert len(selectors) == 4
+
+    # The first bundle should contain the TPU allocation and the replica actor's CPU
+    assert pg_bundles[0].get("TPU") == 4
+    assert pg_bundles[0].get("CPU", 0) >= 1
+
+    # The remaining worker bundles should strictly be for the TPU host
+    for i in range(1, 4):
+        assert pg_bundles[i].get("TPU") == 4
+        assert pg_bundles[i].get("CPU", 0) == 0
+
+    for selector in selectors:
+        assert selector["ray.io/tpu-topology"] == "4x4"
+        assert selector["ray.io/accelerator-type"] == "TPU-V6E"
+
+
+def test_tpu_slice_kwargs_ignores_cpu_driver_bundle():
+    """
+    Verifies that resolve_tpu_slice_kwargs correctly ignores the merged CPU
+    resources from the replica actor in the first bundle, and extracts the
+    TPU requirement from the remaining bundles.
+    """
+    labels = [{"ray.io/tpu-topology": "4x4", "ray.io/accelerator-type": "TPU-V6E"}]
+    bundles = [{"TPU": 4, "CPU": 1}, {"TPU": 4}, {"TPU": 4}, {"TPU": 4}]
+
+    topology, version, worker_bundle = resolve_tpu_slice_kwargs(labels, bundles)
+
+    assert topology == "4x4"
+    assert version == "v6e"
+    assert worker_bundle == {"TPU": 4}
+    assert "CPU" not in worker_bundle
+
+
+def test_tpu_slice_kwargs_rejects_heterogeneous_bundles():
+    """
+    Verifies that a ValueError is raised when heterogeneous TPU bundles are provided
+    to the Serve gang-scheduler helper.
+    """
+    labels = [{"ray.io/tpu-topology": "4x4", "ray.io/accelerator-type": "TPU-V6E"}]
+    bundles = [{"TPU": 4}, {"TPU": 2}]
+
+    with pytest.raises(ValueError, match="Heterogeneous TPU bundles are not supported"):
+        resolve_tpu_slice_kwargs(labels, bundles)
+
+
+def test_tpu_serve_deployment_default_host_level_bundles(ray_tpu_cluster):
+    """
+    Verifies that a Serve deployment created for a multi-host TPU slice intercepts
+    the default creation and provisions the SlicePlacementGroup correctly.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+        accelerator_type="TPU-V6E",
+        accelerator_config={"kind": "tpu", "topology": "4x4"},
+        engine_kwargs={"tensor_parallel_size": 16},
     )
 
     app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
-    serve.run(app)
 
-    pg_table = ray.util.placement_group_table()
-    active_pgs = list(
-        {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
-    )
+    serve.start(http_options={"port": 0})
+    try:
+        serve.run(app, name="default_host_app", route_prefix="/default_host")
+        pg_table = ray.util.placement_group_table()
+        active_pgs = list(
+            {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
+        )
 
-    assert (
-        len(active_pgs) == 2
-    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
+        assert (
+            len(active_pgs) == 2
+        ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
 
-    tpu_head_resource = "TPU-v6e-16-head"
-    head_pgs = [
-        pg
-        for pg in active_pgs
-        if len(pg["bundles"]) == 1
-        and tpu_head_resource in list(pg["bundles"].values())[0]
-    ]
-    assert len(head_pgs) == 1
+        tpu_head_resource = "TPU-v6e-16-head"
+        head_pgs = [
+            pg
+            for pg in active_pgs
+            if len(pg["bundles"]) == 1
+            and tpu_head_resource in list(pg["bundles"].values())[0]
+        ]
+        assert len(head_pgs) == 1
 
-    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+        worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
 
-    assert worker_pg["strategy"] == "PACK"
-    # 4x4 topology = 16 chips. Default is 16 bundles of 1 TPU.
-    assert len(worker_pg["bundles"]) == 16
-    for bundle in worker_pg["bundles"].values():
-        assert bundle.get("TPU", 0) == 1
+        assert worker_pg["strategy"] == "PACK"
 
-    serve.shutdown()
+        # 4x4 topology = 16 chips. Default is 4 bundles of 4 TPUs.
+        assert len(worker_pg["bundles"]) == 4
+        for bundle in worker_pg["bundles"].values():
+            assert bundle.get("TPU", 0) == 4
+    finally:
+        serve.shutdown()
 
 
 def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
@@ -274,38 +260,56 @@ def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
         accelerator_type="TPU-V6E",
         accelerator_config={"kind": "tpu", "topology": "4x4"},
         placement_group_config={"bundle_per_worker": {"TPU": 4}},
+        engine_kwargs={"tensor_parallel_size": 4},
     )
 
     app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
-    serve.run(app)
 
-    pg_table = ray.util.placement_group_table()
-    active_pgs = list(
-        {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
-    )
+    serve.start(http_options={"port": 0})
+    try:
+        serve.run(app, name="explicit_host_app", route_prefix="/explicit_host")
+        pg_table = ray.util.placement_group_table()
+        active_pgs = list(
+            {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
+        )
 
-    assert (
-        len(active_pgs) == 2
-    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
+        assert (
+            len(active_pgs) == 2
+        ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
 
-    tpu_head_resource = "TPU-v6e-16-head"
-    head_pgs = [
-        pg
-        for pg in active_pgs
-        if len(pg["bundles"]) == 1
-        and tpu_head_resource in list(pg["bundles"].values())[0]
-    ]
-    assert len(head_pgs) == 1
+        tpu_head_resource = "TPU-v6e-16-head"
+        head_pgs = [
+            pg
+            for pg in active_pgs
+            if len(pg["bundles"]) == 1
+            and tpu_head_resource in list(pg["bundles"].values())[0]
+        ]
+        assert len(head_pgs) == 1
 
-    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+        worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
 
-    assert worker_pg["strategy"] == "PACK"
-    # 4x4 topology = 16 chips. With 4 TPUs per bundle, expect exactly 4 bundles.
-    assert len(worker_pg["bundles"]) == 4
-    for bundle in worker_pg["bundles"].values():
-        assert bundle.get("TPU", 0) == 4
+        assert worker_pg["strategy"] == "PACK"
 
-    serve.shutdown()
+        assert len(worker_pg["bundles"]) == 4
+        for bundle in worker_pg["bundles"].values():
+            assert bundle.get("TPU", 0) == 4
+    finally:
+        serve.shutdown()
+
+
+def test_tpu_slice_kwargs_rejects_missing_accelerator_type():
+    """
+    Verifies that a ValueError is raised when a TPU topology is requested
+    but the accelerator type label is missing from the bundle labels.
+    """
+    labels = [{"ray.io/tpu-topology": "4x4"}]
+    bundles = [{"TPU": 4}]
+
+    with pytest.raises(
+        ValueError,
+        match="A TPU topology was requested, but 'ray.io/accelerator-type' was not found",
+    ):
+        resolve_tpu_slice_kwargs(labels, bundles)
 
 
 if __name__ == "__main__":

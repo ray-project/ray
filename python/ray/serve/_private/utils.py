@@ -13,7 +13,7 @@ import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, TypeVar, Union
 
 import requests
 
@@ -835,3 +835,50 @@ class Semaphore:
                 self._value += 1
                 fut.set_result(True)
                 return
+
+
+def resolve_tpu_slice_kwargs(
+    labels: Optional[List[Dict[str, str]]],
+    bundles: Optional[List[Dict[str, float]]] = None,
+) -> Optional[Tuple[str, str, Dict[str, float]]]:
+    """Parses TPU topology, version, and validates bundles for a TPU slice.
+
+    Args:
+        labels: A list of label selector dictionaries applied to the placement group bundles.
+        bundles: An optional list of resource dictionaries defining the placement group bundles.
+
+    Returns:
+        A tuple of (topology, accelerator_version, worker_bundle) if this is
+        a TPU slice request, otherwise None.
+    """
+    if not labels or not isinstance(labels, list):
+        return None
+
+    first_bundle_labels = labels[0]
+    if "ray.io/tpu-topology" not in first_bundle_labels:
+        return None
+
+    tpu_topology = first_bundle_labels["ray.io/tpu-topology"]
+
+    if "ray.io/accelerator-type" not in first_bundle_labels:
+        raise ValueError(
+            "A TPU topology was requested, but 'ray.io/accelerator-type' "
+            "was not found in the placement group bundle labels. The accelerator type "
+            "(e.g. 'TPU-V6E') is required to provision a multi-host slice."
+        )
+
+    raw_version = first_bundle_labels["ray.io/accelerator-type"]
+    tpu_version = raw_version.lower().replace("tpu-", "")
+
+    worker_bundle = {"TPU": 1}
+    if bundles:
+        tpu_bundles = [b for b in bundles if b.get("TPU", 0) > 0]
+        if tpu_bundles:
+            worker_bundle = tpu_bundles[-1].copy()
+            if any(b.get("TPU") != worker_bundle.get("TPU") for b in tpu_bundles):
+                raise ValueError(
+                    "Heterogeneous TPU bundles are not supported when a TPU topology is requested. "
+                    "A multi-host TPU slice requires homogeneous resource bundles across all workers."
+                )
+
+    return tpu_topology, tpu_version, worker_bundle

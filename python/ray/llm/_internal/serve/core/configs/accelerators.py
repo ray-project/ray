@@ -8,7 +8,11 @@ from typing_extensions import Annotated
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
-from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
+from ray.util.tpu import (
+    get_chips_per_host,
+    get_tpu_version_from_type,
+    slice_placement_group,
+)
 
 logger = get_logger(__name__)
 
@@ -91,14 +95,40 @@ class AcceleratorBackend(ABC):
     ) -> PlacementGroup:
         pass
 
-    @property
-    def requires_deferred_placement_group(self) -> bool:
-        """
-        If True, Ray Serve will not provision a placement group for the deployment.
-        Instead, creation is deferred to the replica at runtime.
-        Defaults to False.
-        """
-        return False
+    def get_placement_group_bundle_label_selector(
+        self, accelerator_type_str: Optional[str] = None
+    ) -> Optional[Dict[str, str]]:
+        """Returns label selectors to apply to the placement group bundles."""
+        return None
+
+    def apply_placement_group_bundle_label_selector(
+        self,
+        deployment_options: Dict[str, Any],
+        accelerator_type_str: Optional[str],
+        num_bundles: int,
+    ) -> None:
+        """Safely applies hardware-specific label selectors to the deployment options."""
+        accel_selectors = self.get_placement_group_bundle_label_selector(
+            accelerator_type_str
+        )
+        if not accel_selectors:
+            return
+
+        existing_selectors = (
+            deployment_options.get("placement_group_bundle_label_selector") or []
+        )
+        merged_selectors = []
+
+        for i in range(num_bundles):
+            selector = (
+                existing_selectors[i].copy()
+                if i < len(existing_selectors) and existing_selectors[i]
+                else {}
+            )
+            selector.update(accel_selectors)
+            merged_selectors.append(selector)
+
+        deployment_options["placement_group_bundle_label_selector"] = merged_selectors
 
     @property
     @abstractmethod
@@ -180,10 +210,21 @@ class TPUAccelerator(AcceleratorBackend):
     def default_bundles(
         self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
-        bundle = {"TPU": 1}
+        if self._config.topology and accelerator_type_str:
+            version = get_tpu_version_from_type(accelerator_type_str)
+            chips_per_host = get_chips_per_host(self._config.topology, version)
+
+            num_bundles = max(1, num_devices // chips_per_host)
+            bundle = {"TPU": chips_per_host}
+        else:
+            # Fallback to single-chip/single-host scheduling
+            num_bundles = num_devices
+            bundle = {"TPU": 1}
+
         if accelerator_type_str:
             bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
-        return [bundle.copy() for _ in range(num_devices)]
+
+        return [bundle.copy() for _ in range(num_bundles)]
 
     def create_placement_group(
         self,
@@ -211,7 +252,8 @@ class TPUAccelerator(AcceleratorBackend):
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}
             else:
-                worker_bundle = tpu_bundles[0]
+                # Use the last bundle to avoid picking up merged CPU driver resources
+                worker_bundle = tpu_bundles[-1]
 
                 # Ensure all TPU bundles are homogeneous
                 if any(b != worker_bundle for b in tpu_bundles):
@@ -239,38 +281,39 @@ class TPUAccelerator(AcceleratorBackend):
         )
         return self._slice_pg_wrapper.placement_group
 
-    @property
-    def requires_deferred_placement_group(self) -> bool:
-        """
-        If a TPU topology is specified, we defer PG creation so the replica can
-        provision a `SlicePlacementGroup` at runtime. This ensures multi-host
-        TPU slices are gang-scheduled atomically according to their physical
-        topology rather than fragmented across the cluster.
-        """
-        return bool(self._config.topology)
+    def get_placement_group_bundle_label_selector(
+        self, accelerator_type_str: Optional[str] = None
+    ) -> Optional[Dict[str, str]]:
+        if self._config.topology and accelerator_type_str:
+            return {
+                "ray.io/tpu-topology": self._config.topology,
+                "ray.io/accelerator-type": accelerator_type_str,
+            }
+        return None
 
     @property
     def requires_remote_initialization(self) -> bool:
         return True
 
     def get_remote_options(self, accelerator_type_str: str = None):
-        # TPUs use custom resource strings rather than a native kwarg
-        options: Dict[str, Any] = {"resources": {"TPU": 0.001}}
-
+        # The PlacementGroupSchedulingStrategy natively handles routing the task to
+        # the correct hardware. We omit TPU resource requests to avoid consuming
+        # chips that the model engine workers must use.
+        options: Dict[str, Any] = {"resources": {}}
         if accelerator_type_str:
-            options["accelerator_type"] = accelerator_type_str
+            # Pin the task to the TPU accelerator to avoid scheduling on a CPU bundle.
+            options["label_selector"] = {
+                "ray.io/accelerator-type": accelerator_type_str
+            }
         return options
 
     def shutdown(self):
-        if self._slice_pg_wrapper is not None:
+        slice_pg_wrapper = getattr(self, "_slice_pg_wrapper", None)
+        if slice_pg_wrapper is not None:
             try:
                 logger.info("Shutting down TPU slice PG for server replica.")
-                self._slice_pg_wrapper.shutdown()
+                slice_pg_wrapper.shutdown()
             except Exception as e:
                 logger.warning(f"Failed to shut down TPU slice PG: {e}")
             finally:
                 self._slice_pg_wrapper = None
-
-    def __del__(self):
-        """Ensure placement groups are cleaned up when this backend is garbage collected."""
-        self.shutdown()

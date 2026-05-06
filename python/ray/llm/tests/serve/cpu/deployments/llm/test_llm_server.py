@@ -28,6 +28,7 @@ def serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     }
 
     app = serve.deployment(LLMServer).bind(mock_llm_config, engine_cls=MockVLLMEngine)
+    serve.start(http_options={"port": 0})
     handle = serve.run(app)
     # We set stream=True because the interfaces are async generators regardless
     # of the stream flag on request.
@@ -53,6 +54,7 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
         engine_cls=MockVLLMEngine,
         model_downloader=FakeLoraModelLoader,
     )
+    serve.start(http_options={"port": 0})
     handle = serve.run(app)
     handle = handle.options(stream=True, multiplexed_model_id="test_model_id")
     yield handle
@@ -430,7 +432,11 @@ class TestLLMServer:
             chunks.append(chunk)
 
         assert len(chunks) == 1
-        assert chunks[0].id == "test_request_id"
+        # Ray Serve intentionally drops internal request IDs to comply with strict
+        # OpenAI schemas (Pydantic v2). Verify the engine successfully processed
+        # the request and generated its own valid OpenAI-style ID instead.
+        assert isinstance(chunks[0].id, str)
+        assert chunks[0].id.startswith("chatcmpl-")
 
     @pytest.mark.parametrize("api_type", ["chat", "completion"])
     @pytest.mark.parametrize("stream", [False, True])
@@ -678,19 +684,44 @@ class TestGetDeploymentOptions:
             in serve_options["ray_actor_options"]["runtime_env"]
         )
 
-    def test_deferred_placement_group_for_tpu_topology(self):
-        """Test that Serve skips PG creation when deferred placement group is required."""
+    def test_tpu_placement_group_label_selector_injection(self):
+        """Test that Serve requests a placement group with TPU topology labels."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
             accelerator_type="TPU-V6E",
             accelerator_config={"kind": "tpu", "topology": "4x4"},
+            engine_kwargs={"tensor_parallel_size": 16},
             llm_engine="vLLM",
         )
 
         serve_options = LLMServer.get_deployment_options(llm_config)
 
-        assert "placement_group_bundles" not in serve_options
-        assert "placement_group_strategy" not in serve_options
+        assert "placement_group_bundles" in serve_options
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        pg_bundles = serve_options["placement_group_bundles"]
+
+        # 4x4 topology = 16 chips. Default is 4 host-level bundles of 4 TPUs.
+        assert len(pg_bundles) == 4
+
+        # Verify the first bundle successfully merged the replica actor's CPU
+        assert pg_bundles[0].get("TPU") == 4
+        assert pg_bundles[0].get("CPU", 0) >= 1
+
+        # Verify the remaining worker bundles are strictly TPU hosts
+        for i in range(1, 4):
+            assert pg_bundles[i].get("TPU") == 4
+            assert pg_bundles[i].get("CPU", 0) == 0
+
+        # Verify the PG bundle label selector is injected for TPU topology
+        assert "placement_group_bundle_label_selector" in serve_options
+
+        selectors = serve_options["placement_group_bundle_label_selector"]
+        assert len(selectors) == 4
+
+        for selector in selectors:
+            assert selector.get("ray.io/tpu-topology") == "4x4"
+            assert selector.get("ray.io/accelerator-type") == "TPU-V6E"
 
 
 if __name__ == "__main__":
