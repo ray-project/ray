@@ -35,19 +35,38 @@ CHECKPOINT_RECOVERY_MAX_BACKOFF_S = int(
 
 
 def _numpy_size(array: np.ndarray) -> int:
-    """Calculate the size of a numpy ndarray."""
+    """Calculate the size of a numpy ndarray.
+
+    For object-dtype arrays, a uniform-stride sample across the array is used
+    when the array is larger than ``sample_count``. Sampling the first
+    ``sample_count`` items (the previous behaviour) under- or over-estimated
+    object arrays whose element size correlates with index (e.g. arrays sorted
+    by length), which fed into the checkpoint actor's ``memory=`` request.
+    """
     total_size = array.nbytes
     if array.dtype == object:
         sample_count = 10**4
 
-        if len(array) <= sample_count:
-            for item in array.flat:
+        # Flatten to guarantee per-element iteration for multi-dimensional
+        # arrays (len(array) only reports the first dimension).
+        flat = array.ravel()
+        n = flat.size
+        if n <= sample_count:
+            for item in flat:
                 total_size += sys.getsizeof(item)
         else:
+            # Ceiling division so the stride spans the full array even
+            # when n is not a multiple of sample_count (otherwise the
+            # tail elements are never sampled).
+            step = -(-n // sample_count)
             sample_total_size = 0
-            for item in array[:sample_count].flat:
-                sample_total_size += sys.getsizeof(item)
-            total_size += int(sample_total_size / sample_count * len(array))
+            sampled = 0
+            for i in range(0, n, step):
+                sample_total_size += sys.getsizeof(flat[i])
+                sampled += 1
+                if sampled >= sample_count:
+                    break
+            total_size += int(sample_total_size / sampled * n)
     return total_size
 
 
