@@ -732,7 +732,10 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
 
   std::vector<rpc::Address> owner_addresses(ids.size());
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-  provider.Get(ids, owner_addresses, /*timeout_ms=*/0, &results);
+  // timeout=0 since this test verifies only what's sent to the raylet, not
+  // whether polling resolves the remote objects.
+  auto status = provider.Get(ids, owner_addresses, /*timeout_ms=*/0, &results);
+  EXPECT_TRUE(status.IsTimedOut());
   EXPECT_EQ(results.size(), 3U);
 
   ASSERT_EQ(fake_raylet->async_get_object_calls.size(), 1U);
