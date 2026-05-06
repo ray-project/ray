@@ -62,7 +62,7 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
 
   // Compute user memory limits from proportions
   SystemMemorySnapshot memory_snapshot =
-      MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path);
+      MemoryMonitorUtils::TakeHostSystemMemorySnapshot(cgroup_path);
   int64_t total_memory_bytes = memory_snapshot.total_bytes;
   float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
   float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();

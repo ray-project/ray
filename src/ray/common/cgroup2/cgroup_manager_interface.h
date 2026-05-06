@@ -77,6 +77,11 @@ class CgroupManagerInterface {
   virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**
+    @return the path to the system cgroup.
+  */
+  virtual std::string GetSystemCgroupPath() const = 0;
+
+  /**
     @return the path to the user cgroup.
   */
   virtual std::string GetUserCgroupPath() const = 0;

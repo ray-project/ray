@@ -164,7 +164,11 @@ TimeBasedWorkerKillingPolicy::Policy(
   }
 
   RAY_LOG(DEBUG) << absl::StrFormat(
+      "Currently used memory: %d bytes, threshold: %d bytes, kill buffer: %d bytes. "
       "Needed to free %d bytes. Selected %d workers to kill: %s",
+      system_memory_snapshot.used_bytes,
+      threshold_bytes_,
+      kill_buffer_bytes_,
       memory_to_free_bytes,
       workers_to_kill.size(),
       PolicyDebugString(workers_to_kill, process_memory_snapshot));

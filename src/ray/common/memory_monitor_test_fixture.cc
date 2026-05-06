@@ -14,6 +14,7 @@
 
 #include "ray/common/memory_monitor_test_fixture.h"
 
+#include "ray/common/memory_monitor_utils.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -41,10 +42,13 @@ std::string MemoryMonitorTestFixture::MockProcMemoryUsage(pid_t pid,
   return proc_dir;
 }
 
-std::string MemoryMonitorTestFixture::MockCgroupMemoryUsage(int64_t total_bytes,
-                                                            int64_t current_bytes,
-                                                            int64_t inactive_file_bytes,
-                                                            int64_t active_file_bytes) {
+std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
+    int64_t total_bytes,
+    int64_t current_bytes,
+    std::optional<int64_t> anon_memory_bytes,
+    std::optional<int64_t> shmem_memory_bytes,
+    int64_t inactive_file_bytes,
+    int64_t active_file_bytes) {
   auto temp_dir_or = TempDirectory::Create();
   RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
                               << temp_dir_or.status().message();
@@ -52,20 +56,68 @@ std::string MemoryMonitorTestFixture::MockCgroupMemoryUsage(int64_t total_bytes,
 
   const std::string &cgroup_path = mock_cgroup_dirs_.back()->GetPath();
 
-  mock_cgroup_files_.push_back(std::make_unique<TempFile>(cgroup_path + "/memory.max"));
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryMaxPath));
   mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes) + "\n");
 
-  mock_cgroup_files_.push_back(
-      std::make_unique<TempFile>(cgroup_path + "/memory.current"));
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryUsagePath));
   mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes) + "\n");
 
-  mock_cgroup_files_.push_back(std::make_unique<TempFile>(cgroup_path + "/memory.stat"));
-  mock_cgroup_files_.back()->AppendLine("anon 123456\n");
-  mock_cgroup_files_.back()->AppendLine("inactive_file " +
-                                        std::to_string(inactive_file_bytes) + "\n");
-  mock_cgroup_files_.back()->AppendLine("active_file " +
-                                        std::to_string(active_file_bytes) + "\n");
-  mock_cgroup_files_.back()->AppendLine("some_other_key 789\n");
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryStatPath));
+  if (anon_memory_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(
+        std::string(MemoryMonitorUtils::kCgroupsV2MemoryAnonKey) + " " +
+        std::to_string(*anon_memory_bytes) + "\n");
+  }
+  if (shmem_memory_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(
+        std::string(MemoryMonitorUtils::kCgroupsV2MemoryShmemKey) + " " +
+        std::to_string(*shmem_memory_bytes) + "\n");
+  }
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatInactiveFileKey) + " " +
+      std::to_string(inactive_file_bytes) + "\n");
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatActiveFileKey) + " " +
+      std::to_string(active_file_bytes) + "\n");
+
+  return cgroup_path;
+}
+
+std::string MemoryMonitorTestFixture::MockCgroupv1MemoryUsage(int64_t total_bytes,
+                                                              int64_t current_bytes,
+                                                              int64_t inactive_file_bytes,
+                                                              int64_t active_file_bytes) {
+  auto temp_dir_or = TempDirectory::Create();
+  RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
+                              << temp_dir_or.status().message();
+  mock_cgroup_dirs_.push_back(std::move(temp_dir_or.value()));
+
+  const std::string &cgroup_path = mock_cgroup_dirs_.back()->GetPath();
+
+  auto memory_dir_or = TempDirectory::Create(cgroup_path + "/memory");
+  RAY_CHECK(memory_dir_or.ok())
+      << "Failed to create temp directory: " << memory_dir_or.status().message();
+  mock_cgroup_dirs_.push_back(std::move(memory_dir_or.value()));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryMaxPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes) + "\n");
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryUsagePath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes) + "\n");
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryStatPath));
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV1MemoryStatInactiveFileKey) + " " +
+      std::to_string(inactive_file_bytes) + "\n");
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV1MemoryStatActiveFileKey) + " " +
+      std::to_string(active_file_bytes) + "\n");
 
   return cgroup_path;
 }
