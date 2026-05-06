@@ -185,6 +185,20 @@ def build_openai_app(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
 
+    # Direct streaming attaches LLMRouter as the ingress request router and
+    # uses the LLMServer deployment itself as the ingress app, so it returns
+    # before the regular OpenAiIngress wiring.
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_llm_configs(llm_configs)
+        direct_deployments = _build_direct_streaming_llm_deployments(llm_configs)
+        logger.info(
+            "Direct streaming enabled: "
+            "LLMServer=ingress, LLMRouter=ingress_request_router"
+        )
+        return direct_deployments[0]._with_ingress_request_router(
+            build_openai_ingress_request_router(builder_config)
+        )
+
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
     model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
     lora_paths = {
@@ -213,5 +227,3 @@ def build_openai_app(builder_config: dict) -> Application:
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
     )
-
-    return app
