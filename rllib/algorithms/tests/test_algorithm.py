@@ -12,6 +12,7 @@ import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -28,6 +29,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.test_utils import check
 from ray.tune import register_env
 
 
@@ -48,7 +50,7 @@ class TestAlgorithm(unittest.TestCase):
                 env="multi_cart",
                 env_config={"num_agents": 4},
             )
-            .env_runners(num_cpus_per_env_runner=0.1)
+            .env_runners(num_env_runners=1, num_cpus_per_env_runner=0.1)
             .training(
                 train_batch_size=100,
                 minibatch_size=50,
@@ -87,9 +89,11 @@ class TestAlgorithm(unittest.TestCase):
             # Add a new RLModule by class (and options).
             mid = f"p{i}"
             print(f"Adding new RLModule {mid} ...")
+            source_state = mod0.get_state()
             new_marl_spec = algo.add_module(
                 module_id=mid,
                 module_spec=RLModuleSpec.from_module(mod0),
+                module_state=source_state,
                 # Test changing the mapping fn.
                 new_agent_to_module_mapping_fn=new_mapping_fn,
                 # Change the list of modules to train.
@@ -104,6 +108,19 @@ class TestAlgorithm(unittest.TestCase):
                 mapped=[i, i - 1],
                 not_mapped=[i - 2],
             )
+            learner_state = algo.learner_group.get_state(
+                components=[f"{COMPONENT_LEARNER}/{COMPONENT_RL_MODULE}/{mid}"]
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][mid]
+            check(learner_state, source_state)
+            check(new_module.get_state(), source_state)
+            for state in algo.env_runner_group.foreach_env_runner(
+                lambda w, mid=mid: w.module[mid].get_state()
+            ):
+                check(state, source_state)
+            for state in algo.eval_env_runner_group.foreach_env_runner(
+                lambda w, mid=mid: w.module[mid].get_state()
+            ):
+                check(state, source_state)
 
             # Assert new policy is part of local worker (eval worker set does NOT
             # have a local worker, only the main EnvRunnerGroup does).
@@ -203,6 +220,151 @@ class TestAlgorithm(unittest.TestCase):
                 not_mapped=[i, i + 1],
             )
 
+        algo.stop()
+
+    def test_add_module_without_initial_state_preserves_existing_behavior(self):
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env="multi_cart",
+                env_config={"num_agents": 2},
+            )
+            .env_runners(num_env_runners=1, num_cpus_per_env_runner=0.1)
+            .training(
+                train_batch_size=100,
+                minibatch_size=50,
+                num_epochs=1,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+            )
+            .evaluation(
+                evaluation_num_env_runners=1,
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_env_runner=0.1),
+            )
+        )
+
+        algo = config.build()
+        mod0 = algo.get_module("p0")
+        algo.add_module(
+            module_id="p1",
+            module_spec=RLModuleSpec.from_module(mod0),
+            new_agent_to_module_mapping_fn=lambda *a, **kw: "p1",
+            new_should_module_be_updated=["p1"],
+        )
+        self._assert_modules_added(
+            algo=algo,
+            marl_spec=None,
+            mids=[0, 1],
+            trainable=[1],
+            mapped=[1],
+            not_mapped=[0, 2],
+        )
+        algo.train()
+        algo.stop()
+
+    def test_add_module_module_state_requires_add_to_learners(self):
+        """`module_state` is only meaningful when the module is added to learners."""
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env="multi_cart",
+                env_config={"num_agents": 2},
+            )
+            .env_runners(num_env_runners=1, num_cpus_per_env_runner=0.1)
+            .training(
+                train_batch_size=100,
+                minibatch_size=50,
+                num_epochs=1,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+            )
+        )
+
+        algo = config.build()
+        mod0 = algo.get_module("p0")
+        with self.assertRaisesRegex(ValueError, "module_state"):
+            algo.add_module(
+                module_id="p1",
+                module_spec=RLModuleSpec.from_module(mod0),
+                module_state=mod0.get_state(),
+                add_to_learners=False,
+                add_to_env_runners=True,
+                add_to_eval_env_runners=False,
+                new_agent_to_module_mapping_fn=lambda *a, **kw: "p1",
+            )
+        algo.stop()
+
+    def test_add_module_applies_initial_module_state_before_sync(self):
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env="multi_cart",
+                env_config={"num_agents": 2},
+            )
+            .env_runners(num_env_runners=1, num_cpus_per_env_runner=0.1)
+            .training(
+                train_batch_size=100,
+                minibatch_size=50,
+                num_epochs=1,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+            )
+            .evaluation(
+                evaluation_num_env_runners=1,
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_env_runner=0.1),
+            )
+        )
+
+        algo = config.build()
+        algo.train()
+        mod0 = algo.get_module("p0")
+        # After training, EnvRunner modules are synced with inference-only state,
+        # while the LearnerGroup keeps the full trainable module state.
+        inference_source_state = mod0.get_state()
+        learner_source_state = algo.learner_group.get_state(
+            components=[f"{COMPONENT_LEARNER}/{COMPONENT_RL_MODULE}/p0"]
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]["p0"]
+        algo.add_module(
+            module_id="p1",
+            module_spec=RLModuleSpec.from_module(mod0),
+            module_state=learner_source_state,
+            new_agent_to_module_mapping_fn=lambda *a, **kw: "p1",
+            new_should_module_be_updated=["p1"],
+        )
+        learner_state = algo.learner_group.get_state(
+            components=[f"{COMPONENT_LEARNER}/{COMPONENT_RL_MODULE}/p1"]
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]["p1"]
+        check(learner_state, learner_source_state)
+        check(algo.get_module("p1").get_state(), inference_source_state)
+        for state in algo.env_runner_group.foreach_env_runner(
+            lambda w: w.module["p1"].get_state()
+        ):
+            check(state, inference_source_state)
+        for state in algo.eval_env_runner_group.foreach_env_runner(
+            lambda w: w.module["p1"].get_state()
+        ):
+            check(state, inference_source_state)
         algo.stop()
 
     @OldAPIStack

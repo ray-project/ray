@@ -2391,6 +2391,7 @@ class Algorithm(Checkpointable, Trainable):
         module_id: ModuleID,
         module_spec: RLModuleSpec,
         *,
+        module_state: Optional[Dict] = None,
         config_overrides: Optional[Dict] = None,
         new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
@@ -2412,6 +2413,9 @@ class Algorithm(Checkpointable, Trainable):
                 or a dot, space or backslash at the end of the ID.
             module_spec: The SingleAgentRLModuleSpec to use for constructing the new
                 RLModule.
+            module_state: Optional state dict to apply to the new RLModule on the
+                LearnerGroup before syncing weights to EnvRunners. Requires
+                ``add_to_learners=True``; otherwise a ``ValueError`` is raised.
             config_overrides: The `AlgorithmConfig` overrides that should apply to
                 the new Module, if any.
             new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
@@ -2453,6 +2457,13 @@ class Algorithm(Checkpointable, Trainable):
                 "`add_to_eval_env_runners` must be set to True!"
             )
 
+        if module_state is not None and not add_to_learners:
+            raise ValueError(
+                "`module_state` requires the new RLModule to exist on the LearnerGroup, "
+                "but `add_to_learners=False`. Either set `add_to_learners=True` or omit "
+                "`module_state`."
+            )
+
         # Add to Learners and sync weights.
         if add_to_learners:
             multi_rl_module_spec = self.learner_group.add_module(
@@ -2461,6 +2472,16 @@ class Algorithm(Checkpointable, Trainable):
                 config_overrides=config_overrides,
                 new_should_module_be_updated=new_should_module_be_updated,
             )
+            if module_state is not None:
+                self.learner_group.set_state(
+                    {
+                        COMPONENT_LEARNER: {
+                            COMPONENT_RL_MODULE: {
+                                module_id: module_state,
+                            }
+                        }
+                    }
+                )
 
         # Change our config (AlgorithmConfig) to contain the new Module.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
