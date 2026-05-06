@@ -543,6 +543,256 @@ class TestValidatePip:
         assert "pip_install_options" in str(e) and "must be of type list[str]" in str(e)
 
 
+class TestGetPipHash:
+    def test_pip_hash_with_requirements_file(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict1 = {"packages": [f"-r {req_path}"]}
+        hash1 = _get_pip_hash(pip_dict1)
+
+        pip_dict2 = {"packages": ["requests==1.0.0", "pip-install-test"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_changes_with_file_content(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict = {"packages": [f"-r {req_path}"]}
+
+        with open(req_path, "w") as f:
+            f.write("numpy==1.21.0\n")
+        hash1 = _get_pip_hash(pip_dict)
+
+        with open(req_path, "w") as f:
+            f.write("numpy==1.22.0\n")
+        hash2 = _get_pip_hash(pip_dict)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_comments_and_empty_lines(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        with open(req_path, "w") as f:
+            f.write("# This is a comment\nnumpy==1.21.0\n\n# Another comment\npandas==1.3.0\n")
+
+        pip_dict = {"packages": [f"-r {req_path}"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_without_r(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        pip_dict = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_different_packages(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        pip_dict = {"packages": ["numpy==1.21.0"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_pip_install_options(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict = {
+            "packages": [f"-r {req_path}"],
+            "pip_install_options": ["--no-cache-dir"]
+        }
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {
+            "packages": [f"-r {req_path}"],
+            "pip_install_options": ["--disable-pip-version-check"]
+        }
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_circular_reference(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create file A
+            file_a = os.path.join(tmpdir, "a.txt")
+            with open(file_a, "w") as f:
+                f.write("-r b.txt\nnumpy==1.21.0\n")
+            
+            # Create file B
+            file_b = os.path.join(tmpdir, "b.txt")
+            with open(file_b, "w") as f:
+                f.write("-r a.txt\npandas==1.3.0\n")
+            
+            pip_dict = {"packages": [f"-r {file_a}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_self_reference(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create self-referencing file
+            self_file = os.path.join(tmpdir, "self.txt")
+            with open(self_file, "w") as f:
+                f.write("-r self.txt\nnumpy==1.21.0\n")
+            
+            pip_dict = {"packages": [f"-r {self_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_nested_relative_paths(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create directory structure
+            reqs_dir = os.path.join(tmpdir, "reqs")
+            os.makedirs(reqs_dir)
+            
+            # Create base.txt in reqs directory
+            base_file = os.path.join(reqs_dir, "base.txt")
+            with open(base_file, "w") as f:
+                f.write("-r extras.txt\nnumpy==1.21.0\n")
+            
+            # Create extras.txt in the same directory (relative path)
+            extras_file = os.path.join(reqs_dir, "extras.txt")
+            with open(extras_file, "w") as f:
+                f.write("pandas==1.3.0\n")
+            
+            # Test with absolute path to base.txt
+            pip_dict = {"packages": [f"-r {base_file}"]}
+            hash1 = _get_pip_hash(pip_dict)
+            
+            # Test with relative path from tmpdir
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                relative_base = os.path.relpath(base_file, tmpdir)
+                pip_dict2 = {"packages": [f"-r {relative_base}"]}
+                hash2 = _get_pip_hash(pip_dict2)
+                # Hashes should be the same regardless of how we reference the file
+                assert hash1 == hash2
+            finally:
+                os.chdir(original_cwd)
+            
+            assert isinstance(hash1, str)
+            assert len(hash1) == 40
+
+    def test_pip_hash_with_nested_circular_relative_paths(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create directory structure
+            reqs_dir = os.path.join(tmpdir, "reqs")
+            os.makedirs(reqs_dir)
+            
+            # Create circular references with relative paths
+            a_file = os.path.join(reqs_dir, "a.txt")
+            with open(a_file, "w") as f:
+                f.write("-r b.txt\nnumpy==1.21.0\n")
+            
+            b_file = os.path.join(reqs_dir, "b.txt")
+            with open(b_file, "w") as f:
+                f.write("-r a.txt\npandas==1.3.0\n")
+            
+            # This should not cause an infinite loop
+            pip_dict = {"packages": [f"-r {a_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_long_form_requirement(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("numpy==1.21.0\n")
+            temp_file = f.name
+
+        try:
+            # Test with long-form --requirement flag
+            pip_dict = {"packages": [f"--requirement {temp_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+        finally:
+            os.unlink(temp_file)
+
+    def test_pip_hash_with_long_form_requirement_equals(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("numpy==1.21.0\n")
+            temp_file = f.name
+
+        try:
+            # Test with long-form --requirement=file.txt format
+            pip_dict = {"packages": [f"--requirement={temp_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+        finally:
+            os.unlink(temp_file)
+
+    def test_pip_hash_with_invalid_file(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Test with non-existent file
+            non_existent_file = os.path.join(tmpdir, "non_existent.txt")
+            pip_dict = {"packages": [f"-r {non_existent_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+
 class TestValidateEnvVars:
     def test_type_validation(self):
         # Only strings allowed.
