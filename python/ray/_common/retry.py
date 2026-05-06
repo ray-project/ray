@@ -20,7 +20,7 @@ P = ParamSpec("P")
 def _matches_error(pattern: str, error_str: str) -> bool:
     """True if ``pattern`` is a substring of ``error_str``, or matches as a regex.
     Substring is tried first so literal patterns are not interpreted as regex.
-    Invalid regex patterns return False instead of raising regex errorin case of unclosed brackets etc.
+    Invalid regex patterns return False instead of raising regex error in case of unclosed brackets etc.
     """
     if pattern in error_str:
         return True
