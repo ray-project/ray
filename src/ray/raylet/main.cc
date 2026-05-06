@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -160,6 +161,10 @@ DEFINE_string(system_pids,
               "",
               "A comma-separated list of pids to move into the system cgroup.");
 
+DEFINE_string(config_list,
+              "",
+              "Base64-encoded JSON config overrides (same format as GCS server).");
+
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
   absl::flat_hash_map<std::string, std::string> labels;
@@ -260,6 +265,7 @@ int main(int argc, char *argv[]) {
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
+  const std::string config_list = FLAGS_config_list;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
@@ -280,6 +286,19 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
 
   gflags::ShutDownCommandLineFlags();
+
+  // Initialize RayConfig from the config_list passed by the Python launcher.
+  // This must happen before GcsClient is created (and before anything reads
+  // RayConfig) so that user-supplied _system_config values (e.g.
+  // gcs_rpc_server_reconnect_timeout_s) take effect from the very first
+  // connection attempt rather than being ignored until AsyncGetInternalConfig
+  // completes.
+  {
+    std::string config_list_decoded;
+    RAY_CHECK(absl::Base64Unescape(config_list, &config_list_decoded))
+        << "config_list is not a valid base64-encoded string.";
+    RayConfig::instance().initialize(config_list_decoded);
+  }
 
   // Setting up resource isolation with cgroups.
   // The lifecycle of CgroupManager will be controlled by NodeManager.

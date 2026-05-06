@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import signal
@@ -56,6 +57,18 @@ def cluster_kill_gcs_wait(cluster):
     # Wait to prevent the gcs server process becoming zombie.
     gcs_server_process.wait()
     wait_for_pid_to_exit(gcs_server_pid, 300)
+
+
+def get_raylet_startup_config(node) -> dict[str, Any]:
+    raylet_pid = node.all_processes["raylet"][0].process.pid
+    raylet_cmdline = psutil.Process(raylet_pid).cmdline()
+    config_list_arg = next(
+        (arg for arg in raylet_cmdline if arg.startswith("--config_list=")),
+        None,
+    )
+    assert config_list_arg is not None, raylet_cmdline
+    config_blob = config_list_arg.split("=", 1)[1]
+    return json.loads(base64.b64decode(config_blob).decode("utf-8"))
 
 
 def test_gcs_server_restart(ray_start_regular_with_external_redis):
@@ -610,8 +623,10 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
         ]
 
     wait_for_condition(
-        lambda: len(get_connected_nodes())
-        == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS"))
+        lambda: (
+            len(get_connected_nodes())
+            == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS"))
+        )
     )
     nodes = redis_cli.cluster("nodes")
     leader_cli = None
@@ -661,8 +676,10 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
 
     follower_cli[0].cluster("failover", "takeover")
     wait_for_condition(
-        lambda: len(get_connected_nodes())
-        == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS")) - 1
+        lambda: (
+            len(get_connected_nodes())
+            == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS")) - 1
+        )
     )
 
     # Kill Counter actor. It should restart after GCS is back
@@ -984,8 +1001,10 @@ def test_job_finished_after_head_node_restart(
 
         return list(
             filter(
-                lambda job_info: "job_submission_id" in job_info.config.metadata
-                and job_info.config.metadata["job_submission_id"] == submission_id,
+                lambda job_info: (
+                    "job_submission_id" in job_info.config.metadata
+                    and job_info.config.metadata["job_submission_id"] == submission_id
+                ),
                 list(all_job_info.values()),
             )
         )
@@ -1130,7 +1149,6 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
         assert ray.get(detached2.getpid.remote()) == detached_pid
         assert ray.get(child2.getpid.remote()) == child_pid
     elif case["expect_alive"] == "none":
-
         with pytest.raises(ValueError):
             ray.get_actor("regular", namespace="ns")
 
@@ -1318,6 +1336,79 @@ def test_concurrent_mark_job_finished(shutdown_only):
     # Verify all tasks completed
     expected = [f"task_{i}_completed" for i in range(10)]
     assert results == expected
+
+
+@pytest.mark.skipif(
+    not external_redis_test_enabled(),
+    reason="Only runs when external Redis is enabled (RAY_REDIS_ADDRESS is set)",
+)
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                # Use a distinctly non-default value (default is 60 s).
+                # The fix passes this via --config_list to the raylet binary so
+                # RayConfig is initialised *before* the GCS client is created.
+                # Without the fix the raylet would ignore this value and always
+                # use the default 60 s.
+                gcs_rpc_server_reconnect_timeout_s=10,
+            ),
+        }
+    ],
+    indirect=True,
+)
+def test_raylet_respects_reconnect_timeout_config(
+    ray_start_regular_with_external_redis,
+):
+    """Regression test for https://github.com/ray-project/ray/issues/62074.
+
+    Verifies that ``gcs_rpc_server_reconnect_timeout_s`` from ``_system_config``
+    is passed to the raylet via ``--config_list`` at launch time. That makes the
+    configured value available before the first GCS connection attempt instead of
+    relying on a later ``AsyncGetInternalConfig`` round-trip.
+    """
+
+    head_config = get_raylet_startup_config(ray._private.worker._global_node)
+
+    assert head_config["gcs_rpc_server_reconnect_timeout_s"] == 10
+
+
+@pytest.mark.skipif(
+    not external_redis_test_enabled(),
+    reason="Only runs when external Redis is enabled (TEST_EXTERNAL_REDIS=1)",
+)
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                gcs_rpc_server_reconnect_timeout_s=10,
+            ),
+        }
+    ],
+    indirect=True,
+)
+def test_worker_raylet_startup_uses_gcs_system_config(
+    ray_start_cluster_head_with_external_redis,
+):
+    """Worker raylets should receive the GCS-fetched system config at startup.
+
+    The head node injects ``_system_config`` via ``--config_list`` before the
+    raylet makes its first GCS connection. Non-head nodes must then fetch the
+    same config from GCS and pass it to their own raylet startup command, or
+    they will silently fall back to the 60 s default reconnect timeout.
+    """
+
+    cluster = ray_start_cluster_head_with_external_redis
+    worker = cluster.add_node()
+    cluster.wait_for_nodes()
+
+    head_config = get_raylet_startup_config(cluster.head_node)
+    worker_config = get_raylet_startup_config(worker)
+
+    assert head_config["gcs_rpc_server_reconnect_timeout_s"] == 10
+    assert worker_config["gcs_rpc_server_reconnect_timeout_s"] == 10
 
 
 if __name__ == "__main__":
