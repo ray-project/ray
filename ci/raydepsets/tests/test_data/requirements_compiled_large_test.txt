@@ -89,9 +89,9 @@ fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:bcdef2345678901abcdef2345678901abcdef2345678901abcdef2345678901ab
     # via
     #   cupy-cuda12x
-filelock==3.16.1 \
-    --hash=sha256:2082b5d7acf3bb5c6cce8c3d20c84f514d5eca5df53f8b8bbe534e1c5e17b310 \
-    --hash=sha256:81de9eb8453c769b63c5360fbb5f3f1714a0b9c8e2c78b2d46e6a09e1c38c31f
+filelock==3.20.3 \
+    --hash=sha256:18c57ee915c7ec61cff0ecf7f0f869936c7c30191bb0cf406f1341778d0834e1 \
+    --hash=sha256:4b0dda527ee31078689fc205ec4f1c1bf7d56cf88b6dc9426c4f230e46c2dce1
     # via
     #   ray
 frozenlist==1.5.0 \
