@@ -4728,13 +4728,13 @@ py_test(
 )
 
 py_test(
-    name = "examples/metrics/persistent_ema",
+    name = "examples/metrics/clearing_ema",
     size = "medium",
-    srcs = ["examples/metrics/persistent_ema.py"],
+    srcs = ["examples/metrics/clearing_ema.py"],
     args = [
         "--stop-iters=3",
     ],
-    main = "examples/metrics/persistent_ema.py",
+    main = "examples/metrics/clearing_ema.py",
     tags = [
         "examples",
         "exclusive",
