@@ -1,6 +1,8 @@
 import dataclasses
 import functools
 import logging
+import os
+import queue
 import threading
 from contextlib import nullcontext
 from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
@@ -19,6 +21,17 @@ from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+# When set, run the local-shuffle `ShufflingBatcher` add/next_batch loop on a
+# dedicated producer thread that pushes formed batches into a bounded queue,
+# so that the per-batch and pre-compaction `take` calls overlap with downstream
+# format/finalize/train work. Off by default; gated to ease A/B benchmarking.
+_RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE = bool(
+    int(os.environ.get("RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE", "0"))
+)
+_RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE_QUEUE_DEPTH = max(
+    1, int(os.environ.get("RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE_QUEUE_DEPTH", "4"))
+)
 
 I = TypeVar("I")
 O = TypeVar("O")
@@ -146,10 +159,25 @@ class _BatchingIterator(Iterator[Batch]):
         else:
             self._batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
+        self._async_take = (
+            shuffle_buffer_min_size is not None and _RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE
+        )
+        if self._async_take:
+            self._batch_queue: "queue.Queue" = queue.Queue(
+                maxsize=_RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE_QUEUE_DEPTH
+            )
+            self._sentinel = object()
+            self._producer_thread: Optional[threading.Thread] = None
+
     def __iter__(self) -> "_BatchingIterator":
         return self
 
     def __next__(self) -> Batch:
+        if self._async_take:
+            return self._next_async()
+        return self._next_sync()
+
+    def _next_sync(self) -> Batch:
         timer = self._stats.iter_next_batch_s.timer() if self._stats else nullcontext()
 
         # Try to get a batch from current batcher state
@@ -186,6 +214,58 @@ class _BatchingIterator(Iterator[Batch]):
                 #
                 # We stop the iteration
                 raise StopIteration
+
+    def _next_async(self) -> Batch:
+        if self._producer_thread is None:
+            self._producer_thread = threading.Thread(
+                target=self._producer_loop,
+                name="ShufflingBatcherAsyncTake",
+                daemon=True,
+            )
+            self._producer_thread.start()
+
+        timer = self._stats.iter_next_batch_s.timer() if self._stats else nullcontext()
+        with timer:
+            item = self._batch_queue.get()
+        if isinstance(item, BaseException):
+            raise item
+        if item is self._sentinel:
+            raise StopIteration
+        return item
+
+    def _producer_loop(self) -> None:
+        # Mirrors the control flow of _next_sync, but runs on a dedicated thread
+        # and pushes formed batches into a bounded queue. The expensive `take`
+        # calls inside ShufflingBatcher.next_batch release the GIL, so they can
+        # run in parallel with downstream format/finalize/train work on the
+        # consumer thread.
+        try:
+            done_adding = False
+            while True:
+                can_yield = self._batcher.has_batch() or (
+                    self._batcher.has_any() and done_adding and not self._drop_last
+                )
+
+                if can_yield:
+                    next_batch = self._batcher.next_batch()
+                    res = Batch(
+                        metadata=BatchMetadata(batch_idx=self._global_counter),
+                        data=next_batch,
+                    )
+                    self._global_counter += 1
+                    self._batch_queue.put(res)
+                elif not done_adding:
+                    try:
+                        block = next(self._block_iter)
+                        self._batcher.add(block)
+                    except StopIteration:
+                        self._batcher.done_adding()
+                        done_adding = True
+                else:
+                    self._batch_queue.put(self._sentinel)
+                    return
+        except BaseException as e:
+            self._batch_queue.put(e)
 
 
 def _format_batch(
