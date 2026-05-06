@@ -50,6 +50,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_USER_CONFIG_PATH,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -731,6 +732,20 @@ class HAProxyApi(ProxyApi):
                 }
             )
 
+            # When RAY_SERVE_HAPROXY_USER_CONFIG_PATH is set, the file's
+            # contents are spliced into the generated config right after
+            # `defaults ray_defaults`. Users typically declare
+            # `defaults user_overrides from ray_defaults` in that fragment and
+            # Ray-owned frontends/backends inherit from `user_overrides`,
+            # letting user-specified directives win over Ray's baseline.
+            user_config_content = ""
+            if RAY_SERVE_HAPROXY_USER_CONFIG_PATH:
+                with open(RAY_SERVE_HAPROXY_USER_CONFIG_PATH, "r") as f:
+                    user_config_content = f.read()
+            parent_defaults = (
+                "user_overrides" if user_config_content else "ray_defaults"
+            )
+
             config_template = env.from_string(HAPROXY_CONFIG_TEMPLATE)
             config_content = config_template.render(
                 {
@@ -739,6 +754,9 @@ class HAProxyApi(ProxyApi):
                     "backends_with_health_config": backends_with_health_config,
                     "healthz_rules": healthz_rules,
                     "route_info": health_route_info,
+                    "parent_defaults": parent_defaults,
+                    "user_config_content": user_config_content,
+                    "user_config_path": RAY_SERVE_HAPROXY_USER_CONFIG_PATH,
                 }
             )
 

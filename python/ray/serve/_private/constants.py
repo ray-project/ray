@@ -693,6 +693,16 @@ RAY_SERVE_HAPROXY_CONFIG_FILE_LOC = os.environ.get(
     "RAY_SERVE_HAPROXY_CONFIG_FILE_LOC", "/tmp/haproxy-serve/haproxy.cfg"
 )
 
+# Optional path to a user-supplied HAProxy config fragment. When set, the
+# file's contents are spliced into the generated config right after Ray's
+# `defaults ray_defaults` block. Users typically declare
+# `defaults user_overrides from ray_defaults` and override any directive
+# there; Ray-owned frontends/backends inherit from `user_overrides` so user
+# values win. Empty string disables.
+RAY_SERVE_HAPROXY_USER_CONFIG_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_USER_CONFIG_PATH", ""
+)
+
 # HAProxy admin socket path
 RAY_SERVE_HAPROXY_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_SOCKET_PATH", "/tmp/haproxy-serve/admin.sock"
