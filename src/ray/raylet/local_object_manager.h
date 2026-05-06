@@ -214,8 +214,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// next FlushFreeObjects batch so plasma can drop the local entry.
   void ReleaseFreedLocalObject(const ObjectID &object_id) override;
 
-  std::vector<ObjectID> GetLocalObjectsOwnedBy(
-      const WorkerID &worker_id) const override;
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
 
   std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const override;
 

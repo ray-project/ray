@@ -2615,8 +2615,7 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   }
 
   // Skip pinning if the owner is already known dead
-  const auto owner_worker_id =
-      WorkerID::FromBinary(request.owner_address().worker_id());
+  const auto owner_worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
   const auto owner_node_id = NodeID::FromBinary(request.owner_address().node_id());
   if (failed_workers_cache_.contains(owner_worker_id) ||
       failed_nodes_cache_.contains(owner_node_id)) {

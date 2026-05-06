@@ -105,8 +105,7 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   void ReleaseFreedLocalObject(const ObjectID &object_id) override {}
 
-  std::vector<ObjectID> GetLocalObjectsOwnedBy(
-      const WorkerID &worker_id) const override {
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override {
     return {};
   }
 
