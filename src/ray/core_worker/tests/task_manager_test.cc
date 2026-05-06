@@ -1781,6 +1781,50 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestPeekObjectRefStreamNBatchedIncludesEofSlot) {
+  /**
+   * Batched peek returns (stream_index, ready) for each of the next n logical
+   * indices. After the task completes, the index at end-of-stream is the EOF
+   * ObjectID; it is not recorded in refs_written_to_stream_ (see
+   * TaskManager::MarkEndOfStream), so peek reports ready == false for that slot.
+   */
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  const int64_t last_idx = 2;
+  std::vector<ObjectID> dynamic_return_ids;
+  for (auto i = 0; i < last_idx; i++) {
+    const auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+    dynamic_return_ids.push_back(dynamic_return_id);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  }
+  CompletePendingStreamingTask(spec, caller_address, last_idx);
+
+  const ObjectID eof_peek_id = ObjectID::FromIndex(spec.TaskId(), 2 + last_idx);
+  for (int rep = 0; rep < 2; ++rep) {
+    auto batch = manager_.PeekObjectRefStreamN(generator_id, 3);
+    ASSERT_EQ(batch.size(), 3u);
+    ASSERT_EQ(batch[0].first, dynamic_return_ids[0]);
+    ASSERT_EQ(batch[1].first, dynamic_return_ids[1]);
+    ASSERT_TRUE(batch[0].second);
+    ASSERT_TRUE(batch[1].second);
+    ASSERT_EQ(batch[2].first, eof_peek_id);
+    ASSERT_FALSE(batch[2].second);
+  }
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
   /**
    * Test streaming generator task cancelled during execution. The caller

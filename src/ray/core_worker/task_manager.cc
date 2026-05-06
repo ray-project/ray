@@ -167,6 +167,23 @@ std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
   }
 }
 
+std::vector<std::pair<ObjectID, bool>> ObjectRefStream::PeekNextItems(size_t n) const {
+  std::vector<std::pair<ObjectID, bool>> result;
+  const int64_t max_index_exclusive =
+      static_cast<int64_t>(RayConfig::instance().max_num_generator_returns());
+  for (size_t k = 0; k < n; ++k) {
+    const int64_t idx = next_index_ + static_cast<int64_t>(k);
+    if (idx >= max_index_exclusive) {
+      break;
+    }
+    const auto object_id = GetObjectRefAtIndex(idx);
+    const bool ready =
+        refs_written_to_stream_.find(object_id) != refs_written_to_stream_.end();
+    result.emplace_back(object_id, ready);
+  }
+  return result;
+}
+
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
   // Write to a stream if the object ID is not consumed yet.
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
@@ -741,6 +758,21 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
   TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
                                                    generator_id);
   return result;
+}
+
+std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
+    const ObjectID &generator_id, size_t n) {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "PeekObjectRefStreamN API can be used only when the stream has been "
+         "created and not removed.";
+  const auto items = stream_it->second.PeekNextItems(n);
+  for (const auto &item : items) {
+    TemporarilyOwnGeneratorReturnRefIfNeededInternal(item.first /*=object_id*/,
+                                                     generator_id);
+  }
+  return items;
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {

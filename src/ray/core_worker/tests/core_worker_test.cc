@@ -31,6 +31,7 @@
 #include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -580,6 +581,54 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
 
 namespace {
 
+TaskSpecification MakeStreamingGeneratorTaskSpec() {
+  TaskSpecification task;
+  auto &msg = task.GetMutableMessage();
+  msg.set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  msg.set_num_returns(1);
+  msg.set_returns_dynamic(true);
+  msg.set_streaming_generator(true);
+  msg.set_generator_backpressure_num_objects(-1);
+  return task;
+}
+
+rpc::ReportGeneratorItemReturnsRequest MakeReportGeneratorItemReturn(
+    int64_t item_index,
+    const ObjectID &generator_id,
+    const ObjectID &dynamic_return_id,
+    const std::shared_ptr<Buffer> &data) {
+  rpc::ReportGeneratorItemReturnsRequest request;
+  rpc::Address addr;
+  request.mutable_worker_addr()->CopyFrom(addr);
+  request.set_item_index(item_index);
+  request.set_generator_id(generator_id.Binary());
+  rpc::ReturnObject *returned_object = request.mutable_returned_object();
+  returned_object->set_object_id(dynamic_return_id.Binary());
+  returned_object->set_data(data->Data(), data->Size());
+  returned_object->set_in_plasma(false);
+  return request;
+}
+
+void CompleteStreamingGeneratorTask(TaskManager &task_manager,
+                                    const TaskSpecification &spec,
+                                    const rpc::Address &caller_address,
+                                    int64_t num_streaming_generator_returns) {
+  rpc::PushTaskReply reply;
+  for (size_t i = 0; i < spec.NumReturns(); i++) {
+    const auto return_id = spec.ReturnId(i);
+    auto return_object = reply.add_return_objects();
+    return_object->set_object_id(return_id.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object->set_data(data->Data(), data->Size());
+  }
+  for (int64_t i = 0; i < num_streaming_generator_returns; i++) {
+    auto return_id_proto = reply.add_streaming_generator_return_ids();
+    return_id_proto->set_object_id(spec.ReturnId(i + 1).Binary());
+    return_id_proto->set_is_plasma_object(false);
+  }
+  task_manager.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
+}
+
 ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
     CoreWorkerMemoryStore &memory_store,
     ReferenceCounterInterface &reference_counter,
@@ -607,6 +656,37 @@ ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
   return inlined_dependency_id;
 }
 }  // namespace
+
+TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsRpcRefsWithLocalOwner) {
+  auto spec = MakeStreamingGeneratorTaskSpec();
+  const ObjectID generator_id = spec.ReturnId(0);
+  task_manager_->AddPendingTask(rpc_address_, spec, "", 0);
+
+  const int last_idx = 2;
+  std::vector<ObjectID> dynamic_return_ids;
+  for (int i = 0; i < last_idx; i++) {
+    const ObjectID dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+    dynamic_return_ids.push_back(dynamic_return_id);
+    auto data = GenerateRandomBuffer();
+    auto req = MakeReportGeneratorItemReturn(
+        /*item_index=*/i, generator_id, dynamic_return_id, data);
+    ASSERT_TRUE(task_manager_->HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status, int64_t) {}));
+  }
+  CompleteStreamingGeneratorTask(
+      *task_manager_, spec, rpc_address_, /*num_streaming_generator_returns=*/last_idx);
+
+  const auto batch = core_worker_->PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(batch.size(), 2u);
+  ASSERT_EQ(batch[0].first.object_id(), dynamic_return_ids[0].Binary());
+  ASSERT_EQ(batch[1].first.object_id(), dynamic_return_ids[1].Binary());
+  ASSERT_TRUE(batch[0].second);
+  ASSERT_TRUE(batch[1].second);
+  const std::string owner_serialized = core_worker_->GetRpcAddress().SerializeAsString();
+  ASSERT_EQ(batch[0].first.owner_address().SerializeAsString(), owner_serialized);
+  ASSERT_EQ(batch[1].first.owner_address().SerializeAsString(), owner_serialized);
+}
+
 TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   /*
   See https://github.com/ray-project/ray/pull/56123 for context.

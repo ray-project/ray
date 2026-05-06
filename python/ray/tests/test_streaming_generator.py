@@ -37,6 +37,7 @@ def mocked_worker():
     mocked_core_worker.async_delete_object_ref_stream.return_value = None
     mocked_core_worker.create_object_ref_stream.return_value = None
     mocked_core_worker.peek_object_ref_stream.return_value = [], []
+    mocked_core_worker.peek_object_ref_stream_n = Mock(return_value=[])
     worker = MockedWorker(mocked_core_worker)
     yield worker
 
@@ -94,6 +95,94 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
 
             with pytest.raises(StopIteration):
                 generator._next_sync(timeout_s=0)
+
+
+def test_streaming_object_ref_generator_bulk_sync_unit(mocked_worker):
+    """_next_bulk_sync: one batched ray.wait, peek_n, EOS handling."""
+    with patch("ray.wait") as mocked_ray_wait:
+        with patch("ray.get") as mocked_ray_get:
+            c = mocked_worker.core_worker
+            generator_ref = ray.ObjectRef.from_random()
+            generator = ObjectRefGenerator(generator_ref, mocked_worker)
+
+            assert generator._next_bulk_sync(0) == []
+
+            with pytest.raises(ValueError):
+                generator._next_bulk_sync(-1)
+
+            # Head not ready after batched wait -> empty list
+            r1, r2, r3 = (
+                ray.ObjectRef.from_random(),
+                ray.ObjectRef.from_random(),
+                ray.ObjectRef.from_random(),
+            )
+            c.peek_object_ref_stream_n.return_value = [
+                (r1, False),
+                (r2, False),
+                (r3, False),
+            ]
+            c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
+            mocked_ray_wait.return_value = ([], [r1, r2, r3])
+            assert generator._next_bulk_sync(3, timeout_s=0) == []
+            mocked_ray_wait.assert_called_once()
+            assert mocked_ray_wait.call_args.kwargs["num_returns"] == 3
+
+            # Finished stream: peek can return only the EOF slot with is_ready=False.
+            # ray.wait may still leave every ref "unready" (len(pairs) - len(unready) == 0).
+            # The bulk read loop must run at least once so try_read sees EOS and raises
+            # StopIteration instead of returning [].
+            eof_ref = ray.ObjectRef.from_random()
+            c.peek_object_ref_stream_n.return_value = [(eof_ref, False)]
+            mocked_ray_wait.reset_mock()
+            mocked_ray_wait.return_value = ([], [eof_ref])
+            c.try_read_next_object_ref_stream.reset_mock()
+            c.try_read_next_object_ref_stream.side_effect = (
+                ObjectRefStreamEndOfStreamError("")
+            )
+            mocked_ray_get.return_value = None
+            with pytest.raises(StopIteration):
+                generator._next_bulk_sync(1, timeout_s=0)
+            mocked_ray_wait.assert_called_once()
+            assert c.try_read_next_object_ref_stream.call_count == 1
+
+            # Two ready reads: one batched peek, no wait
+            r1, r2 = ray.ObjectRef.from_random(), ray.ObjectRef.from_random()
+            c.peek_object_ref_stream_n.return_value = [(r1, True), (r2, True)]
+            c.try_read_next_object_ref_stream.return_value = None
+            c.try_read_next_object_ref_stream.side_effect = [r1, r2]
+            mocked_ray_wait.reset_mock()
+            out = generator._next_bulk_sync(2, timeout_s=0)
+            assert out == [r1, r2]
+            mocked_ray_wait.assert_not_called()
+
+            # Second stream slot not ready after wait; head still ready -> [r1]
+            r1, r2 = ray.ObjectRef.from_random(), ray.ObjectRef.from_random()
+            c.peek_object_ref_stream_n.return_value = [(r1, True), (r2, False)]
+            c.try_read_next_object_ref_stream.side_effect = [r1, ray.ObjectRef.nil()]
+            mocked_ray_wait.reset_mock()
+            mocked_ray_wait.return_value = ([], [r2])
+            out = generator._next_bulk_sync(3, timeout_s=0)
+            assert out == [r1]
+
+            # EOS with partial batch returns refs without raising
+            r1, r2 = ray.ObjectRef.from_random(), ray.ObjectRef.from_random()
+            c.peek_object_ref_stream_n.return_value = [(r1, True), (r2, True)]
+            c.try_read_next_object_ref_stream.side_effect = [
+                r1,
+                ObjectRefStreamEndOfStreamError(""),
+            ]
+            mocked_ray_wait.reset_mock()
+            out = generator._next_bulk_sync(3, timeout_s=0)
+            assert out == [r1]
+
+            # EOS empty -> StopIteration (success path)
+            c.peek_object_ref_stream_n.return_value = [(r1, True)]
+            c.try_read_next_object_ref_stream.side_effect = (
+                ObjectRefStreamEndOfStreamError("")
+            )
+            mocked_ray_get.return_value = None
+            with pytest.raises(StopIteration):
+                generator._next_bulk_sync(2, timeout_s=0)
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
@@ -254,6 +343,51 @@ def test_generator_basic(shutdown_only):
     assert "was cancelled" in str(e.value)
     with pytest.raises(StopIteration):
         next(gen)
+
+
+def test_generator_next_bulk_sync(shutdown_only):
+    import ray._raylet as raylet_
+
+    if not hasattr(raylet_.CoreWorker, "peek_object_ref_stream_n"):
+        pytest.skip(
+            "Requires Ray built with peek_object_ref_stream_n (rebuild Cython extensions)."
+        )
+
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_returns="streaming")
+    def g():
+        for i in range(4):
+            yield i
+
+    gen = g.remote()
+    vals = []
+    for _ in range(10):
+        try:
+            batch = gen._next_bulk_sync(10, timeout_s=30)
+        except StopIteration:
+            break
+        vals.extend(ray.get(r) for r in batch)
+    assert vals == [0, 1, 2, 3]
+    with pytest.raises(StopIteration):
+        gen._next_bulk_sync(10, timeout_s=0)
+
+    @ray.remote(num_returns="streaming")
+    def h():
+        for i in range(3):
+            yield i
+
+    gen2 = h.remote()
+    vals2 = []
+    for _ in range(10):
+        try:
+            batch = gen2._next_bulk_sync(2, timeout_s=30)
+        except StopIteration:
+            break
+        vals2.extend(ray.get(r) for r in batch)
+    assert vals2 == [0, 1, 2]
+    with pytest.raises(StopIteration):
+        gen2._next_bulk_sync(1, timeout_s=0)
 
 
 def test_streaming_generator_bad_exception_not_failing(shutdown_only, capsys):

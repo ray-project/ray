@@ -38,6 +38,7 @@ import concurrent.futures
 import collections
 
 from dataclasses import dataclass
+from libc.stddef cimport size_t
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -4809,6 +4810,32 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+    def peek_object_ref_stream_n(self, ObjectRef generator_id, int n):
+        if n < 0:
+            raise ValueError("n must be non-negative")
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            c_vector[c_pair[CObjectReference, c_bool]] c_result
+            size_t n_sz = <size_t>n
+            c_pair[CObjectReference, c_bool] c_item
+            size_t i
+        with nogil:
+            c_result = CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStreamN(
+                c_generator_id, n_sz)
+        out = []
+        for i in range(c_result.size()):
+            c_item = c_result[i]
+            out.append(
+                (
+                    ObjectRef(
+                        c_item.first.object_id(),
+                        c_item.first.owner_address().SerializeAsString(),
+                    ),
+                    c_item.second,
+                )
+            )
+        return out
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
