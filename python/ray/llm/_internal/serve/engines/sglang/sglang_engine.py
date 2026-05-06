@@ -22,7 +22,10 @@ from typing import (
 )
 
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -33,21 +36,34 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingCompletionRequest,
     EmbeddingRequest,
     EmbeddingResponse,
+    ErrorResponse,
     TokenizeCompletionRequest,
     TokenizeRequest,
     TokenizeResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
 )
+from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
 
 
-class SGLangServer:
+class SGLangServer(LLMEngine):
     def __init__(self, llm_config: LLMConfig):
+        """Initialize SGLang engine.
 
+        engine_kwargs are passed directly to sglang.Engine(**engine_kwargs).
+        For Wide-EP, dist_init_addr is injected by SGLangDPServer into
+        engine_kwargs before this constructor is called.
+
+        Args:
+            llm_config: The LLM configuration containing engine_kwargs.
+        """
+        super().__init__(llm_config)
         self._llm_config = llm_config
-        self.engine_kwargs = llm_config.engine_kwargs
+        self.engine_kwargs = llm_config.engine_kwargs.copy()
 
         try:
             import sglang
@@ -329,7 +345,7 @@ class SGLangServer:
         self,
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         chat_messages = self._build_chat_messages(request.messages)
         template_kwargs = self._build_chat_template_kwargs(request)
         prompt = self._render_chat_prompt(
@@ -385,7 +401,7 @@ class SGLangServer:
         self,
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[Union[str, CompletionResponse], None]:
+    ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         prompt_input = request.prompt
 
         # Normalize prompt input.
@@ -459,7 +475,7 @@ class SGLangServer:
         self,
         request: EmbeddingRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[EmbeddingResponse, None]:
+    ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         # Input handling follows SGLang's OpenAIServingEmbedding pattern:
         # https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/openai/serving_embedding.py
         if isinstance(request, EmbeddingCompletionRequest):
@@ -515,7 +531,7 @@ class SGLangServer:
         self,
         request: TokenizeRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[TokenizeResponse, None]:
+    ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
         tokenizer = self.engine.tokenizer_manager.tokenizer
         if tokenizer is None:
             raise RuntimeError(
@@ -555,7 +571,7 @@ class SGLangServer:
         self,
         request: DetokenizeRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[DetokenizeResponse, None]:
+    ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
         tokenizer = self.engine.tokenizer_manager.tokenizer
         if tokenizer is None:
             raise RuntimeError(
@@ -565,6 +581,37 @@ class SGLangServer:
         prompt = tokenizer.decode(request.tokens)
 
         yield DetokenizeResponse(text=prompt)
+
+    async def transcriptions(
+        self,
+        request: TranscriptionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
+        """Transcription is not supported by SGLang."""
+        yield ErrorResponse(
+            message="Transcription is not supported by SGLang engine.",
+            type="unsupported_operation",
+            code=400,
+        )
+
+    async def resolve_lora(self, lora_model: DiskMultiplexConfig) -> None:
+        """Mounts a LoRA model on the engine.
+
+        Note: SGLang LoRA support requires passing LoRA configuration
+        through engine_kwargs during initialization. Dynamic LoRA loading
+        may require additional implementation based on SGLang capabilities.
+        """
+        # TODO: Implement dynamic LoRA loading if SGLang supports it
+        raise NotImplementedError(
+            "Dynamic LoRA loading is not yet supported for SGLang. "
+            "Please pass LoRA configuration in engine_kwargs."
+        )
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the engine."""
+        # SGLang does not have a public API for resetting prefix cache
+        # This is a placeholder for future implementation
+        pass
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
