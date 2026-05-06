@@ -15,8 +15,8 @@ from ray.serve._private.request_router import PendingRequest
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 from ray.serve.experimental.consistent_hash_router import (
-    DEFAULT_FALLBACK_REPLICAS,
-    DEFAULT_VIRTUAL_NODES,
+    DEFAULT_NUM_FALLBACK_REPLICAS,
+    DEFAULT_NUM_VIRTUAL_NODES,
     ConsistentHashRouter,
     _hash_bytes,
 )
@@ -86,10 +86,10 @@ def test_hash_bytes():
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"virtual_nodes": 0},
-        {"virtual_nodes": -5},
-        {"virtual_nodes": "many"},
-        {"fallback_replicas": -1},
+        {"num_virtual_nodes": 0},
+        {"num_virtual_nodes": -5},
+        {"num_virtual_nodes": "many"},
+        {"num_fallback_replicas": -1},
     ],
 )
 def test_initialize_state_invalid_args(kwargs):
@@ -110,14 +110,47 @@ def test_initialize_state_valid_args():
         self_actor_id="a",
         self_actor_handle=None,
     )
-    r.initialize_state(virtual_nodes=42, fallback_replicas=7)
-    assert r._virtual_nodes == 42
-    assert r._fallback_replicas == 7
+    r.initialize_state(num_virtual_nodes=42, num_fallback_replicas=7)
+    assert r._num_virtual_nodes == 42
+    assert r._num_fallback_replicas == 7
 
 
 def test_ring_defaults(router):
-    assert router._virtual_nodes == DEFAULT_VIRTUAL_NODES
-    assert router._fallback_replicas == DEFAULT_FALLBACK_REPLICAS
+    assert router._num_virtual_nodes == DEFAULT_NUM_VIRTUAL_NODES
+    assert router._num_fallback_replicas == DEFAULT_NUM_FALLBACK_REPLICAS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("router", [{"num_fallback_replicas": 5}], indirect=True)
+async def test_explicit_num_fallback_replicas_caps_gracefully(router):
+    """When the operator explicitly requests more fallbacks than there
+    are replicas, the lookup must stop early gracefully."""
+    # 3 replicas with num_fallback_replicas=5 means we'd want a rank list
+    # of 6 but only 3 distinct replicas exist; the loop must cap at 3.
+    replicas = [FakeRunningReplica(f"r{i}") for i in range(3)]
+    router.update_replicas(replicas)
+
+    ranked = router._lookup_ranked_replicas("any_session")
+    assert len(ranked) == 3
+    assert len(set(ranked)) == 3
+
+
+@pytest.mark.asyncio
+async def test_default_num_fallback_replicas_caps_gracefully(
+    router,
+):
+    """Defaulted num_fallback_replicas must also stop early gracefully when
+    there are fewer replicas than 1 + DEFAULT_NUM_FALLBACK_REPLICAS."""
+    assert router._num_fallback_replicas == DEFAULT_NUM_FALLBACK_REPLICAS
+
+    replicas = [
+        FakeRunningReplica(f"r{i}") for i in range(DEFAULT_NUM_FALLBACK_REPLICAS)
+    ]
+    router.update_replicas(replicas)
+
+    ranked = router._lookup_ranked_replicas("any_session")
+    assert len(ranked) == len(replicas)
+    assert len(set(ranked)) == len(replicas)
 
 
 @pytest.mark.asyncio
@@ -146,7 +179,7 @@ async def test_choose_replicas_stickiness(router):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("router", [{"fallback_replicas": 0}], indirect=True)
+@pytest.mark.parametrize("router", [{"num_fallback_replicas": 0}], indirect=True)
 async def test_choose_replicas_no_fallbacks(router):
     """K=0 -> a single rank containing only the primary."""
     replicas = [FakeRunningReplica(f"r{i}") for i in range(5)]
@@ -218,7 +251,7 @@ async def test_lookup_at_hash_space_boundaries(router, monkeypatch, key_hash):
     )
     ranked = router._lookup_ranked_replicas("anything")
 
-    assert len(ranked) == 1 + DEFAULT_FALLBACK_REPLICAS
+    assert len(ranked) == 1 + DEFAULT_NUM_FALLBACK_REPLICAS
     assert ranked[0] in {r.replica_id for r in replicas}
 
 
@@ -455,11 +488,11 @@ async def test_backoff_engaged_when_all_ranks_saturated(router):
 
     loop = get_or_create_event_loop()
 
-    # 1 + DEFAULT_FALLBACK_REPLICAS replicas -> the full ranked set is
+    # 1 + DEFAULT_NUM_FALLBACK_REPLICAS replicas -> the full ranked set is
     # saturated, so _choose_replicas_with_backoff exhausts every yielded rank
     # and falls through to the backoff branch.
     replicas = [
-        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_FALLBACK_REPLICAS)
+        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_NUM_FALLBACK_REPLICAS)
     ]
     for r in replicas:
         r.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
@@ -517,20 +550,20 @@ async def test_concurrent_same_session_does_not_orphan(router):
     """
     loop = get_or_create_event_loop()
 
-    # 1 + DEFAULT_FALLBACK_REPLICAS replicas so the full rank list is
+    # 1 + DEFAULT_NUM_FALLBACK_REPLICAS replicas so the full rank list is
     # exactly the same set across requests (no replica outside the ranks).
     replicas = [
-        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_FALLBACK_REPLICAS)
+        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_NUM_FALLBACK_REPLICAS)
     ]
     for r in replicas:
         r.set_queue_len_response(0)
     router.update_replicas(replicas)
 
-    # Fire (1 + fallback_replicas + 2) concurrent same-session requests.
+    # Fire (1 + num_fallback_replicas + 2) concurrent same-session requests.
     # That's strictly more than the rank-list size, exercising the path
     # where the routing task that owns a popped pending might temporarily
     # exceed the dynamically computed task target.
-    burst_size = 1 + DEFAULT_FALLBACK_REPLICAS + 2
+    burst_size = 1 + DEFAULT_NUM_FALLBACK_REPLICAS + 2
     tasks = [
         loop.create_task(
             router._choose_replica_for_request(_make_request("burst-session"))

@@ -21,7 +21,10 @@ class TestConsistentHashRouting:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
                 initial_backoff_s=0.01,
                 backoff_multiplier=2.0,
                 max_backoff_s=0.1,
@@ -51,7 +54,10 @@ class TestConsistentHashRouting:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
                 initial_backoff_s=0.01,
                 backoff_multiplier=2.0,
                 max_backoff_s=0.1,
@@ -82,7 +88,10 @@ class TestConsistentHashRouting:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
                 initial_backoff_s=0.01,
                 backoff_multiplier=2.0,
                 max_backoff_s=0.1,
@@ -110,7 +119,10 @@ class TestConsistentHashRouting:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
                 initial_backoff_s=0.01,
                 backoff_multiplier=2.0,
                 max_backoff_s=0.1,
@@ -156,7 +168,10 @@ class TestOverflowToFallback:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
                 initial_backoff_s=0.01,
                 backoff_multiplier=2.0,
                 max_backoff_s=0.1,
@@ -207,7 +222,10 @@ class TestOverflowToFallback:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
                 initial_backoff_s=0.01,
                 backoff_multiplier=2.0,
                 max_backoff_s=0.1,
@@ -253,7 +271,10 @@ class TestProtocolStickiness:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
             ),
             num_replicas=4,
             ray_actor_options={"num_cpus": 0},
@@ -295,7 +316,10 @@ class TestProtocolStickiness:
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
-                request_router_kwargs={"virtual_nodes": 100, "fallback_replicas": 2},
+                request_router_kwargs={
+                    "num_virtual_nodes": 100,
+                    "num_fallback_replicas": 2,
+                },
             ),
             num_replicas=4,
             ray_actor_options={"num_cpus": 0},

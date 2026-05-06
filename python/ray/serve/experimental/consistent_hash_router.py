@@ -3,7 +3,7 @@
 ConsistentHashRouter implements a consistent-hash ring with virtual nodes
 to map session IDs to replicas. When the assigned replica rejects the request
 due to backpressure, the router falls back to the next replica in the ring,
-with at most DEFAULT_FALLBACK_REPLICAS replicas before backing off the request.
+with at most DEFAULT_NUM_FALLBACK_REPLICAS replicas before backing off the request.
 """
 
 import asyncio
@@ -27,8 +27,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # a new router picks up the controller broadcast.
 CONSISTENT_HASH_SEED = 0xF9B4CA77
 
-DEFAULT_VIRTUAL_NODES = 100
-DEFAULT_FALLBACK_REPLICAS = 2
+DEFAULT_NUM_VIRTUAL_NODES = 100
+DEFAULT_NUM_FALLBACK_REPLICAS = 2
 
 
 def _hash_bytes(key: bytes) -> int:
@@ -64,25 +64,27 @@ class ConsistentHashRouter(RequestRouter):
         self._replica_set_snapshot: FrozenSet[ReplicaID] = frozenset()
 
         # Tunables populated by ``initialize_state``.
-        self._virtual_nodes: int = DEFAULT_VIRTUAL_NODES
-        self._fallback_replicas: int = DEFAULT_FALLBACK_REPLICAS
+        self._num_virtual_nodes: int = DEFAULT_NUM_VIRTUAL_NODES
+        self._num_fallback_replicas: int = DEFAULT_NUM_FALLBACK_REPLICAS
 
     def initialize_state(self, **kwargs) -> None:
-        virtual_nodes = kwargs.get("virtual_nodes", DEFAULT_VIRTUAL_NODES)
-        fallback_replicas = kwargs.get("fallback_replicas", DEFAULT_FALLBACK_REPLICAS)
+        num_virtual_nodes = kwargs.get("num_virtual_nodes", DEFAULT_NUM_VIRTUAL_NODES)
+        num_fallback_replicas = kwargs.get(
+            "num_fallback_replicas", DEFAULT_NUM_FALLBACK_REPLICAS
+        )
 
-        if not isinstance(virtual_nodes, int) or virtual_nodes <= 0:
+        if not isinstance(num_virtual_nodes, int) or num_virtual_nodes <= 0:
             raise ValueError(
-                f"virtual_nodes must be a positive int, got {virtual_nodes!r}."
+                f"num_virtual_nodes must be a positive int, got {num_virtual_nodes!r}."
             )
-        if not isinstance(fallback_replicas, int) or fallback_replicas < 0:
+        if not isinstance(num_fallback_replicas, int) or num_fallback_replicas < 0:
             raise ValueError(
-                "fallback_replicas must be a non-negative int, got "
-                f"{fallback_replicas!r}."
+                "num_fallback_replicas must be a non-negative int, got "
+                f"{num_fallback_replicas!r}."
             )
 
-        self._virtual_nodes = virtual_nodes
-        self._fallback_replicas = fallback_replicas
+        self._num_virtual_nodes = num_virtual_nodes
+        self._num_fallback_replicas = num_fallback_replicas
 
     def update_replicas(self, replicas: List[RunningReplica]) -> None:
         """
@@ -108,14 +110,15 @@ class ConsistentHashRouter(RequestRouter):
         new_replicas: List[ReplicaID] = []
 
         for replica_id in new_snapshot:
-            for i in range(self._virtual_nodes):
+            for i in range(self._num_virtual_nodes):
                 key = f"{replica_id.unique_id}:{i}".encode()
                 new_hashes.append(_hash_bytes(key))
                 new_replicas.append(replica_id)
 
         if new_hashes:
             paired = sorted(zip(new_hashes, new_replicas), key=lambda p: p[0])
-            new_hashes, new_replicas = map(list, zip(*paired))
+            new_hashes = [p[0] for p in paired]
+            new_replicas = [p[1] for p in paired]
 
         self._ring_hashes = new_hashes
         self._ring_replicas = new_replicas
@@ -162,15 +165,17 @@ class ConsistentHashRouter(RequestRouter):
         # even if it owns multiple virtual nodes.
         ranked: List[ReplicaID] = []
         seen: set = set()
-        max_ranked = 1 + self._fallback_replicas
+        max_ranked = 1 + self._num_fallback_replicas
         n = len(self._ring_hashes)
+
+        num_replicas = len(self._replica_set_snapshot)
         for offset in range(n):
             replica_id = self._ring_replicas[(start_idx + offset) % n]
             if replica_id in seen:
                 continue
             seen.add(replica_id)
             ranked.append(replica_id)
-            if len(ranked) == max_ranked:
+            if len(ranked) == max_ranked or len(seen) == num_replicas:
                 break
 
         return ranked
