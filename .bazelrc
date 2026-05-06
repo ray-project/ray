@@ -1,6 +1,6 @@
 common --noenable_bzlmod
 
-# Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
+# Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd test
 build --enable_platform_specific_config
 
 build --incompatible_strict_action_env
