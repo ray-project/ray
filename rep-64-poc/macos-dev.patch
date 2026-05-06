@@ -24,6 +24,164 @@ index 16706e0c21..970179ebcf 100644
      visibility = ["//visibility:private"],
  )
  
+diff --git a/rep-64-poc/harness/durability/kill9/BUILD.bazel b/rep-64-poc/harness/durability/kill9/BUILD.bazel
+index 79e9bac401..a4e4494b4b 100644
+--- a/rep-64-poc/harness/durability/kill9/BUILD.bazel
++++ b/rep-64-poc/harness/durability/kill9/BUILD.bazel
+@@ -10,7 +10,6 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
+ cc_binary(
+     name = "writer",
+     srcs = ["writer.cc"],
+-    target_compatible_with = ["@platforms//os:linux"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "@com_github_facebook_rocksdb//:rocksdb",
+@@ -20,7 +19,6 @@ cc_binary(
+ cc_binary(
+     name = "verifier",
+     srcs = ["verifier.cc"],
+-    target_compatible_with = ["@platforms//os:linux"],
+     visibility = ["//visibility:public"],
+     deps = [
+         "@com_github_facebook_rocksdb//:rocksdb",
+diff --git a/rep-64-poc/harness/durability/kill9/writer.cc b/rep-64-poc/harness/durability/kill9/writer.cc
+index 6e8fc5af14..48ebc92444 100644
+--- a/rep-64-poc/harness/durability/kill9/writer.cc
++++ b/rep-64-poc/harness/durability/kill9/writer.cc
+@@ -13,6 +13,20 @@
+ // the StoreClient wrapper does not change. Going through the wrapper
+ // would add asio plumbing without changing the durability question.
+ //
++// macOS APFS note: WriteOptions::sync = true causes RocksDB to call
++// fsync() on the WAL, which macOS documents as flushing only to the
++// kernel page cache, not to permanent media. To make ack ⇒ durable
++// honest on APFS, we additionally issue fcntl(F_FULLFSYNC) on the DB
++// directory after each Put returns OK and before printing "ack:N".
++// F_FULLFSYNC tells the drive to flush its on-board write cache to
++// platter — the only honest media-flush barrier macOS exposes.
++// Apple's storage stack treats F_FULLFSYNC as a global drive barrier
++// (whichever fd it's issued on). Phase 1's probe on this host
++// measured F_FULLFSYNC p50 = 4.0 ms (vs. fsync() p50 = 17 us); the
++// sync-write numbers measured here will track the F_FULLFSYNC class,
++// which is the apples-to-apples comparison vs. Linux ext4 fsync
++// (3.6 ms p50 on the project's reference Linux VM).
++//
+ // Usage:
+ //   writer <db_path> <num_writes> <key_prefix> <sync:0|1> [ghost_writes]
+ //
+@@ -29,6 +43,41 @@
+ #include <iostream>
+ #include <string>
+ 
++#if defined(__APPLE__)
++#include <fcntl.h>
++#include <sys/types.h>
++#include <unistd.h>
++#endif
++
++namespace {
++
++#if defined(__APPLE__)
++// On macOS, RocksDB's WriteOptions::sync = true calls fsync(), which
++// flushes only to the kernel page cache. F_FULLFSYNC asks the drive
++// to flush its write cache to platter — Apple's documented
++// media-flush barrier. We open the DB directory once and reuse the
++// fd; the call applies to the drive globally, regardless of which fd
++// is used.
++class FullFsyncBarrier {
++ public:
++  FullFsyncBarrier() : fd_(-1) {}
++  bool Open(const std::string &dir) {
++    fd_ = ::open(dir.c_str(), O_RDONLY);
++    return fd_ >= 0;
++  }
++  // Returns 0 on success.
++  int Issue() const { return ::fcntl(fd_, F_FULLFSYNC, 0); }
++  ~FullFsyncBarrier() {
++    if (fd_ >= 0) ::close(fd_);
++  }
++
++ private:
++  int fd_;
++};
++#endif
++
++}  // namespace
++
+ int main(int argc, char **argv) {
+   if (argc < 5 || argc > 6) {
+     std::cerr << "usage: writer <db_path> <num_writes> <key_prefix> "
+@@ -58,6 +107,19 @@ int main(int argc, char **argv) {
+   rocksdb::WriteOptions write_opts;
+   write_opts.sync = sync_writes;
+ 
++#if defined(__APPLE__)
++  // Open the DB-directory fd once for F_FULLFSYNC barrier issuance.
++  // Only used when sync_writes is true; sync=false is the page-cache
++  // negative control and intentionally skips the media-flush barrier.
++  FullFsyncBarrier barrier;
++  if (sync_writes && !barrier.Open(db_path)) {
++    std::cerr << "failed to open db_path for F_FULLFSYNC barrier: " << db_path
++              << std::endl;
++    delete db;
++    return 1;
++  }
++#endif
++
+   const long ghost_threshold = num_writes - ghost_writes;
+   for (long i = 0; i < num_writes; ++i) {
+     const std::string key = key_prefix + std::to_string(i);
+@@ -71,10 +133,23 @@ int main(int argc, char **argv) {
+         delete db;
+         return 1;
+       }
++#if defined(__APPLE__)
++      // After RocksDB returns OK from a sync=true Put, RocksDB has
++      // flushed the WAL to the kernel page cache. To satisfy the
++      // ack ⇒ durable contract on APFS we must additionally tell the
++      // drive to flush its write cache to platter.
++      if (sync_writes && barrier.Issue() != 0) {
++        std::cerr << "F_FULLFSYNC failed at i=" << i << ": errno=" << errno
++                  << std::endl;
++        delete db;
++        return 1;
++      }
++#endif
+     }
+-    // Always print ack: in normal mode this follows a successful Put;
+-    // in ghost-write mode (i >= ghost_threshold) we deliberately ack
+-    // a write we never issued, so the orchestrator can confirm it
++    // Always print ack: in normal mode this follows a successful Put
++    // (and, on macOS with sync=1, a successful F_FULLFSYNC); in
++    // ghost-write mode (i >= ghost_threshold) we deliberately ack a
++    // write we never issued, so the orchestrator can confirm it
+     // detects the discrepancy.
+     std::cout << "ack:" << i << "\n";
+     std::cout.flush();
+diff --git a/rep-64-poc/harness/microbench/BUILD.bazel b/rep-64-poc/harness/microbench/BUILD.bazel
+index 94d624b994..fe009c0eb2 100644
+--- a/rep-64-poc/harness/microbench/BUILD.bazel
++++ b/rep-64-poc/harness/microbench/BUILD.bazel
+@@ -6,7 +6,6 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
+ cc_binary(
+     name = "storage_microbench",
+     srcs = ["storage_microbench.cc"],
+-    target_compatible_with = ["@platforms//os:linux"],
+     deps = [
+         "//src/ray/gcs/store_client:in_memory_store_client",
+         "//src/ray/gcs/store_client:rocksdb_store_client",
+diff --git a/rep-64-poc/harness/recovery/BUILD.bazel b/rep-64-poc/harness/recovery/BUILD.bazel
+index 95a80ab305..2fc7d309b2 100644
+--- a/rep-64-poc/harness/recovery/BUILD.bazel
++++ b/rep-64-poc/harness/recovery/BUILD.bazel
+@@ -5,7 +5,6 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
+ cc_binary(
+     name = "recovery_bench",
+     srcs = ["recovery_bench.cc"],
+-    target_compatible_with = ["@platforms//os:linux"],
+     deps = [
+         "//src/ray/gcs/store_client:rocksdb_store_client",
+     ],
 diff --git a/src/ray/common/cgroup2/BUILD.bazel b/src/ray/common/cgroup2/BUILD.bazel
 index 247f139784..08981ffb68 100644
 --- a/src/ray/common/cgroup2/BUILD.bazel
