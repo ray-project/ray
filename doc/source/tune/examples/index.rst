@@ -59,6 +59,7 @@ Experiment tracking tools
     MLflow Example <tune-mlflow>
     Aim Example <tune-aim>
     Comet Example <tune-comet>
+    Trackio Example <tune-trackio>
 
 Ray Tune integrates with some popular Experiment tracking and management tools,
 such as CometML, or Weights & Biases. For how
