@@ -88,6 +88,98 @@ from ray.util import metrics
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+class SharedCachedMetricsReporter:
+    """Consolidates per-handle cached metrics reporting into a single asyncio task.
+
+    Without this, each RouterMetricsManager creates its own
+    _report_cached_metrics_forever task. At scale (e.g., 1500 deployment handles),
+    this causes excessive CPU from thousands of asyncio task wake-ups per second
+    on a single event loop. This class reduces N tasks to 1 per event loop.
+
+    See: https://github.com/ray-project/ray/issues/62619
+    """
+
+    _instances: Dict[int, "SharedCachedMetricsReporter"] = {}
+    _lock = threading.Lock()
+
+    def __init__(self, event_loop: asyncio.BaseEventLoop, interval_s: float):
+        self._event_loop = event_loop
+        self._interval_s = interval_s
+        self._managers: weakref.WeakSet = weakref.WeakSet()
+        self._task: Optional[asyncio.Task] = None
+
+    @classmethod
+    def get_or_create(
+        cls, event_loop: asyncio.BaseEventLoop, interval_s: float
+    ) -> "SharedCachedMetricsReporter":
+        """Get or create a shared reporter for the given event loop.
+
+        Thread-safe. If an existing reporter's event loop has been closed
+        (e.g., between test runs), a fresh reporter is created.
+        """
+        loop_id = id(event_loop)
+        with cls._lock:
+            existing = cls._instances.get(loop_id)
+            if existing is not None and not existing._event_loop.is_closed():
+                if existing._interval_s != interval_s:
+                    logger.warning(
+                        "SharedCachedMetricsReporter interval mismatch: "
+                        f"existing={existing._interval_s}s, "
+                        f"requested={interval_s}s. "
+                        "Using the existing interval."
+                    )
+                return existing
+            reporter = cls(event_loop, interval_s)
+            cls._instances[loop_id] = reporter
+            return reporter
+
+    def register(self, manager: "RouterMetricsManager"):
+        """Register a metrics manager. Must be called on the event loop thread."""
+        self._managers.add(manager)
+        if self._task is None or self._task.done():
+            self._task = self._event_loop.create_task(self._report_forever())
+
+    def deregister(self, manager: "RouterMetricsManager"):
+        """Deregister a metrics manager.
+
+        When the last manager is removed, the background task is cancelled
+        and this reporter is removed from the class-level ``_instances``
+        cache so that neither the task nor the event loop is leaked.
+        """
+        self._managers.discard(manager)
+        if not self._managers and self._task is not None:
+            self._task.cancel()
+            self._task = None
+            with self._lock:
+                loop_id = id(self._event_loop)
+                if self._instances.get(loop_id) is self:
+                    self._instances.pop(loop_id, None)
+
+    async def _report_forever(self):
+        assert self._interval_s > 0
+
+        consecutive_errors = 0
+        try:
+            while True:
+                try:
+                    await asyncio.sleep(self._interval_s)
+                    for manager in list(self._managers):
+                        try:
+                            manager._report_cached_metrics()
+                        except Exception:
+                            logger.exception("Unexpected error reporting metrics.")
+                    consecutive_errors = 0
+                except Exception:
+                    logger.exception("Unexpected error in shared metrics reporter.")
+
+                    # Exponential backoff starting at 1s and capping at 10s.
+                    backoff_time_s = min(10, 2**consecutive_errors)
+                    consecutive_errors += 1
+                    await asyncio.sleep(backoff_time_s)
+        except asyncio.CancelledError:
+            pass
+
+
 class RouterMetricsManager:
     """Manages metrics for the router."""
 
@@ -171,20 +263,17 @@ class RouterMetricsManager:
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
-        self._cached_metrics_task: Optional[asyncio.Task] = None
+        self._shared_reporter: Optional[SharedCachedMetricsReporter] = None
 
         if self._cached_metrics_enabled:
             self._cached_num_router_requests = defaultdict(int)
-
-            def create_metrics_task():
-                self._cached_metrics_task = event_loop.create_task(
-                    self._report_cached_metrics_forever()
-                )
-
-            # the constructor is called in the user thread, but its trying to create a task on the event loop
-            # which is running in the router thread. This is not thread safe, so we need to use call_soon_threadsafe
-            # to create the task on the event loop thread safely.
-            event_loop.call_soon_threadsafe(create_metrics_task)
+            self._shared_reporter = SharedCachedMetricsReporter.get_or_create(
+                event_loop, self._cached_metrics_interval_s
+            )
+            # The constructor may be called from a user thread while the event
+            # loop runs on the router thread. Use call_soon_threadsafe to
+            # register on the event loop thread safely.
+            event_loop.call_soon_threadsafe(self._shared_reporter.register, self)
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -322,23 +411,6 @@ class RouterMetricsManager:
         self.num_running_requests_gauge.set(
             sum(self.num_requests_sent_to_replicas.values())
         )
-
-    async def _report_cached_metrics_forever(self):
-        assert self._cached_metrics_interval_s > 0
-
-        consecutive_errors = 0
-        while True:
-            try:
-                await asyncio.sleep(self._cached_metrics_interval_s)
-                self._report_cached_metrics()
-                consecutive_errors = 0
-            except Exception:
-                logger.exception("Unexpected error reporting metrics.")
-
-                # Exponential backoff starting at 1s and capping at 10s.
-                backoff_time_s = min(10, 2**consecutive_errors)
-                consecutive_errors += 1
-                await asyncio.sleep(backoff_time_s)
 
     def inc_num_total_requests(self, route: str):
         if self._cached_metrics_enabled:
@@ -505,12 +577,8 @@ class RouterMetricsManager:
 
         self._shutdown = True
 
-        if self._cached_metrics_task is not None:
-            self._cached_metrics_task.cancel()
-            try:
-                await self._cached_metrics_task
-            except asyncio.CancelledError:
-                pass
+        if self._shared_reporter is not None:
+            self._shared_reporter.deregister(self)
 
 
 class Router(ABC):
