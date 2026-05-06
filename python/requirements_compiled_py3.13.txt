@@ -995,7 +995,7 @@ jupyter-server==2.17.0
     #   notebook-shim
 jupyter-server-terminals==0.5.4
     # via jupyter-server
-jupyterlab==4.5.6
+jupyterlab==4.5.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
