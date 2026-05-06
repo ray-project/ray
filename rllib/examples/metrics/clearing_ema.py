@@ -23,7 +23,7 @@ iteration. Because RLlib's internal timers (and other ``reduce="ema"``
 metrics) go through the lookup, swapping the key is enough -- no per-metric
 plumbing required.
 
-A small ``VerifyClearingEmaCallback`` is attached purely as a sanity
+``VerifyClearingEmaCallback`` is attached purely as a sanity
 check: every ``on_train_result`` it asserts that RLlib's built-in
 training-iteration timer is now an instance of ``ClearingEmaStats`` and
 that its internal ``_value`` was reset to ``NaN`` by the reduce that just
@@ -52,9 +52,6 @@ from ray.tune.registry import get_trainable_cls
 
 
 class ClearingEmaStats(EmaStats):
-    # This is required such that RLlib can correctly restore metrics from checkpoints
-    stats_cls_identifier = "ema"
-
     def reduce(self, compile: bool = True):
         result = super().reduce(compile=compile)
         self._value = np.nan
