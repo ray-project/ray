@@ -258,6 +258,25 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
     "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
+#: Default max_concurrency for sync deployment actors. Each unit of
+#: max_concurrency on a sync actor materializes as one OS thread via the
+#: C++ BoundedExecutor (#62661), so this caps the thread count at a safe
+#: ceiling while still allowing enough concurrent calls to avoid the
+#: default-of-1 serialization regression from #62708.
+DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY = get_env_int_positive(
+    "RAY_SERVE_DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY", 100
+)
+
+#: Default max_concurrency for async deployment actors. Async actors use
+#: lightweight asyncio fibers (no per-unit OS thread cost) so this can
+#: stay large enough to absorb deployment-actor fan-in. Kept as a
+#: dedicated knob — separate from CONTROLLER_MAX_CONCURRENCY — so tuning
+#: the controller's concurrency does not silently change deployment-actor
+#: behaviour and vice versa.
+DEFAULT_ASYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY = get_env_int_positive(
+    "RAY_SERVE_DEFAULT_ASYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY", 15_000
+)
+
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10

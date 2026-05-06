@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import ray
 from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
+from ray._private.async_compat import has_async_methods
 from ray.actor import ActorHandle
 from ray.exceptions import (
     RayActorError,
@@ -44,7 +45,9 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
+    DEFAULT_ASYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -233,6 +236,25 @@ class DeploymentActorWrapper:
             # Serve recreates deployment actors after failed health checks instead
             # of relying on Ray actor restarts.
             actor_options["max_restarts"] = 0
+            # Choose a safe default for max_concurrency when the user hasn't
+            # specified one. Sync deployment actors materialize max_concurrency
+            # as OS threads via the C++ BoundedExecutor, so unbounded values
+            # crash workers (#62661); use a safe sync-actor-specific default.
+            # Without any default, sync actors fall back to Ray Core's default
+            # of 1, which silently serializes deployment-actor calls (#62708).
+            # Async actors use lightweight fibers and get their own constant
+            # so deployment-actor concurrency is not coupled to the
+            # controller-specific CONTROLLER_MAX_CONCURRENCY env var.
+            if "max_concurrency" not in actor_options:
+                try:
+                    user_cls = actor_cls.__ray_metadata__.modified_class
+                except AttributeError:
+                    user_cls = actor_cls
+                actor_options["max_concurrency"] = (
+                    DEFAULT_ASYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY
+                    if has_async_methods(user_cls)
+                    else DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY
+                )
             self._handle = actor_cls.options(
                 name=self._actor_name,
                 namespace=SERVE_NAMESPACE,
