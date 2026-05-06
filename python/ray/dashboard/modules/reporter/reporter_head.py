@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -26,7 +27,7 @@ from ray._private.ray_constants import (
     RAY_DASHBOARD_ENABLE_PROFILING,
     env_integer,
 )
-from ray.autoscaler._private.commands import debug_status
+from ray.autoscaler._private.commands import _build_v2_cluster_status_dict, debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.reporter.utils import HealthChecker
@@ -115,20 +116,52 @@ class ReportHead(SubprocessModule):
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
 
-        Currently contains two fields:
-            autoscaling_status (str)-- a status message from the autoscaler.
-            autoscaling_error (str)-- an error message from the autoscaler if
-                anything has gone wrong during autoscaling.
-
-        These fields are both read from the GCS, it's expected that the
-        autoscaler writes them there.
+        For autoscaler V2: returns structured ClusterStatus data from GCS.
+        For autoscaler V1 (backward compat): reads from GCS KV store.
         """
-        # TODO(rickyx): We should be able to get the cluster status from the
-        # autoscaler directly with V2. And we should be able to return structured data
-        # rather than a string.
-
         return_formatted_output = req.query.get("format", "0") == "1"
 
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+        if is_autoscaler_v2():
+            if return_formatted_output:
+                # debug_status() already detects is_autoscaler_v2() internally and
+                # calls get_cluster_status(), so there is no V2-specific handling needed here.
+                return dashboard_optional_utils.rest_response(
+                    status_code=dashboard_utils.HTTPStatusCode.OK,
+                    message="Got formatted cluster status.",
+                    cluster_status=debug_status(None, None, address=self.gcs_address),
+                )
+
+            from ray.autoscaler.v2.schema import Stats
+            from ray.autoscaler.v2.sdk import ClusterStatusParser
+
+            try:
+                req_time = time.time()
+                reply = await self.gcs_client.async_get_cluster_status()
+                reply_time = time.time()
+                cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
+                    reply,
+                    stats=Stats(
+                        gcs_request_time_s=reply_time - req_time,
+                        request_ts_s=req_time,
+                    ),
+                )
+            except Exception:
+                logger.exception("Error getting cluster status")
+                return dashboard_optional_utils.rest_response(
+                    status_code=dashboard_utils.HTTPStatusCode.OK,
+                    message="Got cluster status.",
+                    cluster_status=None,
+                )
+
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message="Got cluster status.",
+                cluster_status=_build_v2_cluster_status_dict(cluster_status),
+            )
+
+        # V1 backward-compatible path: read from GCS KV store.
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
                 self.gcs_client.async_internal_kv_get(

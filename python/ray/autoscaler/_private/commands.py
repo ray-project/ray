@@ -183,6 +183,108 @@ def debug_status(
     return status
 
 
+def _build_v2_cluster_status_dict(cluster_status) -> dict:
+    """Serialize a V2 ClusterStatus to a JSON-safe dict for the API response.
+
+    The top-level sections ("node_status", "resources") mirror the two sections
+    produced by ClusterStatusFormatter.format() so that the structured and text
+    outputs cover the same data and can be derived from the same source.
+
+    Within each section the fields are kept granular rather than pre-merged:
+    - pending_launches (autoscaler requested cloud to provision) and pending_nodes
+      (instance exists but Ray hasn't joined yet) are separate because they
+      represent different lifecycle stages; the formatter merges them only for
+      display brevity.
+    - failed_launches and failed_nodes are kept separate for the same reason.
+
+    V2 does not write DEBUG_AUTOSCALING_STATUS / DEBUG_AUTOSCALING_STATUS_LEGACY
+    to GCS KV, so the V1 schema (load_metrics_report / autoscaler_report) cannot
+    be reused. The `version` field lets callers (e.g. KubeRay history server)
+    detect the schema and reconstruct dead-cluster responses accordingly.
+
+    Enums (LaunchRequest.Status) are serialized via .value so the dict is
+    JSON-safe without a custom encoder.
+    """
+
+    def node_to_dict(node) -> dict:
+        return {
+            "instance_type_name": node.instance_type_name,
+            "ray_node_type_name": node.ray_node_type_name,
+            "instance_id": node.instance_id,
+            "ip_address": node.ip_address,
+            "node_id": node.node_id,
+            "node_status": node.node_status,
+            "failure_detail": node.failure_detail,
+        }
+
+    def launch_request_to_dict(lr) -> dict:
+        return {
+            "instance_type_name": lr.instance_type_name,
+            "ray_node_type_name": lr.ray_node_type_name,
+            "count": lr.count,
+            "state": lr.state.value,
+            "details": lr.details,
+            "request_ts_s": lr.request_ts_s,
+            "failed_ts_s": lr.failed_ts_s,
+        }
+
+    def bundles_to_list(demand) -> list:
+        return [
+            {"bundle": bc.bundle, "count": bc.count} for bc in demand.bundles_by_count
+        ]
+
+    return {
+        "version": 2,
+        "node_status": {
+            # Active: running nodes with workload
+            "active": [node_to_dict(n) for n in cluster_status.active_nodes],
+            # Idle: running nodes with no workload (candidates for scale-down)
+            "idle": [node_to_dict(n) for n in cluster_status.idle_nodes],
+            # pending_launches: autoscaler requested cloud to provision these
+            "pending_launches": [
+                launch_request_to_dict(lr) for lr in cluster_status.pending_launches
+            ],
+            # pending_nodes: instances exist but Ray node hasn't joined yet
+            "pending_nodes": [node_to_dict(n) for n in cluster_status.pending_nodes],
+            # failed_launches: cloud provisioning requests that failed
+            "failed_launches": [
+                launch_request_to_dict(lr) for lr in cluster_status.failed_launches
+            ],
+            # failed_nodes: nodes that terminated unexpectedly
+            "failed_nodes": [node_to_dict(n) for n in cluster_status.failed_nodes],
+        },
+        "resources": {
+            # total_usage: aggregate resource usage across the cluster
+            "total_usage": [
+                {"resource_name": r.resource_name, "used": r.used, "total": r.total}
+                for r in cluster_status.cluster_resource_usage
+            ],
+            # request_resources: constraints placed via request_cluster_resources()
+            "request_resources": [
+                bundles_to_list(d)
+                for d in cluster_status.resource_demands.cluster_constraint_demand
+            ],
+            "pending_demands": {
+                # task_actor: unsatisfied resource requests from tasks/actors
+                "task_actor": [
+                    bundles_to_list(d)
+                    for d in cluster_status.resource_demands.ray_task_actor_demand
+                ],
+                # placement_group: unsatisfied placement group resource requests
+                "placement_group": [
+                    {
+                        "bundles": bundles_to_list(d),
+                        "strategy": d.strategy,
+                        "state": d.state,
+                        "pg_id": d.pg_id,
+                    }
+                    for d in cluster_status.resource_demands.placement_group_demand
+                ],
+            },
+        },
+    }
+
+
 def request_resources(
     num_cpus: Optional[int] = None,
     bundles: Optional[List[dict]] = None,
