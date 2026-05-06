@@ -3,8 +3,9 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from pydantic import BaseModel
+
 import ray
-from ray._common.pydantic_compat import BaseModel
 from ray._private.ray_constants import env_float
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
@@ -305,14 +306,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             current_report_index=self._current_report_index,
             validated_checkpoint_dir_names=validated_checkpoint_dir_names,
         )
-        return manager_snapshot.json()
+        return manager_snapshot.model_dump_json()
 
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
         json_dict = None
         try:
             json_dict = json.loads(json_state)
-            manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
+            manager_snapshot = _CheckpointManagerState.model_validate(json_dict)
         except Exception as e:
             if not json_dict:
                 error = e

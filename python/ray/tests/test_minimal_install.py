@@ -3,7 +3,6 @@
 Tests that are specific to minimal installations.
 """
 
-import importlib
 import itertools
 import os
 import sys
@@ -94,19 +93,6 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
                 from ray.dashboard.utils import DashboardHeadModule, get_all_modules
 
                 get_all_modules(DashboardHeadModule)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL", "0") != "1",
-    reason="Skip unless running in a minimal install.",
-)
-def test_pydantic_v1_is_unsupported():
-    mock_modules = _make_mock_pydantic_modules("1.9.0")
-
-    with mock.patch.dict("sys.modules", mock_modules):
-        sys.modules.pop("ray._common.pydantic_compat", None)
-        with pytest.raises(ImportError, match="Pydantic v1 is no longer supported"):
-            importlib.import_module("ray._common.pydantic_compat")
 
 
 if __name__ == "__main__":

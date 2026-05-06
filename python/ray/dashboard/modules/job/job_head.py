@@ -12,11 +12,11 @@ from typing import AsyncIterator, Dict, Optional, Tuple
 import aiohttp.web
 from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response, StreamResponse
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import ray
 from ray import NodeID
 from ray._common.network_utils import build_address
-from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._common.utils import get_or_create_event_loop, load_class
 from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
@@ -65,7 +65,7 @@ class RayActivityStatus(str, enum.Enum):
     ERROR = "ERROR"
 
 
-class RayActivityResponse(BaseModel, extra=Extra.allow):
+class RayActivityResponse(BaseModel):
     """
     Pydantic model used to inform if a particular Ray component can be considered
     active, and metadata about observation.
@@ -91,20 +91,19 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
     last_activity_at: Optional[float] = Field(
         None,
         description=(
-            "Timestamp when last actvity of this Ray component finished in format of "
+            "Timestamp when last activity of this Ray component finished in format of "
             "seconds since unix epoch. This field does not need to be populated "
             "for Ray components where it is not meaningful."
         ),
     )
 
-    @validator("reason", always=True)
-    def reason_required(cls, v, values, **kwargs):
-        if "is_active" in values and values["is_active"] != RayActivityStatus.INACTIVE:
-            if v is None:
-                raise ValueError(
-                    'Reason is required if is_active is "active" or "error"'
-                )
-        return v
+    model_config = ConfigDict(extra="allow")
+
+    @model_validator(mode="after")
+    def reason_required(self):
+        if self.is_active != RayActivityStatus.INACTIVE and self.reason is None:
+            raise ValueError('Reason is required if is_active is "active" or "error"')
+        return self
 
 
 class JobAgentSubmissionClient:
@@ -498,7 +497,7 @@ class JobHead(SubprocessModule):
             )
 
         return Response(
-            text=json.dumps(job.dict()),
+            text=json.dumps(job.model_dump()),
             content_type="application/json",
         )
 
@@ -526,8 +525,11 @@ class JobHead(SubprocessModule):
         return Response(
             text=json.dumps(
                 [
-                    *[submission_job.dict() for submission_job in submission_jobs],
-                    *[job_info.dict() for job_info in driver_jobs.values()],
+                    *[
+                        submission_job.model_dump()
+                        for submission_job in submission_jobs
+                    ],
+                    *[job_info.model_dump() for job_info in driver_jobs.values()],
                 ]
             ),
             content_type="application/json",

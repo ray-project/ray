@@ -280,7 +280,7 @@ class StateAPIManager:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         def transform(reply) -> ListApiResponse:
-            result = [job.dict() for job in reply]
+            result = [job.model_dump() for job in reply]
             total = len(result)
             result = do_filter(result, option.filters, JobState, option.detail)
             num_filtered = len(result)

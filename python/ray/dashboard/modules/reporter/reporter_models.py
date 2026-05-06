@@ -1,8 +1,11 @@
 from typing import Dict, List, Optional, Tuple
 
-from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
+try:
+    from pydantic import BaseModel
+except ImportError:
+    BaseModel = None
 
-if PYDANTIC_INSTALLED:
+if BaseModel is not None:
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):

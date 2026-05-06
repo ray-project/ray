@@ -1938,9 +1938,7 @@ class ReporterAgent(
         if StatsPayload is not None:
             stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))
 
-            parsed_stats = StatsPayload.parse_obj(stats_dict)
-            out = json.dumps(parsed_stats.dict())
-            return out
+            return StatsPayload.model_validate(stats_dict).model_dump_json()
         else:
             # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
             return jsonify_asdict(stats)
