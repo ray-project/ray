@@ -39,11 +39,6 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
-from ray.serve._private.constants import (
-    INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER,
-    SERVE_DEPLOYMENT_ACTOR_PREFIX,
-    SERVE_NAMESPACE,
-)
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -66,135 +61,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
-
-DIRECT_ROUTER_CAPACITY_QUEUE_ENV = "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE"
-DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME_ENV = (
-    "RAY_SERVE_LLM_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME"
-)
-DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME = "capacity_queue"
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.lower() in {"1", "true", "t", "yes", "y", "on"}
-
-
-class _CapacityQueueTokenReleaseMiddleware:
-    def __init__(
-        self,
-        app,
-        *,
-        app_name: str,
-        deployment_name: str,
-        replica_unique_id: str,
-        capacity_queue_actor_name: str,
-    ):
-        self.app = app
-        self._app_name = app_name
-        self._deployment_name = deployment_name
-        self._replica_unique_id = replica_unique_id
-        self._capacity_queue_actor_name = capacity_queue_actor_name
-        self._capacity_queue = None
-        self._capacity_queue_full_name: Optional[str] = None
-        self._warned_unavailable = False
-        self._warned_token_mismatch = False
-
-    async def __call__(self, scope, receive, send):
-        token = self._capacity_queue_token_from_scope(scope)
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            if token:
-                self._release_capacity_queue_token(token)
-
-    def add_exception_handler(self, *args, **kwargs):
-        if hasattr(self.app, "add_exception_handler"):
-            return self.app.add_exception_handler(*args, **kwargs)
-        return None
-
-    def _capacity_queue_token_from_scope(self, scope) -> Optional[str]:
-        if scope.get("type") != "http":
-            return None
-
-        header_name = INGRESS_REQUEST_ROUTER_CAPACITY_QUEUE_TOKEN_HEADER.encode(
-            "latin-1"
-        )
-        for name, value in scope.get("headers") or []:
-            if name.lower() == header_name:
-                return value.decode("latin-1")
-        return None
-
-    def _try_discover_capacity_queue(self) -> bool:
-        if self._capacity_queue_full_name is not None:
-            try:
-                self._capacity_queue = ray.get_actor(
-                    self._capacity_queue_full_name,
-                    namespace=SERVE_NAMESPACE,
-                )
-                return True
-            except Exception:
-                self._capacity_queue = None
-                self._capacity_queue_full_name = None
-
-        prefix = (
-            f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}"
-            f"{self._app_name}::{self._deployment_name}::"
-        )
-        suffix = f"::{self._capacity_queue_actor_name}"
-        try:
-            actors = ray.util.list_named_actors(all_namespaces=True)
-            for actor_info in actors:
-                if actor_info["namespace"] != SERVE_NAMESPACE:
-                    continue
-                name = actor_info["name"]
-                if name.startswith(prefix) and name.endswith(suffix):
-                    self._capacity_queue = ray.get_actor(
-                        name,
-                        namespace=SERVE_NAMESPACE,
-                    )
-                    self._capacity_queue_full_name = name
-                    return True
-        except Exception:
-            logger.debug(
-                "Failed to discover direct streaming capacity queue actor.",
-                exc_info=True,
-            )
-        return False
-
-    def _release_capacity_queue_token(self, token: str):
-        if token != self._replica_unique_id:
-            if not self._warned_token_mismatch:
-                self._warned_token_mismatch = True
-                logger.warning(
-                    "Skipping direct streaming capacity queue release for token "
-                    "%s on replica %s.",
-                    token,
-                    self._replica_unique_id,
-                )
-            return
-
-        if self._capacity_queue is None and not self._try_discover_capacity_queue():
-            if not self._warned_unavailable:
-                self._warned_unavailable = True
-                logger.warning(
-                    "Direct streaming capacity queue actor %r unavailable; "
-                    "token release will rely on TTL.",
-                    self._capacity_queue_actor_name,
-                )
-            return
-
-        try:
-            self._capacity_queue.release.remote(token)
-        except Exception:
-            self._capacity_queue = None
-            self._capacity_queue_full_name = None
-            logger.debug(
-                "Failed to release direct streaming capacity queue token %s.",
-                token,
-                exc_info=True,
-            )
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -346,18 +212,6 @@ class LLMServer(LLMServerProtocol):
             args,
             supported_tasks=supported_tasks,
         )
-        if _env_bool(DIRECT_ROUTER_CAPACITY_QUEUE_ENV):
-            replica_context = serve.get_replica_context()
-            app = _CapacityQueueTokenReleaseMiddleware(
-                app,
-                app_name=replica_context.app_name,
-                deployment_name=replica_context.deployment,
-                replica_unique_id=replica_context.replica_tag,
-                capacity_queue_actor_name=os.environ.get(
-                    DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME_ENV,
-                    DEFAULT_DIRECT_ROUTER_CAPACITY_QUEUE_ACTOR_NAME,
-                ),
-            )
 
         logger.info("Built vLLM FastAPI app for direct ingress serving")
         return app
