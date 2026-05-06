@@ -21,7 +21,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/metric_interface.h"

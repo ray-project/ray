@@ -26,7 +26,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
-    {%- if has_ingress_request_router and ingress_request_router_lua_path %}
+    {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
     tune.bufsize {{ ingress_request_router_bufsize }}
     {%- endif %}
@@ -102,7 +102,7 @@ frontend http_frontend
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
-    {%- if backend.ingress_request_router_servers %}
+    {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
     use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
@@ -155,13 +155,9 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
-{%- if backend.ingress_request_router_servers %}
+{%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
-    # Keep the pinned data-plane path on the same connection policy as the
-    # primary backend. For streamed responses, forcing server-close can leave
-    # HAProxy holding unread server-side FINs under a burst while worker
-    # threads are still routing other requests.
     http-reuse always
     # use-server falls through to LB if the pinned server is DOWN.
     option redispatch

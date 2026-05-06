@@ -279,6 +279,7 @@ if setup_spec.type == SetupType.RAY:
             "starlette",
             "fastapi",
             "watchfiles",
+            "mmh3",
         ],
         "tune": [
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
@@ -853,7 +854,7 @@ if __name__ == "__main__":
                 "includes/*.pxd",
                 "*.pxd",
                 "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
-                "serve/_private/*.lua.tmpl",
+                "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },
         include_package_data=True,
