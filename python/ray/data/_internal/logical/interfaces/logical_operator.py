@@ -110,23 +110,6 @@ class LogicalOperator(Operator, ABC):
         args["_output_dependencies"] = []
         return args
 
-    @property
-    def dag_str(self) -> str:
-        """String representation of the whole DAG."""
-        if self.input_dependencies:
-            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
-            out_str += " -> "
-        else:
-            out_str = ""
-        out_str += f"{self.__class__.__name__}[{self.name}]"
-        return out_str
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}[{self.name}]"
-
-    def __str__(self) -> str:
-        return repr(self)
-
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""
         return None
