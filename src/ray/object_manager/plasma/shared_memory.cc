@@ -76,6 +76,34 @@ void ClientMmapTableEntry::MaybeMadviseDontdump() {
 #endif
 }
 
+void ClientMmapTableEntry::MadviseRelease(ptrdiff_t offset, int64_t length) {
+#ifndef _WIN32
+  static const long page_size = sysconf(_SC_PAGESIZE);
+  if (page_size <= 0 || length <= 0) {
+    return;
+  }
+  const uintptr_t page_mask = static_cast<uintptr_t>(page_size) - 1;
+  // Page-align conservatively: round start up and end down so we never
+  // touch pages that may contain adjacent objects' data.
+  uintptr_t region_start = reinterpret_cast<uintptr_t>(pointer_) + offset;
+  uintptr_t aligned_start = (region_start + page_mask) & ~page_mask;
+  uintptr_t aligned_end = (region_start + length) & ~page_mask;
+  if (aligned_end <= aligned_start) {
+    return;
+  }
+  size_t advise_length = aligned_end - aligned_start;
+  int rval =
+      madvise(reinterpret_cast<void *>(aligned_start), advise_length, MADV_DONTNEED);
+  if (rval != 0) {
+    RAY_LOG(WARNING) << "madvise(MADV_DONTNEED) failed for offset " << offset
+                     << ", length " << length << ": " << strerror(errno);
+  } else {
+    RAY_LOG(DEBUG) << "madvise(MADV_DONTNEED) released " << advise_length
+                   << " bytes at offset " << offset << " from fd " << fd_.first;
+  }
+#endif
+}
+
 ClientMmapTableEntry::~ClientMmapTableEntry() {
   // At this point it is safe to unmap the memory, as the PlasmaBuffer
   // keeps the PlasmaClient (and therefore the ClientMmapTableEntry)

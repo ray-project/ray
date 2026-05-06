@@ -513,6 +513,19 @@ Status PlasmaClient::Release(const ObjectID &object_id) {
     //    about the object.
     const MEMFD_TYPE fd = object_entry->second->object.store_fd;
     bool may_unmap = object_entry->second->object.fallback_allocated;
+    // For primary-allocated objects (not fallback), we cannot unmap the entire
+    // shared region since other objects may share it. Instead, use
+    // madvise(MADV_DONTNEED) to release this object's pages from the worker's
+    // page table, reducing RSS. The data stays in the tmpfs/shm backing store
+    // and remains accessible to other processes (raylet, consumers).
+    if (!may_unmap) {
+      auto mmap_entry = mmap_table_.find(fd);
+      if (mmap_entry != mmap_table_.end()) {
+        auto &obj = object_entry->second->object;
+        mmap_entry->second->MadviseRelease(
+            obj.header_offset, obj.data_offset - obj.header_offset + obj.allocated_size);
+      }
+    }
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
     RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id, may_unmap));
