@@ -17,9 +17,12 @@ from typing import (
     Any,
     AsyncGenerator,
     List,
+    Literal,
     Optional,
     Union,
 )
+
+from pydantic import BaseModel
 
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -43,11 +46,52 @@ from ray.llm._internal.serve.core.server.llm_server import (
 )
 
 
+class SGLangPauseConfig(BaseModel):
+    """SGLang-specific configuration for pause operation."""
+
+    mode: Literal["abort", "in_place", "retract"] = "abort"
+    """Pause mode:
+    - "abort" (default): Terminate all in-flight requests immediately.
+    - "in_place": Freeze requests in queue, preserve kv cache.
+    - "retract": Freeze requests in queue, free corresponding KV cache.
+    """
+
+
+class SGLangSleepConfig(BaseModel):
+    """SGLang-specific configuration for sleep operation"""
+
+    tags: Optional[List[Literal["kv_cache", "weights", "cuda_graph"]]] = None
+
+    """Sleep tags:
+    - "kv_cache": Discard KV cache
+    - "weights": Offload to CPU RAM
+    - "cuda_graph": Discard CUDA graph
+    - None: Discard/Offload everything
+    """
+
+
+class SGLangWakeupConfig(BaseModel):
+    """SGLang-specific configuration for wakeup operation"""
+
+    tags: Optional[List[Literal["kv_cache", "weights", "cuda_graph"]]] = None
+    """Optional tags to selectively wake up components:
+    - "kv_cache": Restore KV cache only
+    - "weights": Restore weights only
+    - "cuda_graph": Restore CUDA graph only
+    - None: Restore everything
+    """
+
+
+_SLEEP_TAGS: frozenset[str] = frozenset({"kv_cache", "weights", "cuda_graph"})
+
+
 class SGLangServer:
     def __init__(self, llm_config: LLMConfig):
 
         self._llm_config = llm_config
         self.engine_kwargs = llm_config.engine_kwargs
+        self._is_paused = False
+        self._sleeping_tags: set[str] = set()
 
         try:
             import sglang
@@ -631,3 +675,105 @@ class SGLangServer:
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the SGlang server
+
+        This halts generation/encoding requests while keeping model weights in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Options parsed into SGLangPauseConfig.
+                - mode (str): "abort" (default), "in_place", or "retract"
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        config = SGLangPauseConfig(**kwargs)
+        await self.engine.pause_generation(mode=config.mode)
+        self._is_paused = True
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the SGLang server after pause.
+
+        Args:
+            **kwargs: Reserved for future options.
+        """
+        assert self.engine is not None, "server is not initialized"
+        await self.engine.continue_generation()
+        self._is_paused = False
+
+    async def is_paused(self) -> bool:
+        """Check whether the SGLang server is currently paused.
+
+        Returns:
+            True if the server is paused, False otherwise.
+        """
+        return self._is_paused
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put SGLang server to sleep.
+
+        Args:
+            **kwargs: Options parsed into SGLangSleepConfig
+                - tags (List[str], optional): Components to put to sleep.
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        config = SGLangSleepConfig(**kwargs)
+        await self.engine.release_memory_occupation(tags=config.tags)
+        # tags=None means "everything"; otherwise track only the requested tags.
+        self._sleeping_tags |= set(config.tags) if config.tags else set(_SLEEP_TAGS)
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the SGLang server from sleep mode.
+
+        Args:
+            **kwargs: Options parsed into SGLangWakeupConfig
+                - tags (List[str], optional): Components to wake up.
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        config = SGLangWakeupConfig(**kwargs)
+        await self.engine.resume_memory_occupation(tags=config.tags)
+        # tags=None wakes everything; otherwise only clear the woken tags so
+        # is_sleeping() still reports True while other components stay offloaded.
+        if config.tags is None:
+            self._sleeping_tags.clear()
+        else:
+            self._sleeping_tags -= set(config.tags)
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the SGLang server is currently sleeping.
+
+        Returns:
+            True if any component is currently offloaded/discarded, False otherwise.
+        """
+        return bool(self._sleeping_tags)
+
+    async def reset_prefix_cache(self, timeout: Optional[float] = None) -> None:
+        assert self.engine is not None, "server is not initialized"
+        # SGLang flush_cache does not accept a timeout argument
+        await self.engine.flush_cache()
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> None:
+        """Execute a collective RPC call on all SGLang workers.
+
+        This is used for RLHF workflows where a trainer needs to execute methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: not supported by SGLang
+            args: not supported by SGLang
+            kwargs: Keyword arguments to pass to worker method.
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        return await self.engine.collective_rpc(
+            method=method,
+            kwargs=kwargs or {},
+        )
