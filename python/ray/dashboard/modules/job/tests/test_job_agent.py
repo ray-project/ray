@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import shutil
@@ -6,13 +7,17 @@ import tempfile
 import time
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 
+import aiohttp
+import aiohttp.web
 import pytest
 import pytest_asyncio
 import requests
 import yaml
 
 import ray
+import ray.dashboard.optional_utils as optional_utils
 from ray._common.network_utils import build_address
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
@@ -29,9 +34,11 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobErrorType,
     JobSubmitRequest,
     validate_request_type,
 )
+from ray.dashboard.modules.job.job_agent import JobAgent
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -69,9 +76,34 @@ def get_node_ip_by_id(node_id: str) -> str:
 class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._session.headers[
-            "User-Agent"
-        ] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"  # noqa: E501
+        self._session.headers["User-Agent"] = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"  # noqa: E501
+        )
+
+
+def _create_job_agent_test_app(*, gcs_client, gcs_address: str, log_dir: str):
+    dashboard_agent = SimpleNamespace(
+        session_name="test-session",
+        gcs_client=gcs_client,
+        gcs_address=gcs_address,
+        log_dir=log_dir,
+    )
+    job_agent = JobAgent(dashboard_agent)
+    optional_utils.DashboardAgentRouteTable.bind(job_agent)
+
+    app = aiohttp.web.Application()
+    app.add_routes(routes=optional_utils.DashboardAgentRouteTable.bound_routes())
+
+    async def _cleanup_app(app):
+        for _, path_map in list(
+            optional_utils.DashboardAgentRouteTable._bind_map.items()
+        ):
+            for _, bind_info in list(path_map.items()):
+                if bind_info.instance is job_agent:
+                    bind_info.instance = None
+
+    app.on_cleanup.append(_cleanup_app)
+    return app, job_agent
 
 
 @pytest_asyncio.fixture
@@ -86,6 +118,12 @@ async def job_sdk_client(make_sure_dashboard_http_port_unused):
             JobAgentSubmissionClient(format_web_url(agent_address)),
             JobSubmissionClient(format_web_url(head_address)),
         )
+
+
+@pytest.fixture
+def local_ray_instance():
+    with _ray_start(num_cpus=1):
+        yield
 
 
 def _check_job(
@@ -318,6 +356,73 @@ async def test_submit_job_rejects_browsers(
         _ = await agent_client.submit_job_internal(request)
 
     assert "status code 403" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_submit_job_request_cancellation_marks_job_failed(
+    local_ray_instance, aiohttp_client, tmp_path, monkeypatch
+):
+    """Test that submit job requests cancellation would mark the job failed"""
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    app, job_agent = _create_job_agent_test_app(
+        gcs_client=gcs_client,
+        gcs_address=gcs_client.address,
+        log_dir=str(tmp_path),
+    )
+    client = await aiohttp_client(app)
+    job_manager = job_agent.get_job_manager()
+
+    label_selector_started = asyncio.Event()
+    label_selector_cancelled = asyncio.Event()
+    handler_task = None
+
+    async def wait_for_cancellation(resources_specified):
+        nonlocal handler_task
+        handler_task = asyncio.current_task()
+        label_selector_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            label_selector_cancelled.set()
+            raise
+
+    submission_id = "raysubmit_cancelled_request"
+    monkeypatch.setattr(job_manager, "_get_label_selector", wait_for_cancellation)
+
+    request_task = asyncio.create_task(
+        client.post(
+            "/api/job_agent/jobs/",
+            json={
+                "entrypoint": "echo hello",
+                "submission_id": submission_id,
+            },
+        )
+    )
+
+    await asyncio.wait_for(label_selector_started.wait(), timeout=10)
+
+    handler_task.cancel()
+    with pytest.raises(
+        (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError)
+    ):
+        await request_task
+
+    await asyncio.wait_for(label_selector_cancelled.wait(), timeout=10)
+
+    async def check_job_failed():
+        job_info = await job_manager.get_job_info(submission_id)
+        return job_info.status == JobStatus.FAILED
+
+    await async_wait_for_condition(check_job_failed, timeout=10)
+
+    job_info = await job_manager.get_job_info(submission_id)
+    assert job_info.status == JobStatus.FAILED
+    assert job_info.error_type == JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE
+    assert (
+        "the submit request was cancelled before the supervisor actor started"
+        in job_info.message
+    )
+    assert job_manager._get_actor_for_job(submission_id) is None
 
 
 @pytest.mark.asyncio
