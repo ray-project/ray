@@ -1,13 +1,13 @@
 group: rllib tests
 depends_on:
   - forge
-  - ray-core-build(*)
+  - ray-core-build(python=3.10)
   - ray-dashboard-build
 steps:
   # builds
   - name: rllibbuild
     wanda: ci/docker/rllib.build.wanda.yaml
-    depends_on: oss-ci-base_ml-multipy(*)
+    depends_on: oss-ci-base_ml-multipy(python=3.10)
     env:
       PYTHON: "3.10"
       BASE_TYPE: "ml"
@@ -17,7 +17,7 @@ steps:
 
   - name: rllibgpubuild
     wanda: ci/docker/rllib.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy(*)
+    depends_on: oss-ci-base_gpu-multipy(python=3.10)
     env:
       PYTHON: "3.10"
       BASE_TYPE: "gpu"

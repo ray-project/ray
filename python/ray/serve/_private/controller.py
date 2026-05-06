@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import time
-from collections import defaultdict
 from typing import (
     Any,
     Dict,
@@ -60,7 +59,6 @@ from ray.serve._private.default_impl import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
-    DeploymentReplica,
     DeploymentStateManager,
 )
 from ray.serve._private.endpoint_state import EndpointState
@@ -122,6 +120,7 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
+SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
 class ServeController:
@@ -265,6 +264,10 @@ class ServeController:
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
+        self._shutdown_flag_persisted = False
+        if self.kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None:
+            self._shutting_down = True
+            self._shutdown_flag_persisted = True
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
@@ -416,12 +419,14 @@ class ServeController:
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
-        return self.deployment_state_manager._deployment_states[deployment_id]._replicas
+        return self.deployment_state_manager._dump_replica_states_for_testing(
+            deployment_id
+        )
 
     def _stop_one_running_replica_for_testing(self, deployment_id):
-        self.deployment_state_manager._deployment_states[
+        self.deployment_state_manager._stop_one_running_replica_for_testing(
             deployment_id
-        ]._stop_one_running_replica_for_testing()
+        )
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -449,6 +454,10 @@ class ServeController:
         return await self.long_poll_host.listen_for_change_java(
             keys_to_snapshot_ids_bytes
         )
+
+    def notify_long_poll_client_disabled(self, client_id: str, reason: str) -> None:
+        """Surfaces the disabled reason from LongPollClient in the logs."""
+        self.long_poll_host.notify_client_disabled(client_id, reason)
 
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
@@ -647,7 +656,7 @@ class ServeController:
         # Direct ingress port management
         if self._direct_ingress_enabled:
             # Update port values for ingress replicas.
-            # Non-ingress replicas are not expected to have ports allocated.
+            # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
@@ -753,6 +762,11 @@ class ServeController:
         )
 
     def _recover_state_from_checkpoint(self):
+        if self._shutting_down:
+            # If we're recovering into a `shutdown-in-progress state, don't
+            # re-apply the config.
+            return
+
         (
             deployment_time,
             serve_config,
@@ -956,6 +970,9 @@ class ServeController:
             self._shutdown_start_time = time.time()
             logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
+        if not self._shutdown_flag_persisted:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
@@ -980,6 +997,9 @@ class ServeController:
             and proxy_state_is_shutdown
         ):
             self._kill_registered_cleanup_actors()
+            self.application_state_manager.delete_checkpoint()
+            self.deployment_state_manager.delete_checkpoint()
+            self.kv_store.delete(SHUTDOWN_IN_PROGRESS_KEY)
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
@@ -1045,6 +1065,7 @@ class ServeController:
                         "replica_config_proto_bytes": args.replica_config,
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
+                        "ingress_request_router": args.ingress_request_router,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1205,7 +1226,7 @@ class ServeController:
 
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
-        return self.deployment_state_manager._deployment_states.keys()
+        return self.deployment_state_manager.get_deployment_ids()
 
     def update_deployment_replicas(
         self, deployment_id: DeploymentID, target_num_replicas: int
@@ -1331,6 +1352,7 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
+                    ingress_request_router_targets=[],
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1342,6 +1364,7 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
+                        ingress_request_router_targets=[],
                     )
                 )
         return target_groups
@@ -1423,14 +1446,11 @@ class ServeController:
 
         return target_groups
 
-    def _get_running_replica_details_for_ingress_deployment(
-        self, app_name: str
+    def _get_running_replica_details_for_deployment(
+        self, app_name: str, deployment_name: str
     ) -> List[ReplicaDetails]:
-        """Get running replica details for a specific application."""
-        ingress_deployment_name = (
-            self.application_state_manager.get_ingress_deployment_name(app_name)
-        )
-        deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
+        """Get running replica details for a specific deployment in an app."""
+        deployment_id = DeploymentID(app_name=app_name, name=deployment_name)
         details = self.deployment_state_manager.get_deployment_details(deployment_id)
         if not details:
             return []
@@ -1447,6 +1467,17 @@ class ServeController:
             if replica_detail.replica_id in running_replica_ids
         ]
 
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for the ingress deployment."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        return self._get_running_replica_details_for_deployment(
+            app_name, ingress_deployment_name
+        )
+
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
@@ -1456,13 +1487,35 @@ class ServeController:
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
         allocated yet.
+
+        When an ingress request router deployment is configured (ingress
+        bypass), its replicas go into ``ingress_request_router_targets`` for Lua
+        routing decisions and the app's ingress replicas remain the main
+        targets for data plane traffic.
         """
+        ingress_request_router_deployment_name = (
+            self.application_state_manager.get_ingress_request_router_deployment_name(
+                app_name
+            )
+        )
+
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
+        # Without ingress replicas, HAProxy has no data-plane targets to route to,
+        # so suppress router targets too — the app is effectively unreachable.
         if not replica_details:
             return []
+
+        ingress_request_router_targets = []
+        if ingress_request_router_deployment_name is not None:
+            ingress_request_router_targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, ingress_request_router_deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
 
         target_groups = []
 
@@ -1477,6 +1530,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=ingress_request_router_targets,
                 )
             )
 
@@ -1492,6 +1546,7 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
+                        ingress_request_router_targets=[],
                     )
                 )
 
@@ -1524,6 +1579,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
         if include_grpc:
@@ -1533,6 +1589,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=grpc_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
 
@@ -1554,24 +1611,7 @@ class ServeController:
         ]
 
     def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
-        node_id_to_alive_replica_ids = defaultdict(set)
-        # TODO(abrar): Expose the right APIs in the DeploymentStateManager
-        # to get the alive replicas for a deployment.
-        for ds in self.deployment_state_manager._deployment_states.values():
-            # here we get all the replicas irrespective of their state
-            # unlike in the get_running_replica_infos_for_ingress_deployment
-            # where we only get the replicas that are running, because we dont
-            # wish to agressively cleanup ports for replicas that are not running
-            # and are in the process of being updated or are in the process of
-            # being started.
-            replicas: List[DeploymentReplica] = ds._replicas.get()
-            for replica in replicas:
-                node_id: Optional[str] = replica.actor_node_id
-                if node_id is None:
-                    continue
-                replica_unique_id = replica.replica_id.unique_id
-                node_id_to_alive_replica_ids[node_id].add(replica_unique_id)
-        return node_id_to_alive_replica_ids
+        return self.deployment_state_manager.get_node_id_to_alive_replica_ids()
 
     def allocate_replica_port(
         self, node_id: str, replica_id: str, protocol: RequestProtocol
@@ -1741,6 +1781,14 @@ class ServeController:
                 is killed, which raises a RayActorError.
         """
         self._shutting_down = True
+        try:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
+        except Exception:
+            logger.warning(
+                "Failed to persist shutdown flag; will retry in control loop.",
+                extra={"log_to_stderr": False},
+            )
         if not wait:
             return
 

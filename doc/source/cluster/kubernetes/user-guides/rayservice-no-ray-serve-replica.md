@@ -139,7 +139,7 @@ Although one worker Pod is unready, Ray Serve can still route the traffic to the
 ```sh
 # Step 6.1: Run a curl Pod.
 # If you already have a curl Pod, you can use `kubectl exec -it <curl-pod> -- sh` to access the Pod.
-kubectl run curl --image=radial/busyboxplus:curl -i --tty
+kubectl run curl --image=curlimages/curl:latest -i --tty -- sh
 
 # Step 6.2: Send a request to the simple_app.
 curl -X POST -H 'Content-Type: application/json' rayservice-no-ray-serve-replica-serve-svc:8000/basic

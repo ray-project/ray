@@ -2640,10 +2640,14 @@ def drain_node(
     reason_message: str,
     deadline_remaining_seconds: int,
 ):
-    """
-    This is NOT a public API.
+    """Manually drain a worker node.
 
-    Manually drain a worker node.
+    This is a developer-facing command used to request that GCS gracefully
+    drain a node (e.g., before manual termination). The same underlying API
+    is invoked by autoscaler v2 for idle and preemption-based termination.
+
+    The command is hidden from the top-level `ray --help` output and its
+    interface is not covered by Ray's public API stability guarantees.
     """
     # This should be before get_runtime_context() so get_runtime_context()
     # doesn't start a new worker here.
