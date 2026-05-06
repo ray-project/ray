@@ -355,6 +355,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  /// Release pinned bookkeeping and delete plasma copies for `object_ids`.
+  Status FreeLocalObjects(const std::vector<ObjectID> &object_ids);
+
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
   /// Handle an accepted client connection.
