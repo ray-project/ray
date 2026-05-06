@@ -11,9 +11,9 @@ build_arg_sets:
     PYTHON_VERSION: py312
     PYTHON_VERSION_STR: "3.12"
     CUDA_CODE: cpu
-  cu130_py312:
-    PYTHON_VERSION: py312
-    PYTHON_VERSION_STR: "3.12"
+  cu130_py313:
+    PYTHON_VERSION: py313
+    PYTHON_VERSION_STR: "3.13"
     CUDA_CODE: cu130
 
 
@@ -27,7 +27,7 @@ build_arg_sets:
     - cpu
     - cu128
     - cpu_py312
-    - cu130_py312
+    - cu130_py313
 
 depsets:
 # First, extract base test dependencies from the current compiled mono repo one.
