@@ -1,3 +1,4 @@
+import re
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -119,6 +120,24 @@ def test_get_best_checkpoint():
         == "/bucket/path/ckpt0"
     )
 
+    # Test `return_metrics=True`
+    ckpt, metric = res.get_best_checkpoint(
+        metric="metric", mode="max", return_metrics=True
+    )
+    assert metric == {"iter": 3, "metric": 4.0}
+    ckpt, metric = res.get_best_checkpoint(
+        metric="metric", mode="min", return_metrics=True
+    )
+    assert metric == {"iter": 0, "metric": 1.0}
+
+    with pytest.raises(
+        RuntimeError,
+        match=re.escape(
+            "No checkpoint's metrics contains 'missing-metric' as a key. Available metrics are ['iter', 'metric']"
+        ),
+    ):
+        res.get_best_checkpoint(metric="missing-metric", mode="max")
+
 
 def test_get_best_checkpoint_nested_metrics():
     """Test that get_best_checkpoint works with nested metric dictionaries."""
@@ -167,6 +186,13 @@ def test_get_best_checkpoint_nested_metrics():
         ).path
         == "/bucket/path/ckpt3"
     )
+    ckpt, metrics = res.get_best_checkpoint(
+        metric="env_runners/episode_return_mean", mode="max", return_metrics=True
+    )
+    assert metrics == {
+        "iter": 3,
+        "env_runners": {"episode_return_mean": 400.0, "num_episodes": 10},
+    }
 
     # Test min mode with nested metric
     assert (
@@ -175,6 +201,13 @@ def test_get_best_checkpoint_nested_metrics():
         ).path
         == "/bucket/path/ckpt0"
     )
+    ckpt, metrics = res.get_best_checkpoint(
+        metric="env_runners/episode_return_mean", mode="min", return_metrics=True
+    )
+    assert metrics == {
+        "iter": 0,
+        "env_runners": {"episode_return_mean": 100.0, "num_episodes": 10},
+    }
 
     # Test that flat keys still work (backwards compatibility)
     res_flat = Result(
@@ -199,6 +232,19 @@ def test_get_best_checkpoint_nested_metrics():
         ).path
         == "/bucket/path/ckpt1"
     )
+    ckpt, metrics = res_flat.get_best_checkpoint(
+        metric="env_runners/episode_return_mean", mode="max", return_metrics=True
+    )
+    assert metrics == {"iter": 1, "env_runners/episode_return_mean": 200.0}
+
+    # Test if the key is missing
+    with pytest.raises(
+        RuntimeError,
+        match=re.escape(
+            "No checkpoint's metrics contains 'missing-metric' as a key. Available metrics are ['env_runners', 'iter']"
+        ),
+    ):
+        res.get_best_checkpoint(metric="missing-metric", mode="max")
 
 
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
@@ -275,7 +321,7 @@ def test_result_restore(
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
     assert load_dict_checkpoint(best_ckpt_b)["iter"] == num_iterations - num_checkpoints
 
-    with pytest.raises(RuntimeError, match="Invalid metric name.*"):
+    with pytest.raises(RuntimeError, match="No checkpoint's metrics contains.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
 
 
