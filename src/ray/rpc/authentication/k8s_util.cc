@@ -21,6 +21,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <chrono>
 #include <fstream>
 #include <string>
 
@@ -49,6 +50,8 @@ std::string ReadFile(const std::string &path) {
   return std::string((std::istreambuf_iterator<char>(file)),
                      std::istreambuf_iterator<char>());
 }
+
+constexpr int kK8sApiTimeoutSecs = 5;
 
 }  // namespace
 
@@ -88,9 +91,9 @@ void InitK8sClientConfig() {
   k8s_client_initialized = true;
 }
 
-bool K8sApiPost(const std::string &path,
-                const nlohmann::json &body,
-                nlohmann::json &response_json) {
+Status K8sApiPost(const std::string &path,
+                  const nlohmann::json &body,
+                  nlohmann::json &response_json) {
   static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
@@ -103,11 +106,17 @@ bool K8sApiPost(const std::string &path,
     tcp::resolver resolver(ioc);
     ssl::stream<beast::tcp_stream> stream(ioc, ctx);
 
+    // Set a timeout on the connection and operations to prevent infinite hangs.
+    // If the timeout expires during any synchronous operation, the stream will abort
+    // the operation and throw a boost::system::system_error exception.
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
+
     if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
       beast::error_code ec{static_cast<int>(::ERR_get_error()),
                            net::error::get_ssl_category()};
       RAY_LOG(ERROR) << "Failed to set SNI hostname: " << ec.message();
-      return false;
+      return Status::IOError(absl::StrCat("Failed to set SNI hostname: ", ec.message()));
     }
 
     auto const results = resolver.resolve(k8s_host, k8s_port);
@@ -130,9 +139,12 @@ bool K8sApiPost(const std::string &path,
     http::read(stream, buffer, res);
 
     if (res.result() != http::status::ok && res.result() != http::status::created) {
-      RAY_LOG(WARNING) << "Kubernetes API request returned HTTP status "
+      RAY_LOG(WARNING) << "Kubernetes API Post request returned HTTP status "
                        << res.result_int() << ". Response: " << res.body();
-      return false;
+      if (res.result() == http::status::conflict) {
+        return Status::AlreadyExists(absl::StrCat("Conflict: ", res.body()));
+      }
+      return Status::IOError(absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
     }
 
     response_json = nlohmann::json::parse(res.body());
@@ -146,11 +158,172 @@ bool K8sApiPost(const std::string &path,
       RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
     }
   } catch (const std::exception &e) {
-    RAY_LOG(ERROR) << "Kubernetes API request failed: " << e.what();
-    return false;
+    RAY_LOG(ERROR) << "Kubernetes API Post request failed: " << e.what();
+    std::string err_msg(e.what());
+    if (err_msg.find("Operation aborted") != std::string::npos || err_msg.find("timeout") != std::string::npos) {
+      return Status::TimedOut(absl::StrCat("Kubernetes API Post request timed out: ", e.what()));
+    }
+    return Status::IOError(absl::StrCat("Kubernetes API Post request failed: ", e.what()));
   }
 
-  return true;
+  return Status::OK();
+}
+
+Status K8sApiGet(const std::string &path,
+                nlohmann::json &response_json) {
+  static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
+
+  try {
+    net::io_context ioc;
+    ssl::context ctx(ssl::context::tlsv12_client);
+
+    ctx.load_verify_file(kK8sCaCertPath);
+    ctx.set_verify_mode(ssl::verify_peer);
+
+    tcp::resolver resolver(ioc);
+    ssl::stream<beast::tcp_stream> stream(ioc, ctx);
+
+    // Set a timeout on the connection and operations to prevent infinite hangs.
+    // If the timeout expires during any synchronous operation, the stream will abort
+    // the operation and throw a boost::system::system_error exception.
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
+
+    if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
+      beast::error_code ec{static_cast<int>(::ERR_get_error()),
+                           net::error::get_ssl_category()};
+      RAY_LOG(ERROR) << "Failed to set SNI hostname: " << ec.message();
+      return Status::IOError(absl::StrCat("Failed to set SNI hostname: ", ec.message()));
+    }
+
+    auto const results = resolver.resolve(k8s_host, k8s_port);
+    beast::get_lowest_layer(stream).connect(results);
+    stream.handshake(ssl::stream_base::client);
+
+    http::request<http::empty_body> req{http::verb::get, path, 11};
+    req.set(http::field::host, k8s_host);
+    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    std::string auth_header = "Bearer " + k8s_sa_token;
+    req.set(http::field::authorization, auth_header);
+
+    http::write(stream, req);
+
+    beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(stream, buffer, res);
+
+    if (res.result() != http::status::ok) {
+      RAY_LOG(WARNING) << "Kubernetes API Get request returned HTTP status "
+                       << res.result_int() << ". Response: " << res.body();
+      if (res.result() == http::status::not_found) {
+        return Status::NotFound(absl::StrCat("Resource not found: ", res.body()));
+      }
+      return Status::IOError(absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
+    }
+
+    response_json = nlohmann::json::parse(res.body());
+
+    auto date_hdr = res[http::field::date];
+    if (!date_hdr.empty()) {
+      response_json["__api_server_date__"] = std::string(date_hdr);
+    }
+
+    beast::error_code ec;
+    stream.shutdown(ec);
+    if (ec == net::error::eof) {
+      ec.assign(0, ec.category());
+    }
+    if (ec) {
+      RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
+    }
+  } catch (const std::exception &e) {
+    RAY_LOG(ERROR) << "Kubernetes API Get request failed: " << e.what();
+    std::string err_msg(e.what());
+    if (err_msg.find("Operation aborted") != std::string::npos || err_msg.find("timeout") != std::string::npos) {
+      return Status::TimedOut(absl::StrCat("Kubernetes API Get request timed out: ", e.what()));
+    }
+    return Status::IOError(absl::StrCat("Kubernetes API Get request failed: ", e.what()));
+  }
+
+  return Status::OK();
+}
+
+Status K8sApiPut(const std::string &path,
+                 const nlohmann::json &body,
+                 nlohmann::json &response_json) {
+  static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
+
+  try {
+    net::io_context ioc;
+    ssl::context ctx(ssl::context::tlsv12_client);
+
+    ctx.load_verify_file(kK8sCaCertPath);
+    ctx.set_verify_mode(ssl::verify_peer);
+
+    tcp::resolver resolver(ioc);
+    ssl::stream<beast::tcp_stream> stream(ioc, ctx);
+
+    // Set a timeout on the connection and operations to prevent infinite hangs.
+    // If the timeout expires during any synchronous operation, the stream will abort
+    // the operation and throw a boost::system::system_error exception.
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
+
+    if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
+      beast::error_code ec{static_cast<int>(::ERR_get_error()),
+                           net::error::get_ssl_category()};
+      RAY_LOG(ERROR) << "Failed to set SNI hostname: " << ec.message();
+      return Status::IOError(absl::StrCat("Failed to set SNI hostname: ", ec.message()));
+    }
+
+    auto const results = resolver.resolve(k8s_host, k8s_port);
+    beast::get_lowest_layer(stream).connect(results);
+    stream.handshake(ssl::stream_base::client);
+
+    http::request<http::string_body> req{http::verb::put, path, 11};
+    req.set(http::field::host, k8s_host);
+    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    req.set(http::field::content_type, "application/json");
+    std::string auth_header = "Bearer " + k8s_sa_token;
+    req.set(http::field::authorization, auth_header);
+    req.body() = body.dump();
+    req.prepare_payload();
+
+    http::write(stream, req);
+
+    beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(stream, buffer, res);
+
+    if (res.result() != http::status::ok && res.result() != http::status::created) {
+      RAY_LOG(WARNING) << "Kubernetes API Put request returned HTTP status "
+                       << res.result_int() << ". Response: " << res.body();
+      if (res.result() == http::status::conflict) {
+        return Status::AlreadyExists(absl::StrCat("Conflict: ", res.body()));
+      }
+      return Status::IOError(absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
+    }
+
+    response_json = nlohmann::json::parse(res.body());
+
+    beast::error_code ec;
+    stream.shutdown(ec);
+    if (ec == net::error::eof) {
+      ec.assign(0, ec.category());
+    }
+    if (ec) {
+      RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
+    }
+  } catch (const std::exception &e) {
+    RAY_LOG(ERROR) << "Kubernetes API Put request failed: " << e.what();
+    std::string err_msg(e.what());
+    if (err_msg.find("Operation aborted") != std::string::npos || err_msg.find("timeout") != std::string::npos) {
+      return Status::TimedOut(absl::StrCat("Kubernetes API Put request timed out: ", e.what()));
+    }
+    return Status::IOError(absl::StrCat("Kubernetes API Put request failed: ", e.what()));
+  }
+
+  return Status::OK();
 }
 
 bool ValidateToken(const AuthenticationToken &token) {
@@ -162,7 +335,7 @@ bool ValidateToken(const AuthenticationToken &token) {
   nlohmann::json token_review_resp;
 
   if (!k8s::K8sApiPost(
-          kAuthenticationV1TokenReviewPath, token_review_req, token_review_resp)) {
+          kAuthenticationV1TokenReviewPath, token_review_req, token_review_resp).ok()) {
     RAY_LOG(WARNING) << "Kubernetes TokenReview request failed.";
     return false;
   }
@@ -214,7 +387,7 @@ bool ValidateToken(const AuthenticationToken &token) {
 
   if (!k8s::K8sApiPost(kAuthorizationV1SubjectAccessReviewPath,
                        subject_access_review_req,
-                       subject_access_review_resp)) {
+                       subject_access_review_resp).ok()) {
     RAY_LOG(WARNING) << "Kubernetes SubjectAccessReview request failed.";
     return false;
   }
