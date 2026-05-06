@@ -2039,7 +2039,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
-                               const std::string &extension_data,
+                               std::string_view extension_data,
                                const std::string &call_site,
                                ActorID *return_actor_id) {
   SubscribeToNodeChanges();
