@@ -3,6 +3,7 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import openai
+import orjson
 import pytest
 from fastapi import HTTPException
 from starlette.datastructures import Headers

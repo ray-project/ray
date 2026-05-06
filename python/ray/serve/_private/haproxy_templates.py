@@ -88,6 +88,7 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
     {%- if has_ingress_request_router %}
+    option http-buffer-request
     # Set txn.ingress_request_router_app to the first matching router-bearing
     # backend. Backends are sorted longest-prefix-first, and the !found guard
     # ensures only the longest match wins.

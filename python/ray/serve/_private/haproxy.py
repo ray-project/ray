@@ -77,9 +77,6 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# Shared by the Lua router call and the frontend `wait-for-body`.
-INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
-
 _LUA_TEMPLATE = string.Template(
     (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
 )
