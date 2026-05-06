@@ -252,6 +252,169 @@ class TestDownloadHelpers:
             assert _is_obstore_supported_url(uri) is expected
 
 
+# TestThreadedDownloadPreResolve
+def _spy_resolve(fake_fn=None):
+    """Wrap _resolve_paths_and_filesystem with a call counter.
+
+    Returns ``(patch_cm, probe_calls, normalize_calls)``. Wrap the ``with``
+    around the body; the two lists get appended as calls arrive. If
+    ``fake_fn`` is given, it replaces the real function; otherwise the real
+    one runs and gets observed.
+    """
+    from ray.data._internal.planner import plan_download_op as pdo
+
+    probe_calls: list = []
+    normalize_calls: list = []
+    original = pdo._resolve_paths_and_filesystem
+
+    def _tracking(uri, filesystem=None, **kw):
+        (probe_calls if filesystem is None else normalize_calls).append(uri)
+        if fake_fn is not None:
+            return fake_fn(uri, filesystem=filesystem, **kw)
+        return original(uri, filesystem=filesystem, **kw)
+
+    return (
+        patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_tracking),
+        probe_calls,
+        normalize_calls,
+    )
+
+
+class TestThreadedDownloadPreResolve:
+    """``download_bytes_threaded`` resolves the filesystem once per block/column.
+
+    Regression coverage for the IMDS thundering-herd: each of the 16
+    ``make_async_gen`` workers used to call ``_resolve_paths_and_filesystem``
+    independently on its first URI, triggering an IMDS credential fetch per
+    worker per task. The fix probes exactly once up-front and shares the
+    pre-resolved filesystem across all workers.
+    """
+
+    def test_probe_once_across_workers(self, tmp_path):
+        for i in range(10):
+            (tmp_path / f"f{i}.bin").write_bytes(f"data-{i}".encode())
+        uris = [f"file://{tmp_path}/f{i}.bin" for i in range(10)]
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+
+        spy, probes, normalizes = _spy_resolve()
+        with spy:
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        # Exactly one probe (filesystem=None) regardless of worker count.
+        # Normalize-only calls (one per URI) short-circuit in path_util
+        # without any network I/O.
+        assert len(probes) == 1
+        assert len(normalizes) == 10
+        assert [b.as_py() for b in results[0].column("bytes")] == [
+            f"data-{i}".encode() for i in range(10)
+        ]
+
+    def test_supplied_fs_skips_probe(self, tmp_path):
+        (tmp_path / "f.bin").write_bytes(b"supplied")
+        table = pa.Table.from_arrays(
+            [pa.array([f"file://{tmp_path}/f.bin"])], names=["uri"]
+        )
+        spy, probes, _ = _spy_resolve()
+        with spy:
+            results = list(
+                download_bytes_threaded(
+                    table,
+                    ["uri"],
+                    ["bytes"],
+                    DataContext.get_current(),
+                    filesystem=pafs.LocalFileSystem(),
+                )
+            )
+
+        assert probes == []
+        assert results[0].column("bytes")[0].as_py() == b"supplied"
+
+    @pytest.mark.parametrize(
+        "first_uri,probe_returns_for_first",
+        [
+            pytest.param(None, None, id="none-in-list"),
+            pytest.param("file:///first-dropped", ([], None), id="empty-paths-result"),
+        ],
+    )
+    def test_probe_loop_skips_unusable(
+        self, tmp_path, first_uri, probe_returns_for_first
+    ):
+        # Regression: the probe must keep going past (a) None URIs and
+        # (b) ([], fs) / (paths, None) returns — both leave workers with no
+        # usable filesystem and would recreate the IMDS herd if the loop
+        # broke out prematurely.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        (tmp_path / "good.bin").write_bytes(b"good")
+        real_fs = pafs.LocalFileSystem()
+
+        def _fake(uri, filesystem=None, **_kw):
+            if filesystem is not None:
+                # Normalize-only: pass paths through when FS is supplied.
+                return ([str(tmp_path / "good.bin")], filesystem)
+            if uri == first_uri:
+                return probe_returns_for_first
+            return ([str(tmp_path / "good.bin")], real_fs)
+
+        good = f"file://{tmp_path}/good.bin"
+        table = pa.Table.from_arrays([pa.array([first_uri, good])], names=["uri"])
+
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fake):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert results[0].column("bytes")[-1].as_py() == b"good"
+
+    def test_all_probes_fail_yields_none(self):
+        # When the probe iterates every URI and can't resolve a filesystem,
+        # workers would just retry the same URIs with the same filesystem=None
+        # and hit the same failure — while reintroducing per-worker FS
+        # construction (the IMDS herd this PR exists to prevent). Instead, we
+        # short-circuit: yield None for every URI and skip the worker pool.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        resolve_calls: list = []
+
+        def _fail_all(uri, filesystem=None, **_kw):
+            resolve_calls.append((uri, filesystem))
+            raise RuntimeError("nothing resolves")
+
+        uris = ["bad-1", "bad-2", "bad-3"]
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fail_all):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        # Probe tried each URI exactly once. No worker calls.
+        assert len(resolve_calls) == len(uris)
+        assert all(fs is None for _, fs in resolve_calls)
+        # Every URI yields None.
+        assert [b.as_py() for b in results[0].column("bytes")] == [None] * len(uris)
+
+    def test_empty_block_no_workers(self):
+        # Zero URIs → the column loop skips; no probe, no workers spawned.
+        table = pa.Table.from_arrays([pa.array([], type=pa.string())], names=["uri"])
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        with patch.object(
+            pdo, "_resolve_paths_and_filesystem", side_effect=AssertionError
+        ):
+            list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+
 # TestObstoreDownloadPath
 class TestObstoreDownloadPath:
     """Integration tests for the obstore async download path.
@@ -434,12 +597,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "big.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/big.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size * 2,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size * 2,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             results = asyncio.run(
                 _download_uris_with_obstore([uri], "uri", file_sizes=[len(content)])
@@ -453,12 +619,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "big2.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/big2.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             results = asyncio.run(
                 _download_uris_with_obstore([uri], "uri", file_sizes=None)
@@ -488,15 +657,19 @@ class TestObstoreRangeSplitDownload:
         def _fail_ranged(*_args, **_kwargs):
             raise AssertionError("_fetch_ranged must not be called")
 
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            100,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            -512,
-        ), patch(
-            "ray.data._internal.planner._obstore_download._fetch_ranged",
-            side_effect=_fail_ranged,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                100,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                -512,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download._fetch_ranged",
+                side_effect=_fail_ranged,
+            ),
         ):
             results2 = asyncio.run(
                 _download_uris_with_obstore([uri2], "uri", file_sizes=[len(content2)])
@@ -515,12 +688,15 @@ class TestObstoreRangeSplitDownload:
             f"file://{tmp_path}/large.bin",
             f"file://{tmp_path}/small.bin",
         ]
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size * 2,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size * 2,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             results = asyncio.run(
                 _download_uris_with_obstore(
@@ -629,12 +805,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "f.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/f.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             import obstore as obs
 
@@ -648,9 +827,10 @@ class TestObstoreRangeSplitDownload:
                 range_calls.append(args)
                 return await original_get_range(*args, **kwargs)
 
-            with patch.object(
-                obs, "head_async", side_effect=_failing_head
-            ), patch.object(obs, "get_range_async", side_effect=_tracking_range):
+            with (
+                patch.object(obs, "head_async", side_effect=_failing_head),
+                patch.object(obs, "get_range_async", side_effect=_tracking_range),
+            ):
                 results = asyncio.run(
                     _download_uris_with_obstore([uri], "uri", file_sizes=[0])
                 )
@@ -678,12 +858,15 @@ class TestObstoreRangeSplitDownload:
         ]
         file_sizes: list[Optional[int]] = [len(large_content), len(small_content), 0]
 
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size * 2,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size * 2,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             import obstore as obs
 
@@ -710,12 +893,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "exact.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/exact.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            threshold,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            256,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                threshold,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                256,
+            ),
         ):
             import obstore as obs
 
@@ -742,12 +928,15 @@ class TestObstoreRangeSplitDownload:
         (tmp_path / "fail.bin").write_bytes(content)
 
         uri = f"file://{tmp_path}/fail.bin"
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
-            chunk_size,
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                chunk_size,
+            ),
         ):
             import obstore as obs
 
@@ -783,15 +972,17 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/f.bin"
         # Simulate misconfiguration: range splitting on, but concurrency = 0.
-        with patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
-            chunk_size,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_MAX_CONCURRENCY",
-            0,
-        ), patch(
-            "ray.data._internal.planner._obstore_download.logger"
-        ) as mock_logger:
+        with (
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                chunk_size,
+            ),
+            patch(
+                "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_MAX_CONCURRENCY",
+                0,
+            ),
+            patch("ray.data._internal.planner._obstore_download.logger") as mock_logger,
+        ):
             import obstore as obs
 
             # Spy on get_range_async to verify it is never called.

@@ -198,36 +198,72 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
-        def load_uri_bytes(uri_iterator):
-            """Resolve filesystem and download bytes for each URI.
+        # Resolve the filesystem exactly once before spawning workers. Without
+        # this, each of 16 make_async_gen worker threads independently
+        # constructs a pyarrow.fs.S3FileSystem on its first URI, triggering an
+        # IMDS credential fetch. With N concurrent Download tasks on an EC2
+        # node that's 16*N near-simultaneous IMDS calls — enough to trip the
+        # per-instance rate limit and produce intermittent NoCredentialsError.
+        resolved_fs = filesystem
+        if resolved_fs is None:
+            for probe_uri in uris:
+                if probe_uri is None:
+                    continue
+                try:
+                    paths, candidate_fs = _resolve_paths_and_filesystem(probe_uri, None)
+                except Exception as e:
+                    logger.debug(f"Could not infer filesystem from '{probe_uri}': {e}")
+                    continue
+                # _resolve_paths_and_filesystem can silently drop unresolvable
+                # URIs (returning ([], ...)) or yield no filesystem. Only accept
+                # a result we can actually use.
+                if paths and candidate_fs is not None:
+                    resolved_fs = candidate_fs
+                    break
 
-            Takes an iterator of URIs and yields bytes for each.
-            Uses lazy filesystem resolution - resolves once and reuses for subsequent URIs.
-            If a filesystem was provided explicitly, it will be used for all URIs.
-            """
-            cached_fs = filesystem
+        if resolved_fs is None:
+            # Probe iterated every URI and could not infer a filesystem. Workers
+            # would just retry the same URIs with the same filesystem=None and
+            # hit the same failure — while reintroducing per-worker FS
+            # construction (the IMDS herd this PR exists to prevent). Yield
+            # None for every URI and skip the worker pool entirely.
+            logger.warning(
+                "Could not resolve a filesystem from any URI in column "
+                f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
+                "all rows."
+            )
+            output_block = output_block.add_column(
+                len(output_block.column_names),
+                output_bytes_column_name,
+                pa.array([None] * len(uris), type=pa.binary()),
+            )
+            continue
+
+        wrapped_fs = RetryingPyFileSystem.wrap(
+            resolved_fs, retryable_errors=data_context.retried_io_errors
+        )
+
+        def load_uri_bytes(
+            uri_iterator,
+            wrapped_fs=wrapped_fs,
+            resolved_fs=resolved_fs,
+            uri_column_name=uri_column_name,
+        ):
+            """Download bytes for each URI using the pre-resolved filesystem."""
             for uri in uri_iterator:
                 read_bytes = None
                 try:
-                    # Use cached FS if available, otherwise resolve the filesystem for the uri.
-                    resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
-                        uri, filesystem=cached_fs
+                    if uri is None:
+                        continue
+                    # Path normalization only — _resolve_paths_and_filesystem
+                    # short-circuits when filesystem is supplied (no network).
+                    resolved_paths, _ = _resolve_paths_and_filesystem(
+                        uri, filesystem=resolved_fs
                     )
-                    cached_fs = resolved_fs
-
-                    # Wrap with retrying filesystem
-                    fs = RetryingPyFileSystem.wrap(
-                        resolved_fs, retryable_errors=data_context.retried_io_errors
-                    )
-                    # We only pass one uri to resolve and unwrap it from the list of resolved paths,
-                    # if fails, we will catch the index error and log it.
-                    resolved_path = resolved_paths[0]
+                    resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
                         continue
-
-                    # Download bytes
-                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
-                    with fs.open_input_stream(resolved_path) as f:
+                    with wrapped_fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
                 except OSError as e:
                     logger.debug(
