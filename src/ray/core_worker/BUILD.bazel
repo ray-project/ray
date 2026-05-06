@@ -119,6 +119,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:placement_group",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/util:process",
@@ -320,6 +321,7 @@ ray_cc_library(
     hdrs = ["generator_waiter.h"],
     deps = [
         ":common",
+        "//src/ray/common:placement_group",
         "@com_google_absl//absl/synchronization",
     ],
 )

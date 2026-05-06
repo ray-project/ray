@@ -709,6 +709,9 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // The list of fallback options to try if the primary resource request cannot be
+  // scheduled.
+  repeated PlacementGroupSchedulingOption fallback_strategy = 12;
 }
 
 message ObjectReference {
@@ -1110,6 +1113,14 @@ message FallbackOption {
 // node.
 message FallbackStrategy {
   repeated FallbackOption options = 1;
+}
+
+// A single fallback option for a Placement Group. Defines requirements for a Placement
+// Group to use for scheduling, including bundle overrides.
+message PlacementGroupSchedulingOption {
+  // Overrides the entire bundles list for this attempt.
+  // Bundles includes the per-bundle label selectors if specified.
+  repeated Bundle bundles = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
