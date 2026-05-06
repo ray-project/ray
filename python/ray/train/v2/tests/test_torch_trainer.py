@@ -161,17 +161,26 @@ def test_torchft_linear(ray_start_4_cpus):
 
 @pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 @pytest.mark.parametrize(
-    "min_replicas,max_failures,expect_error,expected_train_fn_calls",
+    "min_replicas,max_failures,expect_error,expected_train_fn_calls,expected_reports",
     [
-        # TODO(tseah): enable this after we have elastic training + torchft.
+        # TODO(tseah): enable this after we support training with 1/2 workers without
+        # trying to restart the replica group.
         # (1, 0, False, 2),
-        (1, 1, False, 3),
-        (2, 0, True, 2),
-        (2, 1, False, 3),
+        # This continues training with 1 replica. It does not replay step 10 and its report.
+        (1, 1, False, 3, 1),
+        # This errors immediately.
+        (2, 0, True, 2, 0),
+        # This stops training with 1 replica. It replays step 10 and its report.
+        (2, 1, False, 3, 2),
     ],
 )
 def test_torchft_linear_replica_failure(
-    ray_start_4_cpus, min_replicas, max_failures, expect_error, expected_train_fn_calls
+    ray_start_4_cpus,
+    min_replicas,
+    max_failures,
+    expect_error,
+    expected_train_fn_calls,
+    expected_reports,
 ):
     """Test torchft linear training behavior when a replica fails mid-training."""
 
@@ -216,10 +225,10 @@ def test_torchft_linear_replica_failure(
             trainer.fit()
     else:
         result = trainer.fit()
+        assert len(result.best_checkpoints) == expected_reports
         assert result.error is None
     # Fewer train_fn calls indicate partial worker group restarts.
     assert ray.get(counter.get_count.remote()) == expected_train_fn_calls
-    # TODO(tseah): Verify reporting and loading checkpoint after report is fixed.
 
 
 def test_is_backend_nccl():
