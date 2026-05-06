@@ -3,7 +3,6 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import openai
-import orjson
 import pytest
 from fastapi import HTTPException
 from starlette.datastructures import Headers
@@ -32,6 +31,15 @@ class _DirectRouterReplicaId:
         return self._full_id
 
 
+class _FakeRequest:
+    def __init__(self, body: bytes, headers: Optional[dict] = None):
+        self._body = body
+        self.headers = Headers(headers or {})
+
+    async def body(self) -> bytes:
+        return self._body
+
+
 class _DirectRouterReplica:
     def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
         self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
@@ -41,6 +49,8 @@ class _DirectRouterReplica:
 def _new_direct_router():
     router = LLMRouter.__new__(LLMRouter)
     router._round_robin_counter = 0
+    router._cached_replica_signature = None
+    router._cached_sorted_replicas = []
     return router
 
 
