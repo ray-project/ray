@@ -105,6 +105,7 @@ def _test_some_code_for_memory_leaks(
     code: Callable[[], None],
     repeats: int,
     max_num_trials: int = 1,
+    min_memory_increase: int = 0,
 ) -> List[Suspect]:
     """Runs given code (and init code) n times and checks for memory leaks.
 
@@ -117,6 +118,9 @@ def _test_some_code_for_memory_leaks(
             run, if the previous one produced a memory leak. For all non-1st trials,
             `repeats` calculates as: actual_repeats = `repeats` * (trial + 1), where
             the first trial is 0.
+        min_memory_increase: Minimum total memory increase in bytes for a suspect
+            to be reported. Use this to ignore small allocations from internal
+            caches and allocator artifacts that aren't real leaks.
 
     Returns:
         A list of Suspect objects, describing possible memory leaks. If list
@@ -163,6 +167,8 @@ def _test_some_code_for_memory_leaks(
         suspicious_stats.clear()
         # Suspicious memory allocation found?
         suspects = _find_memory_leaks_in_table(table)
+        if min_memory_increase > 0:
+            suspects = [s for s in suspects if s.memory_increase >= min_memory_increase]
         for suspect in sorted(suspects, key=lambda s: s.memory_increase, reverse=True):
             # Only print out the biggest offender:
             if len(suspicious) == 0:

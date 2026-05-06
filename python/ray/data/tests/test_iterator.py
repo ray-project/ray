@@ -4,6 +4,7 @@ from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 import torch
@@ -288,6 +289,85 @@ def test_torch_conversion_default_collate_fn_threading(
             assert len(b1[col]) == len(b2[col])
             for t1, t2 in zip(b1[col], b2[col]):
                 assert torch.equal(t1, t2)
+
+
+class TestToTorch:
+    def test_features_only(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2}, {"a": 3, "b": 4}])
+        it = ds.iterator().to_torch(batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert labels is None
+        assert isinstance(features, torch.Tensor)
+        assert features.shape == (2, 2)
+
+    def test_with_label_column(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"x": 1, "y": 10}, {"x": 2, "y": 20}])
+        it = ds.iterator().to_torch(label_column="y", batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert features.shape == (2, 1)
+        assert labels.shape == (2, 1)
+        assert sorted(labels.flatten().tolist()) == [10, 20]
+
+    def test_squeezed_label(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"x": 1, "y": 10}, {"x": 2, "y": 20}])
+        it = ds.iterator().to_torch(
+            label_column="y", batch_size=2, unsqueeze_label_tensor=False
+        )
+
+        features, labels = next(iter(it))
+
+        assert labels.shape == (2,)
+
+    def test_feature_columns_as_list_of_lists(self, ray_start_regular_shared):
+        ds = ray.data.from_pandas(pd.DataFrame({"a": [[1, 2], [3, 4], [5, 6]]}))
+        it = ds.iterator().to_torch(feature_columns=["a"], batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert labels is None
+        assert features.shape == (2, 1, 2)
+
+    def test_feature_columns_subset(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
+        it = ds.iterator().to_torch(feature_columns=["a", "c"], batch_size=1)
+
+        features, labels = next(iter(it))
+
+        assert features.shape == (1, 2)
+
+    def test_feature_columns_as_dict(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
+        it = ds.iterator().to_torch(
+            feature_columns={"group1": ["a"], "group2": ["b", "c"]},
+            batch_size=1,
+        )
+
+        features, labels = next(iter(it))
+
+        assert isinstance(features, dict)
+        assert set(features.keys()) == {"group1", "group2"}
+        assert features["group1"].shape == (1, 1)
+        assert features["group2"].shape == (1, 2)
+
+    def test_explicit_dtype(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2}])
+        it = ds.iterator().to_torch(feature_column_dtypes=torch.float32, batch_size=1)
+
+        features, _ = next(iter(it))
+
+        assert features.dtype == torch.float32
+
+    def test_returns_iterable_dataset(self, ray_start_regular_shared):
+        """to_torch should return a torch IterableDataset."""
+        ds = ray.data.range(1)
+
+        result = ds.iterator().to_torch(batch_size=1)
+
+        assert isinstance(result, torch.utils.data.IterableDataset)
 
 
 def test_to_torch_emits_deprecation_warning(ray_start_regular_shared):
