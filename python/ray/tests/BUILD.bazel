@@ -654,6 +654,7 @@ py_test_module_list(
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
         "rdt/test_rdt_nixl.py",
+        "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
