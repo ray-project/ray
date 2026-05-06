@@ -710,6 +710,37 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[2].size(), 1U);
 }
 
+// Given 5 ids with 3 already local in plasma, Get() should send only the 2
+// remote ids to the raylet to pull from remote node.
+TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
+
+  auto fake_plasma = std::make_shared<plasma::FakePlasmaClient>();
+  fake_plasma->MarkLocal({ids[0], ids[2], ids[4]});
+
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/fake_plasma,
+      /*fetch_batch_size=*/10,
+      /*get_current_call_site=*/nullptr);
+
+  std::vector<rpc::Address> owner_addresses(ids.size());
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  provider.Get(ids, owner_addresses, /*timeout_ms=*/0, &results);
+  EXPECT_EQ(results.size(), 3U);
+
+  ASSERT_EQ(fake_raylet->async_get_object_calls.size(), 1U);
+  absl::flat_hash_set<ObjectID> pulled(fake_raylet->async_get_object_calls[0].begin(),
+                                       fake_raylet->async_get_object_calls[0].end());
+  EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
+}
+
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
