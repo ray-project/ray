@@ -520,6 +520,20 @@ class AlgorithmConfig(_Config):
         self.evaluation_auto_duration_min_env_steps_per_sample = 100
         self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
+        # How long to wait for at least one remote eval EnvRunner to recover
+        # when all *configured* remote eval EnvRunners are unhealthy at the
+        # start of an evaluation step. Default 0: don't wait.
+        self.evaluation_unhealthy_workers_timeout_s = 0.0
+        # Tolerate this many consecutive evaluation iterations in which all
+        # configured remote eval EnvRunners are unhealthy (and we therefore
+        # skip evaluation). On the next such iteration after the threshold,
+        # `evaluate()` raises a `RuntimeError`, which Tune escalates per
+        # the trial's `max_failures` setting. The counter resets to 0
+        # whenever an evaluation step actually runs on the remote workers.
+        # `None` (default) tolerates an unbounded number of consecutive
+        # skips. `1` raises on the first skip (strict). Applies regardless
+        # of `evaluation_parallel_to_training`.
+        self.evaluation_error_after_n_consecutive_skips = None
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
@@ -2744,6 +2758,8 @@ class AlgorithmConfig(_Config):
         evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_unhealthy_workers_timeout_s: Optional[float] = NotProvided,
+        evaluation_error_after_n_consecutive_skips: Optional[int] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -2827,6 +2843,24 @@ class AlgorithmConfig(_Config):
                 reports a good evaluation `episode_return_mean`, be aware that these
                 results were achieved on the weights trained in iteration 41, so you
                 should probably pick the iteration 41 checkpoint instead.
+            evaluation_unhealthy_workers_timeout_s: How long (in seconds) to
+                wait for at least one remote eval EnvRunner to recover when
+                all *configured* remote eval EnvRunners are unhealthy at the
+                start of an evaluation step. Default 0: don't wait. Pair
+                with `evaluation_error_after_n_consecutive_skips` to escalate
+                if recovery never arrives. Applies regardless of
+                `evaluation_parallel_to_training`.
+            evaluation_error_after_n_consecutive_skips: Tolerate this many
+                consecutive evaluation iterations in which all configured
+                remote eval EnvRunners are unhealthy (and evaluation is
+                therefore skipped). On the next such iteration, `evaluate()`
+                raises `RuntimeError`, which Tune escalates per the trial's
+                `max_failures` setting. The counter resets to 0 whenever an
+                evaluation step actually runs on the remote workers.
+                `None` (default) tolerates an unbounded number of
+                consecutive skips. `1` raises on the first skip (strict).
+                Has no effect if `evaluation_num_env_runners=0` (in which
+                case local eval is the user's intentional choice).
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
@@ -3000,6 +3034,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_unhealthy_workers_timeout_s is not NotProvided:
+            self.evaluation_unhealthy_workers_timeout_s = (
+                evaluation_unhealthy_workers_timeout_s
+            )
+        if evaluation_error_after_n_consecutive_skips is not NotProvided:
+            self.evaluation_error_after_n_consecutive_skips = (
+                evaluation_error_after_n_consecutive_skips
+            )
         if evaluation_force_reset_envs_before_iteration is not NotProvided:
             self.evaluation_force_reset_envs_before_iteration = (
                 evaluation_force_reset_envs_before_iteration
