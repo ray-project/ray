@@ -132,8 +132,10 @@ def _sanitize_chat_completion_request(
 ) -> ChatCompletionRequest:
     """Sanitize ChatCompletionRequest to fix Pydantic ValidatorIterator serialization issue.
 
-    This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
-    objects that cannot be pickled for Ray remote calls.
+    This addresses a known Pydantic bug where fields typed as ``Iterable[...]``
+    on OpenAI message TypedDicts (notably ``content`` on every message variant
+    and ``tool_calls`` on assistant messages) become ValidatorIterator objects
+    that cannot be pickled for Ray remote calls.
 
     Workaround logic adapted from vLLM (credits: @gcalmettes):
     - vLLM PR: https://github.com/vllm-project/vllm/pull/9951
@@ -141,7 +143,8 @@ def _sanitize_chat_completion_request(
     - Related Issue: https://github.com/pydantic/pydantic/issues/9541
     - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
 
-    TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
+    Note: still reproducible on Pydantic 2.12 for the ``Iterable[...]`` arm of
+    a ``Union``, so this sanitizer is required regardless of Pydantic version.
     """
     for i, message in enumerate(request.messages):
         # SGLang messages are Pydantic BaseModels (no .get()); convert to dicts
@@ -149,11 +152,25 @@ def _sanitize_chat_completion_request(
         if not isinstance(message, dict):
             request.messages[i] = message = message.model_dump()
 
+        # `content` is typed `Union[str, Iterable[ContentPart], None]` on every
+        # OpenAI message variant. When the iterable arm matches, Pydantic stores
+        # a non-picklable ValidatorIterator. Materialize it for any role.
+        content_val = message.get("content")
+        if content_val is not None and not isinstance(content_val, str):
+            try:
+                message["content"] = list(content_val)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    "Validating message `content` raised an error. Please "
+                    "ensure `content` is a string, None, or an iterable of "
+                    "content parts."
+                ) from e
+
         if message.get("role") == "assistant":
             tool_calls_val = message.get("tool_calls")
             if tool_calls_val is not None:
                 try:
-                    request.messages[i]["tool_calls"] = list(tool_calls_val)
+                    message["tool_calls"] = list(tool_calls_val)
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         "Validating messages' `tool_calls` raised an error. "
