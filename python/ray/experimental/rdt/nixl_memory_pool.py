@@ -74,19 +74,21 @@ class MemoryPoolManager:
         """
         return self._pool_tensor
 
-    def has_block(self, storage_ptr: int) -> bool:
-        """Check if a storage pointer has an allocated block in the pool.
+    def has_block(self, tensor: "torch.Tensor") -> bool:
+        """Check if a tensor has an allocated block in the pool.
 
         Args:
-            storage_ptr: The storage data pointer to check.
+            tensor: The tensor to check.
 
         Returns:
-            True if the storage pointer has an allocated block.
+            True if the tensor's storage has an allocated block.
         """
-        return storage_ptr in self._allocated_blocks
+        return tensor.untyped_storage().data_ptr() in self._allocated_blocks
 
     def free_tensors(self, tensors: List["torch.Tensor"]) -> None:
         """Return pool blocks for the given tensors back to the pool.
+
+        The caller is responsible for calling this method on the same tensors that were previously allocated in the pool before those tensors go out of scope.
 
         Args:
             tensors: Tensors whose pool blocks should be freed.
@@ -99,18 +101,11 @@ class MemoryPoolManager:
         if blocks:
             self._free_multiple(blocks)
 
-    def sync_device(self) -> None:
-        """Synchronize the pool's CUDA stream if the pool is on CUDA."""
-        import torch
-
-        if self.device.type == "cuda":
-            torch.cuda.synchronize(self.device)
-
     def allocate_for_tensors(
         self, tensors: List["torch.Tensor"]
     ) -> List["torch.Tensor"]:
         """Allocate pool blocks for unique storages, copy data in,
-        and return pool-backed tensor views for each input tensor.
+        and return pool-backed tensor views for each input tensor. The caller is responsible for calling free on the original tensors to return the allocated tensor views back to the pool before the original tensors go out of scope.
 
         Handles storage-level deduplication: views of the same storage share
         one pool block within a single call, and the same storage reuses its
@@ -145,7 +140,7 @@ class MemoryPoolManager:
                 if ptr in storage_idx:
                     continue
                 ptr_to_tensor[ptr] = tensor
-                if self.has_block(ptr):
+                if self.has_block(tensor):
                     storage_idx[ptr] = -1
                 else:
                     storage_idx[ptr] = len(alloc_sizes)
@@ -181,8 +176,6 @@ class MemoryPoolManager:
                 self._pool_tensor[blk.offset : blk.offset + storage_size].copy_(
                     storage_bytes
                 )
-
-            self.sync_device()
 
             # Build pool-backed tensor views for each input tensor.
             pool_views: List["torch.Tensor"] = []

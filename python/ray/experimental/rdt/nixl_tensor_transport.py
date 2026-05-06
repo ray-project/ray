@@ -522,9 +522,7 @@ class NixlTensorTransport(TensorTransportManager):
         # Remember which storages already have a pool block (cache hits)
         # so we don't free them on rollback.
         pre_existing = {
-            t.untyped_storage().data_ptr()
-            for t in tensors
-            if pool.has_block(t.untyped_storage().data_ptr())
+            t.untyped_storage().data_ptr() for t in tensors if pool.has_block(t)
         }
         pool_tensor_views = pool.allocate_for_tensors(tensors)
         try:
