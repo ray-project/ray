@@ -4,6 +4,7 @@ import time
 import warnings
 import weakref
 from collections import defaultdict
+from dataclasses import dataclass
 from queue import Queue
 from typing import (
     TYPE_CHECKING,
@@ -20,7 +21,23 @@ from typing import (
 import ray
 from ray._private import ray_constants
 from ray._raylet import ObjectRef
+from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 from ray.util.annotations import PublicAPI
+
+
+@dataclass
+class ObjectStoreFetchRequest(FetchRequest):
+    """Pending fetch via the object store. Holds the remote ObjectRef to ray.get on.
+
+    Args:
+        obj_id: The RDT object ID being fetched.
+        object_ref: The ObjectRef returned by the __ray_fetch_rdt_object__ remote call.
+        tensors: Unused. Tensors are returned directly by ray.get.
+    """
+
+    object_ref: Optional[ObjectRef] = None
+    tensors: Optional[List[Any]] = None
+
 
 if TYPE_CHECKING:
 
@@ -29,6 +46,7 @@ if TYPE_CHECKING:
     )
     from ray.experimental.rdt.tensor_transport_manager import (
         CommunicatorMetadata,
+        FetchRequest,
         TensorTransportMetadata,
     )
 
@@ -444,37 +462,33 @@ class RDTManager:
                 ]
             )
 
-    def _fetch_object(
+    def _trigger_fetch(
         self,
         obj_id: str,
         use_object_store: bool,
-    ):
+    ) -> FetchRequest:
         """
-        Fetches the RDT object from the source actor's RDT store via the object store
-        instead of out-of-band tensor transfer and stores the tensors in the local RDT store.
+        Start fetching an RDT object.
 
-        This is useful when the current process does not support the designated out-of-band tensor transport.
-        For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
-        fulfill a `ray.get` call.
+        If the specified transport supports async fetches, this will trigger the
+        fetch without blocking. Note that this always triggers a fetch, even if
+        the object is already in the store.
 
         Args:
             obj_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object through the
-                object store or through its designated tensor transport.
+            use_object_store: Whether to fetch through the object store or through
+                the designated one-sided tensor transport.
 
         Returns:
-            None
+            A FetchRequest. Wait on the FetchRequest to get the tensors.
         """
         from ray.experimental.rdt.rdt_store import (
             __ray_fetch_rdt_object__,
         )
         from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
-            validate_one_sided,
+            is_one_sided_transport,
         )
-
-        if self.rdt_store.has_object(obj_id):
-            return
 
         rdt_meta = self.get_rdt_metadata(obj_id)
         assert rdt_meta is not None
@@ -486,19 +500,19 @@ class RDTManager:
                 )
 
             src_actor = rdt_meta.src_actor
-            tensors = ray.get(
-                src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                    __ray_fetch_rdt_object__, obj_id
-                )
+            object_ref = src_actor.__ray_call__.options(
+                concurrency_group="_ray_system"
+            ).remote(__ray_fetch_rdt_object__, obj_id)
+            return ObjectStoreFetchRequest(
+                obj_id=obj_id, object_ref=object_ref, tensors=[]
             )
-            self.rdt_store.add_object(obj_id, tensors)
         else:
-            from ray.experimental.rdt.rdt_store import (
-                __ray_recv__,
-            )
-
             tensor_transport = rdt_meta.tensor_transport_backend
-            validate_one_sided(tensor_transport, "ray.get")
+            if not is_one_sided_transport(tensor_transport):
+                raise ValueError(
+                    f"ray.get is not allowed on RDT objects using the two-sided transport {tensor_transport}. "
+                    "Either use a one-sided RDT transport or pass _use_object_store=True to ray.get to fetch the object through the object store instead."
+                )
             tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
@@ -530,13 +544,48 @@ class RDTManager:
                     else:
                         target_buffers.append(buffer)
 
-            __ray_recv__(
-                None,
+            if target_buffers is not None:
+                from ray.experimental.rdt.rdt_store import validate_tensor_buffers
+
+                device = tensor_transport_meta.tensor_device
+                tensor_meta = tensor_transport_meta.tensor_meta
+                validate_tensor_buffers(target_buffers, tensor_meta, device)
+
+            return tensor_transport_manager.fetch_multiple_tensors(
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
-                tensor_transport,
                 target_buffers,
+            )
+
+    def _wait_fetch(
+        self, obj_id: str, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List[Any]:
+        """
+        Waits for a previously triggered fetch to complete and returns the tensors.
+
+        Args:
+            obj_id: The object ID of the RDT object.
+            fetch_request: An ObjectStoreFetchRequest representing an object
+                transferred via Ray's object store or a FetchRequest
+                representing an object transferred via a tensor transport.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
+
+        Returns:
+            The list of tensors fetched.
+        """
+        if isinstance(fetch_request, ObjectStoreFetchRequest):
+            return ray.get(fetch_request.object_ref, timeout=timeout)
+        else:
+            from ray.experimental.rdt.util import get_tensor_transport_manager
+
+            rdt_meta = self.get_rdt_metadata(obj_id)
+            tensor_transport_manager = get_tensor_transport_manager(
+                rdt_meta.tensor_transport_backend
+            )
+            return tensor_transport_manager.wait_fetch_complete(
+                fetch_request, timeout=timeout
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
@@ -692,40 +741,138 @@ class RDTManager:
         )
         self.start_monitor_thread_if_needed()
 
-    def get_rdt_object(
+    def get_rdt_objects(
         self,
-        object_id: str,
-        use_object_store: bool = False,
-    ) -> List[Any]:
+        object_ids: List[str],
+    ) -> Dict[str, List[Any]]:
         """
-        Get the RDT object for a given object ID.
+        Get RDT objects that have already been transferred (e.g. via __ray_recv__).
+
+        This is used in the task argument deserialization path where the
+        out-of-band tensor transfer has already been triggered by the caller.
+        It only waits on the local RDT store for the tensors to arrive.
 
         Args:
-            object_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object
-                through the object store or through its designated tensor transport.
+            object_ids: The object IDs of the RDT objects.
 
         Returns:
-            The RDT object.
+            A dict mapping object ID to the RDT object (list of tensors).
         """
         rdt_store = self.rdt_store
-        if self.is_managed_object(object_id):
-            self._fetch_object(object_id, use_object_store)
+        result: Dict[str, List[Any]] = {}
+        for object_id in object_ids:
+            pop_object = not rdt_store.is_primary_copy(object_id)
+            if pop_object:
+                result[object_id] = rdt_store.wait_and_pop_object(
+                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                )
+            else:
+                result[object_id] = rdt_store.wait_and_get_object(
+                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                )
+        return result
 
-        # If the RDT object is the primary copy, it means the transfer is intra-actor.
-        # In this case, we should not remove the RDT object after it is consumed once,
-        # because the RDT object reference may be used again.
-        # Instead, we should wait for the GC callback to clean it up.
-        pop_object = not rdt_store.is_primary_copy(object_id)
-        if pop_object:
-            rdt_object = rdt_store.wait_and_pop_object(
-                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-            )
+    def fetch_and_get_rdt_objects(
+        self,
+        object_ids: List[str],
+        timeout: Optional[float] = None,
+        use_object_store: bool = False,
+    ) -> Dict[str, List[Any]]:
+        """
+        Fetch and get RDT objects for a list of object IDs, pipelining async fetches.
+
+        This is used in the ray.get codepath where the caller initiates the
+        tensor fetch. For one-sided transports (e.g. NIXL), all transfers are
+        triggered first before waiting, eliminating serial transfer latency.
+
+        Args:
+            object_ids: The object IDs of the RDT objects.
+            timeout: The user-specified timeout from ray.get, or None for no
+                user timeout. The actual deadline is the minimum of this and
+                RDT_FETCH_FAIL_TIMEOUT_SECONDS.
+            use_object_store: Whether to fetch through the object store or through
+                the designated tensor transport.
+
+        Returns:
+            A dict mapping object ID to the RDT object (list of tensors).
+
+        Raises:
+            GetTimeoutError: If the user-specified timeout is exceeded.
+            ObjectFetchTimedOutError: If RDT_FETCH_FAIL_TIMEOUT_SECONDS is exceeded.
+        """
+        from ray.exceptions import GetTimeoutError, ObjectFetchTimedOutError
+
+        rdt_timeout = ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        now = time.time()
+        if timeout is not None and timeout >= 0:
+            rdt_deadline = now + rdt_timeout
+            user_deadline = now + timeout
+            if user_deadline < rdt_deadline:
+                deadline = user_deadline
+                user_timeout_is_smaller = True
+            else:
+                deadline = rdt_deadline
+                user_timeout_is_smaller = False
         else:
-            rdt_object = rdt_store.wait_and_get_object(
-                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-            )
-        return rdt_object
+            deadline = now + rdt_timeout
+            user_timeout_is_smaller = False
+
+        rdt_store = self.rdt_store
+        result: Dict[str, List[Any]] = {}
+
+        # First, try to get objects that are already available in the store
+        # These are primary copies, or secondary copies created via
+        # __ray_recv__ that haven't been consumed yet.
+        if not use_object_store:
+            for object_id in object_ids:
+                try:
+                    result[object_id] = rdt_store.wait_and_get_object(
+                        object_id, timeout=0
+                    )
+                except TimeoutError:
+                    pass
+
+        # For remaining objects, trigger fetches.
+        fetch_requests: Dict[str, "FetchRequest"] = {}
+        for object_id in object_ids:
+            if object_id in result:
+                continue
+            assert self.is_managed_object(
+                object_id
+            ), f"No metadata found for {object_id}"
+
+            fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
+
+        # Wait for all in-flight fetches to complete.
+        while fetch_requests:
+            object_id, fetch_request = fetch_requests.popitem()
+            remaining = deadline - time.time()
+            if remaining < 0:
+                if user_timeout_is_smaller:
+                    # User passed a timeout to ray.get that expired.
+                    raise GetTimeoutError(f"ray.get timed out after {timeout}s.")
+                else:
+                    # Object fetch timeout expired. Throw an error in case we
+                    # hung.
+                    raise ObjectFetchTimedOutError(
+                        object_ref_hex=object_id,
+                        owner_address="",
+                        call_site="",
+                    )
+            try:
+                result[object_id] = self._wait_fetch(
+                    object_id, fetch_request, timeout=remaining
+                )
+            except (TimeoutError, GetTimeoutError):
+                if user_timeout_is_smaller:
+                    raise GetTimeoutError(f"ray.get timed out after {timeout}s.")
+                else:
+                    raise ObjectFetchTimedOutError(
+                        object_ref_hex=object_id,
+                        owner_address="",
+                        call_site="",
+                    )
+        return result
 
     def queue_or_free_object_primary_copy(self, object_id: str):
         """

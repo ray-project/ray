@@ -9,6 +9,7 @@ import ray
 from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
+    FetchRequest,
     TensorTransportManager,
     TensorTransportMetadata,
 )
@@ -46,6 +47,38 @@ class NixlTransportMetadata(TensorTransportMetadata):
 class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
+
+
+@dataclass
+class NixlFetchRequest(FetchRequest):
+    """NIXL-specific FetchRequest carrying the async transfer state.
+
+    Returned by fetch_multiple_tensors and consumed by wait_fetch_complete.
+
+    Args:
+        obj_id: Inherited. The object ID for the transfer, used for abort checks and cleanup.
+        tensors: Inherited. Pre-allocated output tensors (populated before the transfer starts).
+        xfer_handle: NIXL transfer request handle.
+        nixl_agent: Reference to the NIXL agent.
+        remote_name: Name of the remote NIXL agent.
+        remove_tensor_descs: Whether to remove tensor descriptors from the cache during cleanup.
+    """
+
+    xfer_handle: Any = None
+    nixl_agent: Any = None
+    remote_name: Optional[str] = None
+    remove_tensor_descs: bool = False
+    transport: Any = None
+
+    def __del__(self):
+        if self.transport is not None:
+            self.transport._cleanup_transfer(
+                self.obj_id,
+                self.tensors,
+                self.xfer_handle,
+                self.remote_name,
+                self.remove_tensor_descs,
+            )
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -195,13 +228,28 @@ class NixlTensorTransport(TensorTransportManager):
     ) -> NixlCommunicatorMetadata:
         return NixlCommunicatorMetadata()
 
-    def recv_multiple_tensors(
+    def fetch_multiple_tensors(
         self,
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
         target_buffers: Optional[List["torch.Tensor"]] = None,
-    ) -> List["torch.Tensor"]:
+    ) -> NixlFetchRequest:
+        """Initiates an async transfer for multiple tensors.
+
+        This triggers the transfer but does not wait for completion.
+        Call wait_fetch_complete(fetch_request) to wait for the transfer to
+        finish and retrieve the tensors.
+
+        Args:
+            obj_id: The object ID for the transfer.
+            tensor_transport_metadata: Metadata for the tensor transport.
+            communicator_metadata: Metadata for the communicator.
+            target_buffers: Optional pre-allocated buffers to receive tensors into.
+
+        Returns:
+            A NixlFetchRequest carrying the async transfer state.
+        """
         from ray.experimental.rdt.util import (
             create_empty_tensors_from_metadata,
         )
@@ -221,13 +269,12 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.remove(obj_id)
                 raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
 
-        if not tensors:
-            return []
-
-        local_xfer_descs = None
         remote_name = None
         xfer_handle = None
         added_tensor_descs = False
+
+        assert tensors
+
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
@@ -260,8 +307,6 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
             xfer_handle = nixl_agent.initialize_xfer(
-                # "UUID" here is just a placeholder, can be any bytes, but without it,
-                # nixl will fail to transfer multiple times.
                 "READ",
                 local_xfer_descs,
                 remote_xfer_descs,
@@ -272,13 +317,66 @@ class NixlTensorTransport(TensorTransportManager):
             state = nixl_agent.transfer(xfer_handle)
             if state == "ERR":
                 raise RuntimeError("NIXL transfer got to Error state.")
-            # Since current nixl does not provide a better way, we need to check the state of
-            # the transfer continuously.
+
+            return NixlFetchRequest(
+                tensors=tensors,
+                obj_id=obj_id,
+                xfer_handle=xfer_handle,
+                nixl_agent=nixl_agent,
+                remote_name=remote_name,
+                remove_tensor_descs=added_tensor_descs,
+                transport=self,
+            )
+        except Exception:
+            self._cleanup_transfer(
+                obj_id, tensors, xfer_handle, remote_name, added_tensor_descs
+            )
+            # TODO(swang): There is a circular import error because ray.util
+            # currently depends on ray.experimental.internal_kv.
+            from ray.exceptions import RayDirectTransportError
+
+            raise RayDirectTransportError(
+                f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
+                f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
+            ) from None
+
+    def wait_fetch_complete(
+        self, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List["torch.Tensor"]:
+        """Waits for a previously initiated fetch to complete and returns the tensors.
+
+        Args:
+            fetch_request: The NixlFetchRequest returned by fetch_multiple_tensors.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
+
+        Returns:
+            List of tensors that were transferred.
+
+        Raises:
+            RayDirectTransportError: If the transfer failed.
+            TimeoutError: If the timeout is exceeded.
+        """
+        assert isinstance(fetch_request, NixlFetchRequest)
+        obj_id = fetch_request.obj_id
+
+        if not fetch_request.tensors:
+            return fetch_request.tensors
+
+        try:
+            # Check the state of the transfer continuously.
+            deadline = None if timeout < 0 else time.monotonic() + timeout
             while True:
-                state = nixl_agent.check_xfer_state(xfer_handle)
+                state = self.get_nixl_agent().check_xfer_state(
+                    fetch_request.xfer_handle
+                )
                 if state == "ERR":
                     raise RuntimeError("NIXL transfer got to Error state.")
                 if state == "PROC":
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"NIXL transfer timed out after {timeout}s for object id: {obj_id}"
+                        )
                     with self._aborted_transfer_obj_ids_lock:
                         if obj_id in self._aborted_transfer_obj_ids:
                             self._aborted_transfer_obj_ids.remove(obj_id)
@@ -288,26 +386,55 @@ class NixlTensorTransport(TensorTransportManager):
                     time.sleep(0.001)  # Avoid busy waiting
                 elif state == "DONE":
                     break
+
+            return fetch_request.tensors
+        except TimeoutError:
+            raise
         except Exception:
             from ray.exceptions import RayDirectTransportError
 
             raise RayDirectTransportError(
-                f"The NIXL recv failed for object id: {obj_id}. The source actor may have died during the transfer. "
-                f"The exception thrown from the nixl recv was:\n {traceback.format_exc()}"
+                f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
+                f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
             ) from None
-        finally:
-            # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
-            # so doing best effort cleanup.
-            with self._aborted_transfer_obj_ids_lock:
-                self._aborted_transfer_obj_ids.discard(obj_id)
-            if xfer_handle:
-                nixl_agent.release_xfer_handle(xfer_handle)
-            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
-                nixl_agent.remove_remote_agent(remote_name)
-            if added_tensor_descs:
-                self._remove_tensor_descs(tensors)
 
-        return tensors
+    def _cleanup_transfer(
+        self,
+        obj_id: str,
+        tensors: List["torch.Tensor"],
+        xfer_handle: Any,
+        remote_name: Optional[str],
+        remove_tensor_descs: bool,
+    ) -> None:
+        """Cleans up resources after a transfer completes or fails."""
+        # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
+        # so doing best effort cleanup.
+        nixl_agent = self._nixl_agent
+        if nixl_agent is None:
+            return
+        # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
+        # so doing best effort cleanup.
+        with self._aborted_transfer_obj_ids_lock:
+            self._aborted_transfer_obj_ids.discard(obj_id)
+        if xfer_handle:
+            nixl_agent.release_xfer_handle(xfer_handle)
+        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
+            nixl_agent.remove_remote_agent(remote_name)
+        if remove_tensor_descs:
+            self._remove_tensor_descs(tensors)
+
+    def recv_multiple_tensors(
+        self,
+        obj_id: str,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
+    ) -> List["torch.Tensor"]:
+        """Receives multiple tensors synchronously."""
+        fetch_request = self.fetch_multiple_tensors(
+            obj_id, tensor_transport_metadata, communicator_metadata, target_buffers
+        )
+        return self.wait_fetch_complete(fetch_request)
 
     def send_multiple_tensors(
         self,

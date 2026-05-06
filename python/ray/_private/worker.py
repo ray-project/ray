@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from functools import wraps
 from types import TracebackType
 from typing import (
-    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,
@@ -39,9 +38,6 @@ from typing import (
     overload,
 )
 from urllib.parse import urlparse
-
-if TYPE_CHECKING:
-    import torch
 
 import colorama
 
@@ -846,8 +842,8 @@ class Worker:
             )
         tensors = None
         from ray.experimental.rdt.util import (
+            is_one_sided_transport,
             normalize_and_validate_tensor_transport,
-            validate_one_sided,
         )
 
         tensor_transport = None
@@ -855,7 +851,11 @@ class Worker:
             tensor_transport = normalize_and_validate_tensor_transport(
                 _tensor_transport
             )
-            validate_one_sided(tensor_transport, "ray.put")
+            if not is_one_sided_transport(tensor_transport):
+                raise ValueError(
+                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}. "
+                    f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
+                )
         try:
             if tensor_transport is not None:
                 (
@@ -905,13 +905,11 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(
-        self,
-        serialized_objects,
-        object_refs,
-        use_object_store: bool = False,
-    ):
-        rdt_objects: Dict[str, List["torch.Tensor"]] = {}
+    @staticmethod
+    def _get_rdt_ids(serialized_objects, object_refs) -> List[str]:
+        """Extract RDT object IDs from serialized objects."""
+        rdt_ids: List[str] = []
+        seen: set = set()
         for obj_ref, (_, metadata, tensor_transport) in zip(
             object_refs, serialized_objects
         ):
@@ -930,14 +928,27 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            if object_id not in rdt_objects:
-                # If using a non-object store transport, then tensors will be sent
-                # out-of-band. Get them before deserializing the object store data.
-                # The user can set use_object_store to fetch the RDT object
-                # through the object store.
-                rdt_objects[object_id] = self.rdt_manager.get_rdt_object(
-                    object_id, use_object_store
-                )
+            if object_id not in seen:
+                seen.add(object_id)
+                rdt_ids.append(object_id)
+
+        return rdt_ids
+
+    def deserialize_objects(
+        self,
+        serialized_objects,
+        object_refs,
+        rdt_objects: Optional[Dict[str, List[Any]]] = None,
+    ):
+        if rdt_objects is None:
+            # ObjectRefs were passed by task argument instead of ray.get.
+            # Get the RDT objects from the local store. The _ray_system
+            # concurrency group is responsible for fetching these in the
+            # background. Here, we just wait for the objects to appear locally.
+            rdt_objects = {}
+            rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
+            if rdt_ids:
+                rdt_objects = self.rdt_manager.get_rdt_objects(rdt_ids)
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -1010,8 +1021,24 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
+        # Get any RDT objects. This will launch a fetch per RDT object that is
+        # not already local.
+        rdt_objects = {}
+        rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
+        if rdt_ids:
+            # TODO(swang): Some of the timeout may have already passed. Pass in
+            # the remaining timeout, but the error message should still reflect
+            # the user's timeout.
+            rdt_objects = self.rdt_manager.fetch_and_get_rdt_objects(
+                rdt_ids,
+                timeout=timeout,
+                use_object_store=use_object_store,
+            )
+
         values = self.deserialize_objects(
-            serialized_objects, object_refs, use_object_store
+            serialized_objects,
+            object_refs,
+            rdt_objects=rdt_objects,
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
