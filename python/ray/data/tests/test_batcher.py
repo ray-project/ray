@@ -4,6 +4,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import RandomSeedConfig
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.batcher import (
@@ -19,7 +20,7 @@ def gen_block(num_rows):
     return pa.table({"foo": [1] * num_rows})
 
 
-def test_shuffling_batcher():
+def test_shuffling_batcher(ray_start_1_cpu_shared):
     batch_size = 5
     buffer_size = 20
 
@@ -131,7 +132,7 @@ def test_shuffling_batcher():
     assert not batcher.has_any()
 
 
-def test_batching_pyarrow_table_with_many_chunks():
+def test_batching_pyarrow_table_with_many_chunks(ray_start_1_cpu_shared):
     """Make sure batching a pyarrow table with many chunks is fast.
 
     See https://github.com/ray-project/ray/issues/31108 for more details.
@@ -173,7 +174,9 @@ def test_batching_pyarrow_table_with_many_chunks():
     "batch_size,local_shuffle_buffer_size",
     [(1, 1), (10, 1), (1, 10), (10, 1000), (1000, 10)],
 )
-def test_shuffling_batcher_grid(batch_size, local_shuffle_buffer_size):
+def test_shuffling_batcher_grid(
+    batch_size, local_shuffle_buffer_size, ray_start_1_cpu_shared
+):
     ds = ray.data.range_tensor(10000, shape=(130,))
     start = time.time()
     count = 0
@@ -189,10 +192,9 @@ def test_shuffling_batcher_grid(batch_size, local_shuffle_buffer_size):
     "batch_size,local_shuffle_buffer_size",
     [(1, 1), (10, 1), (1, 10), (10, 100), (100, 10)],
 )
-def test_local_shuffle_determinism(batch_size, local_shuffle_buffer_size):
-    # Preserve order so that the blocks are in the same order prior to shuffling.
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.preserve_order = True
+def test_local_shuffle_determinism(
+    batch_size, local_shuffle_buffer_size, ray_start_1_cpu_shared
+):
     TEST_ITERATIONS = 10
 
     ds = ray.data.range(1000)
@@ -208,6 +210,82 @@ def test_local_shuffle_determinism(batch_size, local_shuffle_buffer_size):
             else:
                 # Check that batch is the same as the first dataset's batch
                 assert all(batch_map[batch["id"][0]]["id"] == batch["id"])
+
+
+def test_local_shuffle_random_seed_config_matches_int_seed(ray_start_1_cpu_shared):
+    ds = ray.data.range(100)
+    kwargs = dict(batch_size=10, local_shuffle_buffer_size=25)
+    batches_int = list(ds.iter_batches(local_shuffle_seed=0, **kwargs))
+    batches_cfg = list(
+        ds.iter_batches(
+            local_shuffle_seed=RandomSeedConfig(seed=0, reseed_after_execution=False),
+            **kwargs,
+        )
+    )
+    assert len(batches_int) == len(batches_cfg)
+    for a, b in zip(batches_int, batches_cfg):
+        assert all(a["id"] == b["id"])
+
+
+def test_reseed_after_execution_produces_different_iterations(ray_start_1_cpu_shared):
+    """With reseed_after_execution=True, each iteration over the same iterable
+    should yield a different shuffle order (mimicking different training epochs).
+    """
+    ds = ray.data.range(1000)
+    it = ds.iter_batches(
+        batch_size=50,
+        local_shuffle_buffer_size=100,
+        local_shuffle_seed=RandomSeedConfig(seed=42, reseed_after_execution=True),
+    )
+
+    iterations = []
+    for _ in range(3):
+        ids = [x for batch in it for x in batch["id"].tolist()]
+        iterations.append(ids)
+
+    for ids in iterations:
+        assert sorted(ids) == list(range(1000))
+
+    # Different epochs must differ in ordering.
+    assert iterations[0] != iterations[1]
+    assert iterations[1] != iterations[2]
+
+
+def test_reseed_after_execution_is_reproducible(ray_start_1_cpu_shared):
+    """Two independent iterables with the same seed must produce the same
+    per-epoch results (simulating two script runs)."""
+    ds = ray.data.range(1000)
+    seed_cfg = RandomSeedConfig(seed=42, reseed_after_execution=True)
+    kwargs = dict(batch_size=50, local_shuffle_buffer_size=100)
+
+    runs = []
+    for _ in range(2):
+        # Reset execution index to simulate a fresh process/script run.
+        ray.data.DataContext.get_current()._execution_idx = 0
+        it = ds.iter_batches(local_shuffle_seed=seed_cfg, **kwargs)
+        epoch_results = []
+        for _ in range(3):
+            ids = [x for batch in it for x in batch["id"].tolist()]
+            epoch_results.append(ids)
+        runs.append(epoch_results)
+
+    for epoch_idx in range(3):
+        assert runs[0][epoch_idx] == runs[1][epoch_idx]
+
+
+def test_no_reseed_produces_same_iterations(ray_start_1_cpu_shared):
+    """With reseed_after_execution=False, every iteration should yield the
+    same shuffle order."""
+    ds = ray.data.range(1000)
+    it = ds.iter_batches(
+        batch_size=50,
+        local_shuffle_buffer_size=100,
+        local_shuffle_seed=RandomSeedConfig(seed=42, reseed_after_execution=False),
+    )
+
+    first_ids = [x for batch in it for x in batch["id"].tolist()]
+    second_ids = [x for batch in it for x in batch["id"].tolist()]
+    assert first_ids == second_ids
 
 
 def test_local_shuffle_buffer_warns_if_too_large(shutdown_only):

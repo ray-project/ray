@@ -17,6 +17,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats, _StatsManager
 from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
@@ -88,7 +89,9 @@ class BatchIterator:
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
             to yield a batch.
-        shuffle_seed: The seed to use for the local random shuffle.
+        shuffle_seed: The seed configuration for the local shuffle. Use
+            :meth:`RandomSeedConfig.create_with_split_index` to create a config
+            with the split index set for multi-worker scenarios.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
         prefetch_batches: The number of batches to fetch ahead of the current batch to
@@ -115,7 +118,7 @@ class BatchIterator:
         collate_fn: Optional[Callable[[DataBatch], Any]] = None,
         finalize_fn: Optional[Callable[[Any], Any]] = None,
         shuffle_buffer_min_size: Optional[int] = None,
-        shuffle_seed: Optional[int] = None,
+        shuffle_seed: RandomSeedConfig | None = None,
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,

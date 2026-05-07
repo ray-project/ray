@@ -145,6 +145,13 @@ class StreamSplitDataIterator(DataIterator):
     def _get_dataset_tag(self):
         return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
 
+    def _get_split_index(self) -> int:
+        """Return the split index for this iterator.
+
+        Used to derive unique seeds for local shuffle in multi-worker scenarios.
+        """
+        return self._output_split_idx
+
 
 @ray.remote(num_cpus=0)
 class SplitCoordinator:

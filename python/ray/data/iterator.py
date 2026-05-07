@@ -23,6 +23,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
@@ -129,7 +130,7 @@ class DataIterator(abc.ABC):
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
     ) -> Iterable[DataBatch]:
         """Return a batched iterable over the dataset.
 
@@ -163,7 +164,11 @@ class DataIterator(abc.ABC):
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer will be drained.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`~ray.data.RandomSeedConfig`. If an integer is
+                provided, it defaults to the same order across iterator runs
+                (``reseed_after_execution=False``). If ``None``, the shuffle is
+                non-deterministic. See :class:`~ray.data.RandomSeedConfig` for details.
 
         Returns:
             An iterable over record batches.
@@ -197,11 +202,16 @@ class DataIterator(abc.ABC):
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
+
+        # Normalize seed to RandomSeedConfig at public boundary and set split index
+        shuffle_seed_config = RandomSeedConfig.create_with_split_index(
+            local_shuffle_seed, self._get_split_index()
+        )
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
@@ -245,7 +255,7 @@ class DataIterator(abc.ABC):
                 collate_fn=_collate_fn,
                 finalize_fn=_finalize_fn,
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
-                shuffle_seed=local_shuffle_seed,
+                shuffle_seed=shuffle_seed_config,
                 prefetch_batches=prefetch_batches,
                 prefetch_bytes_callback=prefetch_bytes_callback,
             )
@@ -262,6 +272,14 @@ class DataIterator(abc.ABC):
 
     def _get_dataset_tag(self) -> str:
         return "unknown_dataset"
+
+    def _get_split_index(self) -> int:
+        """Return the split index for this iterator.
+
+        For regular iterators, this is 0. For split iterators (e.g., in Ray Train),
+        this is the index of the split/worker, used for deriving per-worker seeds.
+        """
+        return 0
 
     @PublicAPI
     def iter_rows(self) -> Iterable[Dict[str, Any]]:
@@ -322,7 +340,7 @@ class DataIterator(abc.ABC):
         ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         pin_memory: bool = False,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
@@ -443,7 +461,9 @@ class DataIterator(abc.ABC):
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`~ray.data.RandomSeedConfig`. See
+                :meth:`iter_batches` for semantics.
             pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
                 `pin_memory` is only supported when using `DefaultCollateFn`.
 
@@ -550,7 +570,7 @@ class DataIterator(abc.ABC):
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
     ) -> Iterable["TensorFlowTensorBatchType"]:
         """Return a batched iterable of TensorFlow Tensors over the dataset.
 
@@ -595,7 +615,9 @@ class DataIterator(abc.ABC):
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`~ray.data.RandomSeedConfig`. See
+                :meth:`iter_batches` for semantics.
 
         Returns:
             An iterator over TensorFlow Tensor batches.
@@ -758,7 +780,7 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
@@ -837,7 +859,9 @@ class DataIterator(abc.ABC):
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`~ray.data.RandomSeedConfig`. See
+                :meth:`iter_batches` for semantics.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
                 be left as is, that is (N, ). In general, regression loss
@@ -953,7 +977,7 @@ class DataIterator(abc.ABC):
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         additional_type_spec: Union[
@@ -1053,7 +1077,9 @@ class DataIterator(abc.ABC):
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`~ray.data.RandomSeedConfig`. See
+                :meth:`iter_batches` for semantics.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
                 specify a ``dict`` that maps column names to their `tf.TypeSpec`.
