@@ -46,6 +46,7 @@ class TqdmSubProgressBar(ProgressBar):
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
             self._bar.n = self._progress
+            self._bar.refresh()
 
 
 class TqdmExecutionProgressManager(BaseExecutionProgressManager):
