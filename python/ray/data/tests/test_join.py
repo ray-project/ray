@@ -983,6 +983,108 @@ def test_overlapping_non_key_columns_without_suffixes(
         )
 
 
+def test_join_after_upstream_groupby_map_groups(
+    ray_start_regular_shared_2_cpus,
+):
+    """Regression test for empty-schema hash-shuffle broadcast.
+
+    When the upstream of a Dataset.join() is itself a hash shuffle (here,
+    groupby.map_groups), the first input block reaching the join's hash
+    shuffle can be a zero-row, zero-column marker block. Prior to the fix
+    in HashShufflingOperatorBase, that block was used to broadcast the
+    schema, causing _create_empty_table to propagate a column-less block
+    to every aggregator. Aggregators with no row-bearing data on a side
+    then failed at finalize with `ArrowInvalid: No match or multiple
+    matches for key field reference FieldRef.Name(<key>) on left side
+    of the join`.
+
+    With the fix, schema broadcast is deferred to the first row-bearing
+    block, and the join completes correctly.
+    """
+    DataContext.get_current().default_hash_shuffle_parallelism = 20
+
+    def noop(df: pd.DataFrame) -> pd.DataFrame:
+        return df
+
+    left = (
+        ray.data.from_pandas(
+            pd.DataFrame({"key": ["a", "b", "c", "d", "e"], "lval": [1, 2, 3, 4, 5]})
+        )
+        .groupby("key")
+        .map_groups(noop, batch_format="pandas")
+    )
+    right = (
+        ray.data.from_pandas(
+            pd.DataFrame(
+                {"key": ["a", "b", "c", "d", "e"], "rval": [10, 20, 30, 40, 50]}
+            )
+        )
+        .groupby("key")
+        .map_groups(noop, batch_format="pandas")
+    )
+
+    result = left.join(
+        right, on=("key",), join_type="inner", num_partitions=5
+    ).to_pandas()
+
+    expected = pd.DataFrame(
+        {
+            "key": ["a", "b", "c", "d", "e"],
+            "lval": [1, 2, 3, 4, 5],
+            "rval": [10, 20, 30, 40, 50],
+        }
+    )
+    assert rows_same(result, expected)
+
+
+def test_join_with_empty_first_block_carrying_schema(
+    ray_start_regular_shared_2_cpus,
+):
+    """The first input block to a side is a zero-row block that does carry a
+    schema (e.g. from `from_arrow` of an empty-but-typed table, then unioned
+    with row-bearing data). The broadcast must still seed every aggregator
+    with the correct schema so the join completes successfully.
+
+    Exercises the metadata-schema path in `_has_broadcastable_schema`.
+    """
+    import pyarrow as pa
+
+    schema = pa.schema([("key", pa.large_string()), ("lval", pa.int64())])
+    empty_left = ray.data.from_arrow(pa.Table.from_pylist([], schema=schema))
+    populated_left = ray.data.from_arrow(
+        pa.Table.from_pylist(
+            [{"key": "a", "lval": 1}, {"key": "b", "lval": 2}, {"key": "c", "lval": 3}],
+            schema=schema,
+        )
+    )
+    left = empty_left.union(populated_left)
+
+    right_schema = pa.schema([("key", pa.large_string()), ("rval", pa.int64())])
+    right = ray.data.from_arrow(
+        pa.Table.from_pylist(
+            [
+                {"key": "a", "rval": 10},
+                {"key": "b", "rval": 20},
+                {"key": "c", "rval": 30},
+            ],
+            schema=right_schema,
+        )
+    )
+
+    result = left.join(
+        right, on=("key",), join_type="inner", num_partitions=5
+    ).to_pandas()
+
+    expected = pd.DataFrame(
+        {
+            "key": ["a", "b", "c"],
+            "lval": [1, 2, 3],
+            "rval": [10, 20, 30],
+        }
+    )
+    assert rows_same(result, expected)
+
+
 if __name__ == "__main__":
     import sys
 

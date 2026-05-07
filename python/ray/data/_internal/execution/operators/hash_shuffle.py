@@ -68,7 +68,9 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     BlockStats,
     BlockType,
+    Schema,
     TaskExecWorkerStats,
+    _is_empty_schema,
     to_stats,
 )
 from ray.data.context import (
@@ -221,6 +223,14 @@ def _combine(partition_shards: List[Block]) -> Block:
     for block in partition_shards:
         builder.add_block(block)
     return builder.build()
+
+
+def _has_broadcastable_schema(
+    block_metadata: BlockMetadata, bundle_schema: Optional["Schema"]
+) -> bool:
+    if (block_metadata.num_rows or 0) > 0:
+        return True
+    return bundle_schema is not None and not _is_empty_schema(bundle_schema)
 
 
 @ray.remote
@@ -679,8 +689,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         for block_ref, block_metadata in zip(input_blocks_refs, input_blocks_metadata):
             # If operator hasn't propagated schemas (for this sequence) to its
             # aggregator pool, it will need to do that upon receiving of the
-            # first block
-            should_broadcast_schemas = not self._has_schemas_broadcasted[input_index]
+            # first block that actually carries a schema (skip column-less
+            # marker blocks that would broadcast an empty schema).
+            should_broadcast_schemas = not self._has_schemas_broadcasted[
+                input_index
+            ] and _has_broadcastable_schema(block_metadata, input_bundle.schema)
             input_key_column_names = self._key_column_names[input_index]
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
