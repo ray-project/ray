@@ -515,6 +515,9 @@ class OpenAiIngress(DeploymentProtocol):
         """Calls the model deployment and returns the stream."""
         model_id = await self._get_model_id(body.model)
         model_handle = self._get_configured_serve_handle(model_id)
+        session_id = serve.context._get_serve_request_context().session_id
+        if session_id:
+            model_handle = model_handle.options(session_id=session_id)
 
         # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
         # for tool calling ValidatorIterator serialization issue.

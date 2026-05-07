@@ -1,4 +1,6 @@
+import json
 import sys
+import urllib.request
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
@@ -263,6 +265,86 @@ class TestOpenAiIngress:
         assert len(captured_raw_request_infos) == 1
         assert isinstance(captured_raw_request_infos[0], RawRequestInfo)
         assert captured_raw_request_infos[0].headers == mock_headers
+
+    def test_session_id_reaches_downstream_deployment_context(
+        self, llm_config: LLMConfig
+    ):
+        """Test client -> proxy -> ingress -> replica session ID propagation."""
+
+        class SessionIdEchoDeployment:
+            async def chat(self, body, raw_request_info):
+                from ray.llm._internal.serve.core.configs.openai_api_models import (
+                    ChatCompletionResponse,
+                )
+
+                session_id = serve.context._get_serve_request_context().session_id
+                yield ChatCompletionResponse(
+                    id="session_id_echo",
+                    choices=[
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": session_id},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    model=body.model,
+                    object="chat.completion",
+                    usage={
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                )
+
+        ServerDeployment = serve.deployment(ray_actor_options={"num_cpus": 0})(
+            SessionIdEchoDeployment
+        )
+
+        ingress_options = OpenAiIngress.get_deployment_options(
+            llm_configs=[llm_config]
+        )
+        ingress_options["ray_actor_options"] = {"num_cpus": 0}
+        ingress_cls = make_fastapi_ingress(OpenAiIngress)
+        RouterDeployment = serve.deployment(ingress_cls, **ingress_options)
+        server = ServerDeployment.bind()
+        router = RouterDeployment.bind(
+            llm_deployments={llm_config.model_id: server},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
+        serve.run(router)
+
+        try:
+            for header_name in ("x-session-id", "x_session_id"):
+                session_id = f"session-for-{header_name}"
+                payload = json.dumps(
+                    {
+                        "model": llm_config.model_id,
+                        "messages": [
+                            {"role": "user", "content": "Echo session ID."}
+                        ],
+                        "stream": False,
+                        "max_tokens": 1,
+                    }
+                ).encode("utf-8")
+                request = urllib.request.Request(
+                    "http://localhost:8000/v1/chat/completions",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        header_name: session_id,
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    response_body = json.loads(response.read().decode("utf-8"))
+
+                assert (
+                    response_body["choices"][0]["message"]["content"] == session_id
+                )
+        finally:
+            serve.shutdown()
 
 
 if __name__ == "__main__":
