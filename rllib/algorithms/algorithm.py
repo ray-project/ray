@@ -1479,8 +1479,7 @@ class Algorithm(Checkpointable, Trainable):
                     ) = self._evaluate_with_custom_eval_function()
                 else:
                     eval_results = self.config.custom_evaluation_function()
-            # There is no eval EnvRunnerGroup -> Run on (training) local
-            # EnvRunner.
+            # No eval EnvRunnerGroup -> Run on (training) local EnvRunner.
             elif self.eval_env_runner_group is None and self.env_runner:
                 (
                     eval_results,
@@ -1488,10 +1487,7 @@ class Algorithm(Checkpointable, Trainable):
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.env_runner)
-            # User intentionally configured 0 remote eval EnvRunners
-            # (`evaluation_num_env_runners=0`) -> Run on the local eval
-            # EnvRunner. NB: this is *not* the failure-case fallback; that
-            # path is handled by the consecutive-skip counter below.
+            # 0 remote eval EnvRunners configured -> Run on the local eval EnvRunner.
             elif self.eval_env_runner_group.num_remote_env_runners() == 0:
                 (
                     eval_results,
@@ -1499,14 +1495,12 @@ class Algorithm(Checkpointable, Trainable):
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
-            # There are healthy remote evaluation workers -> Run on these.
+            # Healthy remote evaluation workers -> Run on these.
             elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
                 # A successful eval iteration resets the consecutive-skip
                 # counter; this is what tells the algorithm "the failure
                 # was transient".
-                self._counters[
-                    "num_consecutive_eval_no_workers_iterations"
-                ] = 0  # noqa: E501
+                self._counters["num_consecutive_eval_no_workers_iterations"] = 0
                 # Running in automatic duration mode (parallel with training step).
                 if self.config.evaluation_duration == "auto":
                     assert parallel_train_future is not None
@@ -1653,7 +1647,7 @@ class Algorithm(Checkpointable, Trainable):
         When *all* configured remote eval EnvRunners are unhealthy, wait up
         to `evaluation_unhealthy_workers_timeout_s` seconds for at least one
         to come back before deciding to skip evaluation or raise (per
-        `evaluation_error_on_no_workers`).
+        `evaluation_error_after_n_consecutive_skips`).
         """
         timeout_s = self.config.evaluation_unhealthy_workers_timeout_s
         if not timeout_s or timeout_s <= 0:
@@ -1676,7 +1670,7 @@ class Algorithm(Checkpointable, Trainable):
             "All %d remote eval EnvRunner(s) are unhealthy; waiting up to "
             "%.0fs for at least one to recover before "
             "deciding to skip evaluation or raise (controlled by "
-            "`evaluation_error_on_no_workers`).",
+            "`evaluation_error_after_n_consecutive_skips`).",
             self.eval_env_runner_group.num_remote_env_runners(),
             timeout_s,
         )

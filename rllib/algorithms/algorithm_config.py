@@ -524,15 +524,15 @@ class AlgorithmConfig(_Config):
         # when all *configured* remote eval EnvRunners are unhealthy at the
         # start of an evaluation step. Default 0: don't wait.
         self.evaluation_unhealthy_workers_timeout_s = 0.0
-        # Tolerate this many consecutive evaluation iterations in which all
-        # configured remote eval EnvRunners are unhealthy (and we therefore
-        # skip evaluation). On the next such iteration after the threshold,
-        # `evaluate()` raises a `RuntimeError`, which Tune escalates per
-        # the trial's `max_failures` setting. The counter resets to 0
-        # whenever an evaluation step actually runs on the remote workers.
-        # `None` (default) tolerates an unbounded number of consecutive
-        # skips. `1` raises on the first skip (strict). Applies regardless
-        # of `evaluation_parallel_to_training`.
+        # Raise `RuntimeError` from `evaluate()` once this many consecutive
+        # evaluation iterations have been skipped because all configured
+        # remote eval EnvRunners are unhealthy. The N-th consecutive skip
+        # raises (so `1` raises on the first skip; `5` raises on the fifth,
+        # tolerating 4 prior skips). Tune escalates the error per the
+        # trial's `max_failures` setting. The counter resets to 0 whenever
+        # an evaluation step actually runs on the remote workers. `None`
+        # (default) tolerates an unbounded number of consecutive skips.
+        # Applies regardless of `evaluation_parallel_to_training`.
         self.evaluation_error_after_n_consecutive_skips = None
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
@@ -2850,17 +2850,19 @@ class AlgorithmConfig(_Config):
                 with `evaluation_error_after_n_consecutive_skips` to escalate
                 if recovery never arrives. Applies regardless of
                 `evaluation_parallel_to_training`.
-            evaluation_error_after_n_consecutive_skips: Tolerate this many
-                consecutive evaluation iterations in which all configured
-                remote eval EnvRunners are unhealthy (and evaluation is
-                therefore skipped). On the next such iteration, `evaluate()`
-                raises `RuntimeError`, which Tune escalates per the trial's
-                `max_failures` setting. The counter resets to 0 whenever an
-                evaluation step actually runs on the remote workers.
+            evaluation_error_after_n_consecutive_skips: Raise
+                `RuntimeError` from `evaluate()` once this many consecutive
+                evaluation iterations have been skipped because all
+                configured remote eval EnvRunners are unhealthy. The N-th
+                consecutive skip raises: `1` raises on the first skip
+                (strict); `5` raises on the fifth, tolerating 4 prior
+                skips. Tune escalates the error per the trial's
+                `max_failures` setting. The counter resets to 0 whenever
+                an evaluation step actually runs on the remote workers.
                 `None` (default) tolerates an unbounded number of
-                consecutive skips. `1` raises on the first skip (strict).
-                Has no effect if `evaluation_num_env_runners=0` (in which
-                case local eval is the user's intentional choice).
+                consecutive skips. Has no effect if
+                `evaluation_num_env_runners=0` (in which case local eval is
+                the user's intentional choice).
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
