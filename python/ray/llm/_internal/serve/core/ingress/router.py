@@ -1,4 +1,6 @@
+import asyncio
 import random
+import time
 from typing import FrozenSet, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
@@ -8,6 +10,13 @@ from ray.serve._private.common import ReplicaID
 from ray.serve.handle import DeploymentHandle
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
+
+# How long to wait for the underlying RequestRouter to be lazily created.
+# It's created on the first long-poll from the controller; that is normally
+# sub-second, but we allow up to a minute to ride out controller hiccups
+# before failing the constructor and letting Serve retry.
+_REQUEST_ROUTER_INIT_TIMEOUT_S = 60.0
+_REQUEST_ROUTER_INIT_POLL_INTERVAL_S = 0.05
 
 _ReplicaCacheSignature = FrozenSet[ReplicaID]
 
@@ -60,21 +69,36 @@ class LLMRouter:
         self._cached_endpoints: List[Tuple[str, int, str]] = []
         self._handle: DeploymentHandle = server
 
-        # Force the handle's local router and request router to construct
-        # synchronously so /internal/route can read them in the hot path.
-        # `curr_replicas` is populated separately by controller broadcast;
-        # /internal/route returns 503 (HAProxy retries) until then, which
-        # decouples router liveness from LLMServer cold start.
+        # Initialize the handle and wait for its underlying RequestRouter to
+        # be lazily created. The RequestRouter is built on the first long-poll
+        # from the controller (which delivers the deployment config that
+        # selects the request-router class), so `_get_request_router()`
+        # returns None for a brief window after `_init()`.
+        # `curr_replicas` is populated by the same long-poll client; until it
+        # carries at least one ready endpoint, /internal/route returns 503
+        # (HAProxy retries). That keeps router liveness decoupled from
+        # LLMServer cold start.
         self._handle._init()
-        self._request_router = self._handle._get_request_router()
-        if self._request_router is None:
-            raise RuntimeError(
-                "DeploymentHandle._get_request_router() returned None after "
-                "_init(); Serve internals may have changed."
-            )
+        self._request_router = await self._wait_for_request_router(
+            _REQUEST_ROUTER_INIT_TIMEOUT_S
+        )
+
+    async def _wait_for_request_router(self, timeout_s: float):
+        deadline = time.monotonic() + timeout_s
+        while True:
+            request_router = self._handle._get_request_router()
+            if request_router is not None:
+                return request_router
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "DeploymentHandle._get_request_router() still returned "
+                    f"None after {timeout_s}s. The Serve controller may be "
+                    "unreachable, or Serve internals may have changed."
+                )
+            await asyncio.sleep(_REQUEST_ROUTER_INIT_POLL_INTERVAL_S)
 
     async def check_health(self):
-        if self._handle._get_request_router() is None:
+        if self._request_router is None:
             raise RuntimeError("request router not initialized")
 
     @router_app.post("/internal/route")
