@@ -129,13 +129,11 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             filesystem: PyArrow FileSystem to use to access data at the path.
                 If not specified, this is inferred from the URI scheme.
         """
-        self.path = str(path)
         assert self.path, "Checkpoint path must not be empty."
-
         if filesystem is None:
             self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(path)
         else:
-            self.filesystem = filesystem
+            self.filesystem, self.path = filesystem, str(path)
 
         # This random UUID is used to create a temporary directory name on the
         # local filesystem, which will be used for downloading checkpoint data.
