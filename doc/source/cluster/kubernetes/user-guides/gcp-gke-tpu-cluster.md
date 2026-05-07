@@ -9,7 +9,7 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 First, set the following environment variables to be used for GKE cluster creation:
 ```sh
 export CLUSTER_NAME=CLUSTER_NAME
-export ZONE=COMPUTE_ZONE
+export ZONE=ZONE
 export CLUSTER_VERSION=CLUSTER_VERSION
 ```
 Replace the following:
