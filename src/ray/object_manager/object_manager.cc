@@ -745,6 +745,30 @@ void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
   remote_object_manager_clients_.erase(node_id);
 }
 
+std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
+    const WorkerID &worker_id) const {
+  return GetLocalObjectsMatchedBy([&worker_id](const ObjectInfo &info) {
+    return info.owner_worker_id == worker_id;
+  });
+}
+
+std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
+    const NodeID &node_id) const {
+  return GetLocalObjectsMatchedBy(
+      [&node_id](const ObjectInfo &info) { return info.owner_node_id == node_id; });
+}
+
+std::vector<ObjectID> ObjectManager::GetLocalObjectsMatchedBy(
+    const std::function<bool(const ObjectInfo &)> &matches) const {
+  std::vector<ObjectID> matched;
+  for (const auto &[object_id, info] : local_objects_) {
+    if (matches(info.object_info)) {
+      matched.push_back(object_id);
+    }
+  }
+  return matched;
+}
+
 std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
