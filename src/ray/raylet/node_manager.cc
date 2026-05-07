@@ -418,8 +418,7 @@ void NodeManager::RegisterGcs() {
       },
       RayConfig::instance().debug_dump_period_milliseconds(),
       "NodeManager.deadline_timer.debug_state_dump");
-  uint64_t now_ms = clock_.NowUnixMillis();
-  last_metrics_recorded_at_ms_ = now_ms;
+  last_metrics_recorded_at_ = clock_.SteadyNow();
   periodical_runner_->RunFnPeriodically([this] { RecordMetrics(); },
                                         record_metrics_period_ms_,
                                         "NodeManager.deadline_timer.record_metrics");
@@ -2550,7 +2549,7 @@ const NodeManagerConfig &NodeManager::GetInitialConfig() const { return initial_
 
 std::string NodeManager::DebugString() const {
   std::stringstream result;
-  uint64_t now_ms = clock_.NowUnixMillis();
+  auto debug_start = clock_.SteadyNow();
   result << "NodeManager:";
   result << "\nNode ID: " << self_node_id_;
   result << "\nNode name: " << self_node_name_;
@@ -2574,7 +2573,10 @@ std::string NodeManager::DebugString() const {
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats()->StatsString();
 
-  result << "\nDebugString() time ms: " << (clock_.NowUnixMillis() - now_ms);
+  result << "\nDebugString() time ms: "
+         << std::chrono::duration_cast<std::chrono::milliseconds>(clock_.SteadyNow() -
+                                                                  debug_start)
+                .count();
   return result.str();
 }
 
@@ -2991,9 +2993,11 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   local_object_manager_.RecordMetrics();
 
-  uint64_t current_time = clock_.NowUnixMillis();
-  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
-  last_metrics_recorded_at_ms_ = current_time;
+  auto now = clock_.SteadyNow();
+  uint64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              now - last_metrics_recorded_at_)
+                              .count();
+  last_metrics_recorded_at_ = now;
   object_directory_.RecordMetrics(duration_ms);
   lease_dependency_manager_.RecordMetrics();
 }

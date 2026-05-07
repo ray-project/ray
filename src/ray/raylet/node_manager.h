@@ -955,8 +955,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The period between debug state dumps.
   uint64_t record_metrics_period_ms_;
 
-  /// Last time metrics are recorded.
-  uint64_t last_metrics_recorded_at_ms_ = 0;
+  /// Last time metrics are recorded (monotonic).
+  SteadyTimePoint last_metrics_recorded_at_;
 
   /// The number of workers killed due to memory above threshold since last report.
   uint64_t number_workers_killed_by_oom_ = 0;
