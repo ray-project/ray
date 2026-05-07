@@ -3421,10 +3421,8 @@ class UserCallableWrapper:
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
-        # When there is no user-defined health check, we still run a no-op probe on the
-        # user execution path. This ensures that replicas blocked in the request-
-        # handling path (e.g. stuck user code) fail health check and get restarted
-        # (see https://github.com/ray-project/ray/issues/61263).
+        # When there is no user-defined health check, health is determined by the
+        # optional watchdog fail counter.
         if (
             self._user_loop_probe_watchdog_applies()
             and self._user_loop_probe_consecutive_fail_count
@@ -3438,7 +3436,7 @@ class UserCallableWrapper:
 
         if self._user_health_check is not None:
             return self._call_user_health_check()
-        return self._call_user_health_probe()
+        return None
 
     @property
     def has_user_routing_stats_method(self) -> bool:
@@ -3464,16 +3462,6 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
-
-    @_run_user_code
-    async def _call_user_health_probe(self):
-        """No-op that runs on the user code event loop.
-
-        Used when there is no user-defined health check. If the loop is blocked
-        (e.g. by a stuck request), this will not complete and the health check
-        will timeout, allowing the controller to mark the replica unhealthy.
-        """
-        await asyncio.sleep(0)
 
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:

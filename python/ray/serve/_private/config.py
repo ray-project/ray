@@ -409,8 +409,7 @@ class DeploymentConfig(BaseModel):
             data["deployment_actors"] = deployment_actors_proto
         else:
             data.pop("deployment_actors", None)
-        proto = DeploymentConfigProto(**data)
-        return proto
+        return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
@@ -422,8 +421,6 @@ class DeploymentConfig(BaseModel):
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
         data = _proto_to_dict(proto)
-        # Dropped from DeploymentConfig; ignore if present (e.g. legacy dict paths).
-        data.pop("user_health_probe_timeout_s", None)
         deployment_language = (
             data["deployment_language"]
             if "deployment_language" in data
