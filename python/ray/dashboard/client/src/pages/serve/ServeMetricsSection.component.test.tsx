@@ -1,108 +1,21 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import React, { PropsWithChildren } from "react";
-import { GlobalContext } from "../../App";
-import { STYLE_WRAPPER } from "../../util/test-utils";
+import React from "react";
 import {
   APPS_METRICS_CONFIG,
   SERVE_SYSTEM_METRICS_CONFIG,
   ServeMetricsSection,
 } from "./ServeMetricsSection";
+import { createServeMetricsTestWrapper } from "./serveMetricsTestUtils";
 
-const Wrapper = ({ children }: PropsWithChildren<{}>) => {
-  return (
-    <GlobalContext.Provider
-      value={{
-        metricsContextLoaded: true,
-        grafanaHost: "localhost:3000",
-        grafanaOrgId: "1",
-        grafanaClusterFilter: undefined,
-        dashboardUids: {
-          default: "rayDefaultDashboard",
-          serve: "rayServeDashboard",
-          serveDeployment: "rayServeDeploymentDashboard",
-          data: "rayDataDashboard",
-        },
-        prometheusHealth: true,
-        sessionName: "session-name",
-        nodeMap: {},
-        nodeMapByIp: {},
-        namespaceMap: {},
-        dashboardDatasource: "Prometheus",
-        serverTimeZone: undefined,
-        currentTimeZone: undefined,
-        themeMode: "light",
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        toggleTheme: () => {},
-      }}
-    >
-      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
-    </GlobalContext.Provider>
-  );
-};
-
-const WrapperWithClusterFilter = ({ children }: PropsWithChildren<{}>) => {
-  return (
-    <GlobalContext.Provider
-      value={{
-        metricsContextLoaded: true,
-        grafanaHost: "localhost:3000",
-        grafanaOrgId: "1",
-        grafanaClusterFilter: "my-ray-cluster",
-        dashboardUids: {
-          default: "rayDefaultDashboard",
-          serve: "rayServeDashboard",
-          serveDeployment: "rayServeDeploymentDashboard",
-          data: "rayDataDashboard",
-        },
-        prometheusHealth: true,
-        sessionName: "session-name",
-        nodeMap: {},
-        nodeMapByIp: {},
-        namespaceMap: {},
-        dashboardDatasource: "Prometheus",
-        serverTimeZone: undefined,
-        currentTimeZone: undefined,
-        themeMode: "light",
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        toggleTheme: () => {},
-      }}
-    >
-      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
-    </GlobalContext.Provider>
-  );
-};
-
-const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
-  return (
-    <GlobalContext.Provider
-      value={{
-        metricsContextLoaded: true,
-        grafanaHost: undefined,
-        grafanaOrgId: "1",
-        grafanaClusterFilter: undefined,
-        dashboardUids: {
-          default: "rayDefaultDashboard",
-          serve: "rayServeDashboard",
-          serveDeployment: "rayServeDeploymentDashboard",
-          data: "rayDataDashboard",
-        },
-        prometheusHealth: false,
-        sessionName: undefined,
-        nodeMap: {},
-        nodeMapByIp: {},
-        namespaceMap: {},
-        dashboardDatasource: "Prometheus",
-        serverTimeZone: undefined,
-        currentTimeZone: undefined,
-        themeMode: "light",
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        toggleTheme: () => {},
-      }}
-    >
-      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
-    </GlobalContext.Provider>
-  );
-};
+const Wrapper = createServeMetricsTestWrapper();
+const WrapperWithClusterFilter = createServeMetricsTestWrapper({
+  grafanaClusterFilter: "my-ray-cluster",
+});
+const MetricsDisabledWrapper = createServeMetricsTestWrapper({
+  grafanaHost: undefined,
+  prometheusHealth: false,
+  sessionName: undefined,
+});
 
 describe("ServeMetricsSection", () => {
   it("renders app metrics", async () => {
@@ -149,9 +62,7 @@ describe("ServeMetricsSection", () => {
     await screen.findByText(/View in Grafana/);
 
     const link = screen.getByRole("link", { name: /View in Grafana/i });
-    expect(link.getAttribute("href")).toContain(
-      "var-Cluster=my-ray-cluster",
-    );
+    expect(link.getAttribute("href")).toContain("var-Cluster=my-ray-cluster");
 
     const iframe = screen.getByTitle("QPS per application");
     expect(iframe.getAttribute("src")).toContain("var-Cluster=my-ray-cluster");
