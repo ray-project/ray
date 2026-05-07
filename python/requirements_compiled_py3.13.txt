@@ -1133,7 +1133,9 @@ mlflow-skinny==3.11.1
 mlflow-tracing==3.11.1
     # via mlflow
 mmh3==5.2.1
-    # via pyiceberg
+    # via
+    #   -r python/requirements.txt
+    #   pyiceberg
 modin==0.37.1
     # via -r python/requirements/ml/py313/data-requirements.txt
 monotonic==1.6
