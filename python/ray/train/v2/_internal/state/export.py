@@ -149,7 +149,11 @@ def _dict_to_human_readable_struct(d: Dict, *, max_depth: int = 3) -> Struct:
         if isinstance(value, (list, tuple, set)):
             return [to_human_readable(v, depth) for v in value]
 
-        # Fallback: string representation
+        cls = type(value)
+        # Use type name if the class does not define custom str/repr methods
+        if cls.__str__ is object.__str__ and cls.__repr__ is object.__repr__:
+            return cls.__name__
+
         return str(value)
 
     try:
