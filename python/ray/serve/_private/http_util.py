@@ -546,11 +546,21 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+    def __init__(self, app_or_func: Optional[Union[ASGIApp, Callable]]):
+        if app_or_func is None:
+            # Late-bound: `__serve_build_asgi_app__` will supply the app at
+            # replica init time. `__del__` tolerates the missing
+            # `_serve_asgi_lifespan` attribute.
+            return
         if inspect.isfunction(app_or_func):
-            self._asgi_app = app_or_func()
+            app = app_or_func()
         else:
-            self._asgi_app = app_or_func
+            app = app_or_func
+
+        self._set_asgi_app(app)
+
+    def _set_asgi_app(self, app: ASGIApp) -> None:
+        self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
