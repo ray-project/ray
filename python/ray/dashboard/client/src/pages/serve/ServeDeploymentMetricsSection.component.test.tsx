@@ -36,6 +36,38 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   );
 };
 
+const WrapperWithClusterFilter = ({ children }: PropsWithChildren<{}>) => {
+  return (
+    <GlobalContext.Provider
+      value={{
+        metricsContextLoaded: true,
+        grafanaHost: "localhost:3000",
+        grafanaOrgId: "1",
+        grafanaClusterFilter: "my-ray-cluster",
+        dashboardUids: {
+          default: "rayDefaultDashboard",
+          serve: "rayServeDashboard",
+          serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
+        },
+        prometheusHealth: true,
+        sessionName: "session-name",
+        nodeMap: {},
+        nodeMapByIp: {},
+        namespaceMap: {},
+        dashboardDatasource: "Prometheus",
+        serverTimeZone: undefined,
+        currentTimeZone: undefined,
+        themeMode: "light",
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        toggleTheme: () => {},
+      }}
+    >
+      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
+    </GlobalContext.Provider>
+  );
+};
+
 const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
     <GlobalContext.Provider
@@ -84,6 +116,25 @@ describe("ServeReplicaMetricsSection", () => {
     expect(screen.getByTitle("QPS per replica")).toBeInTheDocument();
     expect(screen.getByTitle("Error QPS per replica")).toBeInTheDocument();
     expect(screen.getByTitle("P90 latency per replica")).toBeInTheDocument();
+  });
+
+  it("appends var-Cluster to Grafana URLs when grafanaClusterFilter is set", async () => {
+    render(
+      <ServeReplicaMetricsSection
+        deploymentName="test-deployment"
+        replicaId="replica-1"
+      />,
+      { wrapper: WrapperWithClusterFilter },
+    );
+    await screen.findByText(/View in Grafana/);
+
+    const link = screen.getByRole("link", { name: /View in Grafana/i });
+    expect(link.getAttribute("href")).toContain(
+      "var-Cluster=my-ray-cluster",
+    );
+
+    const iframe = screen.getByTitle("QPS per replica");
+    expect(iframe.getAttribute("src")).toContain("var-Cluster=my-ray-cluster");
   });
 
   it("renders nothing when grafana is not available", async () => {

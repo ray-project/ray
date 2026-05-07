@@ -59,6 +59,7 @@ export const ServeReplicaMetricsSection = ({
     dashboardDatasource,
     currentTimeZone,
     themeMode,
+    grafanaClusterFilter,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -89,6 +90,9 @@ export const ServeReplicaMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const clusterQuery = grafanaClusterFilter
+    ? `&var-Cluster=${encodeURIComponent(grafanaClusterFilter)}`
+    : "";
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(
     deploymentName,
@@ -190,7 +194,7 @@ export const ServeReplicaMetricsSection = ({
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
                 replicaId,
-              )}&var-datasource=${dashboardDatasource}`;
+              )}&var-datasource=${dashboardDatasource}${clusterQuery}`;
             return (
               <Paper
                 key={pathParams}
@@ -232,6 +236,7 @@ export const useViewServeDeploymentMetricsButtonUrl = (
     prometheusHealth,
     dashboardUids,
     dashboardDatasource,
+    grafanaClusterFilter,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -240,9 +245,13 @@ export const useViewServeDeploymentMetricsButtonUrl = (
     ? `&var-Replica=${encodeURIComponent(replicaId)}`
     : "";
 
+  const clusterQuery = grafanaClusterFilter
+    ? `&var-Cluster=${encodeURIComponent(grafanaClusterFilter)}`
+    : "";
+
   return grafanaHost === undefined || !prometheusHealth
     ? null
     : `${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-Deployment=${encodeURIComponent(
         deploymentName,
-      )}${replicaStr}&var-datasource=${dashboardDatasource}`;
+      )}${replicaStr}&var-datasource=${dashboardDatasource}${clusterQuery}`;
 };
