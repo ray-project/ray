@@ -246,8 +246,8 @@ class TestConfigNightlyAlias(unittest.TestCase):
     def test_ray_llm_extra_default_has_nightly_extra(self):
         c = _config(
             image_type="ray-llm-extra",
-            python_version="3.11",
-            platform="cu12.8.1-cudnn",
+            python_version="3.12",
+            platform="cu13.0.0-cudnn",
         )
         self.assertEqual(c.nightly_alias, f"{REGISTRY_PREFIX}ray-llm:nightly-extra")
 
@@ -303,8 +303,8 @@ class TestBuildEnv(unittest.TestCase):
     def test_ray_llm_extra_image_type(self):
         env = _config(
             image_type="ray-llm-extra",
-            python_version="3.11",
-            platform="cu12.8.1-cudnn",
+            python_version="3.12",
+            platform="cu13.0.0-cudnn",
         ).build_env
         self.assertEqual(env["IMAGE_TYPE"], "ray-llm")
 
