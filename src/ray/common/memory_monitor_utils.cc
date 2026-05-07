@@ -67,6 +67,16 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
                         "the system due to: %s",
                         absl::StrJoin(error_reasons, ", ")));
   }
+
+  auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
+  if (host_level_total_bytes == MemoryMonitorInterface::kNull) {
+    return StatusT::NotFound(absl::StrFormat(
+        "Failed to take memory snapshot of user slice usage relative to "
+        "the system memory due to failure to get total memory bytes from host machine. "
+        "Is %s/meminfo file accessible?",
+        proc_dir));
+  }
+
   CgroupMemorySnapshot user_cgroup_memory_snapshot =
       user_cgroup_memory_snapshot_or.value();
   CgroupMemorySnapshot system_cgroup_memory_snapshot =
@@ -79,7 +89,6 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
   int64_t total_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
                              user_cgroup_memory_snapshot.shmem_memory_bytes +
                              system_cgroup_memory_snapshot.shmem_memory_bytes;
-  auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
   return MemoryUsageSnapshot{total_used_bytes, host_level_total_bytes};
 }
 
