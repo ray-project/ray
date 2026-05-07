@@ -5,6 +5,9 @@ from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
 from ray.serve._private.common import ReplicaID
+from ray.serve._private.constants import (
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+)
 from ray.serve.handle import DeploymentHandle
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
@@ -91,8 +94,15 @@ class LLMRouter:
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
-        body = await request.body()
-        body_truncated = _BODY_TRUNCATED_HEADER in request.headers
+        # HAProxy only forwards a body when
+        # RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1, so skip the read
+        # entirely on the default path. See haproxy.py / lua template.
+        if RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY:
+            body = await request.body()
+            body_truncated = _BODY_TRUNCATED_HEADER in request.headers
+        else:
+            body = None
+            body_truncated = False
         try:
             host, port, replica_id = self._pick_replica(
                 request_body=body, body_truncated=body_truncated

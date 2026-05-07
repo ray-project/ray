@@ -641,10 +641,16 @@ def _create_router_server(port: int, replica_id_to_return: str):
 
 
 @pytest.mark.asyncio
-async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
+async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
     """Run actual HAProxy against a fake router + two replicas; verify a POST
     is pinned to the replica the router selects, while a GET (which doesn't
     trigger the router-routed path) is not."""
+    # Body forwarding to /internal/route is opt-in. This test asserts the body
+    # made it through the router, so flip it on.
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()

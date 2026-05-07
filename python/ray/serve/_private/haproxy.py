@@ -56,6 +56,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -824,6 +825,9 @@ class HAProxyApi(ProxyApi):
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            FORWARD_BODY="true"
+            if RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+            else "false",
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )
@@ -891,6 +895,9 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_bufsize": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
+                    ),
+                    "ingress_request_router_forward_body": (
+                        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
                 }
             )
