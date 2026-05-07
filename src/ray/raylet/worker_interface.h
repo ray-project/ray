@@ -59,7 +59,7 @@ class WorkerInterface {
   virtual const ProcessInterface &GetProcess() const = 0;
   virtual void SetProcess(std::unique_ptr<ProcessInterface> proc) = 0;
   virtual rpc::Language GetLanguage() const = 0;
-  virtual const std::string IpAddress() const = 0;
+  virtual std::string IpAddress() const = 0;
   virtual void AsyncNotifyGCSRestart() = 0;
   /// Connect this worker's gRPC client.
   virtual void Connect(int port) = 0;
@@ -105,8 +105,6 @@ class WorkerInterface {
   virtual std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() = 0;
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
-
-  virtual RayLease &GetGrantedLease() = 0;
 
   virtual void GrantLease(const RayLease &granted_lease) = 0;
 

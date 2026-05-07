@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -31,6 +31,8 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
@@ -96,6 +98,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
+    observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         gcs_publisher_.get(),
         gcs_table_storage_.get(),
@@ -103,7 +107,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         raylet_client_pool_.get(),
         ClusterID::Nil(),
         /*ray_event_recorder=*/fake_ray_event_recorder_,
-        /*session_name=*/"");
+        /*session_name=*/"",
+        observability_publisher_.get());
     gcs_actor_table_ = std::make_shared<FakeGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
@@ -207,6 +212,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;

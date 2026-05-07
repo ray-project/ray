@@ -138,7 +138,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
                 return {"tensor": torch.as_tensor(batch["image"])}
 
             # The tensor gets converted into a Numpy array under the hood
-            transformed_ds = ds.map_batches(convert_to_torch, batch_size=2)
+            transformed_ds = ds.map_batches(convert_to_torch, batch_size="auto")
             print(transformed_ds.schema())
 
             # Subsequent transformations take in Numpy array as input.
@@ -146,7 +146,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
                 assert isinstance(batch["tensor"], np.ndarray)
                 return batch
 
-            transformed_ds.map_batches(check_numpy, batch_size=2).take_all()
+            transformed_ds.map_batches(check_numpy, batch_size="auto").take_all()
 
         .. testoutput::
 
@@ -223,7 +223,7 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
                 return batch
 
             # Apply the transform over the dataset.
-            transformed_ds = ds.map_batches(tokenize_text, batch_size=2)
+            transformed_ds = ds.map_batches(tokenize_text, batch_size="auto")
             print(transformed_ds.schema())
 
         .. testoutput::
