@@ -53,8 +53,7 @@ class LLMRouter:
 
     async def __init__(self, server: DeploymentHandle):
         # Randomized so multiple LLMRouter replicas don't lockstep on the
-        # same replica sequence. (HAProxy currently expects a single router
-        # endpoint, so this is dormant until multi-replica routers ship.)
+        # same replica sequence.
         self._round_robin_counter = random.randrange(2**31)
         self._cached_dict_id: Optional[int] = None
         self._cached_replica_signature: Optional[_ReplicaCacheSignature] = None
