@@ -611,7 +611,7 @@
       frequency: manual
       cluster:
         anyscale_sdk_2026: true
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -648,7 +648,7 @@
         wait_for_nodes:
           num_nodes: 16
       cluster:
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -683,7 +683,7 @@
         wait_for_nodes:
           num_nodes: 16
       cluster:
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -721,7 +721,7 @@
       smoke_test:
         frequency: manual
       cluster:
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
@@ -761,7 +761,7 @@
       env: gce
       frequency: manual
       cluster:
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
@@ -791,7 +791,7 @@
       env: gce
       frequency: manual
       cluster:
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
@@ -818,7 +818,7 @@
       env: gce
       frequency: manual
       cluster:
-        cloud: anyscale_gce_cloud
+        cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
         cluster_compute: tpl_gce_1x96.yaml
 
 
