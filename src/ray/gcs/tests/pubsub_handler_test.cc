@@ -95,7 +95,7 @@ TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id.Binary());
   auto *command = request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(key_id.Binary());
   command->mutable_subscribe_message();
 

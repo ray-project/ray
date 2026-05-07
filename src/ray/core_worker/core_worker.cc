@@ -3559,60 +3559,6 @@ void CoreWorker::HandleWaitForActorRefDeleted(
   }
 }
 
-void CoreWorker::ProcessSubscribeForObjectEviction(
-    const rpc::WorkerObjectEvictionSubMessage &message) {
-  // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto unpin_object = [this](const ObjectID &object_id) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object is deleted. Unpinning the object.";
-
-    rpc::PubMessage pub_message;
-    pub_message.set_key_id(object_id.Binary());
-    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    pub_message.mutable_worker_object_eviction_message()->set_object_id(
-        object_id.Binary());
-
-    object_info_publisher_->Publish(std::move(pub_message));
-  };
-
-  const auto object_id = ObjectID::FromBinary(message.object_id());
-  const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
-  if (intended_worker_id != worker_context_->GetWorkerID()) {
-    RAY_LOG(INFO).WithField(object_id)
-        << "The SubscribeForObjectEviction message for object is for worker "
-        << intended_worker_id << ", but the current worker is "
-        << worker_context_->GetWorkerID() << ". The RPC will be no-op.";
-    unpin_object(object_id);
-    return;
-  }
-
-  if (message.has_generator_id()) {
-    // For dynamically generated return values, the raylet may subscribe to
-    // eviction events before we know about the object. This can happen when we
-    // receive the subscription request before the reply from the task that
-    // created the object. Add the dynamically created object to our ref
-    // counter so that we know that it exists.
-    const auto generator_id = ObjectID::FromBinary(message.generator_id());
-    RAY_CHECK(!generator_id.IsNil());
-    if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
-      // "streaming".
-      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
-    } else {
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
-    }
-  }
-
-  // Returns true if the object was present and the callback was added. It might have
-  // already been evicted by the time we get this request, in which case we should
-  // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, unpin_object)) {
-    // If the object is already evicted (callback cannot be set), unregister the
-    // subscription & publish the message so that the subscriber knows it.
-    unpin_object(object_id);
-    RAY_LOG(DEBUG).WithField(object_id) << "Reference for object has already been freed.";
-  }
-}
-
 StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     const rpc::SubMessage &sub_message,
     rpc::ChannelType channel_type,
@@ -3624,19 +3570,16 @@ StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     return result;
   }
 
-  if (!sub_message.has_worker_object_eviction_message() &&
-      !sub_message.has_worker_ref_removed_message() &&
+  if (!sub_message.has_worker_ref_removed_message() &&
       !sub_message.has_worker_object_locations_message()) {
     return StatusT::InvalidArgument(
         absl::StrFormat("Unexpected subscribe command has been received: %s"
-                        "Expected worker_object_eviction, worker_ref_removed, or "
+                        "Expected worker_ref_removed or "
                         "worker_object_locations message",
                         sub_message.DebugString()));
   }
 
-  if (sub_message.has_worker_object_eviction_message()) {
-    ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
-  } else if (sub_message.has_worker_ref_removed_message()) {
+  if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
   } else {  // worker_object_locations_message case
     ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());

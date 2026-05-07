@@ -134,8 +134,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto object_info_publisher = std::make_unique<pubsub::Publisher>(
         /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
         /*get_time_ms=*/[this]() { return current_time_ms_; },
@@ -741,119 +740,9 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
 }
 
-class CoreWorkerPubsubWorkerObjectEvictionChannelTest
-    : public CoreWorkerTest,
-      public ::testing::WithParamInterface<bool> {};
-
-TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatchRetries) {
-  // should_free_object: determines whether the object is freed from plasma. This is used
-  // to trigger AddObjectOutOfScopeOrFreedCallback in HandlePubsubCommandBatch which
-  // stores the unpin_object callback that publishes the message to the
-  // WORKER_OBJECT_EVICTION channel
-  // should_free_object == true: the object is freed from plasma and we expect the message
-  // to the WORKER_OBJECT_EVICTION channel to be published.
-  // should_free_object == false: the object is not freed and we expect the message to the
-  // WORKER_OBJECT_EVICTION channel to not be published.
-  bool should_free_object = GetParam();
-
-  auto subscriber_id = NodeID::FromRandom();
-  auto object_id = ObjectID::FromRandom();
-
-  rpc::Address owner_address;
-  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id,
-                                     {},
-                                     owner_address,
-                                     "",
-                                     0,
-                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                     true);
-
-  rpc::PubsubCommandBatchRequest command_batch_request;
-  command_batch_request.set_subscriber_id(subscriber_id.Binary());
-  auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-  command->set_key_id(object_id.Binary());
-  auto *sub_message = command->mutable_subscribe_message();
-  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
-  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
-  real_sub_message->set_object_id(object_id.Binary());
-  *real_sub_message->mutable_subscriber_address() = rpc_address_;
-
-  rpc::PubsubCommandBatchReply command_reply1;
-  rpc::PubsubCommandBatchReply command_reply2;
-  // Each call to HandlePubsubCommandBatch causes the reference counter to store the
-  // unpin_object callback that publishes the WORKER_OBJECT_EVICTION message
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply1,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply2,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-
-  if (should_free_object) {
-    // Triggers the unpin_object callbacks that publish the message to the
-    // WORKER_OBJECT_EVICTION channel
-    reference_counter_->FreePlasmaObjects({object_id});
-  }
-
-  rpc::PubsubLongPollingRequest request;
-  request.set_subscriber_id(subscriber_id.Binary());
-  request.set_max_processed_sequence_id(0);
-  request.set_publisher_id("");
-
-  rpc::PubsubLongPollingReply reply;
-
-  // should_free_object == true: Each call to HandlePubsubCommandBatch adds an
-  // unpin_object callback that is triggered via FreePlasmaObjects which publishes the
-  // message to the WORKER_OBJECT_EVICTION channel, hence we have 1 publish per callback
-  // so 2 in total. The long poll connection is closed
-  // should_free_object == false: Since FreePlasmaObjects is not called, the unpin_object
-  // callbacks are not triggered and we have 0 publishes. NOTE: The long poll connection
-  // is not closed when should_free_object == false since there was no publish.
-  core_worker_->HandlePubsubLongPolling(
-      request,
-      &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-
-  int expected_messages = should_free_object ? 2 : 0;
-  EXPECT_EQ(reply.pub_messages_size(), expected_messages);
-
-  for (int i = 0; i < expected_messages; i++) {
-    const auto &msg = reply.pub_messages(i);
-    EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    EXPECT_EQ(msg.key_id(), object_id.Binary());
-    EXPECT_EQ(msg.sequence_id(), i + 1);
-    EXPECT_EQ(msg.worker_object_eviction_message().object_id(), object_id.Binary());
-  }
-
-  if (!should_free_object) {
-    // Since the long poll connection is not closed, we need to flush it. Otherwise this
-    // can trigger undefined behavior since unlike in prod where grpc arena allocates the
-    // reply, here we allocate the reply on the stack. Hence the normal order of
-    // destruction is: reply goes out of scope -> publisher is destructed -> flushes the
-    // reply which access freed memory
-    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
-    object_info_publisher_->CheckDeadSubscribers();
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
-                         CoreWorkerPubsubWorkerObjectEvictionChannelTest,
-                         ::testing::Values(true, false));
-
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
   // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
   // type. The publisher was created with only:
-  // - WORKER_OBJECT_EVICTION
   // - WORKER_REF_REMOVED_CHANNEL
   // - WORKER_OBJECT_LOCATIONS_CHANNEL
   // Using a channel type that was not registered should return InvalidArgument.
@@ -896,7 +785,7 @@ TEST_F(CoreWorkerTest,
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(object_id.Binary());
 
   rpc::PubsubCommandBatchReply command_reply;
@@ -920,7 +809,7 @@ TEST_F(CoreWorkerTest,
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(object_id.Binary());
   command->mutable_subscribe_message();
 

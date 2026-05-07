@@ -763,7 +763,6 @@ int main(int argc, char *argv[]) {
         raylet_node_id,
         /*channels=*/
         std::vector<ray::rpc::ChannelType>{
-            ray::rpc::ChannelType::WORKER_OBJECT_EVICTION,
             ray::rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
             ray::rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         RayConfig::instance().max_command_batch_size(),
@@ -877,8 +876,6 @@ int main(int argc, char *argv[]) {
 
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
         raylet_node_id,
-        node_manager_config.node_manager_address,
-        node_manager_config.node_manager_port,
         main_service,
         RayConfig::instance().free_objects_batch_size(),
         RayConfig::instance().free_objects_period_milliseconds(),
@@ -896,7 +893,6 @@ int main(int argc, char *argv[]) {
         [&](const ray::ObjectID &object_id) {
           return object_manager->IsPlasmaObjectSpillable(object_id);
         },
-        /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get(),
         object_store_memory_gauge,
         spill_manager_metrics);

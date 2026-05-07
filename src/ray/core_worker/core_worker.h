@@ -1578,12 +1578,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                   std::vector<rpc::ObjectReference> *arg_refs,
                                   std::vector<ObjectID> *pinned_ids);
 
-  /// Process a subscribe message for wait for object eviction.
-  /// The object eviction message will be published once the object
-  /// needs to be evicted.
-  void ProcessSubscribeForObjectEviction(
-      const rpc::WorkerObjectEvictionSubMessage &message);
-
   /// Process a subscribe message for wait for ref removed.
   /// It is used for the ref counting protocol. When the borrower
   /// stops using the reference, the message will be published to the owner.

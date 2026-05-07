@@ -61,46 +61,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
             << " from the original " << original_worker_id << ". Object " << object_id
             << " may get freed while the new owner still has the object in scope.";
       }
-      continue;
     }
-
-    // Create a object eviction subscription message.
-    rpc::WorkerObjectEvictionSubMessage wait_request;
-    wait_request.set_object_id(object_id.Binary());
-    wait_request.set_intended_worker_id(owner_address.worker_id());
-    if (!generator_id.IsNil()) {
-      wait_request.set_generator_id(generator_id.Binary());
-    }
-    rpc::Address subscriber_address;
-    subscriber_address.set_node_id(self_node_id_.Binary());
-    subscriber_address.set_ip_address(self_node_address_);
-    subscriber_address.set_port(self_node_port_);
-    *wait_request.mutable_subscriber_address() = std::move(subscriber_address);
-
-    // If the subscription succeeds, register the subscription callback.
-    // Callback is invoked when the owner publishes the object to evict.
-    auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
-      RAY_CHECK(msg.has_worker_object_eviction_message());
-      const auto &object_eviction_msg = msg.worker_object_eviction_message();
-      const auto obj_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      core_worker_subscriber_->Unsubscribe(
-          rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, obj_id.Binary());
-    };
-
-    // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [owner_address](const std::string &object_id_binary,
-                                               const Status &) {};
-
-    auto sub_message = std::make_unique<rpc::SubMessage>();
-    *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
-
-    core_worker_subscriber_->Subscribe(std::move(sub_message),
-                                       rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                       owner_address,
-                                       object_id.Binary(),
-                                       /*subscribe_done_callback=*/nullptr,
-                                       subscription_callback,
-                                       owner_dead_callback);
   }
 }
 
