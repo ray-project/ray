@@ -2995,8 +2995,8 @@ void NodeManager::RecordMetrics() {
 
   auto now = clock_.SteadyNow();
   uint64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                              now - last_metrics_recorded_at_)
-                              .count();
+                             now - last_metrics_recorded_at_)
+                             .count();
   last_metrics_recorded_at_ = now;
   object_directory_.RecordMetrics(duration_ms);
   lease_dependency_manager_.RecordMetrics();
