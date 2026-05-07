@@ -57,7 +57,7 @@ class ProcessorConfig(BaseModelExtended):
         default_factory=dict,
         description="[Experimental] Experimental configurations."
         "Supported keys:\n"
-        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
+        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 16.",
     )
 
     @field_validator("concurrency")
@@ -289,7 +289,7 @@ class OfflineProcessorConfig(ProcessorConfig):
         return values
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Processor:
     """A processor is composed of a preprocess stage, followed by one or more
     processing stages, and finally a postprocess stage. We use processor as a

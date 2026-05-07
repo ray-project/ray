@@ -1,0 +1,128 @@
+name: multi-agent-a2a
+
+working_dir: .
+
+requirements: ./requirements.txt
+
+image_uri: anyscale/ray-llm:2.54.0-py311-cu128
+
+logging_config:
+  encoding: JSON
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
+  additional_log_standard_attrs: []
+
+applications:
+- name: llm
+  route_prefix: /llm
+  import_path: llm.llm_deploy_qwen:app
+  runtime_env: {}
+- name: mcp_web_search
+  route_prefix: /mcp-web-search
+  import_path: ray_serve_all_deployments:web_search_mcp_app
+  runtime_env: {}
+  deployments:
+  - name: WebSearchMCP
+    autoscaling_config:
+      min_replicas: 1
+      max_replicas: 20
+      target_ongoing_requests: 5.0
+    ray_actor_options:
+      num_cpus: 0.2
+- name: mcp_weather
+  route_prefix: /mcp-weather
+  import_path: ray_serve_all_deployments:weather_mcp_app
+  runtime_env: {}
+  deployments:
+  - name: WeatherMCP
+    autoscaling_config:
+      min_replicas: 1
+      max_replicas: 20
+      target_ongoing_requests: 5.0
+    ray_actor_options:
+      num_cpus: 0.2
+- name: agent
+  route_prefix: /weather-agent
+  import_path: ray_serve_all_deployments:weather_agent_app
+  runtime_env:
+    env_vars:
+      # Point the agent at the co-hosted services (local proxy on the same node).
+      OPENAI_COMPAT_BASE_URL: http://127.0.0.1:8000/llm
+      OPENAI_API_KEY: local
+      WEATHER_MCP_BASE_URL: http://127.0.0.1:8000/mcp-weather
+      WEATHER_MCP_TOKEN: ""
+  deployments:
+  - name: WeatherAgentDeployment
+    ray_actor_options:
+      num_cpus: 1.0
+- name: research_agent
+  route_prefix: /research-agent
+  import_path: ray_serve_all_deployments:research_agent_app
+  runtime_env:
+    env_vars:
+      OPENAI_COMPAT_BASE_URL: http://127.0.0.1:8000/llm
+      OPENAI_API_KEY: local
+      WEB_SEARCH_MCP_BASE_URL: http://127.0.0.1:8000/mcp-web-search
+      WEB_SEARCH_MCP_TOKEN: ""
+  deployments:
+  - name: ResearchAgentDeployment
+    ray_actor_options:
+      num_cpus: 1.0
+- name: travel_agent
+  route_prefix: /travel-agent
+  import_path: ray_serve_all_deployments:travel_agent_app
+  runtime_env:
+    env_vars:
+      OPENAI_COMPAT_BASE_URL: http://127.0.0.1:8000/llm
+      OPENAI_API_KEY: local
+      # Travel agent calls downstream agents over A2A.
+      RESEARCH_A2A_BASE_URL: http://127.0.0.1:8000/a2a-research
+      WEATHER_A2A_BASE_URL: http://127.0.0.1:8000/a2a-weather
+  deployments:
+  - name: TravelAgentDeployment
+    ray_actor_options:
+      num_cpus: 1.0
+- name: a2a_weather_agent
+  route_prefix: /a2a-weather
+  import_path: ray_serve_all_deployments:a2a_weather_app
+  runtime_env:
+    env_vars:
+      A2A_AGENT_URL: http://127.0.0.1:8000/a2a-weather
+      OPENAI_COMPAT_BASE_URL: http://127.0.0.1:8000/llm
+      OPENAI_API_KEY: local
+      WEATHER_MCP_BASE_URL: http://127.0.0.1:8000/mcp-weather
+      WEATHER_MCP_TOKEN: ""
+  deployments:
+  - name: A2AWeatherAgentDeployment
+    ray_actor_options:
+      num_cpus: 1.0
+- name: a2a_research_agent
+  route_prefix: /a2a-research
+  import_path: ray_serve_all_deployments:a2a_research_app
+  runtime_env:
+    env_vars:
+      A2A_AGENT_URL: http://127.0.0.1:8000/a2a-research
+      OPENAI_COMPAT_BASE_URL: http://127.0.0.1:8000/llm
+      OPENAI_API_KEY: local
+      WEB_SEARCH_MCP_BASE_URL: http://127.0.0.1:8000/mcp-web-search
+      WEB_SEARCH_MCP_TOKEN: ""
+  deployments:
+  - name: A2AResearchAgentDeployment
+    ray_actor_options:
+      num_cpus: 1.0
+
+- name: a2a_travel_agent
+  route_prefix: /a2a-travel
+  import_path: ray_serve_all_deployments:a2a_travel_app
+  runtime_env:
+    env_vars:
+      A2A_AGENT_URL: http://127.0.0.1:8000/a2a-travel
+      OPENAI_COMPAT_BASE_URL: http://127.0.0.1:8000/llm
+      OPENAI_API_KEY: local
+      RESEARCH_A2A_BASE_URL: http://127.0.0.1:8000/a2a-research
+      WEATHER_A2A_BASE_URL: http://127.0.0.1:8000/a2a-weather
+  deployments:
+  - name: A2ATravelAgentDeployment
+    ray_actor_options:
+      num_cpus: 1.0

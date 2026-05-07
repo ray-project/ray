@@ -89,6 +89,7 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         ),
     ],
 )
+@pytest.mark.asyncio
 async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
@@ -161,6 +162,7 @@ def test_load_state_error(tmp_path, json_state, match):
         checkpoint_manager._load_state(json_state)
 
 
+@pytest.mark.asyncio
 async def test_before_init_train_context(tmp_path):
 
     storage_context = StorageContext(
@@ -188,6 +190,7 @@ async def test_before_init_train_context(tmp_path):
     }
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -241,6 +244,7 @@ async def test_pending_checkpoint_management(tmp_path):
     ]
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -279,6 +283,7 @@ async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path
     ]
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,

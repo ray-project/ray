@@ -1,5 +1,6 @@
 """Tests for Databricks Unity Catalog datasource."""
 
+import json
 import os
 import re
 import tempfile
@@ -338,6 +339,40 @@ class TestDatabricksUCDatasourceIntegration:
 
 class TestDatabricksUCDatasourceCredentials:
     """Tests for credential provider handling."""
+
+    def test_schema_name_does_not_shadow_datasource_fields(self, requests_mocker):
+        """Test that schema name is stored without using the `schema` attribute.
+        This is a regression test for https://github.com/ray-project/ray/issues/46481.
+        """
+        requests_mocker["post"].return_value = mock.Mock(
+            status_code=200,
+            raise_for_status=lambda: None,
+            json=lambda: {"statement_id": "test_stmt", "status": {"state": "PENDING"}},
+        )
+        requests_mocker["get"].return_value = mock.Mock(
+            status_code=200,
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {"truncated": False, "chunks": []},
+            },
+        )
+
+        provider = StaticCredentialProvider(token="my_provider_token", host="test_host")
+        datasource = DatabricksUCDatasource(
+            warehouse_id="test_warehouse",
+            catalog="test_catalog",
+            schema="test_schema",
+            query="SELECT 1",
+            credential_provider=provider,
+        )
+
+        assert datasource.schema_name == "test_schema"
+        assert "schema" not in datasource.__dict__
+
+        call_kwargs = requests_mocker["post"].call_args[1]
+        payload = json.loads(call_kwargs["data"])
+        assert payload["schema"] == "test_schema"
 
     def test_with_credential_provider(self, requests_mocker):
         """Test DatabricksUCDatasource with credential_provider parameter."""

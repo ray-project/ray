@@ -6,7 +6,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque, List, Optional
 
-from ray._common.pydantic_compat import BaseModel
+from pydantic import BaseModel
+
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 
 # Number of recent loop iterations to track for rolling averages

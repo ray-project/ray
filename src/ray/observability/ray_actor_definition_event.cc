@@ -41,6 +41,7 @@ RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data
   }
   data_.mutable_label_selector()->insert(data.label_selector().begin(),
                                          data.label_selector().end());
+  data_.mutable_ref_ids()->insert(data.labels().begin(), data.labels().end());
   if (data.has_call_site()) {
     data_.set_call_site(data.call_site());
   }

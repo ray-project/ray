@@ -11,6 +11,14 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "clock",
+    hdrs = ["clock.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "array",
     hdrs = ["array.h"],
 )

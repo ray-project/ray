@@ -1,0 +1,20 @@
+build_arg_sets:
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+depsets:
+  - name: compiled_graph_gpu_cu130_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_compiled_graph_gpu_cu130.in
+    output: release/ray_release/byod/compiled_graph_gpu_cu130_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cu130
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py312

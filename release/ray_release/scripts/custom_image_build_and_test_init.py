@@ -1,9 +1,11 @@
+import glob
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
 
 import click
 
@@ -19,12 +21,60 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
 )
 from ray_release.configs.global_config import init_global_config
-from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
+from ray_release.custom_byod_build_init_helper import (
+    build_short_gpu_map,
+    collect_rayci_select_keys,
+    create_custom_build_yaml,
+)
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
+
+# Buildkite rejects single pipeline uploads above an organization limit (500
+# at time of writing). We split below that with headroom so future growth
+# or step multipliers we don't account for don't trip the limit again.
+DEFAULT_MAX_JOBS_PER_UPLOAD = 450
+
+
+def _group_job_count(group: Dict[str, Any]) -> int:
+    """Count Buildkite jobs for a group step, including the group itself."""
+    total = 1
+    for step in group.get("steps", []):
+        if isinstance(step, dict):
+            parallelism = step.get("parallelism")
+            if isinstance(parallelism, int) and parallelism > 1:
+                total += parallelism
+                continue
+        total += 1
+    return total
+
+
+def _split_into_batches(
+    steps: List[Dict[str, Any]], max_jobs: int
+) -> List[List[Dict[str, Any]]]:
+    """Greedy-pack top-level group steps into batches of <= max_jobs.
+
+    Groups are atomic: we never split a single group across batches, so if
+    any group alone exceeds max_jobs the caller must split that group.
+    """
+    batches: List[List[Dict[str, Any]]] = [[]]
+    current_count = 0
+    for group in steps:
+        n = _group_job_count(group)
+        if n > max_jobs:
+            raise ValueError(
+                f"group {group.get('group', '<unnamed>')!r} has {n} jobs, "
+                f"exceeds the limit of {max_jobs}; split this group into "
+                f"smaller groups"
+            )
+        if current_count + n > max_jobs and batches[-1]:
+            batches.append([])
+            current_count = 0
+        batches[-1].append(group)
+        current_count += n
+    return batches
 
 
 @click.command(
@@ -84,7 +134,41 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 @click.option(
     "--test-jobs-output-file",
     type=str,
-    help="The output file for the test jobs json file",
+    help=(
+        "Base path for the test jobs JSON output. The actual output files are "
+        "chunked as <stem>_0.json, <stem>_1.json, ... to stay under the "
+        "Buildkite per-upload job limit; callers should upload each chunk in "
+        "order."
+    ),
+)
+@click.option(
+    "--max-jobs-per-upload",
+    default=DEFAULT_MAX_JOBS_PER_UPLOAD,
+    type=int,
+    help=(
+        "Maximum Buildkite jobs per output chunk file. Counts each group as 1 "
+        "job plus its steps, with `parallelism: N` steps expanding to N jobs."
+    ),
+)
+@click.option(
+    "--rayci-select-output-file",
+    type=str,
+    help="Output file for RAYCI_SELECT (comma-separated base-image publish step keys).",
+)
+@click.option(
+    "--selection-block-threshold",
+    type=int,
+    default=0,
+    help="Number of tests to trigger before asking for confirmation when manually triggered; set to 0 to disable blocking regardless of the number of tests.",
+)
+@click.option(
+    "--upload-to-buildkite",
+    is_flag=True,
+    default=False,
+    help=(
+        "After writing chunk files, upload each one in order via "
+        "`buildkite-agent pipeline upload`."
+    ),
 )
 def main(
     test_collection_file: Tuple[str],
@@ -96,6 +180,10 @@ def main(
     run_per_test: int = 1,
     custom_build_jobs_output_file: str = None,
     test_jobs_output_file: str = None,
+    max_jobs_per_upload: int = DEFAULT_MAX_JOBS_PER_UPLOAD,
+    rayci_select_output_file: str = None,
+    selection_block_threshold: int = 0,
+    upload_to_buildkite: bool = False,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -137,11 +225,17 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
+
+    gpu_map = build_short_gpu_map(os.path.join(_bazel_workspace_dir, "ray-images.json"))
+
     # Generate custom image build steps
     create_custom_build_yaml(
         os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),
         tests,
+        gpu_map,
     )
+
+    rayci_select_keys = collect_rayci_select_keys(tests, gpu_map)
 
     # Generate test job steps
     grouped_tests = group_tests(filtered_tests)
@@ -173,8 +267,11 @@ def main(
     # If the build is manually triggered and there are more than 5 tests
     # Ask user to confirm before launching the tests.
     block_step = None
-    if test_filters and len(tests) >= 5 and os.environ.get("AUTOMATIC", "") != "1":
-        block_step = generate_block_step(len(tests))
+
+    is_automatic = os.environ.get("AUTOMATIC", "") == "1"
+    if not is_automatic and test_filters and selection_block_threshold > 0:
+        if len(tests) >= selection_block_threshold:
+            block_step = generate_block_step(len(tests))
 
     steps = get_step_for_test_group(
         grouped_tests,
@@ -185,6 +282,7 @@ def main(
         global_config=global_config,
         is_concurrency_limit=not no_concurrency_limit,
         block_step_key=block_step["key"] if block_step else None,
+        gpu_map=gpu_map,
     )
     steps = [{"group": "block", "steps": [block_step]}] + steps if block_step else steps
 
@@ -195,11 +293,42 @@ def main(
 
         with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
             json.dump(steps, fp)
-        with open(
-            os.path.join(_bazel_workspace_dir, test_jobs_output_file),
-            "wt",
-        ) as fp:
-            json.dump(steps, fp)
+
+        batches = _split_into_batches(steps, max_jobs_per_upload)
+        output_stem, output_ext = os.path.splitext(test_jobs_output_file)
+        for stale in glob.glob(
+            os.path.join(_bazel_workspace_dir, f"{output_stem}_*{output_ext}")
+        ):
+            os.remove(stale)
+        chunk_paths = []
+        for i, batch in enumerate(batches):
+            chunk_path = os.path.join(
+                _bazel_workspace_dir, f"{output_stem}_{i}{output_ext}"
+            )
+            with open(chunk_path, "wt") as fp:
+                json.dump(batch, fp)
+            chunk_paths.append(chunk_path)
+        logger.info(
+            f"Wrote {len(batches)} chunk file(s) for "
+            f"{sum(_group_job_count(g) for g in steps)} total jobs."
+        )
+
+        # Only emit RAYCI_SELECT when a filter narrows the test set; an unfiltered
+        # run (e.g. full nightly) wants the complete image pipeline.
+        if rayci_select_output_file and test_filters:
+            with open(
+                os.path.join(_bazel_workspace_dir, rayci_select_output_file),
+                "wt",
+            ) as fp:
+                fp.write(",".join(sorted(rayci_select_keys)))
+
+        if upload_to_buildkite:
+            for chunk_path in chunk_paths:
+                logger.info(f"Uploading {chunk_path}")
+                subprocess.run(
+                    ["buildkite-agent", "pipeline", "upload", chunk_path],
+                    check=True,
+                )
 
         settings["frequency"] = settings["frequency"].value
         settings["priority"] = settings["priority"].value

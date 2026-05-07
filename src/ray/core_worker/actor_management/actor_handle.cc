@@ -145,6 +145,7 @@ void ActorHandle::SetActorTaskSpec(
     int max_retries,
     bool retry_exceptions,
     const std::string &serialized_retry_exception_allowlist,
+    const std::string &concurrency_group_name,
     const std::optional<std::string> &tensor_transport) {
   absl::MutexLock guard(&mutex_);
   // Build actor task spec.
@@ -156,14 +157,16 @@ void ActorHandle::SetActorTaskSpec(
                            max_retries,
                            retry_exceptions,
                            serialized_retry_exception_allowlist,
-                           task_counter_++,
+                           concurrency_group_counters_[concurrency_group_name]++,
                            tensor_transport);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
-  mutable_spec->set_sequence_number(task_counter_++);
+  const std::string &group = spec.ConcurrencyGroupName();
+  mutable_spec->set_concurrency_group_sequence_number(
+      concurrency_group_counters_[group]++);
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }

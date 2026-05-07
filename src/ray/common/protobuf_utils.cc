@@ -232,6 +232,10 @@ void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_s
     *task_info->mutable_label_selector() =
         ray::LabelSelector(task_spec.GetMessage().label_selector()).ToStringMap();
   }
+  if (task_spec.GetMessage().has_fallback_strategy()) {
+    task_info->mutable_fallback_strategy()->CopyFrom(
+        task_spec.GetMessage().fallback_strategy());
+  }
 }
 
 void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,

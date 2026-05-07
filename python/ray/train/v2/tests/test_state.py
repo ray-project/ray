@@ -1,3 +1,4 @@
+import importlib
 import time
 from collections import OrderedDict
 from unittest.mock import MagicMock, patch
@@ -6,7 +7,17 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
+from ray.data._internal.execution.interfaces.execution_options import (
+    ExecutionOptions,
+    ExecutionResources,
+)
+from ray.runtime_env import RuntimeEnv
+from ray.train import BackendConfig, DataConfig
+from ray.train.v2._internal.callbacks.state_manager import (
+    StateManagerCallback,
+    TrainingFramework,
+    _get_framework_version,
+)
 from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.controller.state import (
@@ -29,8 +40,17 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
+    DataExecutionOptions,
+    ExecutionOptions as ExecutionOptionsSchema,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
+    RunSettings,
     RunStatus,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -40,7 +60,17 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
-from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
+from ray.train.v2._internal.state.util import (
+    _DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+    construct_data_config,
+    execution_options_to_model,
+)
+from ray.train.v2.api.config import (
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+)
 from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 from ray.train.v2.tests.util import (
     create_dummy_run_context,
@@ -115,6 +145,10 @@ def mock_worker_group(mock_worker_group_context, mock_worker):
     group.get_worker_group_context.return_value = mock_worker_group_context
     group.get_worker_group_state.return_value = MagicMock(workers=[mock_worker])
     group.get_latest_poll_status.return_value = None
+
+    # Mocks the return value of _get_framework_version
+    group.execute_single.return_value = {"ray": ray.__version__}
+
     return group
 
 
@@ -138,9 +172,14 @@ def callback(monkeypatch):
         lambda: expected_controller_log_path,
     )
 
-    callback = StateManagerCallback()
+    callback = StateManagerCallback(datasets={})
     callback.after_controller_start(train_run_context=create_dummy_run_context())
     return callback
+
+
+# =============================================================================
+# TrainStateActor: CRUD and dead-controller reconciliation
+# =============================================================================
 
 
 def test_train_state_actor_create_and_get_run(ray_start_regular):
@@ -156,7 +195,46 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
         status_detail=None,
         controller_actor_id="controller_1",
         start_time_ns=1000,
+        end_time_ns=None,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config=None,
+            backend_config=BackendConfigSchema(framework=None, config={}),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                resources_per_worker=None,
+                placement_strategy="PACK",
+                accelerator_type=None,
+                use_tpu=False,
+                topology=None,
+                bundle_label_selector=None,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                data_execution_options=DataExecutionOptions(
+                    default=execution_options_to_model(
+                        DataConfig.default_ingest_options()
+                    ),
+                ),
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(
+                    num_to_keep=None,
+                    checkpoint_score_attribute=None,
+                    checkpoint_score_order="max",
+                ),
+                storage_path="s3://bucket/path",
+            ),
+        ),
     )
 
     ray.get(actor.create_or_update_train_run.remote(run))
@@ -233,7 +311,10 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
 
     # Create TrainStateActor with interesting runs and run attempts.
     # NOTE: TrainStateActor will poll for real but its updates are idempotent.
-    actor = TrainStateActor(enable_state_actor_reconciliation=True)
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        controllers_to_poll_per_iteration=5,
+    )
     finished_controller_run = create_mock_train_run(
         status=RunStatus.FINISHED,
         controller_actor_id="finished_controller_id",
@@ -399,6 +480,11 @@ def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
     assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
 
 
+# =============================================================================
+# TrainStateManager: run and run-attempt lifecycle
+# =============================================================================
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -411,6 +497,19 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
         job_id="job_1",
         controller_actor_id="controller_1",
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(
+            name="test",
+            failure_config=FailureConfig(max_failures=1),
+            worker_runtime_env={"type": "conda"},
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
+            storage_path="s3://bucket/path",
+            storage_filesystem=None,
+        ),
+        train_loop_config={"epochs": 10},
+        scaling_config=ScalingConfig(num_workers=2),
+        backend_config=BackendConfig(),
+        datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
+        dataset_config=DataConfig(datasets_to_split="all"),
     )
 
     def get_run():
@@ -452,6 +551,18 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
         job_id="job_1",
         controller_actor_id="controller_1",
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(
+            name="test",
+            failure_config=FailureConfig(max_failures=1),
+            worker_runtime_env=RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"}),
+            checkpoint_config=CheckpointConfig(),
+            storage_path="s3://bucket/path",
+        ),
+        train_loop_config={"epochs": 10},
+        scaling_config=ScalingConfig(num_workers=2),
+        backend_config=BackendConfig(),
+        datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
+        dataset_config=DataConfig(datasets_to_split="all"),
     )
 
     # Test attempt creation
@@ -509,6 +620,11 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     assert attempt.end_time_ns is not None
     assert len(attempt.workers) == 2
     assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
+
+
+# =============================================================================
+# StateManagerCallback: controller state, worker group, and log paths
+# =============================================================================
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
@@ -692,7 +808,7 @@ def test_callback_log_file_paths(
     )
 
     # Create the callback
-    callback = StateManagerCallback()
+    callback = StateManagerCallback(datasets={})
 
     # Initialize the callback
     callback.after_controller_start(train_run_context=create_dummy_run_context())
@@ -716,6 +832,10 @@ def test_callback_log_file_paths(
     mock_worker_group.get_worker_group_state.return_value = MagicMock(
         workers=[mock_worker]
     )
+
+    # Mocks the return value of _get_framework_version
+    mock_worker_group.execute_single.return_value = {"ray": ray.__version__}
+
     # mock_worker_group.get_latest_poll_status.return_value = None
 
     # Start the worker group
@@ -727,6 +847,183 @@ def test_callback_log_file_paths(
     attempt = list(attempts.values())[0][mock_worker_group_context.run_attempt_id]
     assert len(attempt.workers) == 1
     assert attempt.workers[0].log_file_path == mock_worker.log_file_path
+
+
+# =============================================================================
+# Helpers: framework version detection and DataConfig serialization
+# =============================================================================
+
+
+def test_get_framework_version():
+    """Test _get_framework_version with None and every TrainingFramework value."""
+    # None should return only the ray version.
+    versions = _get_framework_version(None)
+    assert list(versions.keys()) == ["ray"]
+    assert versions["ray"] == ray.__version__
+
+    # Each framework should return ray + versions for all importable modules.
+    for framework in TrainingFramework:
+        versions = _get_framework_version(framework)
+        assert "ray" in versions
+        assert versions["ray"] == ray.__version__
+
+        for module_name in framework.module_names():
+            try:
+                module = importlib.import_module(module_name)
+                assert module_name in versions
+                assert versions[module_name] == module.__version__
+            except ModuleNotFoundError:
+                assert module_name not in versions
+
+
+def test_execution_options_to_model_defaults_and_custom():
+    """Test execution_options_to_model with default and fully customized options."""
+    # Default options
+    default_result = execution_options_to_model(ExecutionOptions())
+    assert isinstance(default_result, ExecutionOptionsSchema)
+    assert default_result.preserve_order is False
+    assert default_result.actor_locality_enabled is True
+
+    # All custom values
+    custom_result = execution_options_to_model(
+        ExecutionOptions(
+            resource_limits=ExecutionResources(
+                cpu=8.0, gpu=4.0, object_store_memory=1e9
+            ),
+            exclude_resources=ExecutionResources(cpu=2.0, gpu=0.5),
+            preserve_order=True,
+            actor_locality_enabled=False,
+            verbose_progress=False,
+        )
+    )
+    assert custom_result.resource_limits["CPU"] == 8.0
+    assert custom_result.resource_limits["GPU"] == 4.0
+    assert custom_result.resource_limits["object_store_memory"] == 1e9
+    assert custom_result.exclude_resources["CPU"] == 2.0
+    assert custom_result.exclude_resources["GPU"] == 0.5
+    assert custom_result.preserve_order is True
+    assert custom_result.actor_locality_enabled is False
+    assert custom_result.verbose_progress is False
+
+
+def test_construct_data_config_defaults_and_split_variants():
+    """Test construct_data_config with default config and different split options."""
+    # Default: data_execution_options.default mirrors the library default ingest
+    # options and per_dataset_execution_options is empty.
+    default = construct_data_config(DataConfig())
+    assert isinstance(default, DataConfigSchema)
+    assert default.datasets_to_split == "all"
+    assert default.enable_shard_locality is True
+    assert isinstance(default.data_execution_options, DataExecutionOptions)
+    assert default.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    assert default.data_execution_options.per_dataset_execution_options == {}
+
+    # Specific dataset list
+    result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
+    assert result.datasets_to_split == ["train", "eval"]
+
+    # Empty list
+    result = construct_data_config(DataConfig(datasets_to_split=[]))
+    assert result.datasets_to_split == []
+
+    # Shard locality disabled
+    result = construct_data_config(DataConfig(enable_shard_locality=False))
+    assert result.enable_shard_locality is False
+
+
+def test_construct_data_config_single_execution_options():
+    """A single ExecutionOptions lands in data_execution_options.default and
+    leaves per_dataset_execution_options empty."""
+    shared = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=8.0, gpu=2.0),
+        exclude_resources=ExecutionResources(cpu=1.0),
+        preserve_order=True,
+        actor_locality_enabled=False,
+        verbose_progress=False,
+    )
+    result = construct_data_config(
+        DataConfig(
+            datasets_to_split=["train", "eval"],
+            execution_options=shared,
+        )
+    )
+
+    assert result.data_execution_options.default == execution_options_to_model(shared)
+    assert result.data_execution_options.per_dataset_execution_options == {}
+
+
+def test_construct_data_config_per_dataset_execution_options():
+    """Per-dataset ExecutionOptions land in per_dataset_execution_options while
+    default remains the library default."""
+    config = DataConfig(
+        datasets_to_split=["ds1", "ds2", "ds3"],
+        execution_options={
+            "ds1": ExecutionOptions(
+                resource_limits=ExecutionResources(cpu=16.0, gpu=8.0),
+                exclude_resources=ExecutionResources(cpu=4.0),
+                preserve_order=True,
+                actor_locality_enabled=False,
+                verbose_progress=False,
+            ),
+            "ds2": ExecutionOptions(
+                verbose_progress=False,
+            ),
+            "ds3": ExecutionOptions(
+                exclude_resources=ExecutionResources(cpu=0.5, gpu=0.5),
+            ),
+        },
+        enable_shard_locality=False,
+    )
+    result = construct_data_config(config)
+
+    assert result.datasets_to_split == ["ds1", "ds2", "ds3"]
+    assert result.enable_shard_locality is False
+
+    # default reflects the library default ingest options.
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"ds1", "ds2", "ds3"}
+
+    ds1 = overrides["ds1"]
+    assert ds1.resource_limits["CPU"] == 16.0
+    assert ds1.resource_limits["GPU"] == 8.0
+    assert ds1.exclude_resources["CPU"] == 4.0
+    assert ds1.preserve_order is True
+    assert ds1.actor_locality_enabled is False
+    assert ds1.verbose_progress is False
+
+    ds2 = overrides["ds2"]
+    assert ds2.verbose_progress is False
+
+    ds3 = overrides["ds3"]
+    assert ds3.exclude_resources["CPU"] == 0.5
+    assert ds3.exclude_resources["GPU"] == 0.5
+
+
+def test_construct_data_config_partial_per_dataset_execution_options():
+    """User dict covering a subset of datasets populates only those overrides
+    while default remains the library default."""
+    custom = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=4.0),
+        preserve_order=True,
+    )
+    config = DataConfig(
+        datasets_to_split=["train", "eval", "predict"],
+        execution_options={"train": custom},
+    )
+    result = construct_data_config(config)
+
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"train"}
+    assert overrides["train"] == execution_options_to_model(custom)
 
 
 if __name__ == "__main__":

@@ -485,6 +485,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # environment `observations` and `infos` will always be returned for the
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
+                kwargs = {
+                    Columns.OBS: observations,
+                    Columns.ACTIONS: actions,
+                    Columns.REWARDS: rewards,
+                    Columns.INFOS: infos,
+                    Columns.TERMINATEDS: terminateds,
+                    Columns.TRUNCATEDS: truncateds,
+                }
                 if done_episodes_to_run_env_to_module:
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
@@ -499,6 +507,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         rl_module=self.module,
                         shared_data=self._shared_data,
                         metrics=None,
+                        **kwargs,
                     )
                 self._cached_to_module = self._env_to_module(
                     episodes=self._ongoing_episodes,
@@ -508,6 +517,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                    **kwargs,
                 )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
@@ -585,6 +595,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
+            kwargs = {
+                Columns.OBS: observations,
+                Columns.INFOS: infos,
+            }
             self._cached_to_module = self._env_to_module(
                 rl_module=self.module,
                 episodes=episodes,
@@ -592,6 +606,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 shared_data=shared_data,
                 metrics=self.metrics,
                 metrics_key_prefix=(ENV_TO_MODULE_CONNECTOR,),
+                **kwargs,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -776,8 +791,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_env(self):
-        # If an env already exists, try closing it first (to allow it to properly
-        # cleanup).
         if self.env is not None:
             try:
                 self.env.close()
@@ -842,29 +855,19 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # self.num_envs = 1
         # If required, check the created MultiAgentEnv instances.
         if not self.config.disable_env_checking:
-            try:
-                for env in self.env.envs:
-                    check_multiagent_environments(env.unwrapped)
-            except Exception as e:
-                logger.exception(e.args[0])
+            for env in self.env.envs:
+                check_multiagent_environments(env.unwrapped)
         # If not required, still check the type (must be `VectorMultiAgentEnv``).
         else:
-            try:
-                assert isinstance(self.env, VectorMultiAgentEnv)
-                assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv)
-            except AssertionError:
-                logger.exception(
-                    "When using the `MultiAgentEnvRunner`, the environment must "
-                    f"inherit from `ray.rllib.env.vector.vector_multi_agent_env."
-                    f"VectorMultiAgentEnv` (but yours is {self.env}) and the individual"
-                    " envs must inherit from `MultiAgentEnv` (but yours is "
-                    f"{self.env.envs[0].unwrapped})!"
-                )
-            except TypeError:
-                logger.exception(
-                    "When using the `MultiAgentEnvRunner`, the env must "
-                    "have a subscriptable `self.envs` attribute!"
-                )
+            assert isinstance(self.env, VectorMultiAgentEnv), (
+                "When using the `MultiAgentEnvRunner`, the environment must inherit "
+                f"from `VectorMultiAgentEnv` (but yours is {self.env})."
+            )
+            assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv), (
+                "When using the `MultiAgentEnvRunner`, the individual envs must "
+                f"inherit from `MultiAgentEnv` (but yours is "
+                f"{self.env.envs[0].unwrapped})."
+            )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True

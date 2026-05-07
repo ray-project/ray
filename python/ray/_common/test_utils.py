@@ -445,19 +445,22 @@ class PrometheusTimeseries:
         self.metric_samples.clear()
 
 
-def fetch_raw_prometheus(prom_addresses):
+def fetch_raw_prometheus(prom_addresses, timeout=None):
     # Local import so minimal dependency tests can run without requests
     import requests
 
     for address in prom_addresses:
         try:
-            response = requests.get(f"http://{address}/metrics")
+            kwargs = {} if timeout is None else {"timeout": timeout}
+            response = requests.get(f"http://{address}/metrics", **kwargs)
             yield address, response.text
         except requests.exceptions.ConnectionError:
             continue
+        except requests.exceptions.Timeout:
+            continue
 
 
-def fetch_prometheus(prom_addresses):
+def fetch_prometheus(prom_addresses, timeout=None):
     components_dict = {}
     metric_descriptors = {}
     metric_samples = []
@@ -466,7 +469,7 @@ def fetch_prometheus(prom_addresses):
         if address not in components_dict:
             components_dict[address] = set()
 
-    for address, response in fetch_raw_prometheus(prom_addresses):
+    for address, response in fetch_raw_prometheus(prom_addresses, timeout=timeout):
         for metric in text_string_to_metric_families(response):
             for sample in metric.samples:
                 metric_descriptors[sample.name] = metric
@@ -479,9 +482,10 @@ def fetch_prometheus(prom_addresses):
 def fetch_prometheus_timeseries(
     prom_addreses: List[str],
     result: PrometheusTimeseries,
+    timeout=None,
 ) -> PrometheusTimeseries:
     components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-        prom_addreses
+        prom_addreses, timeout=timeout
     )
     for address, components in components_dict.items():
         if address not in result.components_dict:
@@ -513,10 +517,12 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
 
 
 def fetch_prometheus_metric_timeseries(
-    prom_addresses: List[str], result: PrometheusTimeseries
+    prom_addresses: List[str],
+    result: PrometheusTimeseries,
+    timeout=None,
 ) -> Dict[str, List[Any]]:
     samples = fetch_prometheus_timeseries(
-        prom_addresses, result
+        prom_addresses, result, timeout=timeout
     ).metric_samples.values()
     samples_by_name = defaultdict(list)
     for sample in samples:

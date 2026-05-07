@@ -3,35 +3,50 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG ARROW_VERSION=23.*
-ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
+ARG IMAGE_TYPE=base
+ARG PYTHON=3.10
+ARG PYTHON_DEPSET=python/deplocks/ci/data-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
+
+COPY $PYTHON_DEPSET /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-ice"]
-
-COPY . .
 
 RUN <<EOF
 #!/bin/bash
 
 set -ex
 
-DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
-  ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-if [[ -n "$ARROW_MONGO_VERSION" ]]; then
-  # Older versions of Arrow Mongo require an older version of NumPy.
-  pip install numpy==1.23.5
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+
+if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
+  uv pip install \
+    --system \
+    --prerelease allow \
+    --extra-index-url https://pypi.fury.io/arrow-nightlies/ \
+    --upgrade-package pyarrow \
+    pyarrow
 fi
 
-# Install MongoDB
-sudo apt-get purge -y mongodb*
-sudo apt-get install -y mongodb
-sudo rm -rf /var/lib/mongodb/mongod.lock
+curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] \
+  https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+sudo apt-get update
+sudo apt-get install -y mongodb-org
 
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them
   # as needed.
   sudo apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
+  # Ensure Java 8 is the default; Ubuntu 22.04 defaults to Java 11 which
+  # breaks Spark's reflective access to DirectByteBuffer.
+  if [[ "$(dpkg --print-architecture)" == "arm64" ]]; then
+      sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-arm64/jre/bin/java
+  else
+      sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java
+  fi
 fi
 
 EOF

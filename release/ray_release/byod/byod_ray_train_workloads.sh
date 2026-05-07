@@ -14,7 +14,7 @@ pip3 install --no-cache-dir \
     "datasets==2.19.2" \
     "lightning==2.5.5" \
     "scikit-learn==1.7.2" \
-    "xgboost==3.0.5" \
+    "xgboost-cpu==3.0.5" \
     "seaborn==0.13.2" \
     "statsmodels==0.14.5" \
     "pycocotools==2.0.10" \

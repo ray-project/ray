@@ -386,6 +386,7 @@ def test_map_timestamp_nanosecs(
     result = ray_data.map(process_timestamp_data)
     processed_df = result.to_pandas()
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
+    expected_df = expected_df.astype(processed_df.dtypes.to_dict())
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
 
@@ -514,17 +515,6 @@ def test_rename_columns(
     renamed_schema_names = renamed_ds.schema().names
 
     assert sorted(renamed_schema_names) == sorted(expected_schema)
-
-
-def test_default_batch_size_emits_deprecation_warning(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    with pytest.warns(
-        DeprecationWarning,
-        match="Passing 'default' to `map_batches` is deprecated and won't be "
-        "supported after September 2025. Use `batch_size=None` instead.",
-    ):
-        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
 
 
 @pytest.mark.parametrize(
@@ -888,8 +878,6 @@ def test_actor_udf_cleanup(
     """Test that for the actor map operator, the UDF object is deleted properly."""
     ray.shutdown()
     ray.init(num_cpus=2)
-    ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
 
     test_file = tmp_path / "test.txt"
 

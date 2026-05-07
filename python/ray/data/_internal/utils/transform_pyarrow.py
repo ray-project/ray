@@ -1,5 +1,3 @@
-from ray.data._internal.tensor_extensions.arrow import concat_tensor_arrays
-
 try:
     import pyarrow
 except ImportError:
@@ -10,7 +8,15 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     """Whether the provided Arrow Table column is an extension array, using an Arrow
     extension type.
     """
-    return isinstance(pa_type, pyarrow.ExtensionType)
+    # NOTE: Native Tensors are also BaseExtensionType
+    return isinstance(pa_type, pyarrow.BaseExtensionType)
+
+
+def _is_native_tensor_type(t: "pyarrow.BaseExtentionType") -> bool:
+    """Whether the provided Arrow Table column is an native Tensor array"""
+    from ray.data.extensions import FixedShapeTensorType
+
+    return FixedShapeTensorType is not None and isinstance(t, FixedShapeTensorType)
 
 
 def _concatenate_extension_column(
@@ -30,6 +36,7 @@ def _concatenate_extension_column(
         Array: the concatenate extension column.
     """
     from ray.data._internal.tensor_extensions.arrow import (
+        concat_tensor_arrays,
         get_arrow_extension_tensor_types,
     )
 

@@ -1,10 +1,10 @@
 """The vLLM engine processor."""
 
 import logging
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Optional
 
 import transformers
-from pydantic import ConfigDict, Field, root_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -40,8 +40,8 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
-from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
@@ -52,21 +52,6 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
-
-
-class BundleSchema(BaseModelExtended):
-    model_config = ConfigDict(extra="allow")
-    CPU: Optional[int] = Field(default=1, description="The number of CPUs per bundle.")
-    GPU: Optional[int] = Field(default=1, description="The number of GPUs per bundle.")
-
-
-class PlacementGroupSchema(BaseModelExtended):
-    bundles: List[BundleSchema] = Field(
-        default_factory=list, description="The bundles for the placement group."
-    )
-    strategy: Literal["PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"] = Field(
-        default="PACK", description="The strategy for the placement group."
-    )
 
 
 class vLLMEngineProcessorConfig(OfflineProcessorConfig):
@@ -104,13 +89,15 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Ray placement group configuration for scheduling vLLM engine workers. "
-        "Should be a dictionary with 'bundles' (list of resource dicts, e.g., {'CPU': 1, 'GPU': 1}) "
-        "and an optional 'strategy' key ('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
-        "For ray distributed executor backend, each bundle must specify at most one GPU. "
-        "For mp backend, the 'strategy' field is ignored.",
+        "Can specify either 'bundle_per_worker' (auto-replicated by tp*pp) or 'bundles' "
+        "(full list of resource dicts). Optionally include 'strategy' key "
+        "('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
+        "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}, 'strategy': 'SPREAD'}. "
+        "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}.",
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def validate_task_type(cls, values):
         task_type = values.get("task_type", vLLMTaskType.GENERATE)
         if task_type not in vLLMTaskType.values():
@@ -131,14 +118,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         values["engine_kwargs"] = engine_kwargs
         return values
 
-    @root_validator(pre=True)
-    def validate_placement_group_config(cls, values):
-        placement_group_config = values.get("placement_group_config")
-        if placement_group_config is not None:
-            values["placement_group_config"] = PlacementGroupSchema(
-                **placement_group_config
-            ).model_dump()
-        return values
+    @field_validator("placement_group_config")
+    @classmethod
+    def validate_placement_group_config(cls, value):
+        if value is None:
+            return None
+        # Validate through PlacementGroupConfig, then dump back to dict
+        validated = PlacementGroupConfig(**value)
+        return validated.model_dump()
 
 
 def build_vllm_engine_processor(
@@ -174,6 +161,7 @@ def build_vllm_engine_processor(
     stages = []
 
     # Prepare processor defaults for merging into stage configs
+    trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)
     processor_defaults = {
         "batch_size": config.batch_size,
         "concurrency": config.concurrency,
@@ -249,6 +237,7 @@ def build_vllm_engine_processor(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
                     ),
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
@@ -265,6 +254,7 @@ def build_vllm_engine_processor(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
@@ -293,7 +283,7 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    **config.get_concurrency(autoscaling_enabled=False),
+                    **config.get_concurrency(autoscaling_enabled=True),
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -319,6 +309,7 @@ def build_vllm_engine_processor(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=detokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
@@ -326,7 +317,11 @@ def build_vllm_engine_processor(
 
     # We download the config files here so that we can report the underlying architecture to the telemetry system.
     # This should be a lightweight operation.
-    if config.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
+    # Use EXCLUDE_SAFETENSORS for streaming formats or trust_remote_code models,
+    # since custom model architectures require Python config files to be downloaded.
+    if config.engine_kwargs.get(
+        "load_format", None
+    ) in STREAMING_LOAD_FORMATS or config.engine_kwargs.get("trust_remote_code", False):
         download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
     else:
         download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY

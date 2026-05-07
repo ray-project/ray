@@ -33,6 +33,9 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
+from ray._raylet import GcsClient
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -193,7 +196,7 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-# TODO(qwang): Remove these hepler functions
+# TODO(qwang): Remove these helper functions
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
@@ -275,7 +278,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
         ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
+        False,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
@@ -494,7 +497,7 @@ def get_cgroup_used_memory(
 ):
     """
     The calculation logic is the same with `GetCGroupMemoryUsedBytes`
-    in `memory_monitor.cc` file.
+    in `memory_monitor_utils.cc` file.
     """
     inactive_file_bytes = -1
     active_file_bytes = -1
@@ -696,7 +699,7 @@ def check_oversized_function(
 
 
 def is_main_thread():
-    return threading.current_thread().getName() == "MainThread"
+    return threading.current_thread().name == "MainThread"
 
 
 def detect_fate_sharing_support_win32():
@@ -1172,6 +1175,53 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
+def get_all_node_info_until_retrieved(
+    gcs_client: GcsClient,
+    node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
+    state_filter: Optional[int] = None,
+    num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
+    timeout_per_retry: Optional[int | float] = None,
+) -> List[GcsNodeInfo]:
+    """
+    Get all node info from GCS with retry until the node info is found.
+
+    Raises:
+        Exception: If the node info is not found after the retries,
+                   Or the RPC error getting the node info from GCS.
+
+    Args:
+        gcs_client: The GCS client.
+        node_selectors: The attributes to filter the node info.
+        state_filter: The state to filter the node info.
+        num_retries: The number of retries.
+        timeout_per_retry: The timeout per request to get the node info.
+
+    Returns:
+        The list of node info matching the selectors and state filter.
+    """
+    node_infos = []
+    for _ in range(num_retries):
+        try:
+            node_infos = gcs_client.get_all_node_info(
+                timeout=timeout_per_retry,
+                node_selectors=node_selectors,
+                state_filter=state_filter,
+            ).values()
+        except Exception as e:
+            logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
+            node_infos = []
+
+        if node_infos:
+            break
+        time.sleep(2)
+
+    if not node_infos:
+        raise Exception(
+            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+        )
+    return node_infos
+
+
 def parse_resources_json(
     resources: str, cli_logger, cf, command_arg="--resources"
 ) -> Dict[str, float]:
@@ -1612,18 +1662,15 @@ def parse_pg_formatted_resources_to_original(
 def validate_actor_state_name(actor_state_name):
     if actor_state_name is None:
         return
-    actor_state_names = [
-        "DEPENDENCIES_UNREADY",
-        "PENDING_CREATION",
-        "ALIVE",
-        "RESTARTING",
-        "DEAD",
-    ]
-    if actor_state_name not in actor_state_names:
+
+    from ray._private.custom_types import ACTOR_STATUS
+
+    if actor_state_name not in ACTOR_STATUS:
+        quoted = [f'"{s}"' for s in ACTOR_STATUS]
+        states_str = ", ".join(quoted[:-1]) + f", or {quoted[-1]}"
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            'it must be one of the following: "DEPENDENCIES_UNREADY", '
-            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+            f"it must be one of the following: {states_str}"
         )
 
 

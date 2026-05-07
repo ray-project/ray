@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
@@ -34,7 +35,8 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     rpc::RayletClientPool &raylet_client_pool,
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
-    pubsub::GcsPublisher *gcs_publisher)
+    pubsub::GcsPublisher *gcs_publisher,
+    pubsub::ObservabilityPublisher *observability_publisher)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
@@ -42,7 +44,8 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
       raylet_client_pool_(raylet_client_pool),
       kv_(kv),
       io_context_(io_context),
-      gcs_publisher_(gcs_publisher) {}
+      gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -88,11 +91,11 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "This feature will be turned on by default in a future release of Ray.";
       RAY_LOG_EVERY_MS(WARNING, 60000) << error_message;
 
-      if (gcs_publisher_ != nullptr) {
+      if (observability_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
         auto error_data = CreateErrorTableData(
             error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        gcs_publisher_->PublishError(session_name_, std::move(error_data));
+        observability_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
@@ -253,6 +256,27 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       if (pg_constraint.has_value()) {
         legacy_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
         bundle_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
+      }
+    }
+
+    // Populate locality_requirement if this PG uses label-domain scheduling.
+    // TODO(#61777): Add support for multiple tiers of label domains.
+    const auto &label_domain_key = pg_data.label_domain_key();
+    if (!label_domain_key.empty()) {
+      auto *locality_req = bundle_selector->mutable_locality_requirement();
+      auto *locality_constraint = locality_req->mutable_locality_constraint();
+      locality_constraint->set_label_name(label_domain_key);
+      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+
+      // If the PG already has a domain assignment (rescheduling case),
+      // add a label selector to constrain to that specific domain.
+      const auto &assignments = pg_data.label_domain_assignments();
+      if (auto it = assignments.find(label_domain_key); it != assignments.end()) {
+        auto *label_constraint =
+            locality_req->mutable_label_selector()->add_label_constraints();
+        label_constraint->set_label_key(label_domain_key);
+        label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+        label_constraint->add_label_values(it->second);
       }
     }
   }
@@ -456,12 +480,14 @@ void GcsAutoscalerStateManager::GetNodeStates(
 void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::SendReplyCallback send_reply_callback,
+    const std::string &grpc_peer) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id)
       << "HandleDrainNode, reason: " << request.reason_message()
-      << ", deadline: " << request.deadline_timestamp_ms();
+      << ", deadline: " << request.deadline_timestamp_ms()
+      << ", grpc_peer: " << grpc_peer;
 
   int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
   if (draining_deadline_timestamp_ms < 0) {
@@ -514,6 +540,47 @@ void GcsAutoscalerStateManager::HandleDrainNode(
                                               "will not be drained. Rejection reason: "
                                            << raylet_reply.rejection_reason_message();
           reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
+        }
+        send_reply_callback(status, nullptr, nullptr);
+      });
+}
+
+void GcsAutoscalerStateManager::HandleResizeRayletResourceInstances(
+    rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
+    rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (request.node_id().size() != NodeID::Size()) {
+    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                            "Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size())),
+                        nullptr,
+                        nullptr);
+    return;
+  }
+  const NodeID node_id = NodeID::FromBinary(request.node_id());
+
+  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> maybe_node =
+      gcs_node_manager_.GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
+    send_reply_callback(
+        Status::NotFound(absl::StrFormat("Raylet %s is not alive.", node_id.Hex())),
+        nullptr,
+        nullptr);
+    return;
+  }
+
+  auto &node = maybe_node.value();
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  raylet_client->ResizeLocalResourceInstances(
+      std::move(*request.mutable_resources()),
+      [reply, send_reply_callback](
+          const Status &status, rpc::ResizeLocalResourceInstancesReply &&raylet_reply) {
+        if (status.ok()) {
+          *reply->mutable_total_resources() =
+              std::move(*raylet_reply.mutable_total_resources());
         }
         send_reply_callback(status, nullptr, nullptr);
       });

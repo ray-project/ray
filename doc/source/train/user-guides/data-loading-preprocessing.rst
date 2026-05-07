@@ -67,7 +67,7 @@ Data ingestion can be set up with four basic steps:
                 batch["y"] = batch["y"] + 1
                 return batch
 
-            train_dataset = train_dataset.map_batches(increment)
+            train_dataset = train_dataset.map_batches(increment, batch_size="auto")
 
 
             def train_func():
@@ -634,7 +634,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Preprocess the data. Transformations that are made before the materialize call
     # below are only run once.
-    train_ds = train_ds.map_batches(normalize_length)
+    train_ds = train_ds.map_batches(normalize_length, batch_size="auto")
 
     # Materialize the dataset in object store memory.
     # Only do this if train_ds is small enough to fit in object store memory.
@@ -646,7 +646,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
     # as data augmentation or randomization, should go after the materialize call.
-    train_ds = train_ds.map_batches(augment_data)
+    train_ds = train_ds.map_batches(augment_data, batch_size="auto")
 
     # Pass train_ds to the Trainer
 
@@ -658,3 +658,34 @@ If the GPU training is bottlenecked on expensive CPU preprocessing and the prepr
 In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
 * Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
+
+.. _balancing-data-production-consumption:
+
+Balancing data production and consumption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ideally, data production (dataset processing) and data consumption (training ingestion) happen at
+the same rate. When production outpaces consumption, excess data is written to the
+:ref:`object store <object-spilling-internals>`, which can spill to disk, which in turn decreases
+Ray Data throughput and leads to out of disk errors. Ray Data's backpressure system automatically
+balances production and consumption, but if you are still running into issues, you can try
+tuning the following:
+
+* **Use fewer CPUs for data production**: If you are using :func:`~ray.data.Dataset.map_batches`,
+  you can set the number of workers with ``compute`` and the number of CPUs per worker with ``num_cpus``.
+* **Limit object store usage per dataset**: Set a per-dataset object store memory limit using
+  each dataset's execution options. Ray Data's backpressure system will slow down production
+  once the object store memory limit is reached.
+
+  .. code-block:: python
+
+      train_ds = ray.data.read_parquet("s3://bucket/train")
+      val_ds = ray.data.read_parquet("s3://bucket/val")
+
+      train_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
+          object_store_memory=50 * 1024**3,
+      )
+      val_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
+          object_store_memory=50 * 1024**3,
+      )
+
+See :ref:`data_performance_tips` for more info on how to tune Ray Data.

@@ -6,7 +6,29 @@ if TYPE_CHECKING:
     from ray.data.expressions import Expr
 
 
-def create_callable_class_udf_init_fn(
+def _get_setting_with_copy_warning() -> Optional[type]:
+    """Get the SettingWithCopyWarning class from pandas, if available.
+
+    Pandas has moved/renamed this warning across versions, and pandas 3.x may not
+    expose it at all. This function handles the version differences gracefully
+    using hasattr checks instead of try-except blocks.
+
+    Returns:
+        The SettingWithCopyWarning class if found, None otherwise.
+    """
+    import pandas as pd
+
+    # Use hasattr to avoid try-catch blocks as suggested
+    if hasattr(pd.core.common, "SettingWithCopyWarning"):
+        return pd.core.common.SettingWithCopyWarning
+    elif hasattr(pd.errors, "SettingWithCopyWarning"):
+        return pd.errors.SettingWithCopyWarning
+    else:
+        # Warning not available in this pandas version
+        return None
+
+
+def _create_callable_class_udf_init_fn(
     exprs: List["Expr"],
 ) -> Optional[Callable[[], None]]:
     """Create an init_fn to initialize all callable class UDFs in expressions.

@@ -1,4 +1,6 @@
+import threading
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -67,6 +69,10 @@ class MockController:
 def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
     """Test that the PlacementGroupCleaner can be launched and stopped."""
 
+    # Create a mock controller
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
+
     # Launch cleaner as detached
     cleaner = (
         ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -76,19 +82,20 @@ def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(check_interval_s=0.1)
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
     )
-
-    # Create a mock controller
-    controller = MockController.remote()
-    controller_id = ray.get(controller.get_actor_id.remote())
 
     # Create a placement group
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
-    # Register controller and placement group atomically
-    ray.get(cleaner.register_controller_and_placement_group.remote(controller_id, pg))
+    # Register placement group for cleanup
+    ray.get(cleaner.register_placement_group.remote(pg))
 
     # Start monitoring asynchronously (same behavior as production code)
     cleaner.start_monitoring.remote()
@@ -121,6 +128,10 @@ def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
 def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
     """Test that the PG cleaner removes PG when controller dies."""
 
+    # Create a mock controller
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
+
     # Launch cleaner as detached
     cleaner = (
         ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -130,19 +141,20 @@ def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(check_interval_s=0.1)
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
     )
-
-    # Create a mock controller
-    controller = MockController.remote()
-    controller_id = ray.get(controller.get_actor_id.remote())
 
     # Create a placement group
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
-    # Register controller and placement group atomically
-    ray.get(cleaner.register_controller_and_placement_group.remote(controller_id, pg))
+    # Register placement group for cleanup
+    ray.get(cleaner.register_placement_group.remote(pg))
 
     cleaner.start_monitoring.remote()
 
@@ -169,8 +181,47 @@ def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
         ray.get(cleaner.start_monitoring.remote(), timeout=2.0)
 
 
+def test_pg_cleaner_exits_on_controller_death_without_pg_registration(
+    monitoring_started_signal,
+):
+    """Cleaner should exit cleanly if controller dies before any PG is registered."""
+
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
+
+    cleaner = (
+        ray.remote(num_cpus=0)(PlacementGroupCleaner)
+        .options(
+            name="test_pg_cleaner_no_pg",
+            namespace="test",
+            lifetime="detached",
+            get_if_exists=False,
+        )
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
+    )
+
+    cleaner.start_monitoring.remote()
+    ray.get(monitoring_started_signal.wait.remote())
+
+    ray.kill(controller)
+
+    # Give the cleaner a moment to observe controller death and self-exit.
+    time.sleep(1.0)
+
+    with pytest.raises(RayActorError):
+        ray.get(cleaner.start_monitoring.remote(), timeout=2.0)
+
+
 def test_pg_cleaner_handles_duplicate_start():
     """Test that cleaner handles duplicate start_monitoring calls."""
+
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
 
     cleaner = (
         ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -180,15 +231,17 @@ def test_pg_cleaner_handles_duplicate_start():
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(check_interval_s=0.1)
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
     )
-
-    controller = MockController.remote()
-    controller_id = ray.get(controller.get_actor_id.remote())
 
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
-    ray.get(cleaner.register_controller_and_placement_group.remote(controller_id, pg))
+    ray.get(cleaner.register_placement_group.remote(pg))
 
     # Start monitoring asynchronously
     cleaner.start_monitoring.remote()
@@ -202,6 +255,75 @@ def test_pg_cleaner_handles_duplicate_start():
     # Detached cleaner should be gone after stop.
     with pytest.raises(RayActorError):
         ray.get(cleaner.start_monitoring.remote(), timeout=2.0)
+
+
+def test_pg_cleaner_race_condition_new_pg_not_orphaned():
+    """PG registered during the race window must not be orphaned.
+
+    Race window:
+    1. PGC calls queue.get()
+    2. controller puts new_pg into queue
+    3. controller dies
+    4. PGC checks is_actor_alive
+
+    The new_pg never gets cleaned up.
+    """
+    old_pg = placement_group([{"CPU": 1}])
+    new_pg = placement_group([{"CPU": 1}])
+    ray.get(old_pg.ready())
+    ray.get(new_pg.ready())
+
+    in_race_window = threading.Event()
+    release = threading.Event()
+    call_count = {"n": 0}
+
+    def controlled_is_actor_alive(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return True  # first iteration: controller alive, keep looping
+        # Second call: queue.get() has already timed out
+        in_race_window.set()
+        release.wait(timeout=5)
+        return False  # simulate controller death
+
+    target = (
+        "ray.train.v2._internal.execution.controller"
+        ".placement_group_cleaner.is_actor_alive"
+    )
+    with patch(target, side_effect=controlled_is_actor_alive):
+        # PlacementGroupCleaner is instantiated directly here (not as a Ray actor),
+        # so ray.actor.exit_actor() is not tested here
+        cleaner = PlacementGroupCleaner(
+            controller_actor_id="test_pg_cleaner",
+            check_interval_s=0.05,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
+
+        cleaner.register_placement_group(old_pg)
+        cleaner.start_monitoring()
+
+        assert in_race_window.wait(timeout=5), "Timed out waiting for race window"
+
+        # new_pg is now in the queue, but cleaner has already passed queue.get()
+        cleaner.register_placement_group(new_pg)
+
+        monitor_thread = cleaner._monitor_thread
+        assert monitor_thread is not None
+        release.set()
+
+        monitor_thread.join(timeout=5)
+        assert not monitor_thread.is_alive()
+
+    new_pg_state = ray.util.placement_group_table(new_pg).get("state")
+    assert (
+        new_pg_state == "REMOVED"
+    ), f"Race condition: new_pg was orphaned (state={new_pg_state})"
+
+    try:
+        remove_placement_group(old_pg)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

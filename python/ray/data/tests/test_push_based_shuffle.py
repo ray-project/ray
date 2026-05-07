@@ -155,7 +155,7 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         assert "1 nodes used" not in ds.stats()
 
         # Check all merge tasks are included in stats.
-        internal_stats = ds._plan.stats()
+        internal_stats = ds._raw_stats()
         num_merge_tasks = len(internal_stats.metadata["RandomShuffleMerge"])
         # Merge factor is 2 for random_shuffle ops.
         merge_factor = 2

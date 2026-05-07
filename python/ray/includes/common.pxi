@@ -22,6 +22,7 @@ from ray.includes.common cimport (
     kLabelKeyNodeMarketType,
     kLabelKeyNodeRegion,
     kLabelKeyNodeZone,
+    kLabelKeyNodeID,
     kLabelKeyNodeGroup,
     kLabelKeyTpuTopology,
     kLabelKeyTpuSliceName,
@@ -162,6 +163,7 @@ RAY_NODE_ACCELERATOR_TYPE_KEY = kLabelKeyNodeAcceleratorType.decode()
 RAY_NODE_MARKET_TYPE_KEY = kLabelKeyNodeMarketType.decode()
 RAY_NODE_REGION_KEY = kLabelKeyNodeRegion.decode()
 RAY_NODE_ZONE_KEY = kLabelKeyNodeZone.decode()
+RAY_NODE_ID_KEY = kLabelKeyNodeID.decode()
 RAY_NODE_GROUP_KEY = kLabelKeyNodeGroup.decode()
 
 # TPU specifc Ray node label related constants

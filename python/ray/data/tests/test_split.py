@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -349,7 +350,7 @@ def test_split_proportionately(ray_start_regular_shared_2_cpus):
 
 def test_split(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(20, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
@@ -623,35 +624,35 @@ def test_generate_global_split_results(ray_start_regular_shared_2_cpus):
 
 def test_private_split_at_indices(ray_start_regular_shared_2_cpus):
     inputs = _create_blocks_with_metadata([])
-    splits = list(zip(*_split_at_indices(inputs, [0])))
+    splits = list(zip(*_split_at_indices(inputs, [0], True)))
     verify_splits(splits, [[], []])
 
-    splits = list(zip(*_split_at_indices(inputs, [])))
+    splits = list(zip(*_split_at_indices(inputs, [], True)))
     verify_splits(splits, [[]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
 
-    splits = list(zip(*_split_at_indices(inputs, [1])))
+    splits = list(zip(*_split_at_indices(inputs, [1], True)))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2])))
+    splits = list(zip(*_split_at_indices(inputs, [2], True)))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [1])))
+    splits = list(zip(*_split_at_indices(inputs, [1], True)))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2, 2])))
+    splits = list(zip(*_split_at_indices(inputs, [2, 2], True)))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [])))
+    splits = list(zip(*_split_at_indices(inputs, [], True)))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [0, 4])))
+    splits = list(zip(*_split_at_indices(inputs, [0, 4], True)))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
 
@@ -1022,6 +1023,16 @@ def test_streaming_split_reports_and_clears_prefetched_bytes(
         assert (
             bytes_val == 0
         ), f"Split {split_idx} stale bytes after 2nd epoch: {bytes_val}"
+
+
+def test_streaming_splits_schema_access(ray_start_regular_shared_2_cpus):
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    iter_1, iter_2 = ds.streaming_split(2)
+
+    expected_schema = pa.schema([pa.field("id", pa.int64())])
+
+    assert expected_schema.equals(iter_1.schema().base_schema)
 
 
 if __name__ == "__main__":

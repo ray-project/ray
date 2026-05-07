@@ -22,7 +22,7 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels python
 
 python/ray/util/dask/dask.py: python dask
 python/ray/dag/dag.py: python cgraphs_direct_transport
-python/ray/experimental/gpu_object_manager/gpu_object_manager.py: python cgraphs_direct_transport
+python/ray/experimental/rdt/rdt_manager.py: python cgraphs_direct_transport
 
 # === RLlib ===
 
@@ -33,7 +33,27 @@ rllib/rllib.py: rllib rllib_gpu rllib_directly
 python/core.py: ml tune train data python dashboard linux_wheels macos_wheels java
 python/setup.py: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements/test-requirements.txt: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies min_build
+python/requirements_compiled.txt: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies min_build
+python/requirements_compiled_py3.13.txt: ml tune train serve workflow data python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/_raylet.pyx: ml tune train data python dashboard linux_wheels macos_wheels java
+
+# === Raydepsets lock files and configs ===
+# macos_depset lock is consumed by the mac smoke test (macos_wheels) AND
+# also needs to run the raydepsets --check verification (python_dependencies).
+python/deplocks/ci/macos_depset_py3.10.lock: macos_wheels python_dependencies
+# Other deplock updates should NOT trigger the mac smoke test (no macos_wheels).
+python/deplocks/base_deps/ray_base_deps_py3.10.lock: ml tune train serve workflow data python dashboard linux_wheels java python_dependencies min_build
+python/deplocks/ci/data-base-ci_depset_py3.10.lock: ml tune train serve workflow data python dashboard linux_wheels java python_dependencies min_build
+# LLM deplocks hit the dedicated llm-lock rule block and also emit
+# python_dependencies so lock updates run the raydepsets --check verification.
+python/deplocks/llm/ray_py311_cpu.lock: llm python_dependencies
+# Raydepsets config changes drive lock regeneration, so they get the same
+# tag set as deplock updates (no macos_wheels).
+ci/raydepsets/configs/ci_core.depsets.yaml: ml tune train serve workflow data python dashboard linux_wheels java python_dependencies min_build
+ci/raydepsets/configs/rayimg.depsets.yaml: ml tune train serve workflow data python dashboard linux_wheels java python_dependencies min_build
+# Raydepsets tool code changes can alter compiled lock output, so they
+# emit python_dependencies in addition to tools.
+ci/raydepsets/raydepsets.py: tools python_dependencies
 
 # === Buildkite Configs ===
 
@@ -67,6 +87,9 @@ doc/tutorial.rst: doc
 .readthedocs.yaml: doc
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
+doc/requirements-doc.txt: doc
+python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
+ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
 
 # === Release ===
 
@@ -79,6 +102,11 @@ release/release_tests.yaml: tools
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
 ci/ci.sh: tools
+
+# === Build Scripts ===
+
+build-wheel.sh: tools
+ci/build/build_common.py: tools
 
 # === Root Files ===
 

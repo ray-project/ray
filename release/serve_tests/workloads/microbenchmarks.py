@@ -18,6 +18,7 @@ import grpc
 import pandas as pd
 import requests
 from typing import Dict, List, Optional
+from collections import defaultdict
 
 from ray import serve
 from ray.serve._private.benchmarks.common import (
@@ -30,6 +31,7 @@ from ray.serve._private.benchmarks.common import (
     GrpcDeployment,
     GrpcModelComp,
     IntermediateRouter,
+    run_controller_benchmark,
     run_latency_benchmark,
     run_throughput_benchmark,
     Streamer,
@@ -108,6 +110,123 @@ def convert_latencies_to_perf_metrics(name: str, latencies: pd.Series) -> List[D
     ]
 
 
+def convert_controller_samples_to_perf_metrics(
+    samples: List[Dict],
+) -> List[Dict]:
+    """Convert controller benchmark raw samples to perf_metrics with std and sample_size."""
+
+    def _mean(vals: List[float]) -> float:
+        return sum(vals) / len(vals) if vals else 0.0
+
+    def _std(vals: List[float]) -> float:
+        if len(vals) < 2:
+            return 0.0
+        m = _mean(vals)
+        return (sum((v - m) ** 2 for v in vals) / len(vals)) ** 0.5
+
+    groups: Dict[int, List[Dict]] = defaultdict(list)
+    for row in samples:
+        groups[int(row["target_replicas"])].append(row)
+
+    perf_metrics: List[Dict] = []
+    for replicas in sorted(groups.keys()):
+        samples_list = groups[replicas]
+        n = len(samples_list)
+        suffix = f"_{replicas}_replicas"
+
+        def _get_vals(key: str) -> List[float]:
+            return [
+                float(s[key])
+                for s in samples_list
+                if isinstance(s.get(key), (int, float))
+            ]
+
+        def _add_metric(name: str, key: str, metric_type: str) -> None:
+            vals = _get_vals(key)
+            perf_metrics.append(
+                {
+                    "perf_metric_name": name,
+                    "perf_metric_value": _mean(vals),
+                    "perf_metric_type": metric_type,
+                    "perf_metric_std": _std(vals),
+                    "perf_metric_sample_size": n,
+                }
+            )
+
+        _add_metric(
+            f"controller_autoscale_duration_s{suffix}",
+            "autoscale_duration_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_actual_replicas{suffix}",
+            "actual_replicas",
+            "THROUGHPUT",
+        )
+        _add_metric(
+            f"controller_loops_per_second{suffix}",
+            "loops_per_second",
+            "THROUGHPUT",
+        )
+        _add_metric(
+            f"controller_loop_duration_mean_s{suffix}",
+            "loop_duration_mean_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_event_loop_delay_s{suffix}",
+            "event_loop_delay_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_num_asyncio_tasks{suffix}",
+            "num_asyncio_tasks",
+            "THROUGHPUT",
+        )
+        _add_metric(
+            f"controller_deployment_state_update_mean_s{suffix}",
+            "deployment_state_update_mean_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_application_state_update_mean_s{suffix}",
+            "application_state_update_mean_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_proxy_state_update_mean_s{suffix}",
+            "proxy_state_update_mean_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_proxy_state_update_std_s{suffix}",
+            "proxy_state_update_std_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_node_update_min_s{suffix}",
+            "node_update_min_s",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_handle_metrics_delay_mean_ms{suffix}",
+            "handle_metrics_delay_mean_ms",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_replica_metrics_delay_mean_ms{suffix}",
+            "replica_metrics_delay_mean_ms",
+            "LATENCY",
+        )
+        _add_metric(
+            f"controller_process_memory_mb{suffix}",
+            "process_memory_mb",
+            "LATENCY",
+        )
+
+    return perf_metrics
+
+
 def get_throughput_test_name(test_type: str, max_ongoing_requests: int) -> str:
     if max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS:
         return test_type
@@ -123,12 +242,20 @@ async def _main(
     run_latency: bool,
     run_throughput: bool,
     run_streaming: bool,
+    run_controller: bool,
     throughput_max_ongoing_requests: List[int],
     concurrencies: List[int],
 ):
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
     payload_10mb = generate_payload(10000000)
+
+    # Controller benchmark (separate release test, excluded from --run-all)
+    if run_controller:
+        controller_samples = await run_controller_benchmark()
+        perf_metrics.extend(
+            convert_controller_samples_to_perf_metrics(controller_samples)
+        )
 
     # HTTP
     if run_http:
@@ -411,6 +538,11 @@ async def _main(
 @click.option("--run-throughput", is_flag=True)
 @click.option("--run-streaming", is_flag=True)
 @click.option(
+    "--run-controller",
+    is_flag=True,
+    help="Run controller health benchmark only (separate from --run-all).",
+)
+@click.option(
     "--throughput-max-ongoing-requests",
     "-t",
     multiple=True,
@@ -435,6 +567,7 @@ def main(
     run_latency: bool,
     run_throughput: bool,
     run_streaming: bool,
+    run_controller: bool,
     throughput_max_ongoing_requests: List[int],
     concurrencies: List[int],
 ):
@@ -442,7 +575,7 @@ def main(
         concurrencies
     ), "Must have the same number of --throughput-max-ongoing-requests and --concurrencies"
 
-    # If none of the flags are set, default to run all
+    # If none of the flags are set, default to run all (excluding controller)
     if not (
         run_http
         or run_grpc
@@ -450,6 +583,7 @@ def main(
         or run_latency
         or run_throughput
         or run_streaming
+        or run_controller
     ):
         run_all = True
 
@@ -460,6 +594,7 @@ def main(
         run_latency = True
         run_throughput = True
         run_streaming = True
+        # run_controller stays False - controller benchmark is a separate release test
 
     asyncio.run(
         _main(
@@ -470,6 +605,7 @@ def main(
             run_latency,
             run_throughput,
             run_streaming,
+            run_controller,
             throughput_max_ongoing_requests,
             concurrencies,
         )

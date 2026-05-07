@@ -26,7 +26,7 @@ from ray.rllib.core import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -153,7 +153,7 @@ class MiniBatchEpisodeRayDataIterator(MiniBatchRayDataIterator):
 class OfflinePolicyPreEvaluator(OfflinePreLearner):
     def __call__(self, batch: Dict[str, numpy.ndarray]) -> Dict[str, numpy.ndarray]:
         # If we directly read in episodes we just convert to list.
-        if self.input_read_episodes:
+        if self.config.input_read_episodes:
             # Import `msgpack` for decoding.
             import msgpack
             import msgpack_numpy as mnp
@@ -184,14 +184,13 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
                 to_numpy=True,
             )
         # Else, if we have old stack `SampleBatch`es.
-        elif self.input_read_sample_batches:
+        elif self.config.input_read_sample_batches:
             episodes: List[
                 SingleAgentEpisode
             ] = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
                 to_numpy=True,
-                schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )[
                 "episodes"
@@ -217,13 +216,7 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
         # Otherwise we map the batch to episodes.
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
-                self._is_multi_agent,
-                batch,
-                schema=SCHEMA | self.config.input_read_schema,
-                to_numpy=False,
-                input_compress_columns=self.config.input_compress_columns,
-                observation_space=self.observation_space,
-                action_space=self.action_space,
+                batch, to_numpy=False
             )["episodes"]
 
         episode_dicts = []

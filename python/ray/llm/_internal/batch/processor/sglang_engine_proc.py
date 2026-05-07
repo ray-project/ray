@@ -37,6 +37,10 @@ from ray.llm._internal.batch.stages.configs import (
     resolve_stage_config,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +118,7 @@ def build_sglang_engine_processor(
     stages = []
 
     # Prepare processor defaults for merging into stage configs
+    trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)
     processor_defaults = {
         "batch_size": config.batch_size,
         "concurrency": config.concurrency,
@@ -139,6 +144,7 @@ def build_sglang_engine_processor(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
                     ),
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
@@ -155,6 +161,7 @@ def build_sglang_engine_processor(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
@@ -176,7 +183,7 @@ def build_sglang_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    **config.get_concurrency(autoscaling_enabled=False),
+                    **config.get_concurrency(autoscaling_enabled=True),
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -202,13 +209,46 @@ def build_sglang_engine_processor(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=detokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
         )
 
-    hf_config = transformers.AutoConfig.from_pretrained(config.model_source)
-    architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
+    # Download model files for telemetry before engine init.
+    # Use EXCLUDE_SAFETENSORS for trust_remote_code models so custom .py config
+    # files are available locally.
+    try:
+        download_mode = (
+            NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            if trust_remote_code
+            else NodeModelDownloadable.TOKENIZER_ONLY
+        )
+        model_path_or_id = download_model_files(
+            model_id=config.model_source,
+            mirror_config=None,
+            download_model=download_mode,
+            download_extra_files=False,
+        )
+
+        hf_config = transformers.AutoConfig.from_pretrained(
+            model_path_or_id,
+            trust_remote_code=trust_remote_code,
+        )
+    except Exception as e:
+        # Failed to retrieve HuggingFace config for telemetry purposes.
+        # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
+        # The actual model loading happens later in SGLang, which may support models
+        # that aren't available via HuggingFace's AutoConfig.
+        logger.warning(
+            "Failed to retrieve HuggingFace config for %s: %s",
+            config.model_source,
+            e,
+        )
+        hf_config = None
+
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(

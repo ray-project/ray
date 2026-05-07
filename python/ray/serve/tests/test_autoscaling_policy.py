@@ -3,13 +3,17 @@ import logging
 import os
 import sys
 import tempfile
+import threading
 import time
 import zipfile
 from typing import Dict, Iterable, List
 from unittest import mock
 
+import aiohttp
 import httpx
 import pytest
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
@@ -1787,7 +1791,7 @@ class TestAppLevelAutoscalingPolicy:
 
         print(time.ctime(), "Deploying application with deployments A and B.")
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
         print(time.ctime(), "Application is RUNNING.")
@@ -1819,7 +1823,7 @@ class TestAppLevelAutoscalingPolicy:
         }
 
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1868,7 +1872,7 @@ class TestAppLevelAutoscalingPolicy:
         }
 
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1912,7 +1916,7 @@ class TestAppLevelAutoscalingPolicy:
         }
         print(time.ctime(), "Deploying application with deployments A and B.")
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1937,7 +1941,7 @@ class TestAppLevelAutoscalingPolicy:
             ],
         }
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1970,7 +1974,7 @@ class TestAppLevelAutoscalingPolicy:
             ],
         }
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1993,7 +1997,7 @@ class TestAppLevelAutoscalingPolicy:
             ],
         }
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
         wait_for_condition(check_num_replicas_eq, name="A", target=1)
@@ -2110,7 +2114,7 @@ class TestAppLevelClassCallablePolicy:
 
         print(time.ctime(), "Deploying app with class-callable app-level policy.")
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
         print(time.ctime(), "Application is RUNNING.")
@@ -2261,9 +2265,299 @@ def test_class_callable_autoscaling_policy(serve_instance, policy):
     ray.kill(signal)
 
 
+def test_warmup_no_runaway_scaling_with_control_loop(serve_instance):
+    """Deploy with upscaling_factor > 1 and no traffic.
+
+    After the deployment becomes healthy the replica count must stay at
+    min_replicas for several seconds — the control loop must not amplify
+    the target while replicas are warming up.
+    """
+
+    min_replicas = 2
+    max_replicas = 10
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": min_replicas,
+            "max_replicas": max_replicas,
+            "target_ongoing_requests": 1,
+            "upscaling_factor": 2.0,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 30,
+        },
+    )
+    class A:
+        def __call__(self):
+            return "ok"
+
+    serve.run(A.bind())
+
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    # Give the control loop time to run many iterations with no traffic.
+    for _ in range(10):
+        time.sleep(0.5)
+        num = get_num_alive_replicas("A")
+        assert num <= min_replicas, (
+            f"Expected at most {min_replicas} replicas with no traffic, "
+            f"but found {num}. The autoscaler may be runaway-scaling "
+            f"during warmup due to the upscaling_factor feedback loop bug."
+        )
+
+
+class TestAutoscalingWithRejection:
+    """Autoscaling tests with rejection under HTTP load.
+
+    Original issue: https://github.com/ray-project/ray/issues/61551
+    Tests that replicas scale from 1->2 under load and back to 1 after drain.
+
+    The way this test is written makes it somewhat non-deterministic and harder to interpret.
+    It relies on a replica rejecting a request after power-of-two routing
+    has already made a decision based on stale replica state.
+    Since that scenario depends on timing and stale state,
+    it’s not something we can reproduce deterministically.
+    """
+
+    @staticmethod
+    async def _run_phase(session, url, stream, qps, duration_s, inflight, counters):
+        """Run one load phase at the given QPS for duration_s seconds."""
+        interval_s = 1.0 / qps
+        deadline = time.monotonic() + duration_s
+
+        async def one_request():
+            counters["sent"] += 1
+            try:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=120)
+                ) as resp:
+                    if stream:
+                        async for _ in resp.content.iter_chunked(1024):
+                            pass
+                    else:
+                        await resp.read()
+                    counters["ok"] += 1
+            except Exception:
+                counters["errors"] += 1
+
+        while time.monotonic() < deadline:
+            task = asyncio.create_task(one_request())
+            inflight.add(task)
+            task.add_done_callback(inflight.discard)
+            await asyncio.sleep(interval_s)
+
+    @classmethod
+    async def _run_load(cls, url: str, stream: bool):
+        """Execute the load profile and return final counters.
+
+        Load profile (qps, duration_s): [(1.0, 6), (8.0, 12), (1.0, 10)]
+        """
+        inflight: set = set()
+        counters = {"sent": 0, "ok": 0, "errors": 0}
+
+        async with aiohttp.ClientSession() as session:
+            for qps, duration_s in [(1.0, 6), (8.0, 12), (1.0, 10)]:
+                await cls._run_phase(
+                    session, url, stream, qps, duration_s, inflight, counters
+                )
+            await asyncio.sleep(20)
+            if inflight:
+                await asyncio.gather(*list(inflight), return_exceptions=True)
+
+        return counters
+
+    @classmethod
+    def _send_load_in_thread(cls, url: str, stream: bool):
+        """Run the load generator in a background thread."""
+        result = {}
+        error = [None]
+
+        def _run():
+            try:
+                result.update(asyncio.run(cls._run_load(url, stream)))
+            except Exception as e:
+                error[0] = e
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return t, result, error
+
+    def _assert_scale_up_and_down(self, client, dep_id: DeploymentID, stream: bool):
+        """Send load, assert 1->2 scale-up, drain, assert 2->1 scale-down."""
+
+        # 1) Send load
+        url = "http://localhost:8000/app"
+        load_thread, load_counters, load_error = self._send_load_in_thread(url, stream)
+        tlog("Load generation started.")
+
+        # 2) Assert replicas scale-up: 1 -> 2
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="Backend",
+            target=2,
+            app_name="app",
+            timeout=60,
+            retry_interval_ms=1000,
+        )
+        tlog("Replicas scaled up to 2.")
+
+        # 3) Drain: wait for load to finish, assert all requests 'ok'
+        load_thread.join(timeout=180)
+        assert (
+            not load_thread.is_alive()
+        ), "Load generation thread did not finish in time"
+        assert load_error[0] is None, f"Load generation failed: {load_error[0]}"
+
+        tlog(f"Load finished. counters={load_counters}")
+
+        assert load_counters["ok"] == load_counters["sent"], (
+            f"Expected all {load_counters['sent']} requests to succeed, "
+            f"but ok={load_counters['ok']}, errors={load_counters['errors']}"
+        )
+        tlog(f"All {load_counters['ok']} requests reported ok.")
+
+        # 4) Assert replicas scale-down: 2 -> 1
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="Backend",
+            target=1,
+            app_name="app",
+            timeout=60,
+        )
+        tlog("Replicas scaled back down to 1.")
+
+        # 5) Assert total running requests reaches 0 after scale-down
+        wait_for_condition(
+            check_num_requests_eq,
+            client=client,
+            id=dep_id,
+            expected=0,
+            timeout=20,
+        )
+        tlog("Total running requests reached 0.")
+
+    def test_streaming_with_rejection(self, serve_instance):
+        client = serve_instance
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 2,
+                "target_ongoing_requests": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 8,
+                "metrics_interval_s": 1,
+                "look_back_period_s": 5,
+            },
+            max_ongoing_requests=4,
+            graceful_shutdown_timeout_s=1,
+        )
+        class Backend:
+            async def stream(self):
+                for i in range(20):
+                    yield f"{i}\n".encode()
+                    await asyncio.sleep(0.15)
+
+        @serve.deployment(num_replicas=4, max_ongoing_requests=1000)
+        class Ingress:
+            def __init__(self, backend: DeploymentHandle):
+                self._backend = backend.options(
+                    stream=True, method_name="stream", _by_reference=False
+                )
+
+            async def __call__(self, request: Request):
+                return StreamingResponse(
+                    self._backend.remote(), media_type="text/plain"
+                )
+
+        serve.run(Ingress.bind(Backend.bind()), name="app", route_prefix="/app")
+        wait_for_condition(
+            check_deployment_status,
+            name="Backend",
+            expected_status=DeploymentStatus.HEALTHY,
+            app_name="app",
+            timeout=30,
+        )
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="Backend",
+            target=1,
+            app_name="app",
+            timeout=30,
+        )
+
+        tlog(
+            f"Deployed app with configuration: "
+            f"{' '.join(f'{k}={v}' for k, v in os.environ.items() if k.startswith('RAY_SERVE_'))}"
+        )
+        tlog("Streaming deployment healthy with 1 replica.")
+
+        dep_id = DeploymentID(name="Backend", app_name="app")
+        self._assert_scale_up_and_down(client=client, dep_id=dep_id, stream=True)
+        tlog("Test passed.")
+
+    def test_unary_with_rejection(self, serve_instance):
+        client = serve_instance
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 2,
+                "target_ongoing_requests": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 8,
+                "metrics_interval_s": 1,
+                "look_back_period_s": 5,
+            },
+            max_ongoing_requests=4,
+            graceful_shutdown_timeout_s=1,
+        )
+        class Backend:
+            async def __call__(self):
+                await asyncio.sleep(20 * 0.15)
+                return {"ok": True}
+
+        @serve.deployment(num_replicas=4, max_ongoing_requests=1000)
+        class Ingress:
+            def __init__(self, backend: DeploymentHandle):
+                self._backend = backend.options(_by_reference=False)
+
+            async def __call__(self, request: Request):
+                return await self._backend.remote()
+
+        serve.run(Ingress.bind(Backend.bind()), name="app", route_prefix="/app")
+        wait_for_condition(
+            check_deployment_status,
+            name="Backend",
+            expected_status=DeploymentStatus.HEALTHY,
+            app_name="app",
+            timeout=30,
+        )
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="Backend",
+            target=1,
+            app_name="app",
+            timeout=30,
+        )
+
+        tlog(
+            f"Deployed app with configuration: "
+            f"{' '.join(f'{k}={v}' for k, v in os.environ.items() if k.startswith('RAY_SERVE_'))}"
+        )
+        tlog("Unary deployment healthy with 1 replica.")
+
+        dep_id = DeploymentID(name="Backend", app_name="app")
+        self._assert_scale_up_and_down(client=client, dep_id=dep_id, stream=False)
+        tlog("Test passed.")
+
+
 if __name__ == "__main__":
     import sys
 
     import pytest
 
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__] + sys.argv[1:]))
