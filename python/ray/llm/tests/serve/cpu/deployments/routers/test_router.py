@@ -10,6 +10,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
@@ -46,7 +47,12 @@ def create_oai_client(llm_config: LLMConfig):
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
     RouterDeployment = serve.deployment(ingress_cls, **ingress_options)
     server = ServerDeployment.bind(llm_config, engine_cls=MockVLLMEngine)
-    router = RouterDeployment.bind(llm_deployments=[server])
+    router = RouterDeployment.bind(
+        llm_deployments={llm_config.model_id: server},
+        model_cards={
+            llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+        },
+    )
     serve.run(router)
 
     client = openai.Client(base_url="http://localhost:8000/v1", api_key="foo")
@@ -172,12 +178,15 @@ class TestOpenAiIngress:
         """Test health check functionality."""
 
         server = MagicMock()
-        server.llm_config = MagicMock()
-        server.llm_config.remote = AsyncMock(return_value=llm_config)
         server.check_health = MagicMock()
         server.check_health.remote = AsyncMock()
 
-        router = OpenAiIngress(llm_deployments=[server])
+        router = OpenAiIngress(
+            llm_deployments={llm_config.model_id: server},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
 
         await router.check_health()
 
@@ -218,16 +227,18 @@ class TestOpenAiIngress:
             )
 
         mock_handle = MagicMock()
-        mock_handle.llm_config = MagicMock()
-        mock_handle.llm_config.remote = AsyncMock(return_value=llm_config)
         mock_handle.chat = MagicMock()
         mock_handle.chat.remote = mock_chat_generator
         # Make options() return the same mock so chat.remote is preserved
         mock_handle.options.return_value = mock_handle
 
         # Create router with mock handle
-        router = OpenAiIngress(llm_deployments=[mock_handle])
-        await router._init_completed.wait()
+        router = OpenAiIngress(
+            llm_deployments={llm_config.model_id: mock_handle},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
 
         # Create a mock FastAPI request
         from starlette.datastructures import Headers

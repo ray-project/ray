@@ -14,13 +14,10 @@ _OAI_MODELS_MOD = "ray.llm._internal.serve.core.configs.openai_api_models"
 class _VLLMImportBlocker:
     """Meta-path finder that makes every ``vllm.*`` import raise."""
 
-    def find_module(self, fullname, path=None):
+    def find_spec(self, fullname, path=None, target=None):
         if fullname == "vllm" or fullname.startswith("vllm."):
-            return self
+            raise ImportError(f"Mocked: {fullname} is not installed")
         return None
-
-    def load_module(self, fullname):
-        raise ImportError(f"Mocked: {fullname} is not installed")
 
 
 class TestVLLMBackend:
@@ -133,6 +130,44 @@ class TestSanitizeChatCompletionRequest:
             assert assistant_msg.get("tool_calls") is None
         else:
             assert getattr(assistant_msg, "tool_calls", None) is None
+
+    def test_serializes_content_iterator(self):
+        """When `content` is sent as a list of content parts on any message,
+        Pydantic stores it as a ValidatorIterator against the `Iterable[...]`
+        arm and the request becomes unpicklable until sanitized."""
+        import pickle
+
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ChatCompletionRequest,
+        )
+        from ray.llm._internal.serve.core.ingress.ingress import (
+            _sanitize_chat_completion_request,
+        )
+
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[
+                {"role": "system", "content": [{"text": "sys", "type": "text"}]},
+                {"role": "user", "content": [{"text": "hi", "type": "text"}]},
+                {
+                    "role": "assistant",
+                    "content": [{"text": "step", "type": "text"}],
+                },
+                {
+                    "role": "tool",
+                    "content": [{"text": "r", "type": "text"}],
+                    "tool_call_id": "c0",
+                },
+            ],
+        )
+
+        result = _sanitize_chat_completion_request(request)
+        for msg in result.messages:
+            assert isinstance(msg, dict)
+            assert isinstance(msg["content"], list)
+            assert type(msg["content"]).__name__ != "ValidatorIterator"
+
+        pickle.dumps(result)
 
 
 class TestLLMServerLazyImport:
