@@ -36,6 +36,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
 defaults
     mode http
     option log-health-checks
+    retries {{ config.retries }}
     {% if config.timeout_connect_s is not none %}timeout connect {{ config.timeout_connect_s }}s{% endif %}
     {% if config.timeout_client_s is not none %}timeout client {{ config.timeout_client_s }}s{% endif %}
     {% if config.timeout_server_s is not none %}timeout server {{ config.timeout_server_s }}s{% endif %}
@@ -91,11 +92,11 @@ backend default_backend
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
     log global
-    # On a server failure, retry on a different server (combined with the
-    # default `retries 3`) instead of giving up to the backup or returning
-    # a synthesized 5xx. retry-on covers connection-establishment failures
-    # and "connected but no response yet" cases — both are body-stream-safe
-    # and don't risk double-execution.
+    # On a server failure, retry on a different server (combined with
+    # `retries N` from the defaults block) instead of giving up to the
+    # backup or returning a synthesized 5xx. retry-on covers
+    # connection-establishment failures and "connected but no response yet"
+    # cases — both are body-stream-safe and don't risk double-execution.
     option redispatch
     retry-on conn-failure empty-response
     # Enable HTTP connection reuse for better performance

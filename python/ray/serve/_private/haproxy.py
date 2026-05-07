@@ -41,6 +41,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S,
+    RAY_SERVE_HAPROXY_RETRIES,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
@@ -414,6 +416,10 @@ class HAProxyConfig:
     timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S
     timeout_http_request_s: Optional[int] = None
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
+    # Number of connection-level retries per request. Used in the `defaults`
+    # block; combined with `option redispatch` (set per-backend) each retry
+    # picks a different healthy server.
+    retries: int = RAY_SERVE_HAPROXY_RETRIES
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
@@ -670,7 +676,9 @@ class HAProxyApi(ProxyApi):
             raise
 
     async def _wait_for_hap_availability(
-        self, proc: asyncio.subprocess.Process, timeout_s: int = 5
+        self,
+        proc: asyncio.subprocess.Process,
+        timeout_s: int = RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S,
     ) -> None:
         start_time = time.time()
 

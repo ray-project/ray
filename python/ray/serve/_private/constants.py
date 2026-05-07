@@ -756,6 +756,23 @@ RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
 )
 
+# Time to wait for HAProxy to enter the running state during a graceful
+# reload before giving up. The previous hardcoded 5s was too tight for
+# clusters with many backends/servers under load: when reloads time out
+# the new server list never takes effect, leaving HAProxy with stale
+# routing (new replicas can't be added without a reload, since Ray's
+# implementation regenerates the config rather than using the runtime API).
+RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S", "5")
+)
+
+# Number of connection-level retries per request. With option redispatch,
+# each retry picks a different healthy server. The HAProxy compiled-in
+# default is 3; raising this is useful in environments with high
+# autoscaling churn where any given primary may be temporarily
+# unreachable and a sibling can serve the request instead.
+RAY_SERVE_HAPROXY_RETRIES = int(os.environ.get("RAY_SERVE_HAPROXY_RETRIES", "3"))
+
 # Number of consecutive failed server health checks that must occur
 # before haproxy marks the server as down.
 RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(
