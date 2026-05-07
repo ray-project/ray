@@ -65,6 +65,32 @@ to retry requests that time out due to transient failures.
 Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
 :::
 
+(serve-performance-per-request-headers)=
+### Override timeout and disconnect behavior per request
+
+Two request headers let callers override the global `request_timeout_s` and client-disconnect policy on a per-request basis.
+
+`x-request-timeout-seconds`
+: Overrides `request_timeout_s` for this single request.
+  - A **positive float** sets the timeout in seconds (for example, `x-request-timeout-seconds: 30`).
+  - A **non-positive value** (for example, `0` or `-1`) disables the timeout for this request regardless of the global setting.
+  - An **absent or non-numeric value** falls back to the global `request_timeout_s`.
+
+`x-request-disconnect-disabled`
+: Controls whether Serve monitors for client disconnects on this request.
+  - `?1` — disables disconnect detection; Serve continues processing even if the client closes the connection.
+  - `?0` or absent — disconnect detection is enabled (default behavior).
+
+**Performance impact of disabling both headers together**
+
+Setting `x-request-timeout-seconds` to a non-positive value *and* `x-request-disconnect-disabled: ?1` on the same request enables a fast path in the direct-ingress handler that yields a meaningful throughput improvement:
+
+- Serve skips wrapping the user handler in an `asyncio.create_task()` call.
+- Serve skips the `asyncio.wait()` call that would otherwise coordinate the handler task, the disconnect-monitoring task, and the timeout watcher.
+- Instead, Serve directly `await`s the user handler, eliminating all per-request event-loop scheduling overhead for monitoring.
+
+In the proxy path the gain is more modest: `asyncio.wait()` is called per response chunk with one fewer task and no timeout handle, which reduces event-loop overhead at high request rates.
+
 
 ### Set backoff time when choosing replica
 
@@ -263,7 +289,7 @@ apt-get update -y && apt-get install -y --no-install-recommends \
     liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
 
 # Build HAProxy from source
-export HAPROXY_VERSION="2.8.12"
+export HAPROXY_VERSION="2.8.20"
 curl -sSfL -o /tmp/haproxy.tar.gz \
   "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
@@ -273,13 +299,13 @@ make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
 rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
 
 # Install runtime dependencies
-apt-get install -y --no-install-recommends socat liblua5.3-0
+apt-get install -y --no-install-recommends liblua5.3-0
 
 # Create required directories
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 ```
 
-The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependency is `liblua5.3-0` (Lua runtime library).
 
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication

@@ -413,7 +413,7 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
     # regardless of whether it is active or inactive.
     local_logger = logging.getLogger(__name__)
     local_logger.addHandler(log_handler)
-    local_logger.info("Registered dataset logger for dataset %s", dataset_id)
+    local_logger.debug("Registered dataset logger for dataset %s", dataset_id)
 
     _DATASET_LOGGER_HANDLER[dataset_id] = log_handler
     if not _ACTIVE_DATASET:

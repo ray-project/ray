@@ -38,7 +38,7 @@
 # ==== Libraries and frameworks ====
 
 # Dependencies
-/python/setup.py @richardliaw @edoakes @aslonnie
+/python/setup.py @richardliaw @edoakes @ray-project/ray-ci
 
 # Common directory shared by core and the libraries.
 # Stricter enforcement because this defines the public boundary supported by core.

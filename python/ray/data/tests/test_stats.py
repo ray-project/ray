@@ -267,6 +267,10 @@ def gen_expected_metrics(
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
+            "'num_active_actors': Z",
+            "'num_idle_actors': Z",
+            "'pool_utilization': Z",
+            "'num_tasks_in_flight': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_freed': N",
@@ -351,6 +355,10 @@ def gen_expected_metrics(
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
+            "'num_active_actors': Z",
+            "'num_idle_actors': Z",
+            "'pool_utilization': Z",
+            "'num_tasks_in_flight': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_freed': Z",
@@ -787,6 +795,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
+        "      num_active_actors: Z,\n"
+        "      num_idle_actors: Z,\n"
+        "      pool_utilization: Z,\n"
+        "      num_tasks_in_flight: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -856,7 +868,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
     )
 
     def check_stats():
-        stats = canonicalize(repr(ds._plan.stats().to_summary()))
+        stats = canonicalize(repr(ds._raw_stats().to_summary()))
         assert stats == expected_stats, stats
         return True
 
@@ -947,6 +959,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
+        "      num_active_actors: Z,\n"
+        "      num_idle_actors: Z,\n"
+        "      pool_utilization: Z,\n"
+        "      num_tasks_in_flight: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -1060,6 +1076,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
+        "            num_active_actors: Z,\n"
+        "            num_idle_actors: Z,\n"
+        "            pool_utilization: Z,\n"
+        "            num_tasks_in_flight: Z,\n"
         "            obj_store_mem_internal_inqueue_blocks: Z,\n"
         "            obj_store_mem_internal_outqueue_blocks: Z,\n"
         "            obj_store_mem_freed: N,\n"
@@ -1131,7 +1151,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
     )
 
     def check_stats2():
-        stats = canonicalize(repr(ds2._plan.stats().to_summary()))
+        stats = canonicalize(repr(ds2._raw_stats().to_summary()))
         assert stats == expected_stats2
         return True
 
@@ -1485,7 +1505,7 @@ def test_time_backpressure(ray_start_regular_shared, restore_data_context):
         return x
 
     ds = ray.data.range(10000).map_batches(f).materialize()
-    assert ds._plan.stats().extra_metrics["task_submission_backpressure_time"] > 0
+    assert ds._raw_stats().extra_metrics["task_submission_backpressure_time"] > 0
 
 
 def test_runtime_metrics(ray_start_regular_shared):
@@ -1504,7 +1524,7 @@ def test_runtime_metrics(ray_start_regular_shared):
 
     f = dummy_map_batches_sleep(0.01)
     ds = ray.data.range(100).map(f).materialize().map(f).materialize()
-    metrics_str = ds._plan.stats().runtime_metrics()
+    metrics_str = ds._raw_stats().runtime_metrics()
 
     # Dictionary to store the metrics for testing
     metrics_dict = {}
@@ -1567,7 +1587,7 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
         mock_get_actor.return_value = mock_actor_handle
 
         ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
-        metrics = ds._plan.stats().extra_metrics
+        metrics = ds._raw_stats().extra_metrics
 
         calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
         assert len(calls) > 0
@@ -1807,7 +1827,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     assert stats_summary.global_bytes_restored > 0
 
     # Around 100MB should be spilled (200MB - 100MB)
-    assert ds._plan.stats().global_bytes_spilled > 100e6
+    assert ds._raw_stats().global_bytes_spilled > 100e6
 
     ds = (
         ray.data.range(1000 * 80 * 80 * 4)
@@ -1817,7 +1837,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         .materialize()
     )
     # two map_batches operators, twice the spillage
-    assert ds._plan.stats().dataset_bytes_spilled > 200e6
+    assert ds._raw_stats().dataset_bytes_spilled > 200e6
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
@@ -1826,7 +1846,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         .materialize()
     )
 
-    assert ds._plan.stats().dataset_bytes_spilled == 0
+    assert ds._raw_stats().dataset_bytes_spilled == 0
 
 
 def test_stats_actor_metrics():
@@ -1837,10 +1857,10 @@ def test_stats_actor_metrics():
     # last emitted metrics from map operator
     final_metric = update_fn.call_args_list[-1].args[1][-1]
 
-    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
+    assert final_metric.obj_store_mem_spilled == ds._raw_stats().dataset_bytes_spilled
     assert (
         final_metric.obj_store_mem_freed
-        == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+        == ds._raw_stats().extra_metrics["obj_store_mem_freed"]
     )
     assert (
         final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
@@ -1871,7 +1891,7 @@ def test_stats_actor_iter_metrics():
     with patch_update_stats_actor_iter() as update_fn:
         ds.take_all()
 
-    ds_stats = ds._plan.stats()
+    ds_stats = ds._raw_stats()
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats

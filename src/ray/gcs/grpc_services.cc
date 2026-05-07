@@ -76,18 +76,34 @@ void NodeResourceInfoGrpcService::InitServerCallFactories(
       NodeResourceInfoGcsService, GetAllResourceUsage, max_active_rpcs_per_handler_)
 }
 
-void InternalPubSubGrpcService::InitServerCallFactories(
+void ControlPlanePubSubGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token) {
-  RPC_SERVICE_HANDLER(InternalPubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, ReportJobError, max_active_rpcs_per_handler_);
+      ControlPlanePubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+      ControlPlanePubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(ControlPlanePubSubGcsService,
+                      GcsSubscriberCommandBatch,
+                      max_active_rpcs_per_handler_);
+}
+
+void ObservabilityPubSubGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id,
+    std::shared_ptr<const AuthenticationToken> auth_token) {
   RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, GcsSubscriberCommandBatch, max_active_rpcs_per_handler_);
+      ObservabilityPubSubService, GcsPublish, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(
+      ObservabilityPubSubService, ReportJobError, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(
+      ObservabilityPubSubService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(ObservabilityPubSubService,
+                      GcsSubscriberCommandBatch,
+                      max_active_rpcs_per_handler_);
 }
 
 void JobInfoGrpcService::InitServerCallFactories(

@@ -82,10 +82,12 @@ serve.run(app, blocking=True)
 :::{admonition} Known issue
 Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter incompatibilities with native runtime libraries (for example, `libstdc++`, `CXXABI`, `ICU`).
 
-In such cases, configure `LD_LIBRARY_PATH` to prefer the conda environment's libraries over system libraries.
+In such cases, override just the ``libstdc++`` library from your conda environment with `LD_LIBRARY_PATH`:
 
 ```shell
-export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+mkdir -p "${CONDA_PREFIX}/lib-overrides"
+ln -sf "${CONDA_PREFIX}/lib/libstdc++.so.6" "${CONDA_PREFIX}/lib-overrides/libstdc++.so.6"
+export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib-overrides${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 ```
 :::
 

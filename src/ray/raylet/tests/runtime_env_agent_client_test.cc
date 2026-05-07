@@ -29,7 +29,7 @@
 #include <utility>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"

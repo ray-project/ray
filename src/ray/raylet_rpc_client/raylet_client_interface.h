@@ -52,18 +52,11 @@ class RayletClientInterface {
       const rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param lease_spec Lease that is requested by the owner.
-  /// \param grant_or_reject: True if we we should either grant or reject the request
-  ///                         but no spillback.
+  /// \param request The request containing the worker lease request details.
   /// \param callback: The callback to call when the request finishes.
-  /// \param backlog_size The queue length for the given shape on the CoreWorker.
-  /// \param lease_id Unique lease ID for this worker lease request.
   virtual void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1,
-      const bool is_selected_based_on_locality = false) = 0;
+      rpc::RequestWorkerLeaseRequest &&request,
+      const rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.

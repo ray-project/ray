@@ -19,11 +19,11 @@ from ray.tests.conftest import *  # noqa
 def test_count(ray_start_regular):
     ds = ray.data.range(100, override_num_blocks=10)
     # We do not kick off the read task by default.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
     assert ds.count() == 100
     # Getting number of rows should not trigger execution of any read tasks
     # for ray.data.range(), as the number of rows is known beforehand.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
 
     assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
 
