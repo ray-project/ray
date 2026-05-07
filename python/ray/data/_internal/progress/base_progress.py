@@ -223,6 +223,17 @@ class SubProgressUpdater(BaseProgressBar):
             metrics = self._metrics_by_name[self._name]
         callback(metrics)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_lock", None)
+        state["_update_callbacks"] = []
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._lock = threading.Lock()
+        self._update_callbacks = []
+
     def set_description(self, name: str) -> None:
         self._desc = truncate_operator_name(name, self._max_name_length)
 
