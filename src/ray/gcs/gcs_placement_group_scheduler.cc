@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 
 namespace ray {
 namespace gcs {

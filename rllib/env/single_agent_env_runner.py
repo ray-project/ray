@@ -28,7 +28,6 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -642,8 +641,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         `self.config.env_config`) and then call this method to create new environments
         with the updated configuration.
         """
-        # If an env already exists, try closing it first
-        # to allow it to properly clean up.
         if self.env is not None:
             try:
                 self.env.close()
@@ -700,19 +697,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             env_name = self.config.env
 
         vectorize_mode = gym.VectorizeMode(self.config.gym_env_vectorize_mode)
-        try:
-            self.env = DictInfoToList(
-                gym.make_vec(
-                    env_name,
-                    num_envs=self.config.num_envs_per_env_runner,
-                    vectorization_mode=vectorize_mode,
-                    **env_config,
-                )
+        self.env = DictInfoToList(
+            gym.make_vec(
+                env_name,
+                num_envs=self.config.num_envs_per_env_runner,
+                vectorization_mode=vectorize_mode,
+                **env_config,
             )
-        except gym.error.Error as e:
-            raise EnvError(
-                ERR_MSG_INVALID_ENV_DESCRIPTOR.format(self.config.env)
-            ) from e
+        )
 
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
