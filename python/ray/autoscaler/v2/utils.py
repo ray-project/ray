@@ -273,9 +273,9 @@ class ResourceRequestUtil(ProtobufUtil):
         """
 
         # Map of set of serialized affinity constraint to the list of resource requests
-        requests_by_affinity: Dict[
-            Tuple[str, str, Tuple], List[ResourceRequest]
-        ] = defaultdict(list)
+        requests_by_affinity: Dict[Tuple[str, str, Tuple], List[ResourceRequest]] = (
+            defaultdict(list)
+        )
         combined_requests: List[ResourceRequest] = []
 
         for request in resource_requests:
@@ -473,17 +473,15 @@ class ClusterStatusFormatter:
 
     @staticmethod
     def _header_info(data: ClusterStatus, verbose: bool) -> (str, int):
-        # Get the request timestamp or default to the current time
+        stats = data.stats
         time = (
-            datetime.fromtimestamp(data.stats.request_ts_s)
-            if data.stats.request_ts_s
+            datetime.fromtimestamp(stats.request_ts_s)
+            if stats.request_ts_s is not None
             else datetime.now()
         )
-
-        # Gather the time statistics
-        gcs_request_time = data.stats.gcs_request_time_s
-        non_terminated_nodes_time = data.stats.none_terminated_node_request_time_s
-        autoscaler_update_time = data.stats.autoscaler_iteration_time_s
+        gcs_request_time = stats.gcs_request_time_s
+        non_terminated_nodes_time = stats.none_terminated_node_request_time_s
+        autoscaler_update_time = stats.autoscaler_iteration_time_s
 
         # Create the header with autoscaler status
         header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8

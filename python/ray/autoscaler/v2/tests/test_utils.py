@@ -1,6 +1,7 @@
 # coding: utf-8
 import os
 import sys
+from datetime import datetime
 from typing import Dict
 
 import pytest  # noqa
@@ -598,6 +599,35 @@ Node: instance3 (worker_node)
  Activity:
   (no activity)"""
     assert actual == expected
+
+
+def test_cluster_status_default_construction():
+    status = ClusterStatus()
+    assert status.active_nodes == []
+    assert status.idle_nodes == []
+    assert status.pending_launches == []
+    assert status.failed_launches == []
+    assert status.pending_nodes == []
+    assert status.failed_nodes == []
+    assert status.cluster_resource_usage == []
+    assert isinstance(status.stats, Stats)
+    assert status.stats.gcs_request_time_s is None
+    assert status.stats.none_terminated_node_request_time_s is None
+    assert status.stats.autoscaler_iteration_time_s is None
+    assert status.stats.request_ts_s is None
+
+
+def test_cluster_status_default_construction_formatter():
+    status = ClusterStatus()
+    formatted = ClusterStatusFormatter.format(status)
+    assert formatted is not None
+    assert "Autoscaler status" in formatted
+
+
+def test_cluster_status_formatter_zero_request_timestamp():
+    status = ClusterStatus(stats=Stats(gcs_request_time_s=0.1, request_ts_s=0))
+    formatted = ClusterStatusFormatter.format(status)
+    assert str(datetime.fromtimestamp(0)) in formatted
 
 
 if __name__ == "__main__":
