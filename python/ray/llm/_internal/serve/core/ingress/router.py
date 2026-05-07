@@ -5,9 +5,6 @@ from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
 from ray.serve._private.common import ReplicaID
-from ray.serve._private.constants import (
-    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
-)
 from ray.serve.handle import DeploymentHandle
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
@@ -28,6 +25,7 @@ _ROUND_ROBIN_COUNTER_MAX_START = 2**31
 ingress_request_router_app = FastAPI()
 
 router_app = FastAPI()
+
 
 @serve.ingress(router_app)
 class LLMRouter:
@@ -94,11 +92,8 @@ class LLMRouter:
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
-        body = None
-        body_truncated = False
-        if RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY:
-            body = await request.body()
-            body_truncated = _BODY_TRUNCATED_HEADER in request.headers
+        body = await request.body()
+        body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         try:
             host, port, replica_id = self._pick_replica(
                 request_body=body, body_truncated=body_truncated
