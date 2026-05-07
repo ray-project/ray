@@ -46,11 +46,13 @@ class _DirectRouterReplica:
         self.backend_http_endpoint = ("127.0.0.1", port)
 
 
-def _new_direct_router():
+def _new_direct_router(request_router=None):
     router = LLMRouter.__new__(LLMRouter)
     router._round_robin_counter = 0
+    router._cached_dict_id = None
     router._cached_replica_signature = None
-    router._cached_sorted_replicas = []
+    router._cached_endpoints = []
+    router._request_router = request_router or MagicMock(curr_replicas={})
     return router
 
 

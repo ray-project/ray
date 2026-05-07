@@ -189,6 +189,19 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
+# inc/dec_num_ongoing_requests only read `is_direct_ingress` and
+# `is_http_request` from the metadata, so we reuse one instance for every
+# direct-ingress ASGI request and skip the per-request UUID generation.
+_DIRECT_INGRESS_ASGI_REQ_META = RequestMetadata(
+    request_id="",
+    internal_request_id="",
+    call_method="__call__",
+    multiplexed_model_id="",
+    is_streaming=True,
+    _request_protocol=RequestProtocol.HTTP,
+    is_direct_ingress=True,
+)
+
 
 def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
@@ -2538,22 +2551,15 @@ class Replica:
             # TODO(eicherseiji): Reuse the normal HTTP request lifecycle here so
             # direct ASGI serving preserves backpressure, timeouts, cancellation,
             # tracing, request context, and per-route status metrics.
-            req_meta = RequestMetadata(
-                request_id=generate_request_id(),
-                internal_request_id=generate_request_id(),
-                call_method="__call__",
-                route=route,
-                app_name=self._deployment_id.app_name,
-                multiplexed_model_id="",
-                is_streaming=True,
-                _request_protocol=RequestProtocol.HTTP,
-                is_direct_ingress=True,
+            self._metrics_manager.inc_num_ongoing_requests(
+                _DIRECT_INGRESS_ASGI_REQ_META
             )
-            self._metrics_manager.inc_num_ongoing_requests(req_meta)
             try:
                 await self._user_callable_asgi_app(scope, receive, send)
             finally:
-                self._metrics_manager.dec_num_ongoing_requests(req_meta)
+                self._metrics_manager.dec_num_ongoing_requests(
+                    _DIRECT_INGRESS_ASGI_REQ_META
+                )
             return
 
         # If the HTTP path does not match the deployment route prefix,

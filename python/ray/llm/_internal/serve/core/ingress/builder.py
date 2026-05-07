@@ -2,7 +2,6 @@ import os
 import pprint
 from typing import Any, Dict, List, Optional, Type, Union
 
-from fastapi import FastAPI
 from pydantic import Field, field_validator, model_validator
 
 from ray import serve
