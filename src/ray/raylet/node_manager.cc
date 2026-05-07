@@ -976,7 +976,17 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   object_directory_.HandleNodeRemoved(node_id);
   object_manager_.HandleNodeRemoved(node_id);
 
-  RAY_UNUSED(FreeLocalObjects(local_object_manager_.GetLocalObjectsOwnedBy(node_id)));
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedBy(node_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(node_id)) {
+    ids.insert(id);
+  }
+  RAY_UNUSED(
+      FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
@@ -1001,7 +1011,17 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
     worker->KillAsync(io_service_);
   }
 
-  RAY_UNUSED(FreeLocalObjects(local_object_manager_.GetLocalObjectsOwnedBy(worker_id)));
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  RAY_UNUSED(
+      FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
