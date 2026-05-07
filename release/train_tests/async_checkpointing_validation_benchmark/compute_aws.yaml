@@ -1,22 +1,17 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-max_workers: 4
-
-head_node_type:
-    name: head_node
-    instance_type: m5.4xlarge
-
-worker_node_types:
-    - name: worker_node
-      instance_type: g4dn.xlarge
-      max_workers: 4
-      min_workers: 2
-      use_spot: false
-
-advanced_configurations_json:
+advanced_instance_config:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
         - Key: ttl-hours
           Value: '24'
+
+head_node:
+    instance_type: m5.4xlarge
+
+worker_nodes:
+    - instance_type: g4dn.xlarge
+      min_nodes: 2
+      max_nodes: 4
+      market_type: ON_DEMAND
