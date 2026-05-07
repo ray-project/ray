@@ -12,18 +12,18 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.request_router import PendingRequest
-from ray.serve._private.test_utils import MockTimer
+from ray.serve._private.test_utils import (
+    FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
+    FAKE_REPLICA_DEPLOYMENT_ID as DEPLOYMENT_ID,
+    FakeRunningReplica,
+    MockTimer,
+)
 from ray.serve._private.utils import generate_request_id
 from ray.serve.experimental.consistent_hash_router import (
     DEFAULT_NUM_FALLBACK_REPLICAS,
     DEFAULT_NUM_VIRTUAL_NODES,
     ConsistentHashRouter,
     _hash_bytes,
-)
-from ray.serve.tests.unit.conftest import (
-    FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
-    FAKE_REPLICA_DEPLOYMENT_ID as DEPLOYMENT_ID,
-    FakeRunningReplica,
 )
 
 TIMER = MockTimer()
