@@ -1,20 +1,15 @@
 import dataclasses
 import threading
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict
+from typing import Dict
 
 import ray
-
-if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import (
-        PhysicalOperator,
-    )
 
 
 @dataclasses.dataclass
 class _BlockEntry:
     size_bytes: int
-    owner: "PhysicalOperator"
+    producer_id: str
     ref_count: int
     queue_holds: int = 1
 
@@ -26,32 +21,32 @@ class BlockRefCounter:
     tasks currently hold it as input.
 
     Lifecycle of a block:
-      1. Produced by operator A -> on_block_produced(ref, size, A)   (ref_count = 1, queue_holds = 1)
-         Duplicate call (same ref in another bundle):                 (ref_count += 1, queue_holds += 1)
+      1. Produced by operator A -> on_block_produced(ref, size, A.id)   (ref_count = 1, queue_holds = 1)
+         Duplicate call (same ref in another bundle):                    (ref_count += 1, queue_holds += 1)
       2. Each task dispatch     -> on_block_dispatched_to_task(ref)
            queue_holds > 0: queue_holds -= 1, ref_count unchanged (task takes queue's slot)
            queue_holds == 0: ref_count += 1  (strict repartition)
-      3. Each task completion   -> on_task_completed(ref)             (ref_count -= 1)
+      3. Each holder releases   -> on_block_released(ref)                (ref_count -= 1)
            when ref_count reaches 0, block is removed and usage is updated
 
     This means:
-      - blocks in queues (not yet dispatched): size_bytes counted once toward their owner
+      - blocks in queues (not yet dispatched): size_bytes counted once toward their producer
       - blocks held by N concurrent tasks (strict repartition): ref_count incremented
-        once per task (so ref_count = N), but size_bytes counted once toward their owner
+        once per task (so ref_count = N), but size_bytes counted once toward their producer
       - ref_count reaches 0 only when all tasks holding the block have completed
     """
 
     def __init__(self):
         self._entries: Dict["ray.ObjectRef", _BlockEntry] = {}
-        # (owner_op -> total live bytes); maintained incrementally for O(1) reads.
-        self._bytes_by_owner: Dict["PhysicalOperator", int] = defaultdict(int)
+        # (producer_id -> total live bytes); maintained incrementally for O(1) reads.
+        self._bytes_by_producer: Dict[str, int] = defaultdict(int)
         self._lock = threading.Lock()
 
     def on_block_produced(
         self,
         block_ref: "ray.ObjectRef",
         size_bytes: int,
-        owner: "PhysicalOperator",
+        producer_id: str,
     ) -> None:
         """Called when a block is produced by an operator.
 
@@ -69,9 +64,9 @@ class BlockRefCounter:
                 entry.queue_holds += 1
                 return
             self._entries[block_ref] = _BlockEntry(
-                size_bytes=size_bytes, owner=owner, ref_count=1
+                size_bytes=size_bytes, producer_id=producer_id, ref_count=1
             )
-            self._bytes_by_owner[owner] += size_bytes
+            self._bytes_by_producer[producer_id] += size_bytes
 
     def on_block_dispatched_to_task(self, block_ref: "ray.ObjectRef") -> None:
         """Called each time a task takes block_ref as input.
@@ -111,39 +106,41 @@ class BlockRefCounter:
             entry.queue_holds += 1
             entry.ref_count += 1
 
-    def on_task_completed(self, block_ref: "ray.ObjectRef") -> None:
-        """Called when a task that held block_ref completes, or when an inline
-        operator (LimitOperator, ZipOperator, AllToAllOperator) finishes
-        consuming a block.
+    def on_block_released(self, block_ref: "ray.ObjectRef") -> None:
+        """Called when any holder of block_ref releases it.
 
-        *NOTE*: Also called from the user thread when sink output
-        blocks are consumed via _ClosingIterator.get_next().
+        A holder is either a queue slot or an in-flight task. Concretely:
+          - A Ray task completed (map/shuffle/etc.)
+          - A block was dropped from an internal queue without being dispatched
+            (e.g. LimitOperator early termination, OutputSplitter truncation, shutdown)
+          - An inline operator (ZipOperator, AllToAllOperator) finished consuming a block
+          - A sink consumed a block via _ClosingIterator.get_next()
 
         Decrements ref_count. When it reaches zero the block's contribution
-        to its owner's usage is removed.
+        to its producer's usage is removed.
         """
         with self._lock:
             assert block_ref in self._entries, (
-                f"on_task_completed called for untracked block {block_ref}. "
-                "This indicates a missing on_block_produced call or a double completion."
+                f"on_block_released called for untracked block {block_ref}. "
+                "This indicates a missing on_block_produced call or a double release."
             )
             entry = self._entries[block_ref]
             entry.ref_count -= 1
             if entry.ref_count == 0:
                 del self._entries[block_ref]
-                assert self._bytes_by_owner[entry.owner] >= entry.size_bytes, (
-                    f"Usage for {entry.owner} would go negative: "
-                    f"current={self._bytes_by_owner[entry.owner]}, "
+                assert self._bytes_by_producer[entry.producer_id] >= entry.size_bytes, (
+                    f"Usage for {entry.producer_id} would go negative: "
+                    f"current={self._bytes_by_producer[entry.producer_id]}, "
                     f"removing={entry.size_bytes}"
                 )
-                self._bytes_by_owner[entry.owner] -= entry.size_bytes
+                self._bytes_by_producer[entry.producer_id] -= entry.size_bytes
 
-    def get_object_store_memory_usage(self, owner: "PhysicalOperator") -> int:
-        """Total bytes of blocks produced by owner that are still live."""
+    def get_object_store_memory_usage(self, producer_id: str) -> int:
+        """Total bytes of blocks produced by producer_id that are still live."""
         with self._lock:
-            return self._bytes_by_owner.get(owner, 0)
+            return self._bytes_by_producer.get(producer_id, 0)
 
     def clear(self) -> None:
         with self._lock:
             self._entries.clear()
-            self._bytes_by_owner.clear()
+            self._bytes_by_producer.clear()

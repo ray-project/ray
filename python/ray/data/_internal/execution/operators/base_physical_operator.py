@@ -204,7 +204,7 @@ class AllToAllOperator(
                 if ref not in input_refs:
                     if self._block_ref_counter is not None:
                         self._block_ref_counter.on_block_produced(
-                            ref, meta.size_bytes or 0, self
+                            ref, meta.size_bytes or 0, self.id
                         )
 
         self._output_buffer = FIFOBundleQueue(output_buffer)
@@ -215,7 +215,7 @@ class AllToAllOperator(
             if self._block_ref_counter is not None:
                 for ref, _ in refs.blocks:
                     if ref not in output_refs:
-                        self._block_ref_counter.on_task_completed(ref)
+                        self._block_ref_counter.on_block_released(ref)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)

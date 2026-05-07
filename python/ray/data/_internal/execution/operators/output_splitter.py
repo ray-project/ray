@@ -321,7 +321,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         straddles it, producing two brand-new ObjectRefs. This method:
           - Registers new refs (absent from `original`) with on_block_produced.
           - Untracks the original ref that was physically split (absent from
-            both `left` and `right`) with on_task_completed.
+            both `left` and `right`) with on_block_released.
         """
         if self._block_ref_counter is None:
             return
@@ -333,13 +333,13 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             for ref, meta in bundle.blocks:
                 if ref not in original_refs:
                     self._block_ref_counter.on_block_produced(
-                        ref, meta.size_bytes or 0, self
+                        ref, meta.size_bytes or 0, self.id
                     )
 
         # Untrack the split original block.
         for ref, _ in original.blocks:
             if ref not in output_refs:
-                self._block_ref_counter.on_task_completed(ref)
+                self._block_ref_counter.on_block_released(ref)
 
     def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
         output = []

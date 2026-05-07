@@ -617,7 +617,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                     _on_extraction_done, rank=rank_idx
                 ),
                 block_ref_counter=self._block_ref_counter,
-                owner_op=self,
+                producer_id=self.id,
             )
             self._extraction_tasks[rank_idx] = data_task
 

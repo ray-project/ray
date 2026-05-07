@@ -184,7 +184,7 @@ class ResourceManager:
 
         # All blocks produced by this operator that are still live (in any queue
         # or held by any running task), as tracked by the block reference counter.
-        mem_op_outputs = self._block_ref_counter.get_object_store_memory_usage(op)
+        mem_op_outputs = self._block_ref_counter.get_object_store_memory_usage(op.id)
 
         # Attribute iterator / streaming_split prefetch to the executor sink only.
         if op is self._output_operator:

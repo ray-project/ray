@@ -142,8 +142,8 @@ def test_does_not_double_count_usage_from_union():
 
     # Register blocks with the counter, then add them to the topology output queue.
     counter = resource_manager.block_ref_counter
-    counter.on_block_produced(block_ref1, 1, union_op)
-    counter.on_block_produced(block_ref2, 1, union_op)
+    counter.on_block_produced(block_ref1, 1, union_op.id)
+    counter.on_block_produced(block_ref2, 1, union_op.id)
     topology[union_op].add_output(bundle1)
     topology[union_op].add_output(bundle2)
     resource_manager.update_usages()
@@ -204,8 +204,8 @@ def test_per_input_inqueue_attribution_for_union():
 
     # Register blocks with the counter, then dispatch them into union_op's internal input buffer.
     counter = resource_manager.block_ref_counter
-    counter.on_block_produced(block_ref1, 10, input2)
-    counter.on_block_produced(block_ref2, 10, input2)
+    counter.on_block_produced(block_ref1, 10, input2.id)
+    counter.on_block_produced(block_ref2, 10, input2.id)
     union_op.add_input(bundle1, input_index=1)
     union_op.add_input(bundle2, input_index=1)
 

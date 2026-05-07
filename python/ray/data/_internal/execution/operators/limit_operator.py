@@ -76,7 +76,7 @@ class LimitOperator(OneToOneOperator):
                 metadata = ray.get(metadata_ref)
                 if self._block_ref_counter is not None:
                     self._block_ref_counter.on_block_produced(
-                        block, metadata.size_bytes or 0, self
+                        block, metadata.size_bytes or 0, self.id
                     )
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
@@ -86,7 +86,7 @@ class LimitOperator(OneToOneOperator):
             forwarded = set(out_blocks)
             for block_ref, _ in refs.blocks:
                 if block_ref not in forwarded:
-                    self._block_ref_counter.on_task_completed(block_ref)
+                    self._block_ref_counter.on_block_released(block_ref)
 
         self._cur_output_bundles += 1
         out_refs = RefBundle(

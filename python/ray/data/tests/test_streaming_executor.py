@@ -1365,15 +1365,15 @@ class TestDataOpTask:
         streaming_gen = create_stub_streaming_gen(block_nbytes=block_sizes)
 
         counter = BlockRefCounter()
-        owner = PhysicalOperator("owner", [], DataContext.get_current())
+        producer_op = PhysicalOperator("producer", [], DataContext.get_current())
 
         produced_calls = []
 
         original_on_block_produced = counter.on_block_produced
 
-        def capture_on_block_produced(block_ref, size_bytes, owner_op):
-            produced_calls.append((block_ref, size_bytes, owner_op))
-            original_on_block_produced(block_ref, size_bytes, owner_op)
+        def capture_on_block_produced(block_ref, size_bytes, producer_op):
+            produced_calls.append((block_ref, size_bytes, producer_op))
+            original_on_block_produced(block_ref, size_bytes, producer_op)
 
         counter.on_block_produced = capture_on_block_produced
 
@@ -1381,7 +1381,7 @@ class TestDataOpTask:
             0,
             streaming_gen,
             block_ref_counter=counter,
-            owner_op=owner,
+            producer_id=producer_op.id,
         )
 
         while not task.has_finished:
@@ -1392,7 +1392,7 @@ class TestDataOpTask:
         assert [size for _, size, _ in produced_calls] == pytest.approx(
             block_sizes, rel=0.01
         )
-        assert all(op is owner for _, _, op in produced_calls)
+        assert all(pid == producer_op.id for _, _, pid in produced_calls)
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]

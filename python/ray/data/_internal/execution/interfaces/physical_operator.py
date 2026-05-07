@@ -128,7 +128,7 @@ class DataOpTask(OpTask):
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
         block_ref_counter: Optional["BlockRefCounter"] = None,
-        owner_op: Optional["PhysicalOperator"] = None,
+        producer_id: Optional[str] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -146,11 +146,13 @@ class DataOpTask(OpTask):
                 Used for logging the operator name in warnings/errors.
             block_ref_counter: The centralized block reference counter. If provided,
                 on_block_produced is called for each block yielded by this task.
-            owner_op: The operator that owns the blocks produced by this task.
+            producer_id: The id of the operator that produces the blocks from this task.
                 Must be set if block_ref_counter is set.
         """
-        if block_ref_counter is not None and owner_op is None:
-            raise ValueError("owner_op must be provided when block_ref_counter is set.")
+        if block_ref_counter is not None and producer_id is None:
+            raise ValueError(
+                "producer_id must be provided when block_ref_counter is set."
+            )
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
@@ -163,7 +165,7 @@ class DataOpTask(OpTask):
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
         self._block_ref_counter: Optional["BlockRefCounter"] = block_ref_counter
-        self._owner_op: Optional["PhysicalOperator"] = owner_op
+        self._producer_id: Optional[str] = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -285,7 +287,7 @@ class DataOpTask(OpTask):
             meta = meta_with_schema.metadata
             if self._block_ref_counter is not None:
                 self._block_ref_counter.on_block_produced(
-                    self._pending_block_ref, meta.size_bytes or 0, self._owner_op
+                    self._pending_block_ref, meta.size_bytes or 0, self._producer_id
                 )
             self._output_ready_callback(
                 RefBundle(
@@ -726,7 +728,7 @@ class PhysicalOperator(Operator):
         """Inject the centralized block reference counter.
 
         Called by StreamingExecutor after start() so that operators can call
-        on_block_produced / on_task_completed without changing the start() signature.
+        on_block_produced / on_block_released without changing the start() signature.
         """
         self._block_ref_counter = counter
 
@@ -738,7 +740,7 @@ class PhysicalOperator(Operator):
         if self._block_ref_counter is not None:
             for block_ref, metadata in bundle.blocks:
                 self._block_ref_counter.on_block_produced(
-                    block_ref, metadata.size_bytes or 0, self
+                    block_ref, metadata.size_bytes or 0, self.id
                 )
 
     def _track_bundle_consumed(self, bundle: RefBundle) -> None:
@@ -748,7 +750,7 @@ class PhysicalOperator(Operator):
         """
         if self._block_ref_counter is not None:
             for block_ref, _ in bundle.blocks:
-                self._block_ref_counter.on_task_completed(block_ref)
+                self._block_ref_counter.on_block_released(block_ref)
 
     def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.

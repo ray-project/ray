@@ -775,7 +775,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
                 # Untrack the input block now that the shuffle task has consumed it.
                 if self._block_ref_counter is not None:
-                    self._block_ref_counter.on_task_completed(block_ref)
+                    self._block_ref_counter.on_block_released(block_ref)
 
             # TODO update metrics
             task = self._shuffling_tasks[input_index][
@@ -1003,7 +1003,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 ),
                 operator_name=self.name,
                 block_ref_counter=self._block_ref_counter,
-                owner_op=self,
+                producer_id=self.id,
             )
             self._finalizing_tasks[partition_id] = data_task
 
