@@ -195,6 +195,9 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
+    async def __serve_build_asgi_app__(self):
+        return await self.engine.build_asgi_app()
+
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):

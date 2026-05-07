@@ -58,3 +58,4 @@ memray; sys_platform != "win32" # memray is not supported on Windows
 pyOpenSSL
 celery
 taskiq
+mmh3

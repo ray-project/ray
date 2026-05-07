@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/util/compat.h"
