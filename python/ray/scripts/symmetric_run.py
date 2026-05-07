@@ -254,10 +254,9 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
             worker_runtime = time.monotonic() - worker_start_time
             expected_shutdown_codes = {
                 0,
-                signal.SIGTERM,
                 -signal.SIGTERM,
                 128 + signal.SIGTERM,
-                signal.SIGINT,
+                # SIGINT for local Ctrl-C teardown.
                 -signal.SIGINT,
                 128 + signal.SIGINT,
             }
