@@ -245,6 +245,15 @@ class SubProgressUpdater(BaseProgressBar):
             callback(updated_metrics)
 
 
+def make_sub_progress_sync_callback(
+    display_bar: Any,
+) -> Callable[[ProgressMetrics], None]:
+    def sync_display(metrics: ProgressMetrics) -> None:
+        display_bar.update_absolute(metrics.completed, metrics.total)
+
+    return sync_display
+
+
 class NoopExecutionProgressManager(BaseExecutionProgressManager):
     """Noop Data Execution Progress Display Manager (Progress Display Disabled)"""
 

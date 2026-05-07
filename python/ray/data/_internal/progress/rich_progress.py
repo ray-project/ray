@@ -27,6 +27,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
+    make_sub_progress_sync_callback,
 )
 from ray.data._internal.progress.utils import truncate_operator_name
 
@@ -136,7 +137,6 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
     ):
         self._dataset_id = dataset_id
         self._sub_progress_bars: List[BaseProgressBar] = []
-        self._sub_progress_display: List[Tuple["OpState", str, RichSubProgressBar]] = []
         self._show_op_progress = show_op_progress
         self._verbose_progress = verbose_progress
         self._start_time: Optional[float] = None
@@ -238,14 +238,13 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                     display_pg = None
                 if display_pg is not None:
                     display_pg.update_absolute(metrics.completed, metrics.total)
-                    self._sub_progress_display.append((state, name, display_pg))
                     self._sub_progress_bars.append(display_pg)
                     if (
                         sub_progress_updaters is not None
                         and name in sub_progress_updaters
                     ):
                         sub_progress_updaters[name].add_update_callback(
-                            _make_sub_progress_sync_callback(display_pg)
+                            make_sub_progress_sync_callback(display_pg)
                         )
         if rows:
             self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
@@ -357,23 +356,6 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
         # stats
         stats_str = format_op_state_summary(op_state, resource_manager)
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
-
-        if isinstance(op_state.op, SubProgressMixin):
-            metrics_by_name = op_state.op.get_sub_progress_metrics()
-            if metrics_by_name is None:
-                return
-            for state, name, display_pg in self._sub_progress_display:
-                if state is not op_state or name not in metrics_by_name:
-                    continue
-                metrics = metrics_by_name[name]
-                display_pg.update_absolute(metrics.completed, metrics.total)
-
-
-def _make_sub_progress_sync_callback(display_pg: RichSubProgressBar):
-    def sync_display(metrics):
-        display_pg.update_absolute(metrics.completed, metrics.total)
-
-    return sync_display
 
 
 # utilities
