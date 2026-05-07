@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <set>
 #include <string>
+#include <utility>
 
 namespace ray {
 
@@ -179,8 +180,8 @@ void NodeResources::SetAvailableResource(scheduling::ResourceID resource_id,
   available.Set(resource_id, value);
 }
 
-void NodeResources::SetAvailable(const NodeResourceSet &resource_set) {
-  available = resource_set;
+void NodeResources::SetAvailable(NodeResourceSet resource_set) {
+  available = std::move(resource_set);
 }
 
 absl::flat_hash_map<std::string, double> NodeResources::GetAvailableResourceMap() const {

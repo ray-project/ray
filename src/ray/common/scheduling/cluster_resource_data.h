@@ -370,7 +370,7 @@ class NodeResources {
   void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
 
   /// Replace the entire available field from a NodeResourceSet.
-  void SetAvailable(const NodeResourceSet &resource_set);
+  void SetAvailable(NodeResourceSet resource_set);
 
   /// Return available resources as a name->value map.
   absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;

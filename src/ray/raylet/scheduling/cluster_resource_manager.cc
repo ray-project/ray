@@ -91,7 +91,7 @@ bool ClusterResourceManager::UpdateNode(
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
   local_view.total = std::move(node_resources.total);
-  local_view.SetAvailable(node_resources.available);
+  local_view.SetAvailable(std::move(node_resources.available));
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
