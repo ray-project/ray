@@ -1,4 +1,5 @@
 import abc
+import typing
 from typing import List, Optional
 
 from typing_extensions import override
@@ -11,12 +12,11 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
-from ray.data._internal.progress.base_progress import (
-    ProgressMetrics,
-    SubProgressUpdater,
-)
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import ProgressMetrics
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
@@ -136,25 +136,13 @@ class AllToAllOperator(InternalQueueOperatorMixin, SubProgressMixin, PhysicalOpe
         # Keep the legacy attribute name during the transition. Some internal
         # call sites still read this field directly instead of using the mixin.
         self._sub_progress_bar_names = sub_progress_bar_names
-        self._sub_progress_metrics = (
-            {
-                name: ProgressMetrics(name=name, total=None, completed=0)
-                for name in sub_progress_bar_names
-            }
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = (
+            self._create_sub_progress_state(sub_progress_bar_names)
             if sub_progress_bar_names is not None
-            else None
-        )
-        self._sub_progress_updaters = (
-            {
-                name: SubProgressUpdater(
-                    self._sub_progress_metrics,
-                    name=name,
-                    max_name_length=100,
-                )
-                for name in sub_progress_bar_names
-            }
-            if sub_progress_bar_names is not None
-            else None
+            else (None, None)
         )
         self._input_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()

@@ -3,10 +3,9 @@ import threading
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import ray
-from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.progress.utils import truncate_operator_name
 
 if typing.TYPE_CHECKING:
@@ -195,6 +194,8 @@ class BaseExecutionProgressManager(ABC):
 
 @dataclass(frozen=True)
 class ProgressMetrics:
+    """Immutable snapshot of sub-progress state exposed to progress managers."""
+
     name: str
     total: Optional[int]
     completed: int
@@ -208,50 +209,40 @@ class SubProgressUpdater(BaseProgressBar):
         metrics_by_name: Dict[str, ProgressMetrics],
         name: str,
         max_name_length: int,
-        display_bar: Optional[BaseProgressBar] = None,
     ):
         self._metrics_by_name = metrics_by_name
         self._name = name
         self._max_name_length = max_name_length
-        self._display_bar = display_bar
         self._desc = truncate_operator_name(name, self._max_name_length)
+        self._lock = threading.Lock()
+        self._update_callbacks: List[Callable[[ProgressMetrics], None]] = []
 
-    def set_display_bar(self, display_bar: Optional[BaseProgressBar]) -> None:
-        self._display_bar = display_bar
-        metrics = self._metrics_by_name[self._name]
-        if self._display_bar is not None:
-            self._display_bar.set_description(self._desc)
-            self._display_bar.update(total=metrics.total)
-            if metrics.completed:
-                self._display_bar.update(metrics.completed)
+    def add_update_callback(self, callback: Callable[[ProgressMetrics], None]) -> None:
+        with self._lock:
+            self._update_callbacks.append(callback)
+            metrics = self._metrics_by_name[self._name]
+        callback(metrics)
 
     def set_description(self, name: str) -> None:
         self._desc = truncate_operator_name(name, self._max_name_length)
-        if self._display_bar is not None:
-            self._display_bar.set_description(self._desc)
 
     def get_description(self) -> str:
         return self._desc
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
-        metrics = self._metrics_by_name[self._name]
-        new_total = total if total is not None else metrics.total
-        new_completed = metrics.completed + increment
-        self._metrics_by_name[self._name] = ProgressMetrics(
-            name=metrics.name,
-            total=new_total,
-            completed=new_completed,
-        )
-        if self._display_bar is not None:
-            self._display_bar.update(increment, total)
-
-    def refresh(self):
-        if self._display_bar is not None:
-            self._display_bar.refresh()
-
-    def close(self):
-        if self._display_bar is not None:
-            self._display_bar.close()
+        with self._lock:
+            metrics = self._metrics_by_name[self._name]
+            new_total = total if total is not None else metrics.total
+            new_completed = metrics.completed + increment
+            updated_metrics = ProgressMetrics(
+                name=metrics.name,
+                total=new_total,
+                completed=new_completed,
+            )
+            self._metrics_by_name[self._name] = updated_metrics
+            callbacks = list(self._update_callbacks)
+        for callback in callbacks:
+            callback(updated_metrics)
 
 
 class NoopExecutionProgressManager(BaseExecutionProgressManager):
@@ -264,15 +255,7 @@ class NoopExecutionProgressManager(BaseExecutionProgressManager):
         show_op_progress: bool,
         verbose_progress: bool,
     ):
-        for state in topology.values():
-            op = state.op
-            if not isinstance(op, SubProgressMixin):
-                continue
-            updaters = op.get_sub_progress_updaters()
-            if updaters is None:
-                continue
-            for updater in updaters.values():
-                updater.set_display_bar(None)
+        pass
 
     def start(self) -> None:
         pass

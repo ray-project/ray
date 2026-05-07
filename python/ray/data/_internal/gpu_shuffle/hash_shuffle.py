@@ -31,10 +31,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     _get_total_cluster_resources,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
-from ray.data._internal.progress.base_progress import (
-    ProgressMetrics,
-    SubProgressUpdater,
-)
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
 from ray.data.context import DataContext
@@ -420,6 +417,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressMixin):
     single call.
     """
 
+    GPU_SHUFFLE_PROGRESS_NAME = "GPU Shuffle"
+    GPU_REDUCE_PROGRESS_NAME = "GPU Reduce"
+
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -468,22 +468,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressMixin):
         self._shuffled_blocks_stats: List[BlockStats] = []
         self._output_blocks_stats: List[BlockStats] = []
 
-        self._sub_progress_metrics = {
-            "GPU Shuffle": ProgressMetrics(name="GPU Shuffle", total=None, completed=0),
-            "GPU Reduce": ProgressMetrics(name="GPU Reduce", total=None, completed=0),
-        }
-        self._sub_progress_updaters = {
-            "GPU Shuffle": SubProgressUpdater(
-                self._sub_progress_metrics,
-                name="GPU Shuffle",
-                max_name_length=100,
-            ),
-            "GPU Reduce": SubProgressUpdater(
-                self._sub_progress_metrics,
-                name="GPU Reduce",
-                max_name_length=100,
-            ),
-        }
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = self._create_sub_progress_state(
+            [self.GPU_SHUFFLE_PROGRESS_NAME, self.GPU_REDUCE_PROGRESS_NAME]
+        )
 
         # Metrics
         self._shuffle_metrics = OpRuntimeMetrics(self)
@@ -523,7 +513,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressMixin):
                 task_id=task.get_task_id(),
             )
 
-            self._sub_progress_updaters["GPU Shuffle"].update(
+            self._sub_progress_updaters[self.GPU_SHUFFLE_PROGRESS_NAME].update(
                 total=self._next_block_idx
             )
 
@@ -602,7 +592,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressMixin):
             self._estimated_output_num_rows = num_rows
 
             # Update Finalize progress bar
-            self._sub_progress_updaters["GPU Reduce"].update(
+            self._sub_progress_updaters[self.GPU_REDUCE_PROGRESS_NAME].update(
                 increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 

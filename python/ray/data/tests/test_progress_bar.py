@@ -6,6 +6,10 @@ import pytest
 from pytest import fixture
 
 import ray
+from ray.data._internal.progress.base_progress import (
+    ProgressMetrics,
+    SubProgressUpdater,
+)
 from ray.data._internal.progress.progress_bar import ProgressBar
 
 
@@ -81,6 +85,25 @@ def test_progress_bar(enable_tqdm_ray):
     pb.update(total + 1, total)
     assert pb._bar.total == total + 1
     pb.close()
+
+
+def test_sub_progress_updater_updates_metrics_and_notifies_callback():
+    metrics_by_name = {
+        "Shuffle": ProgressMetrics(name="Shuffle", total=None, completed=0)
+    }
+    updater = SubProgressUpdater(metrics_by_name, "Shuffle", max_name_length=100)
+    snapshots = []
+
+    updater.add_update_callback(snapshots.append)
+    updater.update(increment=3, total=10)
+
+    assert metrics_by_name["Shuffle"] == ProgressMetrics(
+        name="Shuffle", total=10, completed=3
+    )
+    assert snapshots == [
+        ProgressMetrics(name="Shuffle", total=None, completed=0),
+        ProgressMetrics(name="Shuffle", total=10, completed=3),
+    ]
 
 
 @pytest.mark.parametrize(

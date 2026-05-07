@@ -56,10 +56,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.progress.base_progress import (
-    ProgressMetrics,
-    SubProgressUpdater,
-)
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
@@ -647,27 +644,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressMixin):
         self._health_monitoring_start_time: float = 0.0
         self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
 
-        # Driver-side sub-progress metrics for manager-owned display state.
-        self._sub_progress_metrics = {
-            self.shuffle_name: ProgressMetrics(
-                name=self.shuffle_name, total=None, completed=0
-            ),
-            self.reduce_name: ProgressMetrics(
-                name=self.reduce_name, total=None, completed=0
-            ),
-        }
-        self._sub_progress_updaters = {
-            self.shuffle_name: SubProgressUpdater(
-                self._sub_progress_metrics,
-                name=self.shuffle_name,
-                max_name_length=100,
-            ),
-            self.reduce_name: SubProgressUpdater(
-                self._sub_progress_metrics,
-                name=self.reduce_name,
-                max_name_length=100,
-            ),
-        }
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = self._create_sub_progress_state([self.shuffle_name, self.reduce_name])
         self._shuffle_metrics = OpRuntimeMetrics(self)
         self._reduce_metrics = OpRuntimeMetrics(self)
 
