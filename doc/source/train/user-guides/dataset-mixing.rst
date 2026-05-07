@@ -79,6 +79,10 @@ To tighten the per-batch window, standardize input block sizes upstream with :me
 
     mixed = Dataset.mix([ds1, ds2], weights=[0.75, 0.25])
 
+.. note::
+
+    You may want to repartition to some multiple of batch size (e.g. ``N * LOCAL_BATCH_SIZE``) if your rows are small in terms of bytes. This prevents splitting blocks into extremely small pieces that increase overhead.
+
 Random mixing
 ~~~~~~~~~~~~~
 
