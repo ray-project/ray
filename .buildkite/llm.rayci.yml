@@ -69,7 +69,7 @@ steps:
       - cpu
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/tests/... //doc/... llm
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --python-version 3.12 --build-name llmbuild-py312
         --test-env=RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         --test-env=RAY_SERVE_ENABLE_HA_PROXY=1
