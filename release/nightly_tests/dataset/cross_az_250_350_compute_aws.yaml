@@ -1,5 +1,7 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
+enable_cross_zone_scaling: true
+
 head_node:
   instance_type: m5.2xlarge
 
@@ -11,4 +13,3 @@ worker_nodes:
 
 flags:
   enable_multi_az_serve: true
-  allow-cross-zone-autoscaling: true
