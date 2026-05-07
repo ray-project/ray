@@ -60,7 +60,7 @@ steps:
         --python-version 3.12 --build-name llmbuild-py312
         --except-tags gpu
     depends_on: llmbuild-py312
-  
+
   - label: "llm direct streaming cpu tests"
     key: "llm-direct-streaming-cpu-tests"
     tags:
