@@ -265,13 +265,21 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_scores: Optional["ServingScores"] = None
         self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
 
-    @property
-    def vllm_args(self):
-        return self._vllm_args
+    async def build_asgi_app(self):
+        from vllm.entrypoints.openai.api_server import build_app, init_app_state
 
-    @property
-    def engine_client(self):
-        return self._engine_client
+        supported_tasks = ("generate",)
+        if hasattr(self._engine_client, "get_supported_tasks"):
+            supported_tasks = await self._engine_client.get_supported_tasks()
+
+        app = build_app(self._vllm_args, supported_tasks=supported_tasks)
+        await init_app_state(
+            self._engine_client,
+            app.state,
+            self._vllm_args,
+            supported_tasks=supported_tasks,
+        )
+        return app
 
     async def start(self) -> None:
         """Start the vLLM engine.

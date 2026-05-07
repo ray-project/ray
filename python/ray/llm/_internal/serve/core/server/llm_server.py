@@ -196,26 +196,7 @@ class LLMServer(LLMServerProtocol):
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
     async def __serve_build_asgi_app__(self):
-        """Build the vLLM FastAPI app after async engine startup completes."""
-        from vllm.entrypoints.openai.api_server import build_app, init_app_state
-
-        engine = self.engine
-        args = engine.vllm_args
-        engine_client = engine.engine_client
-        supported_tasks = ("generate",)
-        if hasattr(engine_client, "get_supported_tasks"):
-            supported_tasks = await engine_client.get_supported_tasks()
-
-        app = build_app(args, supported_tasks=supported_tasks)
-        await init_app_state(
-            engine_client,
-            app.state,
-            args,
-            supported_tasks=supported_tasks,
-        )
-
-        logger.info("Built vLLM FastAPI app for direct ingress serving")
-        return app
+        return await self.engine.build_asgi_app()
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None

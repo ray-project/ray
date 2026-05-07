@@ -388,10 +388,7 @@ class TestBuildOpenaiApp:
         assert issubclass(app._bound_deployment.func_or_class, ASGIAppReplicaWrapper)
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
-        assert (
-            ingress_request_router._bound_deployment.init_kwargs["llm_deployment_name"]
-            == "LLMServer:test-model"
-        )
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
 
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch

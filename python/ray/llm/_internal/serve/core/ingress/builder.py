@@ -2,7 +2,6 @@ import os
 import pprint
 from typing import Any, Dict, List, Optional, Type, Union
 
-from fastapi import FastAPI
 from pydantic import Field, field_validator, model_validator
 
 from ray import serve
@@ -29,31 +28,36 @@ logger = get_logger(__name__)
 
 
 def _build_direct_streaming_llm_deployment(llm_config: LLMConfig) -> Application:
-    """Build the LLMServer deployment with late-bound ASGI ingress enabled."""
+    """Build the LLMServer deployment with late-bound ASGI ingress enabled.
+
+    The real ASGI app (vLLM FastAPI) is constructed inside
+    `LLMServer.__serve_build_asgi_app__` after the engine starts.
+    """
     server_cls = llm_config.server_cls or LLMServer
     return build_llm_deployment(
         llm_config,
-        deployment_cls=serve.ingress(FastAPI())(server_cls),
+        deployment_cls=serve.ingress()(server_cls),
     )
 
 
-def _build_openai_ingress_request_router(*, llm_deployment_name: str) -> Application:
+def _build_openai_ingress_request_router(*, server: Application) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
     The returned Application is attached to the ingress application with
     ``Application._with_ingress_request_router``.
+
+    ``num_replicas`` is pinned to 1 because HAProxy's ingress request router
+    backend currently expects a single endpoint. TODO(eicherseiji): expose
+    these as a user-overridable IngressRequestRouterConfig once HAProxy
+    supports multiple router replicas.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-    logger.info("Creating 1 ingress request router replica (LLMRouter)")
-
-    # Late-bind by deployment name to avoid pulling the LLMServer Application
-    # into the router's recursive build.
     return serve.deployment(
         LLMRouter,
         num_replicas=1,
         max_ongoing_requests=1000,
-    ).bind(llm_deployment_name=llm_deployment_name)
+    ).bind(server=server)
 
 
 class IngressClsConfig(BaseModelExtended):
@@ -192,9 +196,7 @@ def build_openai_app(builder_config: dict) -> Application:
             "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
         return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(
-                llm_deployment_name=direct_deployment.name,
-            )
+            _build_openai_ingress_request_router(server=direct_deployment)
         )
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}

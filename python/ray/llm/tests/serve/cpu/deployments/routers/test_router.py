@@ -46,11 +46,13 @@ class _DirectRouterReplica:
         self.backend_http_endpoint = ("127.0.0.1", port)
 
 
-def _new_direct_router():
+def _new_direct_router(request_router=None):
     router = LLMRouter.__new__(LLMRouter)
     router._round_robin_counter = 0
+    router._cached_dict_id = None
     router._cached_replica_signature = None
-    router._cached_sorted_replicas = []
+    router._cached_endpoints = []
+    router._request_router = request_router or MagicMock(curr_replicas={})
     return router
 
 
@@ -100,7 +102,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_route_forwards_body_and_truncation_signal(self):
         router = _new_direct_router()
-        router._pick_replica = AsyncMock(
+        router._pick_replica = MagicMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
 
@@ -114,25 +116,24 @@ class TestDirectStreamingLLMRouter:
             "port": 9001,
             "replica_id": "DeploymentName#replica",
         }
-        router._pick_replica.assert_awaited_once_with(
+        router._pick_replica.assert_called_once_with(
             request_body=body, body_truncated=True
         )
 
     @pytest.mark.asyncio
     async def test_route_returns_503_on_pick_failure(self):
         router = _new_direct_router()
-        router._pick_replica = AsyncMock(side_effect=RuntimeError("no replicas"))
+        router._pick_replica = MagicMock(side_effect=RuntimeError("no replicas"))
 
         with pytest.raises(HTTPException) as exc_info:
             await router.route(_FakeRequest(b"{}"))
         assert exc_info.value.status_code == 503
         assert "no replicas" in exc_info.value.detail
 
-    def test_ready_replicas_sorts_and_caches_by_replica_id(self):
-        router = _new_direct_router()
-        replica_a = _DirectRouterReplica("a")
-        replica_b = _DirectRouterReplica("b")
-        replica_c = _DirectRouterReplica("c")
+    def test_ready_endpoints_sorts_and_caches_by_replica_id(self):
+        replica_a = _DirectRouterReplica("a", port=8001)
+        replica_b = _DirectRouterReplica("b", port=8002)
+        replica_c = _DirectRouterReplica("c", port=8003)
 
         request_router = MagicMock()
         request_router.curr_replicas = {
@@ -140,18 +141,30 @@ class TestDirectStreamingLLMRouter:
             "a": replica_a,
             "b": replica_b,
         }
+        router = _new_direct_router(request_router)
 
-        first = router._ready_replicas(request_router)
-        assert [r.replica_id.unique_id for r in first] == ["a", "b", "c"]
+        first = router._ready_endpoints()
+        assert first == [
+            ("127.0.0.1", 8001, "a"),
+            ("127.0.0.1", 8002, "b"),
+            ("127.0.0.1", 8003, "c"),
+        ]
 
-        # Same replica set → cached list returned (identity check).
-        assert router._ready_replicas(request_router) is first
+        # Same dict identity: cached tuple list returned (identity check).
+        assert router._ready_endpoints() is first
 
-        # Membership change → cache invalidates and re-sorts.
+        # New dict, same keyset: signature-cache hits, tuples reused.
+        request_router.curr_replicas = dict(request_router.curr_replicas)
+        assert router._ready_endpoints() is first
+
+        # Membership change: cache invalidates and re-sorts.
         request_router.curr_replicas = {"a": replica_a, "b": replica_b}
-        second = router._ready_replicas(request_router)
+        second = router._ready_endpoints()
         assert second is not first
-        assert [r.replica_id.unique_id for r in second] == ["a", "b"]
+        assert second == [
+            ("127.0.0.1", 8001, "a"),
+            ("127.0.0.1", 8002, "b"),
+        ]
 
 
 class TestOpenAiIngress:

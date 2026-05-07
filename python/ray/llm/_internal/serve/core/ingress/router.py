@@ -1,21 +1,13 @@
-import asyncio
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import FrozenSet, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
 from ray.serve._private.common import ReplicaID
-from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve.handle import DeploymentHandle
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
-# Long enough to cover LLMServer cold start (model load + engine startup);
-# short enough that a wedged replica fails the constructor and Serve retries.
-_HANDLE_PRIMING_TIMEOUT_S = 60.0
-
-# Cache key for `_ready_replicas`: the set of current replica IDs. Detects
-# add/remove and in-place swap; insensitive to dict identity / iteration order.
 _ReplicaCacheSignature = FrozenSet[ReplicaID]
 
 router_app = FastAPI()
@@ -48,80 +40,79 @@ class LLMRouter:
         ``_pick_replica`` for future body-aware policies.
 
     Responses:
-        200 ``{"host": str, "port": int, "replica_id": str}`` — pick
+        200 ``{"host": str, "port": int, "replica_id": str}``: pick
             succeeded.
-        4xx/5xx FastAPI ``{"detail": str}`` — informational only; HAProxy
+        4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure.
 
     Health:
-        GET / and GET /health return ``{"status": "ok"}``. Serve does not
-        accept HTTP traffic on this replica until ``__init__`` finishes,
-        so reachability of these paths implies the router is fully
-        initialized.
+        ``GET /health`` is exposed as a human-operator convenience.
+        Serve uses ``check_health()`` for replica readiness, not HTTP.
     """
 
-    async def __init__(self, llm_deployment_name: str):
+    async def __init__(self, server: DeploymentHandle):
         self._round_robin_counter = 0
+        self._cached_dict_id: Optional[int] = None
         self._cached_replica_signature: Optional[_ReplicaCacheSignature] = None
-        self._cached_sorted_replicas: List[RunningReplica] = []
+        self._cached_endpoints: List[Tuple[str, int, str]] = []
+        self._handle: DeploymentHandle = server
 
-        # The /internal/route hot path reads the handle's local request
-        # router directly, so we issue one llm_config call to force handle
-        # initialization before serving traffic. Failure fails the replica
-        # and Serve retries the constructor.
-        self._handle: DeploymentHandle = serve.get_deployment_handle(
-            llm_deployment_name
-        )
-        await asyncio.wait_for(
-            self._handle.llm_config.remote(), timeout=_HANDLE_PRIMING_TIMEOUT_S
-        )
+        # Force the handle's local router and request router to construct
+        # synchronously so /internal/route can read them in the hot path.
+        # `curr_replicas` is populated separately by controller broadcast;
+        # /internal/route returns 503 (HAProxy retries) until then, which
+        # decouples router liveness from LLMServer cold start.
+        self._handle._init()
+        self._request_router = self._handle._get_request_router()
+        if self._request_router is None:
+            raise RuntimeError(
+                "DeploymentHandle._get_request_router() returned None after "
+                "_init(); Serve internals may have changed."
+            )
 
     async def check_health(self):
-        """Serve-native health hook. The replica is healthy if it's
-        accepting calls; nothing further to verify here."""
+        if self._handle._get_request_router() is None:
+            raise RuntimeError("request router not initialized")
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         try:
-            host, port, replica_id = await self._pick_replica(
+            host, port, replica_id = self._pick_replica(
                 request_body=body, body_truncated=body_truncated
             )
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         return {"host": host, "port": port, "replica_id": replica_id}
 
-    @router_app.get("/")
     @router_app.get("/health")
     async def health(self):
         return {"status": "ok"}
 
-    @staticmethod
-    def _replica_id_sort_key(replica: RunningReplica) -> str:
-        return replica.replica_id.unique_id
-
-    def _ready_replicas(self, request_router) -> List[RunningReplica]:
-        """Return backend-HTTP-ready replicas, sorted stably by unique id.
-
-        Caches the sorted list and invalidates only when the replica id set
-        changes. Hot-path call (per /internal/route request).
-        """
-        curr_replicas: Dict[ReplicaID, RunningReplica] = request_router.curr_replicas
+    def _ready_endpoints(self) -> List[Tuple[str, int, str]]:
+        """Backend (host, port, full_id) tuples, cached on replica-set change."""
+        curr_replicas = self._request_router.curr_replicas
+        # RequestRouter swaps the dict wholesale on every controller broadcast,
+        # so dict identity is a cheap "did anything change" check; the keyset
+        # check then filters out broadcasts that didn't actually change the
+        # replica set.
+        if id(curr_replicas) == self._cached_dict_id:
+            return self._cached_endpoints
         signature = frozenset(curr_replicas.keys())
         if signature != self._cached_replica_signature:
             self._cached_replica_signature = signature
-            self._cached_sorted_replicas = sorted(
-                (
-                    r
-                    for r in curr_replicas.values()
-                    if r.backend_http_endpoint is not None
-                ),
-                key=self._replica_id_sort_key,
+            ready = sorted(
+                (r for r in curr_replicas.values() if r.backend_http_endpoint),
+                key=lambda r: r.replica_id.unique_id,
             )
-        return self._cached_sorted_replicas
+            self._cached_endpoints = [
+                (*r.backend_http_endpoint, r.replica_id.to_full_id_str()) for r in ready
+            ]
+        self._cached_dict_id = id(curr_replicas)
+        return self._cached_endpoints
 
-    async def _pick_replica(
+    def _pick_replica(
         self,
         request_body: Optional[bytes] = None,
         body_truncated: bool = False,
@@ -135,16 +126,10 @@ class LLMRouter:
         without changing the /internal/route contract or the call site.
         """
         del request_body, body_truncated
-        request_router = self._handle._get_request_router()
-        if request_router is None:
-            raise RuntimeError("request router not initialized")
-
-        candidates = self._ready_replicas(request_router)
+        candidates = self._ready_endpoints()
         if not candidates:
             raise RuntimeError("no backend-http replicas")
 
         index = self._round_robin_counter % len(candidates)
         self._round_robin_counter += 1
-        replica = candidates[index]
-        host, port = replica.backend_http_endpoint
-        return host, port, replica.replica_id.to_full_id_str()
+        return candidates[index]
