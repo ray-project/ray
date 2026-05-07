@@ -287,16 +287,19 @@ class TestResourceManager:
 
         global_cpu = 0
         global_mem = 0
+        global_pending_mem = 0
         for op in [o1, o2, o3]:
             if op == o1:
                 # Resource usage of InputDataBuffer doesn't count.
                 expected_mem = 0
+                expected_pending_mem = 0
             else:
                 expected_mem = (
                     mock_pending_task_outputs[op]
                     + mock_internal_outqueue[op]
                     + mock_external_outqueue_sizes[op]
                 )
+                expected_pending_mem = mock_pending_task_outputs[op]
                 for next_op in op.output_dependencies:
                     expected_mem += (
                         +mock_internal_inqueue[next_op]
@@ -318,9 +321,16 @@ class TestResourceManager:
                 )
             global_cpu += mock_cpu[op]
             global_mem += expected_mem
+            global_pending_mem += expected_pending_mem
 
         assert resource_manager.get_global_usage() == ExecutionResources(
             global_cpu, 0, global_mem
+        )
+        assert resource_manager.get_global_running_usage() == ExecutionResources(
+            global_cpu, 0, global_mem - global_pending_mem
+        )
+        assert resource_manager.get_global_pending_usage() == ExecutionResources(
+            0, 0, global_pending_mem
         )
 
     def test_object_store_usage(self, restore_data_context):

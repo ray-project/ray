@@ -586,17 +586,18 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{limits.object_store_memory_str()} object store"
         )
 
+        pending_resources = []
+        if pending_usage.cpu:
+            pending_resources.append(f"{pending_usage.cpu:.4g} CPU")
+        if pending_usage.gpu:
+            pending_resources.append(f"{pending_usage.gpu:.4g} GPU")
+        if pending_usage.object_store_memory:
+            pending_resources.append(
+                f"{pending_usage.object_store_memory_str()} object store"
+            )
         # Only include pending section when there are pending resources.
-        if pending_usage.cpu or pending_usage.gpu:
-            if pending_usage.cpu and pending_usage.gpu:
-                pending_str = (
-                    f"{pending_usage.cpu:.4g} CPU, {pending_usage.gpu:.4g} GPU"
-                )
-            elif pending_usage.cpu:
-                pending_str = f"{pending_usage.cpu:.4g} CPU"
-            else:
-                pending_str = f"{pending_usage.gpu:.4g} GPU"
-            resources_status += f" (pending: {pending_str})"
+        if pending_resources:
+            resources_status += f" (pending: {', '.join(pending_resources)})"
 
         self._progress_manager.update_total_resource_status(resources_status)
 

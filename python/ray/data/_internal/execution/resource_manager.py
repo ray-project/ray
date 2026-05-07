@@ -174,7 +174,7 @@ class ResourceManager:
             return 0
 
         # Operator's internal Object Store usage
-        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
+        mem_op_internal = self._estimate_pending_object_store_memory_usage(op)
 
         # Operator's outputs' Object Store usage
         op_outputs_bytes = (
@@ -208,6 +208,13 @@ class ResourceManager:
 
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
+    def _estimate_pending_object_store_memory_usage(
+        self, op: "PhysicalOperator"
+    ) -> int:
+        if isinstance(op, InputDataBuffer):
+            return 0
+        return op.metrics.obj_store_mem_pending_task_outputs or 0
+
     def update_usages(self):
         """Recalculate resource usages."""
         # TODO(hchen): This method will be called frequently during the execution loop.
@@ -233,10 +240,15 @@ class ResourceManager:
             assert not op_pending_usage.object_store_memory
 
             used_object_store = self._estimate_object_store_memory_usage(op, state)
+            running_object_store = self.get_mem_op_outputs(op)
+            pending_object_store = self.get_mem_op_internal(op)
 
             op_usage = op_usage.copy(object_store_memory=used_object_store)
             op_running_usage = op_running_usage.copy(
-                object_store_memory=used_object_store
+                object_store_memory=running_object_store
+            )
+            op_pending_usage = op_pending_usage.copy(
+                object_store_memory=pending_object_store
             )
 
             if isinstance(op, ReportsExtraResourceUsage):

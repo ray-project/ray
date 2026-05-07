@@ -70,13 +70,19 @@ from ray.data.tests.conftest import *  # noqa
 def mock_resource_manager(
     global_limits=None,
     global_usage=None,
+    global_running_usage=None,
+    global_pending_usage=None,
 ):
     empty_resource = ExecutionResources(0, 0, 0)
     global_limits = global_limits or empty_resource
     global_usage = global_usage or empty_resource
+    global_running_usage = global_running_usage or global_usage
+    global_pending_usage = global_pending_usage or empty_resource
     return MagicMock(
         get_global_limits=MagicMock(return_value=global_limits),
         get_global_usage=MagicMock(return_value=global_usage),
+        get_global_running_usage=MagicMock(return_value=global_running_usage),
+        get_global_pending_usage=MagicMock(return_value=global_pending_usage),
         op_resource_allocator_enabled=MagicMock(return_value=True),
     )
 
@@ -567,6 +573,27 @@ def test_rank_operators(ray_start_regular_shared):
     ranks = ranker.rank_operators([o1, o2, o3, o4], {}, resource_manager)
 
     assert [(1, 1024), (1, 2048), (1, 4096), (0, 8092)] == ranks
+
+
+def test_report_current_usage_includes_pending_object_store_memory():
+    executor = StreamingExecutor(DataContext.get_current(), dataset_id="dataset")
+    executor._resource_manager = mock_resource_manager(
+        global_limits=ExecutionResources.for_limits(
+            cpu=4, gpu=1, object_store_memory=1024 * MiB
+        ),
+        global_running_usage=ExecutionResources(
+            cpu=2, gpu=1, object_store_memory=512 * MiB
+        ),
+        global_pending_usage=ExecutionResources(cpu=1, object_store_memory=256 * MiB),
+    )
+    executor._progress_manager = MagicMock()
+
+    executor._report_current_usage()
+
+    executor._progress_manager.update_total_resource_status.assert_called_once_with(
+        "Active & requested resources: 2/4 CPU, 1/1 GPU, "
+        "512.0MiB/1.0GiB object store (pending: 1 CPU, 256.0MiB object store)"
+    )
 
 
 def test_select_ops_to_run(ray_start_regular_shared):
