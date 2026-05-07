@@ -8377,6 +8377,81 @@ class TestScaleDeploymentGangReplicas:
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
+    def test_recovery_restarts_gang_when_member_uninitialized(
+        self, mock_deployment_state_manager
+    ):
+        """Recovery drops the whole gang if a member never finished initialization."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        gang_size = 2
+        deployment_id = DeploymentID(name="gang_uninitialized_recovery", app_name="app")
+        info, version = deployment_info(
+            num_replicas=gang_size,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, info)
+        dsm.save_checkpoint()
+        ds = dsm._deployment_states[deployment_id]
+
+        dsm.update()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        running = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(running) == gang_size
+
+        member_ids = {replica.replica_id.unique_id for replica in running}
+        gang_context_by_replica_id = {
+            replica.replica_id.unique_id: replica.gang_context for replica in running
+        }
+        uninitialized_replica_id = running[0].replica_id
+        survivor_replica_id = running[1].replica_id
+        uninitialized_replicas_context.add(uninitialized_replica_id)
+
+        try:
+            new_dsm: DeploymentStateManager = create_dsm(
+                [replica.replica_id.to_full_id_str() for replica in running],
+                create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+            )
+            new_ds = new_dsm._deployment_states[deployment_id]
+            recovering = {
+                replica.replica_id.unique_id: replica
+                for replica in new_ds._replicas.get([ReplicaState.RECOVERING])
+            }
+            survivor = recovering[survivor_replica_id.unique_id]
+            assert recovering[uninitialized_replica_id.unique_id].gang_context is None
+
+            new_dsm.update()
+            assert {
+                replica.replica_id.unique_id
+                for replica in new_ds._replicas.get([ReplicaState.STOPPING])
+            } == {uninitialized_replica_id.unique_id}
+            check_counts(
+                new_ds,
+                total=gang_size,
+                by_state=[
+                    (ReplicaState.STOPPING, 1, version),
+                    (ReplicaState.RECOVERING, 1, version),
+                ],
+            )
+
+            survivor._actor._gang_context = gang_context_by_replica_id[
+                survivor_replica_id.unique_id
+            ]
+            survivor._actor.set_ready()
+            new_dsm.update()
+
+            stopping_ids = {
+                replica.replica_id.unique_id
+                for replica in new_ds._replicas.get([ReplicaState.STOPPING])
+            }
+            assert stopping_ids == member_ids
+        finally:
+            uninitialized_replicas_context.remove(uninitialized_replica_id)
+
     def test_gang_startup_failure_per_gang_counter(self, mock_deployment_state_manager):
         """When a gang of replicas fails to start, the failure counter should increment once per gang and not once per replica."""
         create_dsm, _, _, _ = mock_deployment_state_manager

@@ -4127,6 +4127,7 @@ class DeploymentState:
         """
         slow_replicas = []
         failed_gang_ids: Set[str] = set()
+        unrecoverable_replica_ids_without_gang: Set[str] = set()
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
@@ -4225,6 +4226,10 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                     if replica.gang_context is not None:
                         failed_gang_ids.add(replica.gang_context.gang_id)
+                    else:
+                        unrecoverable_replica_ids_without_gang.add(
+                            replica.replica_id.unique_id
+                        )
                     continue
 
                 # For gang replicas, count the failure once per gang and not per replica so the
@@ -4253,6 +4258,31 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
+
+        if self._is_gang_deployment and original_state == ReplicaState.RECOVERING:
+            # An unrecoverable actor may not have received its initial gang context.
+            # Use recovered siblings' member lists to find and restart the gang.
+            all_tracked_replica_ids = {
+                replica.replica_id.unique_id for replica in self._replicas.get()
+            }
+            unavailable_replica_ids = unrecoverable_replica_ids_without_gang | {
+                replica.replica_id.unique_id
+                for replica in self._replicas.get(states=[ReplicaState.STOPPING])
+            }
+            for replica in self._replicas.get(
+                states=[original_state, ReplicaState.RUNNING]
+            ):
+                gang_context = replica.gang_context
+                if (
+                    gang_context is not None
+                    and gang_context.gang_id not in failed_gang_ids
+                    and any(
+                        member_id not in all_tracked_replica_ids
+                        or member_id in unavailable_replica_ids
+                        for member_id in gang_context.member_replica_ids
+                    )
+                ):
+                    failed_gang_ids.add(gang_context.gang_id)
 
         # If any gang member failed during startup, stop all other members of
         # that gang so partial gangs never exist.
