@@ -4727,6 +4727,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/metrics/clearing_ema",
+    size = "medium",
+    srcs = ["examples/metrics/clearing_ema.py"],
+    args = [
+        "--stop-iters=3",
+    ],
+    main = "examples/metrics/clearing_ema.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: multi_agent/
 # ....................................
 py_test(
