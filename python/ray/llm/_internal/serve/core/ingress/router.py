@@ -1,3 +1,4 @@
+import random
 from typing import FrozenSet, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
@@ -51,7 +52,10 @@ class LLMRouter:
     """
 
     async def __init__(self, server: DeploymentHandle):
-        self._round_robin_counter = 0
+        # Randomized so multiple LLMRouter replicas don't lockstep on the
+        # same replica sequence. (HAProxy currently expects a single router
+        # endpoint, so this is dormant until multi-replica routers ship.)
+        self._round_robin_counter = random.randrange(2**31)
         self._cached_dict_id: Optional[int] = None
         self._cached_replica_signature: Optional[_ReplicaCacheSignature] = None
         self._cached_endpoints: List[Tuple[str, int, str]] = []
