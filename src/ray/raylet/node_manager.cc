@@ -3088,13 +3088,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           }
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
-          SystemMemorySnapshot system_memory_snapshot =
-              MemoryMonitorUtils::TakeHostSystemMemorySnapshot(
+          MemoryUsageSnapshot system_memory_snapshot =
+              MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
           if (initial_config_.enable_resource_isolation) {
-            StatusSetOr<SystemMemorySnapshot, StatusT::NotFound>
+            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
                 user_slice_memory_snapshot_or =
-                    MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(
+                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
             if (user_slice_memory_snapshot_or.has_value()) {
@@ -3201,7 +3201,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
 std::string NodeManager::CreateOomKillMessageDetails(
     const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill,
     const NodeID &node_id,
-    const SystemMemorySnapshot &system_memory_snapshot,
+    const MemoryUsageSnapshot &system_memory_snapshot,
     const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {

@@ -27,7 +27,7 @@
 
 namespace ray {
 
-const SystemMemorySnapshot MemoryMonitorUtils::TakeHostSystemMemorySnapshot(
+const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
     const std::string &root_cgroup_path, const std::string &proc_dir) {
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes(root_cgroup_path);
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes(proc_dir);
@@ -39,11 +39,11 @@ const SystemMemorySnapshot MemoryMonitorUtils::TakeHostSystemMemorySnapshot(
   if (system_total_bytes == cgroup_total_bytes) {
     system_used_bytes = cgroup_used_bytes;
   }
-  return SystemMemorySnapshot{system_used_bytes, system_total_bytes};
+  return MemoryUsageSnapshot{system_used_bytes, system_total_bytes};
 }
 
-const StatusSetOr<SystemMemorySnapshot, StatusT::NotFound>
-MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(
+const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
+MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
     const std::string &user_cgroup_path,
     const std::string &system_cgroup_path,
     const std::string &proc_dir) {
@@ -80,30 +80,28 @@ MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(
                              user_cgroup_memory_snapshot.shmem_memory_bytes +
                              system_cgroup_memory_snapshot.shmem_memory_bytes;
   auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
-  return SystemMemorySnapshot{total_used_bytes, host_level_total_bytes};
+  return MemoryUsageSnapshot{total_used_bytes, host_level_total_bytes};
 }
 
 MemoryMonitorUtils::CgroupMemorySnapshotStatusOr
 MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path) {
   std::string v2_stat_path = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
   std::ifstream v2_stat_f(v2_stat_path, std::ios::in | std::ios::binary);
-  if (v2_stat_f.is_open()) {
+  if (v2_stat_f) {
     CgroupMemorySnapshot snapshot;
     bool anon_found = false;
     bool shmem_found = false;
     std::string line;
-    while (std::getline(v2_stat_f, line)) {
-      std::string key;
-      int64_t stat_value;
-      std::istringstream iss(line);
-      if (iss >> key >> stat_value) {
-        if (key == kCgroupsV2MemoryAnonKey) {
-          snapshot.anon_memory_bytes = stat_value;
-          anon_found = true;
-        } else if (key == kCgroupsV2MemoryShmemKey) {
-          snapshot.shmem_memory_bytes = stat_value;
-          shmem_found = true;
-        }
+    std::string key;
+    int64_t stat_value;
+    while (std::getline(v2_stat_f, line) &&
+           (std::istringstream(line) >> key >> stat_value)) {
+      if (key == kCgroupsV2MemoryAnonKey) {
+        snapshot.anon_memory_bytes = stat_value;
+        anon_found = true;
+      } else if (key == kCgroupsV2MemoryShmemKey) {
+        snapshot.shmem_memory_bytes = stat_value;
+        shmem_found = true;
       }
       if (anon_found && shmem_found) {
         break;
@@ -135,13 +133,13 @@ int64_t MemoryMonitorUtils::GetCGroupMemoryUsedBytes(const char *stat_path,
   // by the kernel and are considered available memory from
   // the OOM killer's perspective.
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
-  if (!memstat_ifs.is_open()) {
+  if (!memstat_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " memory stat file not found: " << stat_path;
     return MemoryMonitorInterface::kNull;
   }
   std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
-  if (!memusage_ifs.is_open()) {
+  if (!memusage_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " memory usage file not found: " << usage_path;
     return MemoryMonitorInterface::kNull;
@@ -247,7 +245,7 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
     const std::string proc_dir) {
   std::string meminfo_path = proc_dir + "/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
-  if (!meminfo_ifs.is_open()) {
+  if (!meminfo_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " file not found: " << meminfo_path;
     return {MemoryMonitorInterface::kNull, MemoryMonitorInterface::kNull};
@@ -329,7 +327,7 @@ int64_t MemoryMonitorUtils::GetProcessMemoryBytes(pid_t pid, const std::string p
 int64_t MemoryMonitorUtils::GetLinuxProcessMemoryBytesFromSmap(
     const std::string smap_path) {
   std::ifstream smap_ifs(smap_path, std::ios::in | std::ios::binary);
-  if (!smap_ifs.is_open()) {
+  if (!smap_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " file not found: " << smap_path;
     return MemoryMonitorInterface::kNull;
@@ -461,7 +459,7 @@ const std::string MemoryMonitorUtils::GetCommandLineForPid(pid_t pid,
   std::string path =
       proc_dir + "/" + std::to_string(pid) + "/" + MemoryMonitorUtils::kCommandlinePath;
   std::ifstream commandline_ifs(path, std::ios::in | std::ios::binary);
-  if (!commandline_ifs.is_open()) {
+  if (!commandline_ifs) {
     RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs)
         << "Command line path doesn't exist, returning empty command. Path: " << path;
     return {};

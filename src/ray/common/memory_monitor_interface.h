@@ -29,7 +29,7 @@ namespace ray {
 /**
  * @brief A snapshot of aggregated memory usage across the system.
  */
-struct SystemMemorySnapshot {
+struct MemoryUsageSnapshot {
   /// The current memory usage.
   int64_t used_bytes;
 
@@ -37,7 +37,7 @@ struct SystemMemorySnapshot {
   int64_t total_bytes;
 
   friend std::ostream &operator<<(std::ostream &os,
-                                  const SystemMemorySnapshot &memory_snapshot) {
+                                  const MemoryUsageSnapshot &memory_snapshot) {
     os << "Used bytes: " << memory_snapshot.used_bytes
        << ", Total bytes: " << memory_snapshot.total_bytes;
     return os;
@@ -48,7 +48,8 @@ struct SystemMemorySnapshot {
  * @brief A snapshot of memory usage within a cgroup.
  */
 struct CgroupMemorySnapshot {
-  /// size of anonymous mappings within the cgroup in bytes.
+  /// size of non-file-backed region mappings within the cgroup in bytes.
+  /// This is an approximation of heap usage for the cgroup.
   int64_t anon_memory_bytes;
 
   /// size of shared memory mappings within the cgroup in bytes.

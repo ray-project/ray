@@ -37,14 +37,14 @@ class MemoryMonitorUtilsTest : public MemoryMonitorTestFixture {};
 
 TEST_F(MemoryMonitorUtilsTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
-    auto system_memory = MemoryMonitorUtils::TakeHostSystemMemorySnapshot("");
+    auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
     ASSERT_GT(system_memory.total_bytes, 0);
     ASSERT_GT(system_memory.total_bytes, system_memory.used_bytes);
   }
 }
 
 TEST_F(MemoryMonitorUtilsTest,
-       TestTakeHostSystemMemorySnapshotUsesCgroupWhenLowerThanSystem) {
+       TestTakeSystemMemoryUsageSnapshotUsesCgroupWhenLowerThanSystem) {
   int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
   int64_t cgroup_current_bytes = 500 * 1024 * 1024;  // 500 MB current usage
   int64_t inactive_file_bytes = 50 * 1024 * 1024;    // 50 MB inactive file cache
@@ -59,7 +59,7 @@ TEST_F(MemoryMonitorUtilsTest,
                                                    inactive_file_bytes,
                                                    active_file_bytes);
 
-  auto system_memory = MemoryMonitorUtils::TakeHostSystemMemorySnapshot(cgroup_dir);
+  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(cgroup_dir);
 
   ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
   ASSERT_EQ(system_memory.used_bytes, expected_used_bytes);
@@ -67,7 +67,7 @@ TEST_F(MemoryMonitorUtilsTest,
 
 TEST_F(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   {
-    auto system_memory = MemoryMonitorUtils::TakeHostSystemMemorySnapshot("");
+    auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
     auto [cgroup_used_bytes, cgroup_total_bytes] =
         MemoryMonitorUtils::GetCGroupMemoryBytes("");
 
@@ -532,7 +532,7 @@ TEST_F(MemoryMonitorUtilsTest,
 }
 
 TEST_F(MemoryMonitorUtilsTest,
-       TestTakeUserSliceSystemMemorySnapshotUserCgroupV1ReturnsNotFound) {
+       TestTakeUserSliceMemoryUsageSnapshotUserCgroupV1ReturnsNotFound) {
   std::string user_cgroup_dir = MockCgroupv1MemoryUsage(
       /*total_bytes=*/1LL * 1024 * 1024 * 1024,
       /*current_bytes=*/500 * 1024 * 1024,
@@ -545,15 +545,15 @@ TEST_F(MemoryMonitorUtilsTest,
       /*shmem_memory_bytes=*/50 * 1024 * 1024,
       /*inactive_file_bytes=*/30 * 1024 * 1024,
       /*active_file_bytes=*/20 * 1024 * 1024);
-  StatusSetOr<SystemMemorySnapshot, StatusT::NotFound> result =
-      MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(user_cgroup_dir,
-                                                            system_cgroup_dir);
+  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_dir,
+                                                           system_cgroup_dir);
   ASSERT_TRUE(result.has_error());
   ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
 }
 
 TEST_F(MemoryMonitorUtilsTest,
-       TestTakeUserSliceSystemMemorySnapshotValidPathsReturnsCorrectUsedBytes) {
+       TestTakeUserSliceMemoryUsageSnapshotValidPathsReturnsCorrectUsedBytes) {
   int64_t user_anon_bytes = 200 * 1024 * 1024;    // 200 MB
   int64_t user_shmem_bytes = 100 * 1024 * 1024;   // 100 MB
   int64_t system_shmem_bytes = 50 * 1024 * 1024;  // 50 MB
@@ -574,10 +574,10 @@ TEST_F(MemoryMonitorUtilsTest,
       /*active_file_bytes=*/10 * 1024 * 1024);
 
   int64_t expected_used_bytes = user_anon_bytes + user_shmem_bytes + system_shmem_bytes;
-  StatusSetOr<SystemMemorySnapshot, StatusT::NotFound> result =
-      MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(user_cgroup_dir,
-                                                            system_cgroup_dir);
-  SystemMemorySnapshot host_memory = MemoryMonitorUtils::TakeHostSystemMemorySnapshot("");
+  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_dir,
+                                                           system_cgroup_dir);
+  MemoryUsageSnapshot host_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result.value().used_bytes, expected_used_bytes);
   ASSERT_EQ(result.value().total_bytes, host_memory.total_bytes);

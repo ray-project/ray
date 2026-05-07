@@ -45,7 +45,7 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       }),
       runner_(PeriodicalRunner::Create(io_service_)) {
   int64_t total_memory_bytes =
-      MemoryMonitorUtils::TakeHostSystemMemorySnapshot(root_cgroup_path_).total_bytes;
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_).total_bytes;
   float computed_threshold_fraction = static_cast<float>(memory_usage_threshold_bytes_) /
                                       static_cast<float>(total_memory_bytes);
   RAY_LOG(INFO) << absl::StrFormat(
@@ -95,8 +95,8 @@ bool ThresholdMemoryMonitor::IsEnabled() const {
 }
 
 bool ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
-  SystemMemorySnapshot cur_memory_snapshot =
-      MemoryMonitorUtils::TakeHostSystemMemorySnapshot(root_cgroup_path_);
+  MemoryUsageSnapshot cur_memory_snapshot =
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_);
   int64_t used_memory_bytes = cur_memory_snapshot.used_bytes;
   int64_t total_memory_bytes = cur_memory_snapshot.total_bytes;
   if (total_memory_bytes == MemoryMonitorInterface::kNull ||
@@ -121,9 +121,9 @@ bool ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
 }
 
 bool ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
-  StatusSetOr<SystemMemorySnapshot, StatusT::NotFound> user_slice_memory_snapshot_or =
-      MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(user_cgroup_path_,
-                                                            system_cgroup_path_);
+  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> user_slice_memory_snapshot_or =
+      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_path_,
+                                                           system_cgroup_path_);
   if (!user_slice_memory_snapshot_or.has_value()) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "Failed to take user slice memory snapshot due to: %s. "
@@ -132,7 +132,7 @@ bool ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
         user_slice_memory_snapshot_or.message());
     return false;
   }
-  SystemMemorySnapshot user_slice_memory_snapshot = user_slice_memory_snapshot_or.value();
+  MemoryUsageSnapshot user_slice_memory_snapshot = user_slice_memory_snapshot_or.value();
   bool is_usage_above_threshold =
       user_slice_memory_snapshot.used_bytes > memory_usage_threshold_bytes_;
   if (is_usage_above_threshold) {

@@ -63,8 +63,10 @@ class MemoryMonitorUtils {
       const std::string proc_dir = kProcDirectory);
 
   /**
-   * @brief Takes a snapshot of system memory usage acorss the host machine.
+   * @brief Takes a snapshot of system memory usage.
    *
+   * This includes the memory usage of all processes running on the system.
+   * The system is defined as either the container we are running in or the host machine.
    * If the root cgroup memory limit is lower than the system memory limit,
    * take the memory utilization from the cgroup instead.
    *
@@ -74,12 +76,13 @@ class MemoryMonitorUtils {
    *                 to read the OS level memory usage from.
    * @return The used and total memory in bytes.
    */
-  static const SystemMemorySnapshot TakeHostSystemMemorySnapshot(
+  static const MemoryUsageSnapshot TakeSystemMemoryUsageSnapshot(
       const std::string &root_cgroup_path, const std::string &proc_dir = kProcDirectory);
 
   /**
-   * @brief Takes a snapshot of user application memory usage
-   *        across the host machine.
+   * @brief Takes a snapshot of user slice memory usage across the host
+   *        machine. This includes the heap usage of all worker processes
+   *        and the object store usage shared across the raylet and workers.
    *
    * @param user_cgroup_path The path to the user cgroup
    *                         to read the memory usage from.
@@ -91,10 +94,10 @@ class MemoryMonitorUtils {
    *         Returns StatusT::NotFound if the memory values could not be successfully
    retrieved.
    */
-  static const StatusSetOr<SystemMemorySnapshot, StatusT::NotFound>
-  TakeUserSliceSystemMemorySnapshot(const std::string &user_cgroup_path,
-                                    const std::string &system_cgroup_path,
-                                    const std::string &proc_dir = kProcDirectory);
+  static const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
+  TakeUserSliceMemoryUsageSnapshot(const std::string &user_cgroup_path,
+                                   const std::string &system_cgroup_path,
+                                   const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Takes a snapshot of the memory usage for the given cgroupv2 path.

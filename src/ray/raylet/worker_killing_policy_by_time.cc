@@ -43,7 +43,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) {
+    const MemoryUsageSnapshot &system_memory_snapshot) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
   std::vector<std::string> alive_worker_debug_strings;
   for (const auto &worker_being_killed_or_should_retry : workers_being_killed_) {
@@ -81,7 +81,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) const {
+    const MemoryUsageSnapshot &system_memory_snapshot) const {
   if (workers.empty()) {
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }

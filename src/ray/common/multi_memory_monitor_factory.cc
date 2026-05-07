@@ -32,7 +32,7 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors;
 
   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
-  int64_t total_memory_bytes = MemoryMonitorUtils::TakeHostSystemMemorySnapshot(
+  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                                    MemoryMonitorInterface::kDefaultCgroupPath)
                                    .total_bytes;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
