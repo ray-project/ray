@@ -33,10 +33,10 @@ class ResolvedStreamFileInfo(BaseModel):
 
     # Start offset in the log file to stream from. None to indicate beginning of
     # the file, or determined by last tail lines.
-    start_offset: Optional[int]
+    start_offset: Optional[int] = None
 
     # End offset in the log file to stream from. None to indicate the end of the file.
-    end_offset: Optional[int]
+    end_offset: Optional[int] = None
 
 
 class LogsManager:

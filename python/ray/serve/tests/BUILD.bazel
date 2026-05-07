@@ -203,6 +203,7 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "enormous",
+    data = glob(["test_config_files/**/*"]),
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
