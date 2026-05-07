@@ -15,7 +15,9 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 
 #include <algorithm>
+#include <set>
 #include <string>
+#include <utility>
 
 namespace ray {
 
@@ -54,7 +56,7 @@ NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
   node_resources.total = NodeResourceSet(resource_map_total);
-  node_resources.available = NodeResourceSet(resource_map_available);
+  node_resources.SetAvailable(NodeResourceSet(resource_map_available));
   node_resources.labels = node_labels;
   return node_resources;
 }
@@ -164,6 +166,40 @@ std::string NodeResources::DebugString() const {
 }
 
 std::string NodeResources::DictString() const { return DebugString(); }
+
+FixedPoint NodeResources::GetAvailableSum(scheduling::ResourceID resource_id) const {
+  return available.Get(resource_id);
+}
+
+std::set<scheduling::ResourceID> NodeResources::GetAvailableResourceIds() const {
+  return available.ExplicitResourceIds();
+}
+
+void NodeResources::SubtractAvailable(const ResourceSet &resource_set) {
+  available -= resource_set;
+  available.RemoveNegative();
+}
+
+void NodeResources::SetAvailableResource(scheduling::ResourceID resource_id,
+                                         FixedPoint value) {
+  available.Set(resource_id, value);
+}
+
+void NodeResources::SetAvailable(NodeResourceSet resource_set) {
+  available = std::move(resource_set);
+}
+
+absl::flat_hash_map<std::string, double> NodeResources::GetAvailableResourceMap() const {
+  return available.GetResourceMap();
+}
+
+bool NodeResources::HasAvailableResource(scheduling::ResourceID resource_id) const {
+  return available.Has(resource_id);
+}
+
+const NodeResourceSet &NodeResources::GetAvailable() const { return available; }
+
+NodeResourceSet NodeResources::TakeAvailable() { return std::move(available); }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const {
   return this->total == other.total && this->available == other.available;

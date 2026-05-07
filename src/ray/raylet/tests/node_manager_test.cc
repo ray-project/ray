@@ -783,7 +783,7 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   EXPECT_EQ(node_resources.labels.at("label1"), "value1");
   EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
             kTestTotalCpuResource);
-  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(),
+  EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
             kTestTotalCpuResource);
 }
 

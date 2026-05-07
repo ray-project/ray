@@ -91,7 +91,7 @@ bool ClusterResourceManager::UpdateNode(
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
   local_view.total = std::move(node_resources.total);
-  local_view.available = std::move(node_resources.available);
+  local_view.SetAvailable(node_resources.TakeAvailable());
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
@@ -168,7 +168,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   auto local_view = it->second.GetMutableLocalView();
   FixedPoint resource_total_fp(resource_total);
   auto local_total = local_view->total.Get(resource_id);
-  auto local_available = local_view->available.Get(resource_id);
+  auto local_available = local_view->GetAvailableSum(resource_id);
   auto diff_capacity = resource_total_fp - local_total;
   auto total = local_total + diff_capacity;
   auto available = local_available + diff_capacity;
@@ -179,7 +179,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
     available = 0;
   }
   local_view->total.Set(resource_id, total);
-  local_view->available.Set(resource_id, available);
+  local_view->SetAvailableResource(resource_id, available);
 }
 
 bool ClusterResourceManager::DeleteResources(
@@ -192,7 +192,7 @@ bool ClusterResourceManager::DeleteResources(
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
     local_view->total.Set(resource_id, 0);
-    local_view->available.Set(resource_id, 0);
+    local_view->SetAvailableResource(resource_id, 0);
   }
   return true;
 }
@@ -217,8 +217,7 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   NodeResources *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request.GetResourceSet();
-  resources->available.RemoveNegative();
+  resources->SubtractAvailable(resource_request.GetResourceSet());
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
@@ -260,13 +259,13 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
   auto node_resources = it->second.GetMutableLocalView();
   for (auto &resource_id : resource_set.ResourceIds()) {
     if (node_resources->total.Has(resource_id)) {
-      auto available = node_resources->available.Get(resource_id);
+      auto available = node_resources->GetAvailableSum(resource_id);
       auto total = node_resources->total.Get(resource_id);
       auto new_available = available + resource_set.Get(resource_id);
       if (new_available > total) {
         new_available = total;
       }
-      node_resources->available.Set(resource_id, new_available);
+      node_resources->SetAvailableResource(resource_id, new_available);
     }
   }
   return true;

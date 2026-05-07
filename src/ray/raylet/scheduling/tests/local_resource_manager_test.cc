@@ -36,7 +36,7 @@ class LocalResourceManagerTest : public ::testing::Test {
       absl::flat_hash_map<ResourceID, double> resource_usage_map) {
     NodeResources resources;
     for (auto &[resource_id, total] : resource_usage_map) {
-      resources.available.Set(resource_id, total);
+      resources.SetAvailableResource(resource_id, total);
       resources.total.Set(resource_id, total);
     }
     return resources;
