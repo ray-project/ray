@@ -1413,8 +1413,6 @@ def stop(force: bool, grace_period: int):
         stopped, alive = psutil.wait_procs(
             procs_to_kill, timeout=grace_period, callback=on_terminate
         )
-        # Zombies were already dead; count them toward the stopped total.
-        total_stopped = len(stopped) + len(pre_stopped)
 
         # For processes that are not killed within the grace period,
         # we send force termination signals.
@@ -1422,6 +1420,25 @@ def stop(force: bool, grace_period: int):
             proc.kill()
         # Wait a little bit to make sure processes are killed forcefully.
         psutil.wait_procs(alive, timeout=2)
+
+        # Procs that turned into zombies along the way are effectively dead
+        # (psutil keeps them in `alive` because the kernel hasn't reaped them).
+        # Reclassify them as stopped so we don't report them as "still running".
+        zombies_after_wait = []
+        live_alive = []
+        for proc in alive:
+            try:
+                if proc.status() == psutil.STATUS_ZOMBIE:
+                    zombies_after_wait.append(proc)
+                else:
+                    live_alive.append(proc)
+            except psutil.NoSuchProcess:
+                # Disappeared between status check and now — count as stopped.
+                pass
+        alive = live_alive
+        # Zombies were already dead; count them toward the stopped total.
+        total_stopped = len(stopped) + len(pre_stopped) + len(zombies_after_wait)
+
         return total_found, total_stopped, alive
 
     # Process killing procedure: we put processes into 3 buckets.
