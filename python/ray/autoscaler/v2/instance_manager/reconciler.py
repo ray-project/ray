@@ -6,6 +6,9 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    KubeRayProvider,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -293,6 +296,7 @@ class Reconciler:
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
+            cloud_provider=cloud_provider,
         )
 
         Reconciler._handle_instances_launch(
@@ -307,7 +311,9 @@ class Reconciler:
             )
 
         Reconciler._fill_autoscaling_state(
-            instance_manager=instance_manager, autoscaling_state=autoscaling_state
+            instance_manager=instance_manager,
+            autoscaling_state=autoscaling_state,
+            autoscaling_config=autoscaling_config,
         )
 
     #######################################################
@@ -559,6 +565,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATED,
+                cloud_instance_id=cloud_instance_id,
                 details=f"cloud instance {cloud_instance_id} no longer found",
             )
 
@@ -1081,6 +1088,7 @@ class Reconciler:
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
+        cloud_provider: ICloudInstanceProvider,
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1098,7 +1106,7 @@ class Reconciler:
             ray_state: The ray cluster's resource state.
             scheduler: The resource scheduler to make scaling decisions.
             autoscaling_config: The autoscaling config.
-
+            cloud_provider: The cloud provider interface.
         """
 
         # Get the current instance states.
@@ -1143,6 +1151,10 @@ class Reconciler:
                 cloud_resource_monitor.get_resource_availabilities()
             ),
         )
+
+        if isinstance(cloud_provider, KubeRayProvider):
+            sched_request.ippr_specs = cloud_provider.get_ippr_specs()
+            sched_request.ippr_statuses = cloud_provider.get_ippr_statuses()
 
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
@@ -1222,6 +1234,9 @@ class Reconciler:
                         "from scheduler"
                     ),
                 )
+
+        if isinstance(cloud_provider, KubeRayProvider):
+            cloud_provider.do_ippr_requests(reply.to_ippr)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
@@ -1313,7 +1328,10 @@ class Reconciler:
     def _fill_autoscaling_state(
         instance_manager: InstanceManager,
         autoscaling_state: AutoscalingState,
+        autoscaling_config: AutoscalingConfig,
     ) -> None:
+        def get_provider_instance_type(instance_type: str) -> str:
+            return autoscaling_config.get_provider_instance_type(instance_type)
 
         # Use the IM instance version for the autoscaler_state_version
         instances, version = Reconciler._get_im_instances(instance_manager)
@@ -1351,6 +1369,7 @@ class Reconciler:
             for instance_type, count in num_instances_by_type.items():
                 autoscaling_state.pending_instance_requests.append(
                     PendingInstanceRequest(
+                        instance_type_name=get_provider_instance_type(instance_type),
                         ray_node_type_name=instance_type,
                         count=int(count),
                         request_ts=int(request_time_ns // 1e9),
@@ -1362,13 +1381,15 @@ class Reconciler:
             instances_by_status[IMInstance.ALLOCATED]
             + instances_by_status[IMInstance.RAY_INSTALLING]
         ):
-
             status_history = sorted(
                 instance.status_history, key=lambda x: x.timestamp_ns, reverse=True
             )
             autoscaling_state.pending_instances.append(
                 PendingInstance(
                     instance_id=instance.instance_id,
+                    instance_type_name=get_provider_instance_type(
+                        instance.instance_type
+                    ),
                     ray_node_type_name=instance.instance_type,
                     details=status_history[0].details,
                 )
@@ -1390,6 +1411,9 @@ class Reconciler:
             )
             autoscaling_state.failed_instance_requests.append(
                 FailedInstanceRequest(
+                    instance_type_name=get_provider_instance_type(
+                        instance.instance_type
+                    ),
                     ray_node_type_name=instance.instance_type,
                     start_ts=int(request_time // 1e9),
                     failed_ts=int(

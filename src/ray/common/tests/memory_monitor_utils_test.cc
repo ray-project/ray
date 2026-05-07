@@ -284,29 +284,26 @@ TEST_F(
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
 
   int64_t user_memory_max_bytes = 10LL * 1024 * 1024 * 1024;  // 10 GB
+  int64_t user_memory_high_bytes = 8LL * 1024 * 1024 * 1024;  // 8 GB
   StatusOr<std::unique_ptr<CgroupManager>> result =
       CgroupManager::Create(cgroup_dir,
                             "node_id_123",
                             /*system_reserved_cpu_weight=*/100,
                             /*system_memory_bytes_min=*/1LL * 1024 * 1024 * 1024,
                             /*system_memory_bytes_low=*/1LL * 1024 * 1024 * 1024,
-                            /*user_memory_high_bytes=*/user_memory_max_bytes,
+                            user_memory_high_bytes,
                             user_memory_max_bytes,
                             std::move(driver));
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
 
-  // Reaction buffer defaults to 5% of total memory. If
-  // kDefaultThresholdMonitorReactionBufferProportion is changed, this should be changed
-  // accordingly.
-  int64_t expected_threshold =
-      user_memory_max_bytes - static_cast<int64_t>(16LL * 1024 * 1024 * 1024 * 0.05);
+  int64_t expected_default_mode_threshold = user_memory_high_bytes;
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
                 /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
                 /*usage_threshold=*/0.5,
                 /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
                 /*resource_isolation_enabled=*/true,
                 *cgroup_manager),
-            expected_threshold);
+            expected_default_mode_threshold);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
