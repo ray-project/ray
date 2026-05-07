@@ -305,13 +305,16 @@ frontend http_frontend
     acl healthcheck path -i /-/healthz
     # Suppress logging for health checks
     http-request set-log-level silent if healthcheck
-    # 200 if any backend has at least one server UP
-    acl backend_api_backend_server_up nbsrv(api_backend) ge 1
-    acl backend_web_backend_server_up nbsrv(web_backend) ge 1
-    # Any backend with a server UP passes the health check (OR logic)
-    http-request return status 200 content-type text/plain string "success" if healthcheck backend_api_backend_server_up
-    http-request return status 200 content-type text/plain string "success" if healthcheck backend_web_backend_server_up
-    http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
+    # Always return success if HAProxy itself is up. Backend pool state is
+    # surfaced to clients per-request (HAProxy returns 503 when backends
+    # are missing) — not via this ingress healthcheck. Tying ALB target
+    # health to nbsrv() causes flapping cascades during autoscaling churn:
+    # initial-check windows after a reload briefly report nbsrv()=0 even
+    # though HAProxy can still serve traffic (via redispatch, fallback,
+    # and replicas that finish their initial probes within milliseconds).
+    # That brief 503 marks the target unhealthy at the ALB for minutes,
+    # making every client request route to a "no healthy targets" state.
+    http-request return status 200 content-type text/plain string "success" if healthcheck
     # Routes endpoint
     acl routes path -i /-/routes
     http-request return status 200 content-type application/json string "{routes}" if routes
@@ -1093,7 +1096,11 @@ async def test_toggle_health_checks(haproxy_api_cleanup):
 
 @pytest.mark.asyncio
 async def test_health_endpoint_or_logic_multiple_backends(haproxy_api_cleanup):
-    """Test that the health endpoint returns 200 if ANY backend has at least one server UP (OR logic)."""
+    """Test that the health endpoint returns 200 unconditionally when HAProxy
+    is up — regardless of backend server state. The endpoint is for ALB
+    target-health checks (is this proxy reachable?) and intentionally
+    decouples from backend pool state to avoid flapping cascades during
+    autoscaling churn."""
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file_path = os.path.join(temp_dir, "haproxy.cfg")
         socket_path = os.path.join(temp_dir, "admin.sock")
@@ -1187,25 +1194,22 @@ async def test_health_endpoint_or_logic_multiple_backends(haproxy_api_cleanup):
             backend2_server.should_exit = True
             backend2_thread.join(timeout=5)
 
-            # Wait for health check to fail (both servers are DOWN)
-            def health_fails():
-                resp = requests.get(
-                    f"http://127.0.0.1:{config.frontend_port}{config.health_check_endpoint}",
-                    timeout=5,
-                )
-                return resp.status_code == 503
+            # Give HAProxy time to detect both servers are down
+            await asyncio.sleep(2)
 
-            wait_for_condition(health_fails, timeout=10, retry_interval_ms=200)
-
-            # Verify health check returns 503 when ALL servers are DOWN
+            # Verify health check STILL returns 200 even when ALL servers are
+            # DOWN. /-/healthz reflects HAProxy's own liveness, not backend
+            # pool state. Backend availability is surfaced to clients
+            # per-request (HAProxy returns 503 from the actual request path
+            # when no backend can serve), not via this ingress probe.
             health_response = requests.get(
                 f"http://127.0.0.1:{config.frontend_port}{config.health_check_endpoint}",
                 timeout=5,
             )
             assert (
-                health_response.status_code == 503
-            ), "Health check should return 503 when all servers are DOWN"
-            assert b"Service Unavailable" in health_response.content
+                health_response.status_code == 200
+            ), "Health check should return 200 (HAProxy is up) regardless of backend state"
+            assert b"success" in health_response.content
 
             await api.stop()
         finally:

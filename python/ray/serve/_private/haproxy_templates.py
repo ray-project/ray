@@ -5,16 +5,17 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 {%- if not health_info.healthy %}
     # Override: force health checks to fail (used by drain/disable)
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
-{%- elif backends %}
-    # 200 if any backend has at least one server UP
-{%-   for backend in backends %}
-    acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
-{%-   endfor %}
-    # Any backend with a server UP passes the health check (OR logic)
-{%-   for backend in backends %}
-    http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck backend_{{ backend.name or 'unknown' }}_server_up
-{%-   endfor %}
-    http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
+{%- else %}
+    # Always return success if HAProxy itself is up. Backend pool state is
+    # surfaced to clients per-request (HAProxy returns 503 when backends
+    # are missing) — not via this ingress healthcheck. Tying ALB target
+    # health to nbsrv() causes flapping cascades during autoscaling churn:
+    # initial-check windows after a reload briefly report nbsrv()=0 even
+    # though HAProxy can still serve traffic (via redispatch, fallback,
+    # and replicas that finish their initial probes within milliseconds).
+    # That brief 503 marks the target unhealthy at the ALB for minutes,
+    # making every client request route to a "no healthy targets" state.
+    http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
 {%- endif %}
 """
 
