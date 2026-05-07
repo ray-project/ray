@@ -244,9 +244,16 @@ def test_default_error_handling(serve_instance):
         time.sleep(100)  # Don't return here to leave time for actor exit.
 
     serve.run(h.bind())
-    # Error is raised before the request reaches the deployed replica as the replica does not exist.
+    # The replica kills itself mid-request, so the deployment ends up with no
+    # live replicas. The exact status code depends on timing:
+    # - 500 if the controller hasn't yet broadcast unavailability to the proxy
+    #   (the request fails as ActorDiedError → mapped to 500 in http_util.py).
+    # - 503 if the broadcast has happened (the proxy raises
+    #   DeploymentUnavailableError → mapped to 503 in http_util.py). With
+    #   HAProxy + redispatch, the backup proxy actor is reached after the
+    #   primary fails, by which point the broadcast has typically landed.
     r = httpx.get("http://localhost:8000/h")
-    assert r.status_code == 500
+    assert r.status_code in (500, 503)
 
 
 if __name__ == "__main__":
