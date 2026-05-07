@@ -220,8 +220,6 @@ class SubProgressUpdater(BaseProgressBar):
     def add_update_callback(self, callback: Callable[[ProgressMetrics], None]) -> None:
         with self._lock:
             self._update_callbacks.append(callback)
-            metrics = self._metrics_by_name[self._name]
-        callback(metrics)
 
     def __getstate__(self):
         state = self.__dict__.copy()

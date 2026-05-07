@@ -100,10 +100,7 @@ def test_sub_progress_updater_updates_metrics_and_notifies_callback():
     assert metrics_by_name["Shuffle"] == ProgressMetrics(
         name="Shuffle", total=10, completed=3
     )
-    assert snapshots == [
-        ProgressMetrics(name="Shuffle", total=None, completed=0),
-        ProgressMetrics(name="Shuffle", total=10, completed=3),
-    ]
+    assert snapshots == [ProgressMetrics(name="Shuffle", total=10, completed=3)]
 
 
 @pytest.mark.parametrize(
