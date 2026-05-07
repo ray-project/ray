@@ -310,7 +310,7 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToNodeResourceSet();
+  node_resources.SetAvailable(local_resources_.available.ToNodeResourceSet());
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = IsLocalNodeDraining();
@@ -367,7 +367,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
 
-  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
+  for (const auto &[resource_name, available] : resources.GetAvailableResourceMap()) {
     // Resource availability can be negative locally but treat it as 0
     // when we broadcast to others since other parts of the
     // system assume resource availability cannot be negative and

@@ -16,6 +16,7 @@
 
 #include <boost/range/adaptor/map.hpp>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -355,6 +356,35 @@ class NodeResources {
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
+
+  /// Get the scalar available amount for a resource.
+  FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const {
+    return available.Get(resource_id);
+  }
+
+  /// Get the set of resource IDs that have explicit available entries.
+  std::set<scheduling::ResourceID> GetAvailableResourceIds() const {
+    return available.ExplicitResourceIds();
+  }
+
+  /// Subtract resources from available, clamping each entry to 0.
+  void SubtractAvailable(const ResourceSet &resource_set) {
+    available -= resource_set;
+    available.RemoveNegative();
+  }
+
+  /// Set a single resource's available to an explicit scalar value.
+  void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value) {
+    available.Set(resource_id, value);
+  }
+
+  /// Replace the entire available field from a NodeResourceSet.
+  void SetAvailable(const NodeResourceSet &resource_set) { available = resource_set; }
+
+  /// Return available resources as a name->value map.
+  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const {
+    return available.GetResourceMap();
+  }
 };
 
 /// Total and available capacities of each resource instance.
