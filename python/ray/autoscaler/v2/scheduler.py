@@ -1744,6 +1744,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ippr_candidates,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
+                ctx.get_recoverable_resource_availabilities(),
             )
             if best_node is None:
                 # No ippr nodes can schedule any more requests.
