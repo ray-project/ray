@@ -645,8 +645,6 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
     """Run actual HAProxy against a fake router + two replicas; verify a POST
     is pinned to the replica the router selects, while a GET (which doesn't
     trigger the router-routed path) is not."""
-    # Body forwarding to /internal/route is opt-in. This test asserts the body
-    # made it through the router, so flip it on.
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,

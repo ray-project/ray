@@ -94,15 +94,11 @@ class LLMRouter:
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
-        # HAProxy only forwards a body when
-        # RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1, so skip the read
-        # entirely on the default path. See haproxy.py / lua template.
+        body = None
+        body_truncated = False
         if RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY:
             body = await request.body()
             body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        else:
-            body = None
-            body_truncated = False
         try:
             host, port, replica_id = self._pick_replica(
                 request_body=body, body_truncated=body_truncated

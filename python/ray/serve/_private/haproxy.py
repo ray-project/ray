@@ -825,9 +825,7 @@ class HAProxyApi(ProxyApi):
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-            FORWARD_BODY="true"
-            if RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
-            else "false",
+            FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )

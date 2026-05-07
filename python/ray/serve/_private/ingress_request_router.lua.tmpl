@@ -2,13 +2,9 @@
 -- router. Templated at config-reload time; placeholders are filled in by
 -- _write_ingress_request_router_lua in haproxy.py.
 --
--- Body forwarding is gated by FORWARD_BODY (rendered from
--- RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY). When false (default), we
--- POST an empty body to /internal/route and skip the
--- `wait-for-body`/`tune.bufsize` cost on every routed request. When true,
--- we forward the (possibly truncated) body so body-aware routing policies
--- can read it; bodies exceeding tune.bufsize are sent with X-Body-Truncated
--- since prefix-routing only needs the head.
+-- Bodies exceeding tune.bufsize are truncated; we forward what we have with
+-- X-Body-Truncated since prefix-routing only needs the head of the body.
+-- See RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY in constants.py.
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local FORWARD_BODY = ${FORWARD_BODY}
