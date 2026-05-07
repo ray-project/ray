@@ -233,24 +233,25 @@ def test_hpu_ids(shutdown_only):
 
     # Test that actors have HABANA_VISIBLE_MODULES set properly.
 
+    def _check_hpu_env(expected_num_hpus):
+        hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
+        assert len(hpu_ids) == expected_num_hpus
+        if expected_num_hpus > 0:
+            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
+                [str(i) for i in hpu_ids]  # noqa
+            )
+        else:
+            assert os.environ.get("HABANA_VISIBLE_MODULES") is None
+
     @ray.remote
     class Actor:
         def __init__(self, num_hpus):
             self.num_hpus = num_hpus
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
-            assert len(hpu_ids) == num_hpus
-            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
-                [str(i) for i in hpu_ids]  # noqa
-            )
-            # Set self.x to make sure that we got here.
+            _check_hpu_env(num_hpus)
             self.x = num_hpus
 
         def test(self):
-            hpu_ids = ray.get_runtime_context().get_accelerator_ids()["HPU"]
-            assert len(hpu_ids) == self.num_hpus
-            assert os.environ["HABANA_VISIBLE_MODULES"] == ",".join(
-                [str(i) for i in hpu_ids]  # noqa
-            )
+            _check_hpu_env(self.num_hpus)
             return self.x
 
     a0 = Actor.remote(0)

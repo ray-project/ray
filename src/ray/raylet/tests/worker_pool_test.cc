@@ -29,8 +29,8 @@
 #include "absl/time/time.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -2535,17 +2535,3 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
 }
 
 }  // namespace ray::raylet
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      []() { ray::RayLog::ShutDownRayLog(); },
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

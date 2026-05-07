@@ -57,12 +57,14 @@ class JobConfig:
         self.jvm_options = jvm_options or []
         #: A list of directories or jar files that
         #: specify the search path for user code.
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
-            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
-        )
+        validated_code_search_path = code_search_path or []
+        # Validate eagerly so optimized Python runs do not skip this check.
+        if not isinstance(validated_code_search_path, (list, tuple)):
+            raise TypeError(
+                "The type of code search path is incorrect: "
+                f"{type(code_search_path)}"
+            )
+        self.code_search_path = validated_code_search_path
         self._client_job = _client_job
         #: An opaque metadata dictionary.
         self.metadata = metadata or {}
@@ -133,6 +135,26 @@ class JobConfig:
         """
         self.py_logging_config = logging_config
 
+    def ensure_logging_config(
+        self,
+        logging_config: Optional[Union[dict, LoggingConfig]] = None,
+    ) -> None:
+        """Set logging config from a dict or LoggingConfig if not already configured.
+
+        This is a no-op when *logging_config* is ``None`` or
+        ``py_logging_config`` is already set.
+        """
+        if logging_config is None or self.py_logging_config is not None:
+            return
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig.from_dict(logging_config)
+        elif not isinstance(logging_config, LoggingConfig):
+            raise TypeError(
+                "logging_config must be a dict or LoggingConfig, "
+                f"got {type(logging_config)}"
+            )
+        self.set_py_logging_config(logging_config)
+
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
 
@@ -176,7 +198,19 @@ class JobConfig:
 
         if not isinstance(runtime_env, RuntimeEnv):
             runtime_env = RuntimeEnv(**self.runtime_env)
-        _validate_no_local_paths(runtime_env)
+
+        # Skip local path validation for Ray Client jobs.
+        # This is required for Ray Client to work with working_dir (e.g., UV support).
+        # For Ray Client (_client_job=True), the working_dir is already validated
+        # and uploaded to GCS on the client side. The server-side job_config may
+        # temporarily contain a local extracted path during the proxy flow, but this
+        # is safe because:
+        # 1. The actual GCS URI was already validated on the client
+        # 2. Workers get their runtime_env from GCS with the correct URI
+        # 3. Validating again on the server causes false "not a valid URI" errors
+        if not self._client_job:
+            _validate_no_local_paths(runtime_env)
+
         return runtime_env
 
     def _get_proto_job_config(self):

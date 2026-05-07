@@ -31,8 +31,8 @@ def test_get_wheel_names():
 
     assert (
         len(wheel_names)
-        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) + len(ALL_PLATFORMS) - 1
-    )  # Except for the win_amd64 wheel for cp313
+        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) + len(ALL_PLATFORMS) - 2
+    )  # Except for the win_amd64 wheel for cp313 and cp314
     python_versions = list(PYTHON_VERSIONS) + ["py3-none"]
 
     for wheel_name in wheel_names:

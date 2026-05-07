@@ -65,7 +65,7 @@ See [Authenticate to Google Cloud APIs from GKE workloads](https://docs.cloud.go
 You can download the RayCluster YAML manifest for this tutorial with `curl` as follows:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
 The key parts are the following lines:

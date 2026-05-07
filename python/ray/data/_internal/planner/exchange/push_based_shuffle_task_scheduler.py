@@ -750,7 +750,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             input_files=None,
             exec_stats=stats.build(),
         )
-        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        meta_with_schema = BlockMetadataWithSchema.from_metadata(meta, schema=schema)
         yield meta_with_schema
 
     @staticmethod

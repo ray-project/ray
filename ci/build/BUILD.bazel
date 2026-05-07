@@ -51,3 +51,22 @@ py_test(
     ],
     deps = [":build_wheel"],
 )
+
+py_library(
+    name = "build_image",
+    srcs = ["build_image.py"],
+    data = ["//:ray-images.json"],
+    visibility = ["//visibility:public"],
+    deps = [":build_common"],
+)
+
+py_test(
+    name = "build_image_test",
+    size = "small",
+    srcs = ["build_image_test.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [":build_image"],
+)

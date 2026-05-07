@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import functools
-import uuid
+import uuid as builtin_uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -27,9 +27,12 @@ from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    import pyarrow.compute
+
     from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
+    from ray.data.namespace_expressions.map_namespace import _MapNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
@@ -38,9 +41,12 @@ T = TypeVar("T")
 UDFCallable = Callable[..., "UDFExpr"]
 Decorated = Union[UDFCallable, Type[T]]
 
+# Whether to reseed the random number generator after each Ray Dataset execution.
+DEFAULT_RESEED_AFTER_EXECUTION = True
+
 
 @DeveloperAPI(stability="alpha")
-class Operation(Enum):
+class Operation(str, Enum):
     """Enumeration of supported operations in expressions.
 
     This enum defines all the binary operations that can be performed
@@ -111,6 +117,10 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_star(expr)
         elif isinstance(expr, MonotonicallyIncreasingIdExpr):
             return self.visit_monotonically_increasing_id(expr)
+        elif isinstance(expr, RandomExpr):
+            return self.visit_random(expr)
+        elif isinstance(expr, UUIDExpr):
+            return self.visit_uuid(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -150,6 +160,14 @@ class _ExprVisitor(ABC, Generic[T]):
     def visit_monotonically_increasing_id(
         self, expr: "MonotonicallyIncreasingIdExpr"
     ) -> T:
+        pass
+
+    @abstractmethod
+    def visit_random(self, expr: "RandomExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_uuid(self, expr: "UUIDExpr") -> T:
         pass
 
 
@@ -206,6 +224,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         return self.visit(expr.expr)
 
     def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
+        if isinstance(expr, PyArrowComputeUDFExpr):
+            args = [self.visit(a) for a in expr.args]
+            return expr.pc_func(*args, *expr.pc_positional, **expr.pc_kwargs)
         raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
 
     def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
@@ -222,6 +243,12 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         raise TypeError(
             "Monotonically Increasing ID expressions cannot be converted to PyArrow expressions"
         )
+
+    def visit_random(self, expr: "RandomExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("Random expressions cannot be converted to PyArrow expressions")
+
+    def visit_uuid(self, expr: "UUIDExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("UUID expressions cannot be converted to PyArrow expressions")
 
 
 @DeveloperAPI(stability="alpha")
@@ -736,6 +763,13 @@ class Expr(ABC):
         return _StructNamespace(self)
 
     @property
+    def map(self) -> "_MapNamespace":
+        """Access map/dict operations for this expression."""
+        from ray.data.namespace_expressions.map_namespace import _MapNamespace
+
+        return _MapNamespace(self)
+
+    @property
     def dt(self) -> "_DatetimeNamespace":
         """Access datetime operations for this expression."""
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
@@ -1131,6 +1165,32 @@ class UDFExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class PyArrowComputeUDFExpr(UDFExpr):
+    """A UDFExpr backed by a PyArrow compute function.
+
+    Unlike generic UDFExprs, these can be converted to native
+    ``pyarrow.compute.Expression`` objects, enabling predicate pushdown
+    into file-based datasources (Parquet, CSV, etc.).
+    """
+
+    pc_func: Callable[..., pyarrow.Array] = field(default=None)  # type: ignore[assignment]
+    pc_positional: Tuple[Any, ...] = field(default=())
+    pc_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, PyArrowComputeUDFExpr):
+            return False
+
+        return (
+            super().structurally_equals(other)
+            and self.pc_func is other.pc_func
+            and self.pc_positional == other.pc_positional
+            and self.pc_kwargs == other.pc_kwargs
+        )
+
+
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
     return_dtype: DataType,
@@ -1353,12 +1413,20 @@ def _create_pyarrow_wrapper(
 def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     """Decorator for PyArrow compute functions with automatic format conversion.
 
-    This decorator wraps PyArrow compute functions to automatically convert pandas
+    This decorator wraps arbitrary PyArrow logic to automatically convert pandas
     Series and numpy arrays to PyArrow Arrays, ensuring the function works seamlessly
     regardless of the underlying block format (pandas, arrow, or items).
 
-    Used internally by namespace methods (list, str, struct) that wrap PyArrow
-    compute functions.
+    The resulting UDFExpr is opaque to the optimizer -- it cannot be converted to a
+    native ``pyarrow.compute.Expression`` and therefore will not participate in
+    predicate pushdown. Use this for operations that involve custom logic or that
+    cannot be expressed as a single ``pc.*`` call (e.g., strip with optional
+    characters, cast, list slicing).
+
+    For operations that are a direct 1:1 wrapper around a single ``pc.*`` function,
+    use ``_create_pyarrow_compute_udf`` instead, which produces a
+    :class:`PyArrowComputeUDFExpr` that retains the compute function identity
+    and enables predicate pushdown.
 
     Args:
         return_dtype: The data type of the return value
@@ -1379,15 +1447,35 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 def _create_pyarrow_compute_udf(
     pc_func: Callable[..., pyarrow.Array],
     return_dtype: DataType | None = None,
-) -> Callable[..., "UDFExpr"]:
-    """Create an expression UDF backed by a PyArrow compute function."""
+) -> Callable[..., "PyArrowComputeUDFExpr"]:
+    """Create an expression UDF that is a direct 1:1 wrapper around a ``pc.*`` function.
 
-    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
+    Unlike :func:`pyarrow_udf`, the returned :class:`PyArrowComputeUDFExpr` records
+    the original ``pc_func``, positional args, and kwargs.  This allows the optimizer
+    to convert the node into a native ``pyarrow.compute.Expression`` for predicate
+    pushdown into file-based datasources (Parquet, CSV, etc.).
+
+    Use this for operations like ``starts_with``, ``match_regex``, ``ceil``, ``abs``,
+    etc., where the semantics map exactly to a single PyArrow compute call.
+    """
+
+    def wrapper(
+        expr: "Expr", *positional: Any, **kwargs: Any
+    ) -> "PyArrowComputeUDFExpr":
         @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
         def udf(arr: pyarrow.Array) -> pyarrow.Array:
             return pc_func(arr, *positional, **kwargs)
 
-        return udf(expr)
+        udf_expr = udf(expr)
+        return PyArrowComputeUDFExpr(
+            fn=udf_expr.fn,
+            args=udf_expr.args,
+            kwargs=udf_expr.kwargs,
+            data_type=udf_expr.data_type,
+            pc_func=pc_func,
+            pc_positional=positional,
+            pc_kwargs=kwargs,
+        )
 
     return wrapper
 
@@ -1470,13 +1558,65 @@ class MonotonicallyIncreasingIdExpr(Expr):
     """Expression that represents a monotonically increasing ID column."""
 
     # Unique identifier for each expression to isolate row count state
-    _instance_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    _instance_id: str = field(default_factory=lambda: str(builtin_uuid.uuid4()))
 
     data_type: DataType = field(default_factory=lambda: DataType.int64(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         # Non-deterministic, never structurally equal to another expression
         return False
+
+
+@DeveloperAPI
+@dataclass(frozen=True, eq=False, repr=False)
+class RandomExpr(Expr):
+    """Expression that represents a random number generation operation.
+
+    Args:
+        seed: The seed to use for the random number generator.
+        reseed_after_execution: Whether to reseed the random number generator after each execution.
+            This parameter is ignored when ``seed`` is None.
+
+    Example:
+        >>> from ray.data.expressions import random
+        >>> random()
+        RANDOM()
+        >>> random(seed=1234)
+        RANDOM(seed=1234, reseed_after_execution=True)
+    """
+
+    seed: int | None = None
+    reseed_after_execution: bool = DEFAULT_RESEED_AFTER_EXECUTION
+    data_type: DataType = field(default_factory=lambda: DataType.float64(), init=False)
+
+    # Unique identifier for each expression to isolate block count state
+    _instance_id: str = field(default_factory=lambda: str(builtin_uuid.uuid4()))
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, RandomExpr)
+            and self.data_type == other.data_type
+            and self.seed == other.seed
+            and self.reseed_after_execution == other.reseed_after_execution
+        )
+
+
+@DeveloperAPI
+@dataclass(frozen=True, eq=False, repr=False)
+class UUIDExpr(Expr):
+    """Expression that represents a UUID generation operation.
+
+    Example:
+        >>> from ray.data.expressions import UUIDExpr
+        >>> # Generate UUIDs
+        >>> UUIDExpr()
+        UUID()
+    """
+
+    data_type: DataType = field(default_factory=lambda: DataType.string(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, UUIDExpr)
 
 
 @PublicAPI(stability="beta")
@@ -1622,6 +1762,104 @@ def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
     return MonotonicallyIncreasingIdExpr()
 
 
+@PublicAPI(stability="alpha")
+def random(
+    *,
+    seed: int | None = None,
+    reseed_after_execution: bool = DEFAULT_RESEED_AFTER_EXECUTION,
+) -> RandomExpr:
+    """
+    Create an expression that generates random numbers.
+
+    This creates an expression that generates random floating-point numbers
+    between 0 (inclusive) and 1 (exclusive) for each row. The generator can
+    be optionally seeded for reproducibility.
+
+    Args:
+        seed: An optional integer seed for the random number generator. If None,
+            uses system randomness (non-deterministic).
+        reseed_after_execution: If False, the random number generator (RNG) will be
+            initialized with the provided ``seed``. Each dataset execution will produce
+            the same set of random values (except for the usual randomness due to task
+            parallelism and ordering of the data). If True, the provided seed is treated
+            as an "initial" seed and each dataset execution will generate new random
+            values. This is useful for reproducibility across multiple epochs in model
+            training. Under the hood, the seed sequence used to initialize the RNG consists
+            of three components: an index of the Ray task, an index of the dataset execution,
+            and the provided ``seed``. Defaults to True.
+
+    Returns:
+        A :class:`RandomExpr` that generates random numbers
+
+    Example:
+        >>> from ray.data.expressions import random
+        >>> random()
+        RANDOM()
+
+        >>> from ray.data.expressions import random
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> # Add random column without seed
+        >>> ds.with_column("rand", random()).take(3)  # doctest: +SKIP
+        [{'id': 0, 'rand': 0.013528930983987442},
+         {'id': 1, 'rand': 0.7534846535881974},
+         {'id': 4, 'rand': 0.13351018846379803}]
+
+        For reproducibility, we can provide an integer seed.
+
+        >>> ds.with_column("rand", random(seed=42)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.67791253, 0.48577076, 0.48211206])}
+
+        By default, `reseed_after_execution` is True, so each dataset execution will
+        generate new random values. This is useful for reproducibility across multiple
+        epochs in model training.
+
+        >>> # Same dataset but executed for the second time
+        >>> ds.with_column("rand", random(seed=42)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.49661147, 0.36291881, 0.8829356 ])}
+
+        When `reseed_after_execution` is False, the random numbers are fully reproducible across
+        executions.
+
+        >>> # 1st execution
+        >>> ds.with_column("rand", random(seed=42, reseed_after_execution=False)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.23680187, 0.09952025, 0.09413677])}
+        >>> # 2nd execution
+        >>> ds.with_column("rand", random(seed=42, reseed_after_execution=False)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.23680187, 0.09952025, 0.09413677])}
+    """
+    return RandomExpr(
+        seed=seed,
+        reseed_after_execution=reseed_after_execution,
+    )
+
+
+@PublicAPI(stability="alpha")
+def uuid() -> UUIDExpr:
+    """
+    Create a UUID expression that generates unique identifiers.
+
+    This creates an expression that generates unique identifiers (strings) for each row.
+    The identifiers are generated using the UUID4 algorithm.
+
+    Returns:
+        A :class:`UUIDExpr` that generates unique identifiers
+
+    Example:
+        >>> from ray.data.expressions import uuid
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> ds.with_column("uuid", uuid().str.replace("-", "")).take(5)  # doctest: +SKIP
+        [{'id': 0, 'uuid': '2899f7bd87164b98a774df730a99c8b3'},
+         {'id': 1, 'uuid': 'e398656a73b0475fb6d9d5d4389a23e6'},
+         {'id': 2, 'uuid': '6ef8e2a18c6c4b7e8a4089b3fcfd8094'},
+         {'id': 3, 'uuid': 'c4abbc54bc8947899ed3ab0bf1eaf75a'},
+         {'id': 4, 'uuid': 'b6265f98e2d0431ea86d837e8a16d31c'}]
+
+    """
+    return UUIDExpr()
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -1635,6 +1873,8 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "RandomExpr",
+    "UUIDExpr",
     "UnaryExpr",
     "UDFExpr",
     "DownloadExpr",
@@ -1646,12 +1886,15 @@ __all__ = [
     "col",
     "lit",
     "download",
-    "star",
     "monotonically_increasing_id",
+    "random",
+    "star",
+    "uuid",
     "_ArrayNamespace",
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
+    "_MapNamespace",
     "_DatetimeNamespace",
 ]
 
@@ -1674,6 +1917,10 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace
+    elif name == "_MapNamespace":
+        from ray.data.namespace_expressions.map_namespace import _MapNamespace
+
+        return _MapNamespace
     elif name == "_DatetimeNamespace":
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
 

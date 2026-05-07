@@ -47,4 +47,5 @@ message TaskDefinitionEvent {
   optional string call_site = 14;
   // The key-value label constraints of the node to schedule this task on.
   map<string, string> label_selector = 15;
+  optional FallbackStrategy fallback_strategy = 16;
 }

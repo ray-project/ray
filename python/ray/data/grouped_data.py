@@ -65,9 +65,9 @@ class GroupedData:
 
         plan = self._dataset._plan.copy()
         op = Aggregate(
-            self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            input_dependencies=[self._dataset._logical_plan.dag],
             num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
@@ -178,8 +178,9 @@ class GroupedData:
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
+                select ``pyarrow.Table``, ``"cudf"`` [Experimental] to select
+                ``cudf.DataFrame``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
@@ -225,7 +226,10 @@ class GroupedData:
         #     same key values)
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
-        elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        elif self._dataset.context.shuffle_strategy in (
+            ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.GPU_SHUFFLE,
+        ):
             num_partitions = (
                 self._num_partitions
                 or self._dataset.context.default_hash_shuffle_parallelism

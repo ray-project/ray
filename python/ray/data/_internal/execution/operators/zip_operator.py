@@ -1,10 +1,13 @@
 import collections
 import itertools
+from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional, Tuple
+
+from typing_extensions import override
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -56,6 +59,16 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             *input_ops,
         )
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return self._input_buffers
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_buffer]
+
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None
         for input_op in self.input_dependencies:
@@ -80,36 +93,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 num_rows = max(num_rows, input_num_rows)
         return num_rows
 
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(buf.num_blocks() for buf in self._input_buffers)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(buf.estimate_size_bytes() for buf in self._input_buffers)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_buffer.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_buffer.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues."""
-        for input_buffer in self._input_buffers:
-            while input_buffer.has_next():
-                bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_buffer.has_next():
-            bundle = self._output_buffer.get_next()
-            self._metrics.on_output_dequeued(bundle)
-
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
         self._input_buffers[input_index].add(refs)
-        self._metrics.on_input_queued(refs)
+        self._metrics.on_input_queued(refs, input_index=input_index)
 
     def all_inputs_done(self) -> None:
         assert len(self._output_buffer) == 0, len(self._output_buffer)
@@ -118,17 +106,17 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         while self._input_buffers[0].has_next():
             refs = self._input_buffers[0].get_next()
             self._output_buffer.add(refs)
-            self._metrics.on_input_dequeued(refs)
+            self._metrics.on_input_dequeued(refs, input_index=0)
 
         # Process each additional input buffer
-        for input_buffer in self._input_buffers[1:]:
+        for idx, input_buffer in enumerate(self._input_buffers[1:], start=1):
             output_buffer, self._stats = self._zip(self._output_buffer, input_buffer)
             self._output_buffer = FIFOBundleQueue(bundles=output_buffer)
 
             # Clear the input buffer AFTER using it in _zip
             while input_buffer.has_next():
                 refs = input_buffer.get_next()
-                self._metrics.on_input_dequeued(refs)
+                self._metrics.on_input_dequeued(refs, input_index=idx)
 
         # Mark outputs as ready
         for ref in self._output_buffer:
@@ -221,9 +209,17 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # cumulative number of rows as that left block.
         # NOTE: _split_at_indices has a no-op fastpath if the blocks are already
         # aligned.
+        # Determine the ownership of the blocks being split, accounting for the
+        # potential swap above. We must not free blocks that are shared with
+        # other operators (e.g., when the input RefBundle has owns_blocks=False
+        # because it comes from a materialized dataset).
+        split_side_owned = all(
+            b.owns_blocks for b in (left_input if input_side_inverted else right_input)
+        )
         aligned_right_blocks_with_metadata = _split_at_indices(
             right_blocks_with_metadata,
             indices,
+            owned_by_consumer=split_side_owned,
             block_rows=right_block_rows,
         )
         del right_blocks_with_metadata
@@ -294,8 +290,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 # Need to fetch number of rows or size in bytes, so just fetch both.
                 num_rows, size_bytes = ray.get(get_num_rows_and_bytes.remote(block))
                 # Cache on the block metadata.
-                metadata.num_rows = num_rows
-                metadata.size_bytes = size_bytes
+                metadata = replace(metadata, num_rows=num_rows, size_bytes=size_bytes)
             block_rows.append(metadata.num_rows)
             block_bytes.append(metadata.size_bytes)
         return block_rows, block_bytes
@@ -320,7 +315,9 @@ def _zip_one_block(
     result = BlockAccessor.for_block(block).zip(other_block)
     from ray.data.block import BlockMetadataWithSchema
 
-    return result, BlockMetadataWithSchema.from_block(result, stats=stats.build())
+    return result, BlockMetadataWithSchema.from_block(
+        result, block_exec_stats=stats.build()
+    )
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

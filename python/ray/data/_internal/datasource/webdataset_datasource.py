@@ -213,7 +213,10 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
         elif extension in ["pt", "pth"]:
             import torch
 
-            sample[key] = torch.load(io.BytesIO(value))
+            # PyTorch 2.6 changed torch.load default weights_only=True, which
+            # breaks loading general Python objects previously serialized for
+            # WebDataset .pt payloads.
+            sample[key] = torch.load(io.BytesIO(value), weights_only=False)
         elif extension in ["pickle", "pkl"]:
             import pickle
 

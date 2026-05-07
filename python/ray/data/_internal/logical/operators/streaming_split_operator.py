@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -10,17 +11,20 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class StreamingSplit(LogicalOperator):
     """Logical operator that represents splitting the input data to `n` splits."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        num_splits: int,
-        equal: bool,
-        locality_hints: Optional[List["NodeIdStr"]] = None,
-    ):
-        super().__init__(input_dependencies=[input_op])
-        self.num_splits = num_splits
-        self.equal = equal
-        self.locality_hints = locality_hints
+    num_splits: int
+    equal: bool
+    locality_hints: Optional[List["NodeIdStr"]] = None
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs

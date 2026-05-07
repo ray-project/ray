@@ -13,11 +13,12 @@ from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
     MLPEncoderConfig,
+    MultiStreamEncoderConfig,
     RecurrentEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchCNN, TorchMLP
-from ray.rllib.models.utils import get_initializer_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -284,3 +285,143 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             lambda s: s.transpose(0, 1), states_out
         )
         return outputs
+
+
+class TorchMultiStreamEncoder(TorchModel, Encoder):
+    """An encoder that encodes multiple input streams separately.
+
+    Each input stream is encoded with its own encoder defined in
+    `base_encoder_configs`. The resulting embeddings are concatenated and
+    passed through a final fusion network to produce the output embedding.
+    """
+
+    def __init__(self, config: MultiStreamEncoderConfig) -> None:
+        TorchModel.__init__(self, config)
+        Encoder.__init__(self, config)
+
+        # Create the neural network for observation stream.
+        self.base_encoders = nn.ModuleDict(
+            {
+                k: cfg.build(framework="torch")
+                for k, cfg in sorted(config.base_encoder_configs.items())
+            }
+        )
+
+        # Get activation functions.
+        self.hidden_activation = (
+            get_activation_fn(config.hidden_layer_activation, framework="torch")
+            or nn.Identity
+        )
+
+        # Calculate total embed dim.
+        self._total_embed_dim = sum(
+            cfg.output_dims[0] for cfg in config.base_encoder_configs.values()
+        )
+
+        # Build fusion layers (hidden layers with skip connections).
+        fusion_layers = []
+        if config.hidden_layer_dims:
+            # Input layer: total_embed_dim -> hidden_layer_dims[0]
+            input_layer = nn.Linear(
+                self._total_embed_dim,
+                config.hidden_layer_dims[0],
+                bias=config.hidden_layer_use_bias,
+            )
+            fusion_layers.append(input_layer)
+
+            # Intermediate fusion layers with skip connections.
+            for i in range(1, len(config.hidden_layer_dims)):
+                fusion_layers.append(
+                    nn.Linear(
+                        config.hidden_layer_dims[i - 1] + self._total_embed_dim,
+                        config.hidden_layer_dims[i],
+                        bias=config.hidden_layer_use_bias,
+                    )
+                )
+
+            # Initialize hidden layer weights if necessary.
+            if config.hidden_layer_weights_initializer:
+                hidden_weights_initializer = get_initializer_fn(
+                    config.hidden_layer_weights_initializer, framework="torch"
+                )
+                for layer in fusion_layers:
+                    hidden_weights_initializer(
+                        layer.weight,
+                        **config.hidden_layer_weights_initializer_config or {}
+                    )
+            # Initialize hidden layer bias if necessary.
+            if config.hidden_layer_bias_initializer:
+                hidden_bias_initializer = get_initializer_fn(
+                    config.hidden_layer_bias_initializer, framework="torch"
+                )
+                for layer in fusion_layers:
+                    hidden_bias_initializer(
+                        layer.bias, **config.hidden_layer_bias_initializer_config or {}
+                    )
+
+        self.fusion_layers = nn.ModuleList(fusion_layers)
+
+        # Build output layer only if output_layer_dim is defined.
+        self.output_layer = None
+        if config.output_layer_dim is not None:
+            # Get output activation function.
+            self.output_activation = (
+                get_activation_fn(config.output_layer_activation, framework="torch")
+                or nn.Identity
+            )
+            # Determine input dim for output layer.
+            if config.hidden_layer_dims:
+                output_input_dim = config.hidden_layer_dims[-1] + self._total_embed_dim
+            else:
+                output_input_dim = self._total_embed_dim
+
+            self.output_layer = nn.Linear(
+                output_input_dim,
+                config.output_layer_dim,
+                bias=config.output_layer_use_bias,
+            )
+
+            # Initialize output layer weights if necessary.
+            if config.output_layer_weights_initializer:
+                output_weights_initializer = get_initializer_fn(
+                    config.output_layer_weights_initializer, framework="torch"
+                )
+                output_weights_initializer(
+                    self.output_layer.weight,
+                    **config.output_layer_weights_initializer_config or {}
+                )
+            # Initialize output layer bias if necessary.
+            if config.output_layer_bias_initializer:
+                output_bias_initializer = get_initializer_fn(
+                    config.output_layer_bias_initializer, framework="torch"
+                )
+                output_bias_initializer(
+                    self.output_layer.bias,
+                    **config.output_layer_bias_initializer_config or {}
+                )
+
+    @override(Model)
+    def _forward(self, inputs, **kwargs):
+        # Run the inputs through the base encoders.
+        keys = sorted(self.config.base_encoder_configs.keys())
+        encoder_outs = [
+            self.base_encoders[k]({Columns.OBS: inputs[k]})[ENCODER_OUT] for k in keys
+        ]
+        # Concatenate the embeddings.
+        embeds = torch.cat(encoder_outs, dim=-1)
+
+        # Pass through fusion layers (if any).
+        out = embeds
+        if self.fusion_layers:
+            out = self.hidden_activation()(self.fusion_layers[0](embeds))
+            for layer in self.fusion_layers[1:]:
+                out = self.hidden_activation()(layer(torch.cat([out, embeds], dim=-1)))
+
+        # Pass through output layer (if defined).
+        if self.output_layer is not None:
+            # Concatenate with skip connection if we have fusion layers.
+            if self.fusion_layers:
+                out = torch.cat([out, embeds], dim=-1)
+            out = self.output_activation()(self.output_layer(out))
+
+        return {ENCODER_OUT: out}

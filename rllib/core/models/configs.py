@@ -11,13 +11,13 @@ from ray.rllib.models.torch.misc import (
     valid_padding,
 )
 from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.core.models.base import Encoder, Model
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def _framework_implemented(torch: bool = True, tf2: bool = True):
     """Decorator to check if a model was implemented in a framework.
 
@@ -53,7 +53,7 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
     return decorator
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class ModelConfig(abc.ABC):
     """Base class for configuring a `Model` instance.
@@ -95,7 +95,7 @@ class ModelConfig(abc.ABC):
         return None
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class _MLPConfig(ModelConfig):
     """Generic configuration class for multi-layer-perceptron based Model classes.
@@ -234,7 +234,7 @@ class _MLPConfig(ModelConfig):
         get_initializer_fn(self.output_layer_bias_initializer, framework=framework)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class MLPHeadConfig(_MLPConfig):
     """Configuration for an MLP head.
@@ -303,7 +303,7 @@ class MLPHeadConfig(_MLPConfig):
             return TorchMLPHead(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class FreeLogStdMLPHeadConfig(_MLPConfig):
     """Configuration for an MLPHead with a floating second half of outputs.
@@ -387,7 +387,7 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             return TorchFreeLogStdMLPHead(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class CNNTransposeHeadConfig(ModelConfig):
     """Configuration for a convolutional transpose head (decoder) network.
@@ -638,7 +638,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             return TorchCNNTransposeHead(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class CNNEncoderConfig(ModelConfig):
     """Configuration for a convolutional (encoder) network.
@@ -814,7 +814,7 @@ class CNNEncoderConfig(ModelConfig):
             return TorchCNNEncoder(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class MLPEncoderConfig(_MLPConfig):
     """Configuration for an MLP that acts as an encoder.
@@ -875,7 +875,7 @@ class MLPEncoderConfig(_MLPConfig):
             return TorchMLPEncoder(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class RecurrentEncoderConfig(ModelConfig):
     """Configuration for an LSTM-based or a GRU-based encoder.
@@ -1025,7 +1025,7 @@ class RecurrentEncoderConfig(ModelConfig):
             return GRU(self)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 @dataclass
 class ActorCriticEncoderConfig(ModelConfig):
     """Configuration for an ActorCriticEncoder.
@@ -1059,3 +1059,135 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TorchStatefulActorCriticEncoder(self)
             else:
                 return TorchActorCriticEncoder(self)
+
+
+@DeveloperAPI
+@dataclass
+class MultiStreamEncoderConfig(ModelConfig):
+    """Configuration for a Multi-Stream Encoder.
+
+    The base encoders function like other encoders in RLlib. They are wrapped by the
+    Multi-Stream Encoder to provide a shared encoder Model to use in RLModules that
+    processes multiple input streams. The outputs of the individual encoders are
+    concatenated and further processed by shared fusion layers.
+
+    Attributes:
+        base_encoder_configs: A dictionary mapping stream names to their respective
+            encoder configurations.
+        hidden_layer_dims: Dimensions of the shared hidden layers after the
+            concatenation of the individual encoders' outputs.
+        hidden_layer_use_bias: Whether to use bias in the shared hidden layers.
+        hidden_layer_activation: Activation function to use in the shared hidden layers.
+        hidden_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the shared hidden layers. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        hidden_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_weights_initializer`.
+        hidden_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the shared hidden layers. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        hidden_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `hidden_layer_bias_initializer`.
+        output_layer_dim: Optional dimension of the final output layer after the
+            shared hidden layers. If `None`, no output layer is added.
+        output_layer_use_bias: Whether to use bias  in the output layer.
+        output_layer_activation: Activation function to use in the output layer.
+        output_layer_weights_initializer: The initializer function or class to use for
+            weight initialization in the output layer. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        output_layer_weights_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_weights_initializer`.
+        output_layer_bias_initializer: The initializer function or class to use for
+            bias initialization in the output layer. If `None` the default
+            initializer of the respective dense layer is used. Note, for `"torch"` only
+            the in-place initializers, i.e. ending with an underscore "_" are allowed.
+        output_layer_bias_initializer_config: Configuration to pass into the
+            initializer defined in `output_layer_bias_initializer`.
+    """
+
+    # Configuration for a Multi-Stream Encoder.s
+    base_encoder_configs: Dict[str, ModelConfig] = None
+
+    # Shared hidden layers after the individual encoders' outputs have been
+    # concatenated.
+    hidden_layer_dims: Union[List[int], Tuple[int, ...]] = (256, 256, 256)
+    hidden_layer_use_bias: bool = True
+    hidden_layer_activation: str = "relu"
+    # TODO (simon): enable layernorm for multi-stream encoder.
+    # hidden_layer_use_layernorm: bool = False
+    hidden_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_weights_initializer_config: Optional[Dict] = None
+    hidden_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    hidden_layer_bias_initializer_config: Optional[Dict] = None
+
+    # Optional last output layer with - possibly - different activation and use_bias
+    # settings.
+    output_layer_dim: Optional[int] = None
+    output_layer_use_bias: bool = True
+    output_layer_activation: str = "linear"
+    output_layer_weights_initializer: Optional[Union[str, Callable]] = None
+    output_layer_weights_initializer_config: Optional[Dict] = None
+    output_layer_bias_initializer: Optional[Union[str, Callable]] = None
+    output_layer_bias_initializer_config: Optional[Dict] = None
+
+    @property
+    def output_dims(self):
+        # If output layer is present, its dim is the output dim.
+        if self.output_layer_dim is not None:
+            return (self.output_layer_dim,)
+        # If no output layer, the output dim is the last hidden layer's dim.
+        elif self.hidden_layer_dims:
+            return (self.hidden_layer_dims[-1],)
+        # No output layer and no hidden layers: output is concatenated embeddings.
+        else:
+            total_embed_dim = sum(
+                cfg.output_dims[0] for cfg in self.base_encoder_configs.values()
+            )
+            return (total_embed_dim,)
+
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that settings are valid."""
+
+        if self.base_encoder_configs is None or len(self.base_encoder_configs) == 0:
+            raise ValueError(
+                "`base_encoder_configs` of MultiStreamEncoderConfig must be a "
+                "non-empty dictionary mapping stream names to their respective "
+                "encoder configurations!"
+            )
+
+        if self.input_dims is not None and len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of MultiStreamEncoderConfig must be 1D, "
+                "e.g. `[32]`!"
+            )
+        if len(self.output_dims) != 1:
+            raise ValueError(
+                f"`output_dims` ({self.output_dims}) of MultiStreamEncoderConfig must be "
+                "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
+                " be wrong."
+            )
+
+        # Call these already here to catch errors early on.
+        get_activation_fn(self.hidden_layer_activation, framework=framework)
+        get_activation_fn(self.output_layer_activation, framework=framework)
+        get_initializer_fn(self.hidden_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.hidden_layer_bias_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_weights_initializer, framework=framework)
+        get_initializer_fn(self.output_layer_bias_initializer, framework=framework)
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> "Encoder":
+        # Validate config.
+        self._validate(framework)
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.encoder import TorchMultiStreamEncoder
+
+            return TorchMultiStreamEncoder(self)
+        else:
+            raise NotImplementedError(
+                f"MultiStreamEncoder is not implemented for framework {framework}"
+            )

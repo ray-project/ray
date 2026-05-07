@@ -33,8 +33,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -607,7 +607,7 @@ class WorkerPool : public WorkerPoolInterface {
       const ProcessEnvironment &env,
       const WorkerID &worker_id);
 
-  /// Push an warning message to user if worker pool is getting to big.
+  /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
 
   /// Make this synchronized function for unit test.

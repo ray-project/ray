@@ -295,7 +295,7 @@ you have the following options:
     .. tab-item:: Synchronous
 
         If you want to upload the checkpoint synchronously, you can first upload the checkpoint
-        to the ``storage_path``and then report a reference to the uploaded checkpoint with
+        to the ``storage_path`` and then report a reference to the uploaded checkpoint with
         ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
 
         .. literalinclude:: ../doc_code/checkpoints.py
@@ -373,7 +373,6 @@ This function supports two consistency modes:
     :language: python
     :start-after: __get_all_reported_checkpoints_example_start__
     :end-before: __get_all_reported_checkpoints_example_end__
-
 
 Using checkpoints after training
 --------------------------------

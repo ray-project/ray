@@ -4,7 +4,7 @@
 
 
 # __model_dl_start__
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset

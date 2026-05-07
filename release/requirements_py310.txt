@@ -259,9 +259,7 @@ cffi==1.16.0 \
     --hash=sha256:ee07e47c12890ef248766a6e55bd38ebfb2bb8edd4142d56db91b21ea68b7627 \
     --hash=sha256:fa3a0128b152627161ce47201262d3140edb5a5c3da88d73a1b790a959126956 \
     --hash=sha256:fcc8eb6d5902bb1cf6dc4f187ee3ea80a1eba0a89aba40a5cb20a5087d961357
-    # via
-    #   cryptography
-    #   pynacl
+    # via cryptography
 charset-normalizer==3.3.2 \
     --hash=sha256:06435b539f889b1f6f4ac1758871aae42dc3a8c0e24ac9e60c2384973ad73027 \
     --hash=sha256:06a81e93cd441c56a9b65d8e1d043daeb97a3d0856d177d5c90ba85acb3db087 \
@@ -445,9 +443,7 @@ decorator==5.1.1 \
 deprecated==1.2.14 \
     --hash=sha256:6fac8b097794a90302bdbb17b9b815e732d3c4720583ff1b198499d78470466c \
     --hash=sha256:e5323eb936458dccc2582dc6f9c322c852a775a27065ff2b0c4970b9d53d01b3
-    # via
-    #   opentelemetry-api
-    #   pygithub
+    # via opentelemetry-api
 docker==7.1.0 \
     --hash=sha256:ad8c70e6e3f8926cb8a92619b832b4ea5299e2831c14284663184e200546fa6c \
     --hash=sha256:c96b93b7f0a746f9e77d325bcfb87422a3d8bd4f03136ae8a85b37f1898d5fc0
@@ -569,7 +565,9 @@ gitdb==4.0.11 \
 gitpython==3.1.44 \
     --hash=sha256:9e0e10cda9bed1ee64bc9a6de50e7e38a9c9943241cd7f585f6df3ed28011110 \
     --hash=sha256:c87e30b26253bf5418b01b0660f818967f3c503193838337fe5e573331249269
-    # via anyscale
+    # via
+    #   anyscale
+    #   sphinx-collections
 google-api-core[grpc]==2.24.2 \
     --hash=sha256:810a63ac95f3c441b7c0e43d344e372887f62ce9071ba972eacf32672e072de9 \
     --hash=sha256:81718493daf06d96d6bc76a91c23874dbf2fac0adbbf542831b805ee6e974696
@@ -869,6 +867,7 @@ jinja2==3.1.3 \
     #   -r release/requirements_py310.in
     #   myst-parser
     #   sphinx
+    #   sphinx-collections
     #   sphinxcontrib-redoc
 jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
@@ -1194,6 +1193,7 @@ packaging==25.0 \
     #   pydata-sphinx-theme
     #   pytest
     #   sphinx
+    #   sphinx-collections
     #   twine
 parso==0.8.4 \
     --hash=sha256:a418670a20291dacd2dddc80c377c5c3791378ee1e8d12bffc35420643d43f18 \
@@ -1417,10 +1417,6 @@ pydata-sphinx-theme==0.14.1 \
     --hash=sha256:c436027bc76ae023df4e70517e3baf90cdda5a88ee46b818b5ef0cc3884aba04 \
     --hash=sha256:d8d4ac81252c16a002e835d21f0fea6d04cf3608e95045c816e8cc823e79b053
     # via -r release/requirements-doc.txt
-pygithub==2.3.0 \
-    --hash=sha256:0148d7347a1cdeed99af905077010aef81a4dad988b0ba51d4108bf66b443f7e \
-    --hash=sha256:65b499728be3ce7b0cd2cd760da3b32f0f4d7bc55e5e0677617f90f6564e793e
-    # via -r release/requirements_py310.in
 pygments==2.16.1 \
     --hash=sha256:13fc09fa63bc8d8671a6d247e1eb303c4b343eaee81d861f3404db2935653692 \
     --hash=sha256:1daff0494820c69bc8941e407aa20f577374ee88364ee10a98fdbe0aece96e29
@@ -1435,21 +1431,7 @@ pygments==2.16.1 \
 pyjwt[crypto]==2.8.0 \
     --hash=sha256:57e28d156e3d5c10088e0c68abb90bfac3df82b40a71bd0daa20c65ccd5c23de \
     --hash=sha256:59127c392cc44c2da5bb3192169a91f429924e17aff6534d70fdc02ab3e04320
-    # via
-    #   msal
-    #   pygithub
-pynacl==1.5.0 \
-    --hash=sha256:06b8f6fa7f5de8d5d2f7573fe8c863c051225a27b61e6860fd047b1775807858 \
-    --hash=sha256:0c84947a22519e013607c9be43706dd42513f9e6ae5d39d3613ca1e142fba44d \
-    --hash=sha256:20f42270d27e1b6a29f54032090b972d97f0a1b0948cc52392041ef7831fee93 \
-    --hash=sha256:401002a4aaa07c9414132aaed7f6836ff98f59277a234704ff66878c2ee4a0d1 \
-    --hash=sha256:52cb72a79269189d4e0dc537556f4740f7f0a9ec41c1322598799b0bdad4ef92 \
-    --hash=sha256:61f642bf2378713e2c2e1de73444a3778e5f0a38be6fee0fe532fe30060282ff \
-    --hash=sha256:8ac7448f09ab85811607bdd21ec2464495ac8b7c66d146bf545b0f08fb9220ba \
-    --hash=sha256:a36d4a9dda1f19ce6e03c9a784a2921a4b726b02e1c736600ca9c22029474394 \
-    --hash=sha256:a422368fc821589c228f4c49438a368831cb5bbc0eab5ebe1d7fac9dded6567b \
-    --hash=sha256:e46dae94e34b085175f8abb3b0aaa7da40767865ac82c928eeb9e57e1ea8a543
-    # via pygithub
+    # via msal
 pyparsing==3.1.2 \
     --hash=sha256:a1bac0ce561155ecc3ed78ca94d3c9378656ad4c94c1270de543f621420f94ad \
     --hash=sha256:f9db75911801ed778fe61bb643079ff86601aca99fcae6345aa67292038fb742
@@ -1531,6 +1513,7 @@ pyyaml==6.0.1 \
     #   jupytext
     #   myst-nb
     #   myst-parser
+    #   responses
     #   sphinx-jsonschema
     #   sphinxcontrib-redoc
 pyzmq==26.0.3 \
@@ -1650,8 +1633,8 @@ requests==2.32.5 \
     #   id
     #   msal
     #   pybuildkite
-    #   pygithub
     #   requests-toolbelt
+    #   responses
     #   sphinx
     #   sphinx-jsonschema
     #   twine
@@ -1659,6 +1642,10 @@ requests-toolbelt==1.0.0 \
     --hash=sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6 \
     --hash=sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06
     # via twine
+responses==0.25.3 \
+    --hash=sha256:521efcbc82081ab8daa588e08f7e8a64ce79b91c39f6e62199b19159bea7dbcb \
+    --hash=sha256:617b9247abd9ae28313d57a75880422d55ec63c29d33d629697590a034358dba
+    # via -r release/requirements_py310.in
 rfc3986==2.0.0 \
     --hash=sha256:50b1502b60e289cb37883f3dfd34532b8873c7de9f49bb546641ce9cbd256ebd \
     --hash=sha256:97aacf9dbd4bfd829baad6e6309fa6573aaf1be3f6fa735c8ab05e46cecb261c
@@ -1827,6 +1814,7 @@ sphinx==7.3.7 \
     #   pydata-sphinx-theme
     #   sphinx-autobuild
     #   sphinx-click
+    #   sphinx-collections
     #   sphinx-copybutton
     #   sphinx-design
     #   sphinx-docsearch
@@ -1841,6 +1829,10 @@ sphinx-autobuild==2024.4.16 \
 sphinx-click==5.1.0 \
     --hash=sha256:6812c2db62d3fae71a4addbe5a8a0a16c97eb491f3cd63fe34b4ed7e07236f33 \
     --hash=sha256:ae97557a4e9ec646045089326c3b90e026c58a45e083b8f35f17d5d6558d08a0
+    # via -r release/requirements-doc.txt
+sphinx-collections==0.3.1 \
+    --hash=sha256:4dda762479d2ad2163ccb074b15f36f72810d9cd08be4daa69854a6e34c99f92 \
+    --hash=sha256:fb93b979cc9275bd2ad980a71fd57be5521c0f879f90f8189917a8f7ca0436ab
     # via -r release/requirements-doc.txt
 sphinx-copybutton==0.5.2 \
     --hash=sha256:4cf17c82fb9646d1bc9ca92ac280813a3b605d8c421225fd9913154103ee1fbd \
@@ -1892,8 +1884,9 @@ sphinxcontrib-serializinghtml==1.1.10 \
     --hash=sha256:326369b8df80a7d2d8d7f99aa5ac577f51ea51556ed974e7716cfd4fca3f6cb7 \
     --hash=sha256:93f3f5dc458b91b192fe10c397e324f262cf163d79f3282c158e8436a2c4511f
     # via sphinx
-sphinxemoji==0.2.0 \
-    --hash=sha256:27861d1dd7c6570f5e63020dac9a687263f7481f6d5d6409eb31ecebcc804e4c
+sphinxemoji==0.3.2 \
+    --hash=sha256:0fb07a95bca5960a3b312bc05b65b0c3040456414a076c363f4ecaf546c6e09e \
+    --hash=sha256:814da89a9a7603b7e4d85c487c7381656fa83632f20065e5ed782ab1dbbb5083
     # via -r release/requirements-doc.txt
 spinners==0.0.24 \
     --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
@@ -2075,7 +2068,6 @@ typing-extensions==4.11.0 \
     #   pydantic
     #   pydantic-core
     #   pydata-sphinx-theme
-    #   pygithub
     #   sqlalchemy
     #   uvicorn
 tzdata==2024.1 \
@@ -2094,8 +2086,8 @@ urllib3==1.26.18 \
     #   anyscale
     #   botocore
     #   docker
-    #   pygithub
     #   requests
+    #   responses
     #   twine
 uvicorn==0.30.6 \
     --hash=sha256:4b15decdda1e72be08209e860a1e10e92439ad5b97cf44cc945fcbee66fc5788 \

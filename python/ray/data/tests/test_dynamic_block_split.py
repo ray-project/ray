@@ -210,7 +210,7 @@ def test_dataset(
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
     assert ds.count() == num_blocks_per_task * num_tasks
-    assert ds._plan.initial_num_blocks() == num_tasks
+    assert ds._logical_plan.initial_num_blocks() == num_tasks
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -228,7 +228,7 @@ def test_dataset(
     map_ds = ds.map_batches(identity_func, compute=compute)
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
-    assert map_ds._plan.initial_num_blocks() == num_blocks_expected
+    assert map_ds._logical_plan.initial_num_blocks() == num_blocks_expected
     expected_actor_name = f"MapWorker(ReadRandomBytes->MapBatches({func_name}))"
     assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
@@ -253,34 +253,45 @@ def test_dataset(
         compute=compute,
     )
     map_ds = map_ds.materialize()
-    assert map_ds._plan.initial_num_blocks() == 1
+    assert map_ds._logical_plan.initial_num_blocks() == 1
     map_ds = ds.map(identity_func, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
+    assert map_ds._logical_plan.initial_num_blocks() == num_blocks_per_task * num_tasks
 
     ds_list = ds.split(5)
     assert len(ds_list) == 5
     for new_ds in ds_list:
-        assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks / 5
+        assert (
+            new_ds._logical_plan.initial_num_blocks()
+            == num_blocks_per_task * num_tasks / 5
+        )
 
     train, test = ds.train_test_split(test_size=0.25)
-    assert train._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 0.75
-    assert test._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 0.25
+    assert (
+        train._logical_plan.initial_num_blocks()
+        == num_blocks_per_task * num_tasks * 0.75
+    )
+    assert (
+        test._logical_plan.initial_num_blocks()
+        == num_blocks_per_task * num_tasks * 0.25
+    )
 
     new_ds = ds.union(ds, ds)
-    assert new_ds._plan.initial_num_blocks() == num_tasks * 3
+    assert new_ds._logical_plan.initial_num_blocks() == num_tasks * 3
     new_ds = new_ds.materialize()
-    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 3
+    assert (
+        new_ds._logical_plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 3
+    )
 
     new_ds = ds.random_shuffle()
-    assert new_ds._plan.initial_num_blocks() == num_tasks
+    assert new_ds._logical_plan.initial_num_blocks() == num_tasks
     new_ds = ds.randomize_block_order()
-    assert new_ds._plan.initial_num_blocks() == num_tasks
+    assert new_ds._logical_plan.initial_num_blocks() == num_tasks
     assert ds.groupby("one").count().count() == num_blocks_per_task * num_tasks
 
     new_ds = ds.zip(ds)
     new_ds = new_ds.materialize()
-    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
+    assert new_ds._logical_plan.initial_num_blocks() == num_blocks_per_task * num_tasks
 
     assert len(ds.take(5)) == 5
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
@@ -306,12 +317,12 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     ds = ds.filter(lambda _: True)
     ds = ds.materialize()
     assert ds.count() == num_blocks_per_task
-    assert ds._plan.initial_num_blocks() == num_blocks_per_task
+    assert ds._logical_plan.initial_num_blocks() == num_blocks_per_task
 
     ds = ds.filter(lambda _: False)
     ds = ds.materialize()
     assert ds.count() == 0
-    assert ds._plan.initial_num_blocks() == num_blocks_per_task
+    assert ds._logical_plan.initial_num_blocks() == num_blocks_per_task
 
 
 @pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
@@ -511,7 +522,7 @@ def test_block_slicing(
         ),
         override_num_blocks=num_tasks,
     ).materialize()
-    assert ds._plan.initial_num_blocks() == expected_num_blocks
+    assert ds._logical_plan.initial_num_blocks() == expected_num_blocks
 
     block_sizes = []
     num_rows = 0

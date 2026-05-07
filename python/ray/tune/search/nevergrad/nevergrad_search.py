@@ -195,7 +195,7 @@ class NevergradSearch(Searcher):
 
         self._live_trial_mapping = {}
 
-        if self._nevergrad_opt or self._space:
+        if self._nevergrad_opt is not None or self._space is not None:
             self._setup_nevergrad()
 
     def _setup_nevergrad(self):
@@ -248,7 +248,7 @@ class NevergradSearch(Searcher):
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
-        if self._nevergrad_opt or self._space:
+        if self._nevergrad_opt is not None or self._space is not None:
             return False
         space = self.convert_search_space(config)
         self._space = space

@@ -460,14 +460,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
-void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
-                                         rpc::ReportJobErrorReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
-  auto job_id = JobID::FromBinary(request.job_error().job_id());
-  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-}
-
 void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
                                        rpc::GetNextJobIDReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {

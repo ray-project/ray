@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from dataclasses import replace
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -21,7 +22,7 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.data._internal.compute import TaskPoolStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
@@ -47,12 +48,16 @@ from ray.data._internal.datasource.json_datasource import (
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
     KafkaDatasource,
+    PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    ParquetDatasource,
+    TensorColumnSchema,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -69,7 +74,9 @@ from ray.data._internal.logical.operators import (
     FromItems,
     FromNumpy,
     FromPandas,
+    ListFiles,
     Read,
+    ReadFiles,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -77,6 +84,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
     ndarray_to_block,
@@ -108,8 +116,7 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     import daft
@@ -131,6 +138,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+INT32_MAX = 2**31 - 1
 
 
 @DeveloperAPI
@@ -244,7 +252,7 @@ def from_items(
         block = builder.build()
         blocks.append(ray.put(block))
         meta_with_schema.append(
-            BlockMetadataWithSchema.from_block(block, stats=stats.build())
+            BlockMetadataWithSchema.from_block(block, block_exec_stats=stats.build())
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
@@ -382,6 +390,156 @@ def range_tensor(
     )
 
 
+def _read_datasource_v2(
+    datasource,
+    *,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+) -> Dataset:
+    """Internal entry point for ``DataSourceV2`` reads.
+
+    Wires a ``ListFiles → ReadFiles`` logical chain:
+
+    - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
+      optional global shuffle (``FileShuffleConfig``), and size-balanced
+      bucketing (``RoundRobinPartitioner``). Its physical planner
+      parallelizes listing across path shards and emits manifest blocks.
+    - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
+      via ``scanner.create_reader().read(manifest)``.
+
+    Schema inference happens once on the driver by sampling the first
+    file — no caching layer needed.
+    """
+    import time
+
+    from ray.data._internal.datasource_v2.listing.file_pruners import (
+        FileExtensionPruner,
+        FilePruner,
+        PartitionPruner,
+    )
+    from ray.data._internal.datasource_v2.listing.listing_utils import (
+        sample_files,
+    )
+    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    ctx = DataContext.get_current()
+
+    if ray_remote_args is None:
+        ray_remote_args = {}
+
+    if "scheduling_strategy" not in ray_remote_args and (
+        "label_selector" not in ray_remote_args
+    ):
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+
+    ray_remote_args = merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
+    pruners: List[FilePruner] = [FileExtensionPruner(datasource.file_extensions)]
+    if partition_filter is not None:
+        pruners.append(PartitionPruner(partition_filter))
+
+    indexer = datasource._get_file_indexer()
+
+    # Sample a few files for schema inference. Listed again (cheaply) during
+    # execution inside the ListFiles op — no caching layer needed.
+    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+    if len(sample) == 0:
+        raise ValueError(
+            f"no files found under {datasource.paths!r}. Check the path and any "
+            "configured `partition_filter` or `file_extensions` filters."
+        )
+    schema = datasource.infer_schema(sample)
+    # Resolve any path-discovered partitioning field names from the sample
+    # and pass the result through to the scanner. Keeping the discovery
+    # here (rather than mutating ``datasource._partitioning`` inside
+    # ``infer_schema``) leaves the datasource instance immutable across
+    # reads.
+    resolved_partitioning = datasource.resolve_partitioning(sample)
+    scanner = datasource.create_scanner(
+        schema=schema,
+        filesystem=datasource.filesystem,
+        partitioning=resolved_partitioning,
+    )
+
+    # Size-balanced bucketing for the listing output. The partitioner is
+    # captured in a pickled closure and runs inside worker tasks, so its
+    # estimator must be I/O-free and pickle-safe — use the datasource's
+    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
+    # encoding-ratio multiplier). ``num_buckets`` is a hint;
+    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
+    # first, so the actual bucket count scales with total data size.
+    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
+    # back to sentinel bounds so the partitioner just rolls every file
+    # into a single bucket.
+    import sys
+
+    min_bucket_size = ctx.target_min_block_size or 0
+    max_bucket_size = (
+        ctx.target_max_block_size
+        if ctx.target_max_block_size is not None
+        else sys.maxsize
+    )
+    partitioner = RoundRobinPartitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        min_bucket_size=min_bucket_size,
+        max_bucket_size=max_bucket_size,
+        num_buckets=ctx.read_op_min_num_blocks,
+    )
+
+    # NOTE: We're using shuffle config factory to fix the seed at the planning
+    #       time, rather than at the composition time (for backward-compatibility)
+    shuffle = getattr(datasource, "shuffle", None)
+
+    def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
+        return (
+            FileShuffleConfig(seed=time.time_ns() % INT32_MAX)
+            if shuffle == "files"
+            else shuffle
+        )
+
+    list_files_op = ListFiles(
+        paths=list(datasource.paths),
+        file_indexer=indexer,
+        filesystem=datasource.filesystem,
+        source_paths=list(datasource.paths),
+        file_partitioner=partitioner,
+        file_extensions=datasource.file_extensions,
+        partition_filter=partition_filter,
+        shuffle_config_factory=_shuffle_config_factory,
+    )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
+    read_op = ReadFiles(
+        input_op=list_files_op,
+        datasource_name=datasource.name,
+        scanner=scanner,
+        schema=schema,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        compute=compute_strategy,
+    )
+
+    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    execution_plan = ExecutionPlan(stats, DataContext.get_current().copy())
+    logical_plan = LogicalPlan(read_op, execution_plan._context)
+    return Dataset(plan=execution_plan, logical_plan=logical_plan)
+
+
 @PublicAPI
 @wrap_auto_init
 def read_datasource(
@@ -391,8 +549,9 @@ def read_datasource(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
     override_num_blocks: Optional[int] = None,
     **read_args,
 ) -> Dataset:
@@ -411,6 +570,11 @@ def read_datasource(
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
+        compute: The compute strategy to use for reading. Pass an
+            :class:`~ray.data.ActorPoolStrategy` instance to use an actor pool,
+            or a :class:`~ray.data.TaskPoolStrategy` instance (default) to use Ray tasks.
+            If not specified, defaults to ``TaskPoolStrategy(concurrency)``. If both
+            ``compute`` and ``concurrency`` are specified, ``concurrency`` takes precedence.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
@@ -420,6 +584,27 @@ def read_datasource(
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
+
+    Examples:
+        Read using default task-based execution:
+
+        >>> import ray
+        >>> from ray.data._internal.datasource.range_datasource import RangeDatasource
+        >>> datasource = RangeDatasource(n=1000, block_format="arrow")
+        >>> ds = ray.data.read_datasource(datasource) # doctest: +SKIP
+
+        Read using actors for stateful operations:
+
+        >>> from ray.data import ActorPoolStrategy
+        >>> ds = ray.data.read_datasource( # doctest: +SKIP
+        ...     datasource,
+        ...     compute=ActorPoolStrategy(size=4)  # Use 4 actors
+        ... )
+
+    .. note::
+        The use of `ActorPoolStrategy` is currently experimental and comes with caveats, such
+        as additional overhead due to limited operator fusion opportunities.
+
     """  # noqa: E501
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
@@ -429,12 +614,17 @@ def read_datasource(
         ray_remote_args = {}
 
     if not datasource.supports_distributed_reads:
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
 
-    if "scheduling_strategy" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     ray_remote_args = merge_resources_to_ray_remote_args(
@@ -470,16 +660,27 @@ def read_datasource(
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+        metadata={
+            "Read": [
+                # NOTE: We're truncating `input_files` from metadata as it could
+                #       be carrying 1000s of input files (for `ImageDatasource` for ex)
+                #       and isn't useful inside `DatasetStats`
+                replace(read_task.metadata, input_files=None)
+                for read_task in read_tasks
+            ]
+        },
         parent=None,
     )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,
-        compute=TaskPoolStrategy(concurrency),
+        compute=compute_strategy,
     )
     execution_plan = ExecutionPlan(
         stats,
@@ -907,11 +1108,12 @@ def read_parquet(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
+    include_row_hash: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1024,6 +1226,12 @@ def read_parquet(
             shuffle the input files. Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
+        include_row_hash: If ``True``, include a deterministic hash for each row.
+            The hash is a uint64 computed from the source file path and the row's
+            output position, making it reproducible across repeated reads of the
+            same data with the same pipeline configuration. Stored in the
+            ``'row_hash'`` column. If a column named ``'row_hash'`` already
+            exists in the file, it will be overwritten.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1061,6 +1269,58 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        if _block_udf is not None:
+            raise NotImplementedError(
+                "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
+            )
+        if tensor_column_schema is not None:
+            raise NotImplementedError(
+                "`tensor_column_schema` is not yet supported on the DataSourceV2 path."
+            )
+        if dataset_kwargs:
+            raise NotImplementedError(
+                "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
+            )
+        if columns is not None:
+            # TODO(datasource-v2): remove `columns=` from `read_parquet` once
+            # the projection-pushdown rule dispatches to `ReadFiles`. Callers
+            # should use `ray.data.read_parquet(path).select_columns([...])`
+            # — semantically equivalent on V1, and on V2 the pushdown rule
+            # will fold the projection into the scanner once it lands.
+            raise NotImplementedError(
+                "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).select_columns([...])` "
+                "instead."
+            )
+
+        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+            ParquetDatasourceV2,
+        )
+
+        datasource_v2 = ParquetDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            arrow_parquet_args=arrow_parquet_args,
+            schema=schema,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
     datasource = ParquetDatasource(
         paths,
         columns=columns,
@@ -1073,6 +1333,7 @@ def read_parquet(
         partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
+        include_row_hash=include_row_hash,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -2785,6 +3046,7 @@ def read_databricks_tables(
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksTableCredentialConfig,
         resolve_credential_provider,
     )
     from ray.data._internal.datasource.databricks_uc_datasource import (
@@ -2792,7 +3054,7 @@ def read_databricks_tables(
     )
 
     resolved_provider = resolve_credential_provider(
-        credential_provider=credential_provider
+        DatabricksTableCredentialConfig(credential_provider=credential_provider)
     )
 
     if not catalog:
@@ -3831,10 +4093,9 @@ def from_torch(
     ray_remote_args = {}
     if local_read:
         ray_remote_args = {
-            "scheduling_strategy": NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            ),
+            "label_selector": {
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
             # The user might have initialized Ray to have num_cpus = 0 for the head
             # node. For a local read we expect the read task to be executed on the
             # head node, so we should set num_cpus = 0 for the task to allow it to
@@ -4009,6 +4270,7 @@ def read_lance(
             only the rows matching the filter. See
             `Lance filter push-down <https://lance.org/guide/read_and_write/#filter-push-down>`_
             for valid SQL expressions. By default, no filter is applied.
+            **Deprecated**. Use `dataset.filter(expr=expr)` instead to filter rows.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https://lance.org/guide/object_store/>`_.
@@ -4033,6 +4295,16 @@ def read_lance(
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
     """  # noqa: E501
+
+    # Check for deprecated filter parameter
+    if filter is not None:
+        warnings.warn(
+            "The `filter` argument is deprecated and will not be supported in a future release. "
+            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     datasource = LanceDatasource(
         uri=uri,
         version=version,
@@ -4221,20 +4493,15 @@ def read_unity_catalog(
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
     from ray.data._internal.datasource.databricks_credentials import (
-        StaticCredentialProvider,
+        UnityCatalogCredentialConfig,
         resolve_credential_provider,
     )
 
-    # Resolve credentials: either from credential_provider or from url/token
-    if credential_provider is not None:
-        resolved_provider = resolve_credential_provider(credential_provider)
-    elif url is not None and token is not None:
-        # Backwards compatible: create provider from url/token
-        resolved_provider = StaticCredentialProvider(token=token, host=url)
-    else:
-        raise ValueError(
-            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    resolved_provider = resolve_credential_provider(
+        UnityCatalogCredentialConfig(
+            credential_provider=credential_provider, url=url, token=token
         )
+    )
 
     connector = UnityCatalogConnector(
         table_full_name=table,
@@ -4251,6 +4518,7 @@ def read_delta(
     path: Union[str, List[str]],
     version: Optional[int] = None,
     *,
+    storage_options: Optional[Dict[str, Any]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -4258,25 +4526,61 @@ def read_delta(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ):
-    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+    """Creates a :class:`~ray.data.Dataset` from a Delta Lake table.
+
+    This reader uses the ``deltalake`` library to read the Delta transaction
+    log and constructs a PyArrow dataset that preserves the table's unified
+    schema, partition information, and column statistics. This enables:
+
+    - Schema evolution support (older files with missing columns are null-filled)
+    - Correct handling of cloud storage URIs (Azure, S3, GCS)
+    - Column statistics from the Delta log for row-group pruning
+    - Authentication via ``storage_options``
 
     Examples:
 
+        Read a local Delta table:
+
         >>> import ray
-        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
+        >>> ds = ray.data.read_delta("/path/to/delta-table/") # doctest: +SKIP
+
+        Read from S3 with credentials:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "s3://bucket/delta-table/",
+        ...     storage_options={
+        ...         "AWS_ACCESS_KEY_ID": "...",
+        ...         "AWS_SECRET_ACCESS_KEY": "...",
+        ...     },
+        ... )
+
+        Read from Azure with default credentials:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "az://container/delta-table/",
+        ...     storage_options={"use_azure_cli": "true"},
+        ... )
 
     Args:
-        path: A single file path for a Delta Lake table. Multiple tables are not yet
+        path: A single path to a Delta Lake table. Multiple tables are not
             supported.
-        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
+        version: The version of the Delta Lake table to read. If not specified,
+            the latest version is read.
+        storage_options: A dictionary of storage options passed to the
+            ``deltalake`` library for authentication and configuration.
+            Supported keys depend on the storage backend:
+            `S3 options <https://docs.rs/object_store/latest/object_store/\
+            aws/enum.AmazonS3ConfigKey.html#variants>`_,
+            `Azure options <https://docs.rs/object_store/latest/object_store/\
+            azure/enum.AzureConfigKey.html#variants>`_,
+            `GCS options <https://docs.rs/object_store/latest/object_store/\
+            gcp/enum.GoogleConfigKey.html#variants>`_.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4294,11 +4598,6 @@ def read_delta(
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        partition_filter: A
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
-            with a custom callback to read only selected partitions of a dataset.
-        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
-            that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
@@ -4317,8 +4616,8 @@ def read_delta(
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified parquet
-        files.
+        :class:`~ray.data.Dataset` producing records read from the specified
+        Delta Lake table.
 
     """
     # Modified from ray.data._internal.util._check_import, which is meant for objects,
@@ -4342,22 +4641,26 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path, version=version).file_uris()
+    dt = DeltaTable(path, version=version, storage_options=storage_options)
+    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
 
-    return read_parquet(
-        paths,
-        filesystem=filesystem,
+    datasource = ParquetDatasource.from_pyarrow_dataset(
+        pa_dataset,
         columns=columns,
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+        to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
         shuffle=shuffle,
         include_paths=include_paths,
+    )
+
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
-        **arrow_parquet_args,
     )
 
 
@@ -4367,15 +4670,18 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+    start_offset: Union[
+        int, datetime, Literal["earliest"], PerPartitionOffsets
+    ] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
-    timeout_ms: int = 10000,
+    timeout_ms: Optional[int] = None,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4408,6 +4714,23 @@ def read_kafka(
                 end_offset=datetime(2025, 1, 2),
             )
 
+        .. testcode::
+            :skipif: True
+
+            # Read using per-partition start offsets; partition 2 falls back
+            # to "earliest" because it is not listed
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset={
+                    "my-topic": {
+                        0: 1500,
+                        1: "earliest",
+                    }
+                },
+                end_offset="latest",
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4421,14 +4744,24 @@ def read_kafka(
             - int: Offset number
             - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"earliest"``.
 
         end_offset: Ending position for reading (exclusive). Can be:
 
             - int: Offset number
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"latest"``.
 
-        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
+        consumer_config: Confluent/librdkafka consumer configuration dict to
+            pass through directly to the underlying client. These options override
+            defaults and any mapped values from `kafka_auth_config`. The `bootstrap.servers` option is derived from `bootstrap_servers` and cannot be overridden here.
+            See https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#pythonclient-configuration for more details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
@@ -4437,9 +4770,10 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-            it has read so far.
+        timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+            If None (default), no task-level timeout is applied and each read task
+            will poll until it reaches end_offset. If set, the read task will stop
+            polling after the timeout and return the messages it has read so far.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4454,7 +4788,7 @@ def read_kafka(
 
     Raises:
         ValueError: If invalid parameters are provided.
-        ImportError: If kafka-python is not installed.
+        ImportError: If confluent-kafka is not installed.
     """  # noqa: E501
     if trigger != "once":
         raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
@@ -4466,6 +4800,7 @@ def read_kafka(
             start_offset=start_offset,
             end_offset=end_offset,
             kafka_auth_config=kafka_auth_config,
+            consumer_config=consumer_config,
             timeout_ms=timeout_ms,
         ),
         parallelism=-1,
@@ -4500,7 +4835,7 @@ def _get_datasource_or_legacy_reader(
             "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
             "`Reader`, implement `Datasource.get_read_tasks` and "
             "`Datasource.estimate_inmemory_data_size`.",
-            DeprecationWarning,
+            RayDeprecationWarning,
         )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:
@@ -4510,7 +4845,7 @@ def _get_datasource_or_legacy_reader(
 
 
 def _resolve_parquet_args(
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     **arrow_parquet_args,
 ) -> Dict[str, Any]:
     if tensor_column_schema is not None:
@@ -4520,15 +4855,22 @@ def _resolve_parquet_args(
             from ray.data.extensions import ArrowTensorArray
 
             for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
-                # NOTE(Clark): We use NumPy to consolidate these potentially
-                # non-contiguous buffers, and to do buffer bookkeeping in
-                # general.
-                np_col = _create_possibly_ragged_ndarray(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
+                if block.num_rows == 0:
+                    # Empty tables (e.g., dummy tables for schema inference)
+                    # have no buffers to decode. Construct a properly shaped
+                    # empty ndarray so from_numpy infers the correct tensor
+                    # type (shape + dtype).
+                    np_col = np.empty((0,) + shape, dtype=dtype)
+                else:
+                    # NOTE(Clark): We use NumPy to consolidate these
+                    # potentially non-contiguous buffers, and to do buffer
+                    # bookkeeping in general.
+                    np_col = _create_possibly_ragged_ndarray(
+                        [
+                            np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                            for buf in block.column(tensor_col_name)
+                        ]
+                    )
 
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),

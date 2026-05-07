@@ -398,3 +398,117 @@ assert call.details() == "foo found."
 assert any([key == "num" and value == "0" for key, value in call.trailing_metadata()])
 assert any([key == "request_id" for key, _ in call.trailing_metadata()])
 # __end_grpc_context_client__
+
+
+# __begin_client_streaming_deployment__
+from ray import serve
+from ray.serve.grpc_util import gRPCInputStream
+from user_defined_protos_pb2 import UserDefinedResponse
+
+
+@serve.deployment
+class ClientStreamingService:
+    async def ClientStreaming(self, request_stream: gRPCInputStream):
+        """Receives stream of requests, returns a single response."""
+        total = 0
+        count = 0
+        async for request in request_stream:
+            total += request.num
+            count += 1
+        return UserDefinedResponse(
+            greeting=f"Received {count} messages",
+            num=total * 2,
+        )
+
+
+serve.run(ClientStreamingService.bind())
+# __end_client_streaming_deployment__
+
+
+# __begin_client_streaming_client__
+import grpc
+from user_defined_protos_pb2_grpc import UserDefinedServiceStub
+from user_defined_protos_pb2 import UserDefinedMessage
+
+
+channel = grpc.insecure_channel("localhost:9000")
+stub = UserDefinedServiceStub(channel)
+metadata = (("application", "default"),)
+
+
+def request_generator():
+    for i in range(5):
+        yield UserDefinedMessage(name=f"msg_{i}", num=i + 1, origin="client")
+
+
+response = stub.ClientStreaming(request_generator(), metadata=metadata)
+print(f"greeting: {response.greeting}")  # greeting: Received 5 messages
+print(f"num: {response.num}")  # num: 30
+# __end_client_streaming_client__
+
+
+# __begin_bidi_streaming_deployment__
+from ray import serve
+from ray.serve.grpc_util import gRPCInputStream
+from user_defined_protos_pb2 import UserDefinedResponse
+
+
+@serve.deployment
+class BidiStreamingService:
+    async def BidiStreaming(self, request_stream: gRPCInputStream):
+        """Receives stream of requests, yields response for each."""
+        async for request in request_stream:
+            yield UserDefinedResponse(
+                greeting=f"Hello {request.name}",
+                num=request.num * 2,
+            )
+
+
+serve.run(BidiStreamingService.bind())
+# __end_bidi_streaming_deployment__
+
+
+# __begin_bidi_streaming_client__
+import grpc
+from user_defined_protos_pb2_grpc import UserDefinedServiceStub
+from user_defined_protos_pb2 import UserDefinedMessage
+
+
+channel = grpc.insecure_channel("localhost:9000")
+stub = UserDefinedServiceStub(channel)
+metadata = (("application", "default"),)
+
+
+def request_generator():
+    for i in range(3):
+        yield UserDefinedMessage(name=f"user_{i}", num=i * 10, origin="client")
+
+
+responses = stub.BidiStreaming(request_generator(), metadata=metadata)
+for response in responses:
+    print(f"greeting: {response.greeting}")
+    print(f"num: {response.num}")
+# __end_bidi_streaming_client__
+
+
+# __begin_streaming_with_context__
+from ray import serve
+from ray.serve.grpc_util import gRPCInputStream, RayServegRPCContext
+from user_defined_protos_pb2 import UserDefinedResponse
+
+
+@serve.deployment
+class StreamingWithContext:
+    async def ClientStreaming(
+        self,
+        request_stream: gRPCInputStream,
+        grpc_context: RayServegRPCContext,
+    ):
+        """Receives stream and can modify gRPC context."""
+        count = 0
+        async for request in request_stream:
+            count += 1
+
+        grpc_context.set_trailing_metadata([("processed-count", str(count))])
+        return UserDefinedResponse(greeting=f"Processed {count} messages")
+# __end_streaming_with_context__

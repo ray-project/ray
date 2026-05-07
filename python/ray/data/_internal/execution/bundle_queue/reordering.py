@@ -21,6 +21,8 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     Failure to follow this requirement might result in this queue getting
     irreversibly stuck.
+
+    NOTE: Not thread-safe
     """
 
     def __init__(self):

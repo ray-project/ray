@@ -1,7 +1,23 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from ray.data.block import Block
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
+
+
+def _split_base_and_ext(filename: str) -> Tuple[str, str]:
+    """Split a filename into (base, extension) where extension includes the dot.
+
+    Returns (base, ext) where ext includes the leading dot (e.g., ".parquet"),
+    or is empty string if the filename has no extension.
+
+    This is the single source of truth for separating a task filename's base
+    from its extension. Used by both row-filename derivation and checkpoint
+    base-filename extraction — these MUST agree for prefix-trie recovery.
+    """
+    if "." in filename:
+        base, ext = filename.rsplit(".", 1)
+        return base, f".{ext}"
+    return filename, ""
 
 
 @PublicAPI(stability="alpha")
@@ -10,19 +26,15 @@ class FilenameProvider:
 
     Use this class to customize the filenames used when writing a Dataset.
 
-    Some methods write each row to a separate file, while others write each block to a
-    separate file. For example, :meth:`ray.data.Dataset.write_images` writes individual
-    rows, and :func:`ray.data.Dataset.write_parquet` writes blocks of data. For more
-    information about blocks, see :ref:`Data internals <datasets_scheduling>`.
-
-    If you're writing each row to a separate file, implement
-    :meth:`~FilenameProvider.get_filename_for_row`. Otherwise, implement
-    :meth:`~FilenameProvider.get_filename_for_block`.
+    Override :meth:`~FilenameProvider.get_filename_for_task` to customize filenames.
+    For row-based writes (e.g., :meth:`~ray.data.Dataset.write_images`), row filenames
+    are automatically derived by appending ``_{block_index:06}_{row_index:06}`` to the
+    task filename.
 
     Example:
 
-        This snippet shows you how to encode labels in written files. For example, if
-        `"cat"` is a label, you might write a file named `cat_000000_000000_000000.png`.
+        This snippet shows you how to customize filenames with a prefix. For example,
+        a file might be named ``images_abc123_000000.png``.
 
         .. testcode::
 
@@ -31,43 +43,103 @@ class FilenameProvider:
 
             class ImageFilenameProvider(FilenameProvider):
 
-                def __init__(self, file_format: str):
-                    self.file_format = file_format
+                def __init__(self, prefix: str, file_format: str):
+                    super().__init__(file_format=file_format)
+                    self.prefix = prefix
 
-                def get_filename_for_row(self, row, write_uuid, task_index, block_index, row_index):
-                    return (
-                        f"{row['label']}_{write_uuid}_{task_index:06}_{block_index:06}"
-                        f"_{row_index:06}.{self.file_format}"
-                    )
+                def get_filename_for_task(self, write_uuid, task_index):
+                    return f"{self.prefix}_{write_uuid}_{task_index:06}.{self.file_format}"
 
             ds = ray.data.read_parquet("s3://anonymous@ray-example-data/images.parquet")
             ds.write_images(
                 "/tmp/results",
                 column="image",
-                filename_provider=ImageFilenameProvider("png")
+                filename_provider=ImageFilenameProvider("images", "png")
             )
     """  # noqa: E501
 
+    def __init__(
+        self,
+        dataset_uuid: Optional[str] = None,
+        file_format: Optional[str] = None,
+    ) -> None:
+        """Create a FilenameProvider.
+
+        Args:
+            dataset_uuid: An optional UUID to include as a prefix in generated
+                filenames. If provided, filenames will be formatted as
+                ``{dataset_uuid}_{write_uuid}_{task_index}``.
+            file_format: An optional file extension (without the leading dot)
+                to append to generated filenames, e.g. ``"parquet"`` or
+                ``"csv"``.
+        """
+        self.dataset_uuid = dataset_uuid
+        self.file_format = file_format
+
+    def get_filename_for_task(self, write_uuid: str, task_index: int) -> str:
+        """Generate a filename for a write task.
+
+        Override this method to customize filenames when writing a Dataset.
+
+        .. note::
+            Filenames must be unique and deterministic for a given write UUID and
+            task index.
+
+        Args:
+            write_uuid: The UUID of the write operation.
+            task_index: The index of the write task.
+
+        Returns:
+            The generated filename string.
+        """
+        file_id = f"{write_uuid}_{task_index:06}"
+        filename = ""
+        if self.dataset_uuid is not None:
+            filename += f"{self.dataset_uuid}_"
+        filename += file_id
+        if self.file_format is not None:
+            filename += f".{self.file_format}"
+        return filename
+
+    @Deprecated(
+        message="Use get_filename_for_task() instead. The block and block_index "
+        "parameters are unused in practice because datasinks merge all blocks into "
+        "one before writing. These parameters will be removed in a future release. "
+        "Do not depend on block content or block_index in your FilenameProvider "
+        "implementation - filenames must be deterministic from (write_uuid, task_index) "
+        "alone to ensure checkpointing correctness."
+    )
     def get_filename_for_block(
-        self, block: Block, write_uuid: str, task_index: int, block_index: int
+        self, block: Optional[Block], write_uuid: str, task_index: int, block_index: int
     ) -> str:
         """Generate a filename for a block of data.
 
         .. note::
-            Filenames must be unique and deterministic for a given write UUID, and
-            task and block index.
+            Filenames must be unique and deterministic for a given write UUID and
+            task index. Do NOT depend on block content or block_index.
 
-            A block consists of multiple rows and corresponds to a single output file.
-            Each task might produce a different number of blocks.
+            Checkpointing requires predicting the output filename BEFORE writing
+            data. This enables 2-phase commit: if a write fails after creating the
+            file but before committing the checkpoint, recovery can use the
+            predicted filename to delete orphaned files and retry cleanly. If
+            filenames depend on block content, this prediction is impossible and
+            checkpointing cannot guarantee exactly-once semantics.
 
         Args:
-            block: The block that will be written to a file.
+            block: Deprecated, unused. Do not depend on block content.
             write_uuid: The UUID of the write operation.
             task_index: The index of the write task.
-            block_index: The index of the block *within* the write task.
+            block_index: Deprecated, always 0. Do not depend on this value.
         """
         raise NotImplementedError
 
+    @Deprecated(
+        message="Implement get_filename_for_task() instead. Row filenames are "
+        "automatically derived by appending _{block_index:06}_{row_index:06} to the "
+        "task filename. All files from the same task must share the task filename as "
+        "a prefix so that uncommitted data files can be identified and cleaned up "
+        "during checkpoint recovery."
+    )
     def get_filename_for_row(
         self,
         row: Dict[str, Any],
@@ -78,18 +150,10 @@ class FilenameProvider:
     ) -> str:
         """Generate a filename for a row.
 
-        .. note::
-            Filenames must be unique and deterministic for a given write UUID, and
-            task, block, and row index.
-
-            A block consists of multiple rows, and each row corresponds to a single
-            output file. Each task might produce a different number of blocks, and each
-            block might contain a different number of rows.
-
-        .. tip::
-            If you require a contiguous row index into the global dataset, use
-            :meth:`~ray.data.Dataset.iter_rows`. This method is single-threaded and
-            isn't recommended for large datasets.
+        .. deprecated::
+            Implement :meth:`get_filename_for_task` instead. Row filenames are
+            automatically derived by appending ``_{block_index:06}_{row_index:06}``
+            to the task filename.
 
         Args:
             row: The row that will be written to a file.
@@ -99,37 +163,3 @@ class FilenameProvider:
             row_index: The index of the row *within* the block.
         """
         raise NotImplementedError
-
-
-class _DefaultFilenameProvider(FilenameProvider):
-    def __init__(
-        self, dataset_uuid: Optional[str] = None, file_format: Optional[str] = None
-    ):
-        self._dataset_uuid = dataset_uuid
-        self._file_format = file_format
-
-    def get_filename_for_block(
-        self, block: Block, write_uuid: str, task_index: int, block_index: int
-    ) -> str:
-        file_id = f"{write_uuid}_{task_index:06}_{block_index:06}"
-        return self._generate_filename(file_id)
-
-    def get_filename_for_row(
-        self,
-        row: Dict[str, Any],
-        write_uuid: str,
-        task_index: int,
-        block_index: int,
-        row_index: int,
-    ) -> str:
-        file_id = f"{write_uuid}_{task_index:06}_{block_index:06}_{row_index:06}"
-        return self._generate_filename(file_id)
-
-    def _generate_filename(self, file_id: str) -> str:
-        filename = ""
-        if self._dataset_uuid is not None:
-            filename += f"{self._dataset_uuid}_"
-        filename += file_id
-        if self._file_format is not None:
-            filename += f".{self._file_format}"
-        return filename
