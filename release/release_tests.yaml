@@ -1750,6 +1750,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
   variations:
@@ -1914,6 +1915,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
 
   variations:
@@ -1947,6 +1949,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
 
   variations:
@@ -1976,6 +1979,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
       type: gpu
       post_build_script: byod_install_torchrec.sh
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
   variations:
@@ -2010,6 +2014,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
   run:
@@ -2026,6 +2031,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_train_persistence_test.sh
     cluster_compute: compute_aws.yaml
@@ -2064,6 +2070,7 @@
   frequency: nightly
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_aws.yaml
@@ -2085,6 +2092,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2108,6 +2116,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_gpu_2x4_aws.yaml
 
   run:
@@ -2123,6 +2132,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_pytorch_lightning_test.sh
@@ -2141,6 +2151,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_huggingface_transformers_test.sh
@@ -2159,6 +2170,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_aws.yaml
@@ -2182,6 +2194,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_aws_{{size}}.yaml
 
   run:
@@ -2207,6 +2220,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_gpu_aws.yaml
 
   run:
@@ -2232,6 +2246,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
 
   run:
