@@ -1373,16 +1373,23 @@ def stop(force: bool, grace_period: int):
         pre_stopped = []
         for proc in psutil.process_iter(["name", "cmdline", "status"]):
             try:
-                if proc.status() == psutil.STATUS_ZOMBIE:
-                    name = proc.name()
-                    cmdline = proc.cmdline()
+                # Use the cached info dict so we don't re-issue syscalls
+                # (and don't risk NoSuchProcess if the proc disappears).
+                info = proc.info
+                name = info["name"]
+                cmdline = info["cmdline"]
+                if info["status"] == psutil.STATUS_ZOMBIE:
+                    # Zombies usually have empty/None cmdline.
+                    cmdline_str = (
+                        subprocess.list2cmdline(cmdline) if cmdline else ""
+                    )
                     for keyword, filter_by_cmd in processes_to_kill:
-                        corpus = name if filter_by_cmd else subprocess.list2cmdline(cmdline)
+                        corpus = name if filter_by_cmd else cmdline_str
                         if keyword in corpus:
                             pre_stopped.append(proc)
                             break
                 else:
-                    process_infos.append((proc, proc.name(), proc.cmdline()))
+                    process_infos.append((proc, name, cmdline))
             except psutil.Error:
                 pass
 
@@ -1448,9 +1455,11 @@ def stop(force: bool, grace_period: int):
         total_found = len(procs_to_kill) + len(pre_stopped)
 
         # Wait for grace period to terminate processes.
-        # Seed with zombies so the progress counter can reach total_found
-        # (wait_procs only fires the callback for live->dead transitions).
-        gone_procs = set(pre_stopped)
+        # Seed with procs already known to be dead (zombies + procs that died
+        # before the second wait_procs) so the progress counter can reach
+        # total_found — wait_procs only fires the callback for live->dead
+        # transitions, so anything already gone won't be added by it.
+        gone_procs = set(pre_stopped) | set(stopped)
 
         def on_terminate(proc):
             gone_procs.add(proc)

@@ -257,6 +257,9 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
                 signal.SIGTERM,
                 -signal.SIGTERM,
                 128 + signal.SIGTERM,
+                signal.SIGINT,
+                -signal.SIGINT,
+                128 + signal.SIGINT,
             }
             STARTUP_FAILURE_THRESHOLD_SEC = 30
             if worker_result.returncode in expected_shutdown_codes:
