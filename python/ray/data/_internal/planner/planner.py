@@ -1,11 +1,10 @@
-import functools
 import warnings
+from functools import partial
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 if TYPE_CHECKING:
     import pyarrow.fs
 
-from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -16,6 +15,7 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 )
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
@@ -34,8 +34,11 @@ from ray.data._internal.logical.operators import (
     InputData,
     Join,
     Limit,
+    ListFiles,
+    Mix,
     Project,
     Read,
+    ReadFiles,
     StreamingRepartition,
     StreamingSplit,
     Union,
@@ -48,6 +51,8 @@ from ray.data._internal.planner.checkpoint import (
 )
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
+from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
+from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
@@ -92,6 +97,16 @@ def plan_from_op(
 def plan_zip_op(_, physical_children, data_context):
     assert len(physical_children) >= 2
     return ZipOperator(data_context, *physical_children)
+
+
+def plan_mix_op(logical_op, physical_children, data_context):
+    assert len(physical_children) >= 1
+    return MixOperator(
+        data_context,
+        *physical_children,
+        weights=logical_op.weights,
+        stopping_condition=logical_op.stopping_condition,
+    )
 
 
 def plan_union_op(_, physical_children, data_context):
@@ -156,12 +171,15 @@ class Planner:
 
     _DEFAULT_PLAN_FNS = {
         Read: plan_read_op,
+        ReadFiles: plan_read_files_op,
+        ListFiles: plan_list_files_op,
         InputData: plan_input_data_op,
         Write: plan_write_op,
         AbstractFrom: plan_from_op,
         Filter: plan_filter_op,
         AbstractUDFMap: plan_udf_map_op,
         AbstractAllToAll: plan_all_to_all_op,
+        Mix: plan_mix_op,
         Union: plan_union_op,
         Zip: plan_zip_op,
         Limit: plan_limit_op,
@@ -194,16 +212,15 @@ class Planner:
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
-                checkpoint_config, data_file_dir, data_file_fs
+                checkpoint_config,
             )
 
             callbacks.append(checkpoint_callback)
-            load_checkpoint = checkpoint_callback.load_checkpoint
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                load_checkpoint
+                data_file_dir, data_file_fs
             )
 
         elif checkpoint_config is not None:
@@ -282,8 +299,6 @@ class Planner:
     def _create_checkpoint_callback(
         self,
         checkpoint_config,
-        data_file_dir=None,
-        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
@@ -291,8 +306,6 @@ class Planner:
         """
         return LoadCheckpointCallback(
             checkpoint_config,
-            data_file_dir=data_file_dir,
-            data_file_filesystem=data_file_filesystem,
         )
 
     @staticmethod
@@ -311,12 +324,12 @@ class Planner:
 
     def _get_plan_fns_for_checkpointing(
         self,
-        load_checkpoint: Callable[[], ObjectRef],
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
-            Read: functools.partial(
-                plan_read_op_with_checkpoint_filter,
-                load_checkpoint=load_checkpoint,
+            Read: partial(
+                plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
             ),
             Write: plan_write_op_with_checkpoint_writer,
         }

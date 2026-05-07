@@ -37,6 +37,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
@@ -646,6 +647,24 @@ class AsyncioRouter:
             event_loop,
         )
 
+        self._objref_resolution_latency_ms = metrics.Histogram(
+            "serve_router_args_resolution_latency_ms",
+            description=(
+                "Time in milliseconds spent resolving upstream ObjectRef or "
+                "DeploymentResponse arguments before a request enters the "
+                "routing queue."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        ).set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": handle_id,
+                "actor_id": self_actor_id,
+            }
+        )
+
         # The Router needs to stay informed about changes to the target deployment's
         # running replicas and deployment config. We do this via the long poll system.
         # However, for efficiency, we don't want to create a LongPollClient for every
@@ -667,6 +686,9 @@ class AsyncioRouter:
                 ): self.update_deployment_config,
             },
             call_in_event_loop=self._event_loop,
+            # Multiple AsyncioRouters can share an actor (one per downstream
+            # handle), so include the deployment id to disambiguate.
+            client_id=f"{type(self).__name__}:{self_actor_id}:{deployment_id}",
         )
 
         shared = SharedRouterLongPollClient.get_or_create(
@@ -939,7 +961,10 @@ class AsyncioRouter:
             # not time spent waiting for upstream DeploymentResponse arguments.
             # See: https://github.com/ray-project/ray/issues/60624
             if not pr.resolved:
+                resolution_start = time.monotonic()
                 await self._resolve_request_arguments(pr)
+                resolution_ms = (time.monotonic() - resolution_start) * 1000
+                self._objref_resolution_latency_ms.observe(resolution_ms)
 
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
@@ -955,7 +980,6 @@ class AsyncioRouter:
                     and not replica.is_cross_language
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
-
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
 
@@ -1457,6 +1481,7 @@ class SharedRouterLongPollClient:
             controller_handle,
             key_listeners={},
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_worker_id()}",
         )
 
     @classmethod

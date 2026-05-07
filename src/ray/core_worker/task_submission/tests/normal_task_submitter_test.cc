@@ -257,13 +257,11 @@ class MockRayletClient : public rpc::FakeRayletClient {
     return true;
   }
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {
     std::lock_guard<std::mutex> lock(mu_);
     reported_backlog_size = 0;
     reported_backlogs.clear();
-    for (const auto &backlog_report : backlog_reports) {
+    for (const auto &backlog_report : request.backlog_reports()) {
       reported_backlog_size += backlog_report.backlog_size();
       const LeaseSpecification lease_spec(backlog_report.lease_spec());
       const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
@@ -272,17 +270,15 @@ class MockRayletClient : public rpc::FakeRayletClient {
   }
 
   void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size,
-      const bool is_selected_based_on_locality) override {
+      rpc::RequestWorkerLeaseRequest &&request,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
+      override {
     std::lock_guard<std::mutex> lock(mu_);
     num_workers_requested += 1;
-    if (grant_or_reject) {
+    if (request.grant_or_reject()) {
       num_grant_or_reject_leases_requested += 1;
     }
-    if (is_selected_based_on_locality) {
+    if (request.is_selected_based_on_locality()) {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);
@@ -1677,8 +1673,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   wait_for_io_ctx_empty.get_future().get();
 
   submitter.ReportWorkerBacklog();
-  ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
-  ASSERT_EQ(raylet_client->reported_backlogs[task1.GetSchedulingClass()], 0);
+  ASSERT_EQ(raylet_client->reported_backlogs.size(), 2);
   ASSERT_EQ(raylet_client->reported_backlogs[task2.GetSchedulingClass()], 2);
   ASSERT_EQ(raylet_client->reported_backlogs[task4.GetSchedulingClass()], 1);
 }

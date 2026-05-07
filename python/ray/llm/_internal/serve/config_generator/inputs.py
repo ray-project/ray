@@ -14,7 +14,6 @@ from ray.llm._internal.serve.config_generator.utils.files import (
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
     DEFAULT_MODEL_ID_TO_GPU,
-    GPUType,
     get_available_gpu_types,
 )
 from ray.llm._internal.serve.config_generator.utils.input_converter import (
@@ -33,9 +32,10 @@ from ray.llm._internal.serve.config_generator.utils.prompt import (
 from ray.llm._internal.serve.config_generator.utils.text_completion import (
     get_default_llm_config,
 )
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
 
-def _get_user_input_from_list(prompt: str, options: List[GPUType]):
+def _get_user_input_from_list(prompt: str, options: List[AcceleratorType]):
     while True:
         user_input = BoldPrompt.ask(
             f"{prompt}",
@@ -134,7 +134,7 @@ def _get_validated_model_info():
             )
 
 
-def _get_default_tensor_parallelism(model_id: str, gpu_type: GPUType) -> int:
+def _get_default_tensor_parallelism(model_id: str, gpu_type: AcceleratorType) -> int:
     if model_id in DEFAULT_MODEL_ID_TO_GPU:
         llm_config = get_default_llm_config(model_id=model_id, gpu_type=gpu_type)
         return llm_config.engine_kwargs.setdefault("tensor_parallel_size", 1)
@@ -148,7 +148,7 @@ _DEFAULT_NUM_LORA_PER_REPLICA = 16
 def get_input_model_via_args(
     model_id: str,
     hf_token: Optional[str],
-    gpu_type: GPUType,
+    gpu_type: AcceleratorType,
     tensor_parallelism: int,
     enable_lora: Optional[bool],
     num_loras_per_replica: Optional[int],

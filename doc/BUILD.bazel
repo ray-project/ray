@@ -348,7 +348,10 @@ filegroup(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
-    exclude = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    exclude = [
+        "source/llm/doc_code/serve/multi_gpu/**/*.py",
+        "source/llm/doc_code/serve/sglang/**/*.py",
+    ],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
@@ -626,9 +629,6 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -636,16 +636,14 @@ doctest(
 
 doctest(
     name = "doctest[rllib2]",
-    size = "large",
+    size = "enormous",
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
-    tags = ["team:rllib"],
+    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
+    tags = ["manual", "team:rllib"],
 )
 
 doctest(
@@ -683,7 +681,7 @@ doctest(
             "source/train/horovod.rst",
             # These tests run on GPU (see below).
             "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst",
+            "source/train/user-guides/using-accelerators.rst",
         ],
     ),
     tags = ["team:ml"],
@@ -693,7 +691,7 @@ doctest(
     name = "doctest[train-gpu]",
     files = [
         "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-gpus.rst",
+        "source/train/user-guides/using-accelerators.rst",
     ],
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],

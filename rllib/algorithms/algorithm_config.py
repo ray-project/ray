@@ -263,6 +263,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus = 0  # @OldAPIStack
         self._fake_gpus = False  # @OldAPIStack
         self.num_cpus_for_main_process = 1
+        self.custom_resources_for_main_process = {}
 
         # `self.framework()`
         self.framework_str = "torch"
@@ -1446,6 +1447,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_cpus_for_main_process: Optional[int] = NotProvided,
+        custom_resources_for_main_process: Optional[dict] = NotProvided,
         num_gpus: Optional[Union[float, int]] = NotProvided,  # @OldAPIStack
         _fake_gpus: Optional[bool] = NotProvided,  # @OldAPIStack
         placement_strategy: Optional[str] = NotProvided,
@@ -1466,6 +1468,8 @@ class AlgorithmConfig(_Config):
                 process that runs `Algorithm.training_step()`.
                 Note: This is only relevant when running RLlib through Tune. Otherwise,
                 `Algorithm.training_step()` runs in the main program (driver).
+            custom_resources_for_main_process: Any custom Ray resources to allocate for the
+                main `Algorithm` process.
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
@@ -1559,6 +1563,8 @@ class AlgorithmConfig(_Config):
 
         if num_cpus_for_main_process is not NotProvided:
             self.num_cpus_for_main_process = num_cpus_for_main_process
+        if custom_resources_for_main_process is not NotProvided:
+            self.custom_resources_for_main_process = custom_resources_for_main_process
         if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:

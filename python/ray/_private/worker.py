@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -62,6 +63,7 @@ import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
+from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
@@ -1241,7 +1243,12 @@ class BaseContext(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def __exit__(self):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[TracebackType],
+    ) -> Optional[bool]:
         pass
 
     def _context_table_template(self):
@@ -1415,7 +1422,7 @@ def init(
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
     include_dashboard: Optional[bool] = None,
-    dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
+    dashboard_host: str = get_localhost_ip(),
     dashboard_port: Optional[int] = None,
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
@@ -1511,10 +1518,9 @@ def init(
             Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
             the relevant dependencies are present.
-        dashboard_host: The host to bind the dashboard server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
-            external machines.
+        dashboard_host: The host to bind the dashboard server to. Use localhost
+            (127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all
+            interfaces. Defaults to localhost.
         dashboard_port(int, None): The port to bind the dashboard server to.
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
@@ -2048,21 +2054,6 @@ def init(
 
     for hook in _post_init_hooks:
         hook()
-
-    # Check for Pydantic v1 and emit deprecation warning
-    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
-
-    if (
-        PYDANTIC_MAJOR_VERSION
-        and PYDANTIC_MAJOR_VERSION == 1
-        and log_once("pydantic_v1_deprecation")
-    ):
-        warnings.warn(
-            "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
-            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
-            "See https://github.com/ray-project/ray/issues/58876 for more details.",
-            FutureWarning,
-        )
 
     services.find_gcs_addresses.cache_clear()
     node_id = global_worker.core_worker.get_current_node_id()

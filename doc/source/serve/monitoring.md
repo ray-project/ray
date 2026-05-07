@@ -571,6 +571,24 @@ Prometheus histograms aggregate data into predefined buckets, which can affect t
 For accurate percentile calculations, configure bucket boundaries that closely match your expected latency distribution. For example, if most requests complete in 10-100ms, use finer-grained buckets in that range.
 :::
 
+### Metrics export interval
+
+By default, Ray Serve batches its in-process metric updates (counters, gauges, histograms recorded by the router and replica) to reduce per-request overhead. You can configure how often Serve flushes these batched updates to the Ray metrics API using the `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` environment variable:
+
+```bash
+export RAY_SERVE_METRICS_EXPORT_INTERVAL_MS=500
+```
+
+**Default**: `100` milliseconds. Set to `0` to disable batching entirely and record every metric update eagerly. This interval applies to both the router and replica metric pipelines.
+
+Increasing this value reduces the overhead of recording metrics at the cost of less frequent updates. Decreasing it provides more up-to-date values but increases recording frequency.
+
+:::{note}
+`RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` only controls Serve-side batching; it does **not** change how often Ray exports metrics to the Prometheus scrape endpoint. That is controlled separately by Ray Core's `metrics_report_interval_ms` system config (default `10000` ms), which determines how often each Ray process pushes its metrics to the metrics agent that Prometheus scrapes.
+
+The two settings compose: a Serve metric update is first buffered in the router/replica for up to `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS`, then made available at the Prometheus endpoint on the next Ray Core export tick (`metrics_report_interval_ms`). Lowering only `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` without also lowering `metrics_report_interval_ms` does not make metrics appear in Prometheus any sooner. To change the Ray Core interval, pass it via system config when starting Ray, e.g. `ray start --head --system-config='{"metrics_report_interval_ms": 1000}'`.
+:::
+
 ### Request lifecycle and metrics
 
 The following diagram shows where metrics are captured along the request path:
@@ -612,6 +630,7 @@ The following diagram shows where metrics are captured along the request path:
   │   │  ○ ray_serve_deployment_processing_latency_ms (on completion)       │   │
   │   │  ○ ray_serve_deployment_request_counter_total (on completion)       │   │
   │   │  ○ ray_serve_deployment_error_counter_total   (on exception)        │   │
+  │   │  ○ ray_serve_deployment_max_processing_latency_ms (rolling max)     │   │
   │   └─────────────────────────────────────────────────────────────────────┘   │
   │                                                                             │
   └─────────────────────────────────────────────────────────────────────────────┘
@@ -654,6 +673,7 @@ These metrics track request routing and queueing behavior.
 | `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
 | `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
+| `ray_serve_router_args_resolution_latency_ms` **[H][D]** | Histogram | `deployment`, `application`, `handle`, `actor_id` | Time in milliseconds spent resolving upstream `ObjectRef` or `DeploymentResponse` arguments before a request enters the routing queue.|
 
 ### Request processing metrics
 
@@ -666,6 +686,7 @@ These metrics track request throughput, errors, and latency at the replica level
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
 | `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application`, `exception_type` | Total number of exceptions raised while processing requests. |
+| `ray_serve_deployment_max_processing_latency_ms` **[D]** | Gauge | `deployment`, `replica`, `route`, `application` | Maximum request processing time in milliseconds over a rolling window. Tracks the highest latency observed per route across a configurable time window, reported periodically. Configure with `RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S` (default: 60s), `RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S` (default: 10s), and `RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS` (default: 6). |
 
 ### Batching metrics
 

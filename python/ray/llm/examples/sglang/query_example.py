@@ -1,9 +1,5 @@
 """Query client for an SGLang model served via Ray Serve LLM.
 
-This is a demonstration and reference only. It is not actively maintained
-and is not part of Ray's officially supported feature set.
-See https://github.com/ray-project/ray/issues/61114 for status.
-
 Prerequisites:
     Start a serving example first, e.g.:
     RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_example:app
