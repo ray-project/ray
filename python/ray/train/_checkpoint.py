@@ -112,6 +112,9 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         ['model.pt', 'optimizer.pt', 'misc.pt']
     """
 
+    path: str
+    filesystem: pyarrow.fs.FileSystem
+
     def __init__(
         self,
         path: Union[str, os.PathLike],
@@ -127,10 +130,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                 If not specified, this is inferred from the URI scheme.
         """
         self.path = str(path)
-        self.filesystem = filesystem
+        assert self.path, "Checkpoint path must not be empty."
 
-        if path and not filesystem:
+        if filesystem is None:
             self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(path)
+        else:
+            self.filesystem = filesystem
 
         # This random UUID is used to create a temporary directory name on the
         # local filesystem, which will be used for downloading checkpoint data.

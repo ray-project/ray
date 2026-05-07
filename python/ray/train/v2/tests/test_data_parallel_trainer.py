@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 import os
 import signal
@@ -37,6 +38,15 @@ def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
+
+
+@pytest.fixture
+def quiet_werkzeug():
+    """Suppress moto's per-request werkzeug access logs for tests that
+    issue many S3 requests against simulate_s3_bucket."""
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    yield
+    logging.getLogger("werkzeug").setLevel(logging.INFO)
 
 
 def test_backend_setup(tmp_path):
@@ -419,7 +429,13 @@ def test_unsupported_returned_metrics(metric_name, tmp_path):
     )
 
 
-def test_local_in_out_of_band_checkpointing(tmp_path, port=5002, region="us-west-2"):
+def test_local_in_out_of_band_checkpointing(
+    tmp_path, quiet_werkzeug, port=5002, region="us-west-2"
+):
+    """Test if the DataParallelTrainer is capable of handling checkpoints that are
+    both in and out of band. For the out of band, we test if this work with both a
+    local file that's outside the storage path and with a s3 server.
+    """
     tmp_path = tmp_path.resolve()
     experiment_path = tmp_path / "storage-dir"
     out_of_band_path = tmp_path / "oob-dir"
@@ -565,6 +581,160 @@ def test_local_in_out_of_band_checkpointing(tmp_path, port=5002, region="us-west
                 assert isinstance(ckpt.filesystem, pyarrow.fs.LocalFileSystem)
             else:
                 assert isinstance(ckpt.filesystem, pyarrow.fs.S3FileSystem)
+            assert metrics == {"score": i}
+
+
+def test_s3_in_out_of_band_checkpointing(
+    tmp_path, quiet_werkzeug, port=5012, region="us-west-2"
+):
+    """Like test_local_in_out_of_band_checkpointing, but the in-band storage is
+    an S3 bucket. The out-of-band reports exercise both an S3 target (a
+    different bucket on the same simulated S3 server) and a local path.
+
+    There are two differences to test_local_in_out_of_band_checkpointing.
+    1. Resumption ``trainer.fit()`` is omitted because re-running ``fit()`` on
+        the same S3 ``storage_path`` triggers a 403. Moto rejects PUTs of a key
+        once objects exist under it (i.e., resumptions), critical real S3
+        silently overwrites.
+
+    2. An out-of-band bucket on a *different* simulated S3 server is also
+        omitted: pyarrow's libarrow S3 client caches bucket-region/auth state
+        per process, so we can't test with two at the same time.
+    """
+    tmp_path = tmp_path.resolve()
+    out_of_band_path = tmp_path / "oob-dir"
+
+    def write_file(file_path, content: str):
+        os.makedirs(file_path.parent, exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
+
+    with simulate_s3_bucket(port=port, region=region) as in_band_s3_uri:
+        in_band_uri = URI(in_band_s3_uri)
+        in_band_bucket = in_band_uri.name
+        aws_env_vars = {
+            "AWS_ACCESS_KEY_ID": "testing",
+            "AWS_SECRET_ACCESS_KEY": "testing",
+            "AWS_SECURITY_TOKEN": "testing",
+            "AWS_SESSION_TOKEN": "testing",
+        }
+
+        oob_bucket = "oob-bucket"
+        oob_uri = URI(
+            f"s3://{oob_bucket}?region={region}&endpoint_override=http%3A//localhost%3A{port}"
+        )
+
+        # Pre-create the in-band bucket so the trainer can write to it during
+        # init, before train_fn runs.
+        s3 = boto3.client(
+            "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
+        )
+        s3.create_bucket(
+            Bucket=in_band_bucket,
+            CreateBucketConfiguration={"LocationConstraint": region},
+        )
+
+        def train_fn():
+            # Save with default storage upload (local source -> S3 in-band).
+            write_file(tmp_path / "epoch-1" / "results.txt", "1")
+            ray.train.report(
+                metrics={"score": 1},
+                checkpoint=Checkpoint(tmp_path / "epoch-1"),
+                checkpoint_dir_name="epoch-1",
+            )
+
+            s3 = boto3.client(
+                "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
+            )
+
+            # Save in-band (S3, same bucket as storage_path) with NO_UPLOAD.
+            s3.put_object(Bucket=in_band_bucket, Key="epoch-2/results.txt", Body="2")
+            ray.train.report(
+                metrics={"score": 2},
+                checkpoint=Checkpoint(str(in_band_uri / "epoch-2")),
+                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+            )
+            # Save in-band (S3) with a custom upload function.
+            s3.put_object(Bucket=in_band_bucket, Key="epoch-3/results.txt", Body="3")
+            ray.train.report(
+                metrics={"score": 3},
+                checkpoint=Checkpoint(str(in_band_uri / "epoch-3")),
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+            )
+
+            # Save out-of-band (S3, same server / different bucket) NO_UPLOAD.
+            s3.create_bucket(
+                Bucket=oob_bucket,
+                CreateBucketConfiguration={"LocationConstraint": region},
+            )
+            s3.put_object(Bucket=oob_bucket, Key="epoch-4/results.txt", Body="4")
+            ray.train.report(
+                metrics={"score": 4},
+                checkpoint=Checkpoint(str(oob_uri / "epoch-4")),
+                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+            )
+            # Save out-of-band (S3, same server / different bucket) custom fn.
+            s3.put_object(Bucket=oob_bucket, Key="epoch-5/results.txt", Body="5")
+            ray.train.report(
+                metrics={"score": 5},
+                checkpoint=Checkpoint(str(oob_uri / "epoch-5")),
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+            )
+
+            # Save out-of-band (local) with NO_UPLOAD.
+            write_file(out_of_band_path / "epoch-6" / "results.txt", "6")
+            ray.train.report(
+                metrics={"score": 6},
+                checkpoint=Checkpoint(out_of_band_path / "epoch-6"),
+                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+            )
+            # Save out-of-band (local) with a custom upload function.
+            write_file(out_of_band_path / "epoch-7" / "results.txt", "7")
+            ray.train.report(
+                metrics={"score": 7},
+                checkpoint=Checkpoint(out_of_band_path / "epoch-7"),
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+            )
+
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 7
+
+            raise RuntimeError("intentional failure after checkpoint reports")
+
+        # Run train_fn and leave a checkpoint manager snapshot behind.
+        trainer = DataParallelTrainer(
+            train_fn,
+            run_config=RunConfig(
+                name="test-s3-in-out-of-band",
+                storage_path=in_band_s3_uri,
+                worker_runtime_env={"env_vars": aws_env_vars},
+            ),
+        )
+        with pytest.raises(WorkerGroupError, match="intentional failure"):
+            trainer.fit()
+
+        # Verify the snapshot left on S3 is loadable and points to the
+        # correct (in-band/out-of-band) checkpoint locations.
+        restored_result = Result.from_path(str(in_band_uri / "test-s3-in-out-of-band"))
+        assert len(restored_result.best_checkpoints) == 7
+
+        expected_paths = [
+            f"{in_band_bucket}/test-s3-in-out-of-band/epoch-1",
+            f"{in_band_bucket}/epoch-2",
+            f"{in_band_bucket}/epoch-3",
+            f"{oob_bucket}/epoch-4",
+            f"{oob_bucket}/epoch-5",
+            out_of_band_path / "epoch-6",
+            out_of_band_path / "epoch-7",
+        ]
+        for expected_path, (ckpt, metrics), i in zip(
+            expected_paths, restored_result.best_checkpoints, range(1, 8), strict=True
+        ):
+            assert ckpt.path == str(expected_path)
+            if i < 6:
+                assert isinstance(ckpt.filesystem, pyarrow.fs.S3FileSystem)
+            else:
+                assert isinstance(ckpt.filesystem, pyarrow.fs.LocalFileSystem)
             assert metrics == {"score": i}
 
 
