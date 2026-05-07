@@ -9,7 +9,7 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 First, set the following environment variables to be used for GKE cluster creation:
 ```sh
 export CLUSTER_NAME=CLUSTER_NAME
-export COMPUTE_ZONE=ZONE
+export ZONE=COMPUTE_ZONE
 export CLUSTER_VERSION=CLUSTER_VERSION
 ```
 Replace the following:
@@ -59,6 +59,7 @@ gcloud container node-pools create v4-8 \
   --tpu-topology 2x2x2
 ```
 - For v4 TPUs, ZONE must be `us-central2-b`.
+- For other TPU types, see [TPU locations on Google Cloud documentation](https://docs.cloud.google.com/compute/docs/regions-zones/tpu-regions-zones).
 
 The `--tpu-topology` flag specifies the physical topology of the TPU Pod slice. This example uses a v4 TPU slice with either a 2x2x1 or 2x2x2 topology. v4 TPUs have 4 chips per VM host, so a 2x2x2 v4 slice has 8 chips total and 2 TPU hosts, each scheduled on their own node. GKE treats multi-host TPU slices as atomic units, and scales them using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. For more information about selecting a TPU topology and accelerator, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
