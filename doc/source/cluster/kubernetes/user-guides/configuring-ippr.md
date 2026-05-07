@@ -1,4 +1,4 @@
-(kuberay-ippr)=
+(kuberay-in-place-pod-resizing)=
 
 # KubeRay In-Place Pod Resizing (IPPR)
 
