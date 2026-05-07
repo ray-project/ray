@@ -41,7 +41,7 @@ class InheritBatchFormatRule(Rule):
                     ):
                         return replace(
                             node,
-                            input_op=node.input_dependencies[0],
+                            input_dependencies=[node.input_dependencies[0]],
                             batch_format=upstream_op.batch_format,
                         )
                 upstream_op = upstream_op.input_dependencies[0]

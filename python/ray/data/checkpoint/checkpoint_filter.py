@@ -130,10 +130,10 @@ def _clean_pending_checkpoints_task(
 
 
 @ray.remote(num_returns=2)
-def convert_checkpointed_ids(
+def convert_and_sort_checkpointed_ids(
     checkpointed_ids_arrow: Block, id_column: str
 ) -> Tuple[np.ndarray, int]:
-    """Convert checkpointed IDs from pyarrow.Table to np.ndarray.
+    """Convert checkpointed IDs from pyarrow.Table to sorted np.ndarray.
 
     Args:
         checkpointed_ids_arrow: A pyarrow.Table containing the checkpointed
@@ -142,8 +142,8 @@ def convert_checkpointed_ids(
 
     Returns:
         A tuple of:
-        - The checkpointed IDs of type numpy.ndarray, which can be passed
-          directly to each checkpoint filter actor.
+        - The sorted checkpointed IDs of type numpy.ndarray, which can be
+          passed directly to each checkpoint filter actor.
         - The size (bytes) of the ndarray, which can be used to determine
           the `ray_remote_args` of each checkpoint filter actor.
     """
@@ -151,11 +151,13 @@ def convert_checkpointed_ids(
 
     try:
         if checkpointed_ids_arrow.num_rows != 0:
-            checkpointed_ids_ndarray = transform_pyarrow.to_numpy(
-                checkpointed_ids_arrow[id_column], zero_copy_only=False
+            checkpointed_ids_ndarray = np.sort(
+                transform_pyarrow.to_numpy(
+                    checkpointed_ids_arrow[id_column], zero_copy_only=False
+                )
             )
     except Exception as e:
-        raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
+        raise RuntimeError(f"Failed to convert and sort checkpointed IDs: {e}")
 
     checkpoint_size = _numpy_size(checkpointed_ids_ndarray)
     return checkpointed_ids_ndarray, checkpoint_size
@@ -250,13 +252,14 @@ class CheckpointManager(abc.ABC):
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 
-        # convert arrow-typed ids to numpy-typed ids.
+        # Convert arrow-typed ids to sorted numpy-typed ids.
         # Note: the convert is very time-consuming.
         # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
-        checkpointed_ids_ref, checkpoint_size_ref = convert_checkpointed_ids.remote(
-            block_ref, self.id_column
-        )
+        (
+            checkpointed_ids_ref,
+            checkpoint_size_ref,
+        ) = convert_and_sort_checkpointed_ids.remote(block_ref, self.id_column)
 
         checkpoint_size = ray.get(checkpoint_size_ref)
 
@@ -306,12 +309,14 @@ class CheckpointManager(abc.ABC):
             logger.exception("Failed to clean up pending checkpoints")
             raise
 
-    @abc.abstractmethod
     def _preprocess_data_pipeline(
         self, checkpoint_ds: ray.data.Dataset
     ) -> ray.data.Dataset:
-        """Pre-process the checkpoint dataset. To be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement this method")
+        """Pre-process the checkpoint dataset.
+
+        Subclasses can override this method for custom processing.
+        """
+        return checkpoint_ds
 
     def _validate_loaded_checkpoint(
         self, schema: Schema, metadata: BlockMetadata
@@ -322,22 +327,6 @@ class CheckpointManager(abc.ABC):
 
 class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
-
-    def _preprocess_data_pipeline(
-        self, checkpoint_ds: ray.data.Dataset
-    ) -> ray.data.Dataset:
-        """In the pre-process data pipeline,
-            - Sort by the IDs, as `filter_rows_for_block` will perform binary search on the
-              checkpointed IDs during restore.
-
-        Args:
-            checkpoint_ds: The checkpoint dataset to pre-process
-
-        Returns:
-            The pre-processed checkpoint dataset
-        """
-        # Sort by the ID column.
-        return checkpoint_ds.sort(self.id_column)
 
 
 class CheckpointFilter(abc.ABC):

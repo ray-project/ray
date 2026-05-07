@@ -4,18 +4,56 @@ from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+
+
+class _DirectRouterReplicaId:
+    def __init__(self, unique_id: str, full_id: Optional[str] = None):
+        self.unique_id = unique_id
+        self._full_id = full_id or unique_id
+
+    def to_full_id_str(self) -> str:
+        return self._full_id
+
+
+class _FakeRequest:
+    def __init__(self, body: bytes, headers: Optional[dict] = None):
+        self._body = body
+        self.headers = Headers(headers or {})
+
+    async def body(self) -> bytes:
+        return self._body
+
+
+class _DirectRouterReplica:
+    def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
+        self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
+        self.backend_http_endpoint = ("127.0.0.1", port)
+
+
+def _new_direct_router(request_router=None):
+    router = LLMRouter.__new__(LLMRouter)
+    router._round_robin_counter = 0
+    router._cached_dict_id = None
+    router._cached_replica_signature = None
+    router._cached_endpoints = []
+    router._request_router = request_router or MagicMock(curr_replicas={})
+    return router
 
 
 @pytest.fixture(name="llm_config")
@@ -46,13 +84,87 @@ def create_oai_client(llm_config: LLMConfig):
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
     RouterDeployment = serve.deployment(ingress_cls, **ingress_options)
     server = ServerDeployment.bind(llm_config, engine_cls=MockVLLMEngine)
-    router = RouterDeployment.bind(llm_deployments=[server])
+    router = RouterDeployment.bind(
+        llm_deployments={llm_config.model_id: server},
+        model_cards={
+            llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+        },
+    )
     serve.run(router)
 
     client = openai.Client(base_url="http://localhost:8000/v1", api_key="foo")
     yield client
 
     serve.shutdown()
+
+
+class TestDirectStreamingLLMRouter:
+    @pytest.mark.asyncio
+    async def test_route_forwards_body_and_truncation_signal(self):
+        router = _new_direct_router()
+        router._pick_replica = MagicMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+        )
+
+        body = b'{"model":"x","prompt":"' + (b"x" * 1024)
+        request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
+
+        result = await router.route(request)
+
+        assert result == {
+            "host": "127.0.0.1",
+            "port": 9001,
+            "replica_id": "DeploymentName#replica",
+        }
+        router._pick_replica.assert_called_once_with(
+            request_body=body, body_truncated=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_route_returns_503_on_pick_failure(self):
+        router = _new_direct_router()
+        router._pick_replica = MagicMock(side_effect=RuntimeError("no replicas"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 503
+        assert "no replicas" in exc_info.value.detail
+
+    def test_ready_endpoints_sorts_and_caches_by_replica_id(self):
+        replica_a = _DirectRouterReplica("a", port=8001)
+        replica_b = _DirectRouterReplica("b", port=8002)
+        replica_c = _DirectRouterReplica("c", port=8003)
+
+        request_router = MagicMock()
+        request_router.curr_replicas = {
+            "c": replica_c,
+            "a": replica_a,
+            "b": replica_b,
+        }
+        router = _new_direct_router(request_router)
+
+        first = router._ready_endpoints()
+        assert first == [
+            ("127.0.0.1", 8001, "a"),
+            ("127.0.0.1", 8002, "b"),
+            ("127.0.0.1", 8003, "c"),
+        ]
+
+        # Same dict identity: cached tuple list returned (identity check).
+        assert router._ready_endpoints() is first
+
+        # New dict, same keyset: signature-cache hits, tuples reused.
+        request_router.curr_replicas = dict(request_router.curr_replicas)
+        assert router._ready_endpoints() is first
+
+        # Membership change: cache invalidates and re-sorts.
+        request_router.curr_replicas = {"a": replica_a, "b": replica_b}
+        second = router._ready_endpoints()
+        assert second is not first
+        assert second == [
+            ("127.0.0.1", 8001, "a"),
+            ("127.0.0.1", 8002, "b"),
+        ]
 
 
 class TestOpenAiIngress:
@@ -172,12 +284,15 @@ class TestOpenAiIngress:
         """Test health check functionality."""
 
         server = MagicMock()
-        server.llm_config = MagicMock()
-        server.llm_config.remote = AsyncMock(return_value=llm_config)
         server.check_health = MagicMock()
         server.check_health.remote = AsyncMock()
 
-        router = OpenAiIngress(llm_deployments=[server])
+        router = OpenAiIngress(
+            llm_deployments={llm_config.model_id: server},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
 
         await router.check_health()
 
@@ -218,16 +333,18 @@ class TestOpenAiIngress:
             )
 
         mock_handle = MagicMock()
-        mock_handle.llm_config = MagicMock()
-        mock_handle.llm_config.remote = AsyncMock(return_value=llm_config)
         mock_handle.chat = MagicMock()
         mock_handle.chat.remote = mock_chat_generator
         # Make options() return the same mock so chat.remote is preserved
         mock_handle.options.return_value = mock_handle
 
         # Create router with mock handle
-        router = OpenAiIngress(llm_deployments=[mock_handle])
-        await router._init_completed.wait()
+        router = OpenAiIngress(
+            llm_deployments={llm_config.model_id: mock_handle},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
 
         # Create a mock FastAPI request
         from starlette.datastructures import Headers

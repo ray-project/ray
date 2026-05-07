@@ -25,7 +25,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -99,6 +99,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
+  /// \param observability_publisher If non-null, used for `PublishError`.
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
@@ -113,6 +114,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
       ray::observability::MetricInterface &gcs_actor_by_state_gauge,
+      pubsub::ObservabilityPublisher *observability_publisher,
       ClockInterface &clock);
 
   ~GcsActorManager() override;
@@ -483,6 +485,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
   /// This is used to communicate with raylets where actors are located.
   rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.

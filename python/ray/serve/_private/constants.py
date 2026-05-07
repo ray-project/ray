@@ -43,8 +43,7 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Host
-DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
+DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
@@ -385,6 +384,9 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# Serve HTTP request header key for session-stickiness routing.
+SERVE_SESSION_ID = "x_session_id"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
@@ -784,6 +786,21 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 # The balancing algorithm to use in HAProxy backends. Default is leastconn.
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
     "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
+)
+
+# Timeout shared by the ingress-request-router Lua call and the frontend
+# `wait-for-body` directive. Bounds head-of-line blocking on POSTs when a
+# router replica is unhealthy.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
+)
+
+# Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
+# active. Bodies longer than this are truncated; the Lua forwards what it has
+# with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
+# do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(

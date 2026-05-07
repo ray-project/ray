@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 
 namespace ray {

@@ -26,6 +26,8 @@
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/event.h"
@@ -52,6 +54,8 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         });
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
+    observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_unique<gcs::InMemoryStoreClient>());
 
@@ -82,6 +86,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   instrumented_io_context io_service_;
   std::string log_dir_;
 };
@@ -96,6 +101,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
                                    /*session_name=*/"",
+                                   observability_publisher_.get(),
                                    clock_);
   auto node = GenNodeInfo();
 
@@ -125,6 +131,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
                                    /*session_name=*/"",
+                                   observability_publisher_.get(),
                                    clock_);
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());

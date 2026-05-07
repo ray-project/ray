@@ -103,8 +103,8 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
 
     # Test that split blocks prevents fusion.
     op = MapBatches(
-        op,
         lambda x: x,
+        input_dependencies=[op],
     )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
@@ -190,8 +190,8 @@ def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
 
     for udf, expected_name in zip(udf_list, expected_names):
         op = MapRows(
-            get_parquet_read_logical_op(),
             udf,
+            input_dependencies=[get_parquet_read_logical_op()],
         )
         assert op.name == f"Map({expected_name})"
 
@@ -202,8 +202,8 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
@@ -231,8 +231,8 @@ def test_map_rows_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
@@ -259,8 +259,8 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
-        read_op,
         fn=lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
@@ -336,8 +336,8 @@ def test_flat_map(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)

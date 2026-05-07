@@ -36,7 +36,7 @@ ray_cc_library(
     ],
     deps = [
         ":gcs_actor",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -63,7 +63,7 @@ ray_cc_library(
     deps = [
         ":gcs_actor",
         ":gcs_actor_scheduler",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:ray_config",

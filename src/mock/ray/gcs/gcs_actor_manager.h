@@ -19,6 +19,8 @@
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -45,7 +47,14 @@ class MockGcsActorManager : public GcsActorManager {
             /*session_name=*/"",
             /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
             /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_,
+            /*observability_publisher=*/FakeObsPublisher(),
             /*clock=*/clock_) {}
+
+  static pubsub::ObservabilityPublisher *FakeObsPublisher() {
+    static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
+    return holder.get();
+  }
 
   MOCK_METHOD(void,
               HandleRegisterActor,

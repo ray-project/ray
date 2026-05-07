@@ -35,6 +35,7 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
     pubsub::GcsPublisher *gcs_publisher,
+    pubsub::ObservabilityPublisher *observability_publisher,
     ClockInterface &clock)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
@@ -44,6 +45,7 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
       kv_(kv),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher),
       clock_(clock) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
@@ -90,10 +92,10 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "This feature will be turned on by default in a future release of Ray.";
       RAY_LOG_EVERY_MS(WARNING, 60000) << error_message;
 
-      if (gcs_publisher_ != nullptr) {
+      if (observability_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
         auto error_data = CreateErrorTableData(error_type, error_message, clock_.Now());
-        gcs_publisher_->PublishError(session_name_, std::move(error_data));
+        observability_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };

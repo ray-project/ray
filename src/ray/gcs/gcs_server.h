@@ -18,8 +18,8 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -252,7 +252,11 @@ class GcsServer {
   /// gcs_resource_manager_ depends on cluster_lease_manager_.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  /// Publisher for observability pubsub (logs, errors, dashboard resource JSON).
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
+  /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
@@ -278,10 +282,15 @@ class GcsServer {
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  /// GCS PubSub handler (control-plane).
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
+  /// Observability pubsub handler.
+  std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
+  /// GCS Task info manager for managing task states change events.
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
   /// gRPC based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> observability_pubsub_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// GCS service state flag, which is used for unit tests.
