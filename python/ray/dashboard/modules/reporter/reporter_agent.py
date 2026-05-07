@@ -729,7 +729,6 @@ class ReporterAgent(
 
     @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:
-
         global enable_tpu_usage_check
         if not enable_tpu_usage_check:
             return []
@@ -1422,9 +1421,24 @@ class ReporterAgent(
         records: List[Record],
         metric_key: str,
         current_counts: Dict[str, int],
+        zero_stale: bool = True,
     ):
-        """Emit gauge records for cluster node metrics, zeroing out stale
-        node types that are no longer present in the current report."""
+        """Emit gauge records for cluster node metrics.
+
+        Args:
+            records: Output list to append the emitted ``Record`` entries to.
+            metric_key: Key into ``METRICS_GAUGES`` identifying the gauge to
+                emit (e.g. ``"cluster_active_nodes"``). Also used to look up
+                the set of node types previously reported for this metric.
+            current_counts: Mapping from node type to its current count, as
+                reported by the autoscaler. One record is emitted per entry.
+            zero_stale: If True, also emit a 0 value for any node type that
+                was reported on a previous tick but is missing from
+                ``current_counts``, so that Prometheus gauges do not retain
+                a stale non-zero value after a node type disappears. Set to
+                False for cumulative metrics (e.g. failed nodes) where the
+                last reported count should persist across scale-downs.
+        """
         current_node_types = set(current_counts.keys())
         prev_node_types = self._prev_cluster_node_types[metric_key]
 
@@ -1438,17 +1452,23 @@ class ReporterAgent(
                 )
             )
 
-        # Emit 0 for node types that were previously reported but are now gone
-        for node_type in prev_node_types - current_node_types:
-            records.append(
-                Record(
-                    gauge=METRICS_GAUGES[metric_key],
-                    value=0,
-                    tags={"node_type": node_type},
+        if zero_stale:
+            # Emit 0 for node types that were previously reported but are now gone
+            for node_type in prev_node_types - current_node_types:
+                records.append(
+                    Record(
+                        gauge=METRICS_GAUGES[metric_key],
+                        value=0,
+                        tags={"node_type": node_type},
+                    )
                 )
+            self._prev_cluster_node_types[metric_key] = current_node_types
+        else:
+            # Preserve previously-reported node types so future ticks do not
+            # zero them out either.
+            self._prev_cluster_node_types[metric_key] = (
+                prev_node_types | current_node_types
             )
-
-        self._prev_cluster_node_types[metric_key] = current_node_types
 
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
@@ -1463,32 +1483,41 @@ class ReporterAgent(
         # -- Instance count of cluster --
         # Only report cluster stats on head node
         if "autoscaler_report" in cluster_stats and self._is_head_node:
-            active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
+            active_node_counts = cluster_stats["autoscaler_report"]["active_nodes"]
             self._report_cluster_node_metric(
-                records_reported, "cluster_active_nodes", active_nodes
+                records_reported, "cluster_active_nodes", active_node_counts
             )
 
             # Emit cluster_idle_nodes only for autoscaler v2 (v1 has no "idle" state).
-            idle_nodes = cluster_stats.get("autoscaler_report", {}).get("idle_nodes")
-            if idle_nodes is not None:
+            idle_node_counts = cluster_stats.get("autoscaler_report", {}).get(
+                "idle_nodes"
+            )
+            if idle_node_counts is not None:
                 self._report_cluster_node_metric(
-                    records_reported, "cluster_idle_nodes", idle_nodes
+                    records_reported, "cluster_idle_nodes", idle_node_counts
                 )
 
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
-            failed_nodes_dict: Dict[str, int] = {}
+            failed_node_counts: Dict[str, int] = {}
             for node_ip, node_type in failed_nodes:
-                failed_nodes_dict[node_type] = failed_nodes_dict.get(node_type, 0) + 1
+                failed_node_counts[node_type] = failed_node_counts.get(node_type, 0) + 1
+            # Preserve failed-node counts across scale-downs so operators can
+            # still see prior failures after a node type has been removed.
             self._report_cluster_node_metric(
-                records_reported, "cluster_failed_nodes", failed_nodes_dict
+                records_reported,
+                "cluster_failed_nodes",
+                failed_node_counts,
+                zero_stale=False,
             )
 
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
-            pending_nodes_dict: Dict[str, int] = {}
+            pending_nodes_counts: Dict[str, int] = {}
             for node_ip, node_type, status_message in pending_nodes:
-                pending_nodes_dict[node_type] = pending_nodes_dict.get(node_type, 0) + 1
+                pending_nodes_counts[node_type] = (
+                    pending_nodes_counts.get(node_type, 0) + 1
+                )
             self._report_cluster_node_metric(
-                records_reported, "cluster_pending_nodes", pending_nodes_dict
+                records_reported, "cluster_pending_nodes", pending_nodes_counts
             )
 
         # -- CPU per node --

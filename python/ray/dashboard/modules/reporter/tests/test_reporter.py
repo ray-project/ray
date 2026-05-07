@@ -1374,6 +1374,11 @@ def _find_metric_value(records, metric_key: str, node_type: str):
     return None
 
 
+def _has_metric_record(records, metric_key: str, node_type: str) -> bool:
+    g = METRICS_GAUGES[metric_key]
+    return any(r.gauge is g and r.tags == {"node_type": node_type} for r in records)
+
+
 def _make_reporter_agent_and_capture(tmp_path, *, ip="192.168.79.28"):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = "127.0.0.1:6379"
@@ -1480,10 +1485,12 @@ async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_stale_cluster_node_metrics_zeroed_out(tmp_path):
+async def test_stale_cluster_node_metrics_zeroed_out_v1(tmp_path):
     """When a node type disappears from the autoscaler report, the
     corresponding gauge should be explicitly set to 0 so Prometheus
-    does not retain the last non-zero value. Regression test for #50735."""
+    does not retain the last non-zero value. Failed-node counts are an
+    exception — they are preserved as a historical signal. Regression
+    test for #50735."""
     agent, captured = _make_reporter_agent_and_capture(tmp_path)
     agent._get_cluster_stats_v2 = MagicMock()
 
@@ -1529,11 +1536,73 @@ async def test_stale_cluster_node_metrics_zeroed_out(tmp_path):
     # node_type_a is still reported with its current value.
     assert _find_metric_value(recs, "cluster_active_nodes", node_type_a) == 1
 
-    # node_type_b and stale node_type_a entries should be zeroed out.
+    # Active and pending entries for vanished node types are zeroed out.
     assert _find_metric_value(recs, "cluster_active_nodes", node_type_b) == 0
     assert _find_metric_value(recs, "cluster_pending_nodes", node_type_a) == 0
     assert _find_metric_value(recs, "cluster_pending_nodes", node_type_b) == 0
-    assert _find_metric_value(recs, "cluster_failed_nodes", node_type_a) == 0
+
+    # Failed-node counts are not zeroed when the node type vanishes — Prometheus
+    # retains the last reported value until staleness expires, so operators can
+    # still see prior failures.
+    assert not _has_metric_record(recs, "cluster_failed_nodes", node_type_a)
+
+
+@pytest.mark.asyncio
+async def test_stale_cluster_node_metrics_zeroed_out_v2(tmp_path):
+    """v2 autoscaler counterpart of the stale-metrics regression test.
+    Also exercises cluster_idle_nodes (v1 has no "idle" state)."""
+    agent, captured = _make_reporter_agent_and_capture(tmp_path)
+
+    node_type_a = "worker8"
+    node_type_b = "worker16"
+
+    v2_stats_both = {
+        "autoscaler_report": {
+            "active_nodes": {node_type_a: 3, node_type_b: 2},
+            "idle_nodes": {node_type_a: 1, node_type_b: 4},
+            "pending_nodes": [
+                ("10.0.0.1", node_type_a, "PENDING"),
+                ("10.0.0.2", node_type_b, "PENDING"),
+            ],
+            "failed_nodes": [("10.0.0.3", node_type_a)],
+        }
+    }
+    agent._get_cluster_stats_v2 = MagicMock(return_value=v2_stats_both)
+    await agent._async_compose_stats_payload(None, autoscaler_v2_enabled=True)
+
+    recs = captured["records"]
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_a) == 3
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_b) == 2
+    assert _find_metric_value(recs, "cluster_idle_nodes", node_type_a) == 1
+    assert _find_metric_value(recs, "cluster_idle_nodes", node_type_b) == 4
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_a) == 1
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_b) == 1
+    assert _find_metric_value(recs, "cluster_failed_nodes", node_type_a) == 1
+
+    v2_stats_only_a = {
+        "autoscaler_report": {
+            "active_nodes": {node_type_a: 1},
+            "idle_nodes": {node_type_a: 0},
+            "pending_nodes": [],
+            "failed_nodes": [],
+        }
+    }
+    agent._get_cluster_stats_v2 = MagicMock(return_value=v2_stats_only_a)
+    await agent._async_compose_stats_payload(None, autoscaler_v2_enabled=True)
+
+    recs = captured["records"]
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_a) == 1
+    assert _find_metric_value(recs, "cluster_idle_nodes", node_type_a) == 0
+
+    # Vanished node types are zeroed out for active / idle / pending.
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_b) == 0
+    assert _find_metric_value(recs, "cluster_idle_nodes", node_type_b) == 0
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_a) == 0
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_b) == 0
+
+    # Failed-node counts are not zeroed when the node type vanishes — Prometheus
+    # retains the last reported value until staleness expires.
+    assert not _has_metric_record(recs, "cluster_failed_nodes", node_type_a)
 
 
 if __name__ == "__main__":
