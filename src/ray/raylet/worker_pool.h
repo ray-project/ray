@@ -103,6 +103,8 @@ struct PopWorkerRequest {
   const int runtime_env_hash_;
   const std::vector<std::string> dynamic_options_;
   std::optional<absl::Duration> worker_startup_keep_alive_duration_;
+  const ResourceSet resource_requirements_;
+  const std::shared_ptr<TaskResourceInstances> allocated_instances_;
 
   PopWorkerCallback callback_;
 
@@ -116,7 +118,9 @@ struct PopWorkerRequest {
                    int runtime_env_hash,
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
-                   PopWorkerCallback callback)
+                   PopWorkerCallback callback,
+                   ResourceSet resource_requirements = ResourceSet(),
+                   std::shared_ptr<TaskResourceInstances> allocated_instances = nullptr)
       : language_(lang),
         worker_type_(worker_type),
         job_id_(job),
@@ -127,6 +131,8 @@ struct PopWorkerRequest {
         runtime_env_hash_(runtime_env_hash),
         dynamic_options_(std::move(options)),
         worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
+        resource_requirements_(std::move(resource_requirements)),
+        allocated_instances_(std::move(allocated_instances)),
         callback_(std::move(callback)) {}
 };
 
@@ -176,7 +182,14 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
   virtual void PopWorker(const LeaseSpecification &lease_spec,
-                         const PopWorkerCallback &callback) = 0;
+                         const PopWorkerCallback &callback) {
+    PopWorker(lease_spec, nullptr, callback);
+  }
+
+  virtual void PopWorker(
+      const LeaseSpecification &lease_spec,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+      const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -482,8 +495,11 @@ class WorkerPool : public WorkerPoolInterface {
   /// See interface.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
+  using WorkerPoolInterface::PopWorker;
+
   /// See interface.
   void PopWorker(const LeaseSpecification &lease_spec,
+                 const std::shared_ptr<TaskResourceInstances> &allocated_instances,
                  const PopWorkerCallback &callback) override;
 
   /// Try to prestart a number of workers suitable the given lease spec. Prestarting
@@ -595,7 +611,9 @@ class WorkerPool : public WorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt,
+      const ResourceSet &resource_requirements = ResourceSet(),
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances = nullptr);
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -652,6 +670,10 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// Resource requirements of the lease this worker is started for.
+    ResourceSet resource_requirements;
+    /// Specific allocated instances for the lease this worker is started for.
+    std::shared_ptr<TaskResourceInstances> allocated_instances;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -816,10 +838,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// assume that the worker process has tree worker instances totally.
 
   /// Create runtime env asynchronously by runtime env agent.
-  void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
-                             const rpc::RuntimeEnvConfig &runtime_env_config,
-                             const JobID &job_id,
-                             const GetOrCreateRuntimeEnvCallback &callback);
+  void GetOrCreateRuntimeEnv(
+      const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
+      const JobID &job_id,
+      const ResourceSet &resource_requirements,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+      const GetOrCreateRuntimeEnvCallback &callback);
 
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
@@ -832,7 +857,9 @@ class WorkerPool : public WorkerPoolInterface {
       SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
-      std::optional<absl::Duration> worker_startup_keep_alive_duration);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration,
+      const ResourceSet &resource_requirements = ResourceSet(),
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances = nullptr);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 

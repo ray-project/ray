@@ -29,6 +29,7 @@ namespace ray {
 class ClientConnection;
 class RayLease;
 class TaskResourceInstances;
+class ResourceSet;
 
 namespace rpc {
 class Address;
@@ -126,6 +127,9 @@ class WorkerInterface {
   virtual void SetJobId(const JobID &job_id) = 0;
 
   virtual const ActorID &GetRootDetachedActorId() const = 0;
+
+  virtual const ResourceSet &GetResourceRequirements() const = 0;
+  virtual void SetResourceRequirements(const ResourceSet &resource_requirements) = 0;
 
  protected:
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy);

@@ -26,6 +26,10 @@ enum AgentRpcStatus {
   AGENT_RPC_STATUS_FAILED = 1;
 }
 
+message ResourceIDs {
+  repeated int64 ids = 1;
+}
+
 message GetOrCreateRuntimeEnvRequest {
   /// Json serialized [RuntimeEnv].
   /// For details, checkout "//python/ray/runtime_env/runtime_env.py".
@@ -36,6 +40,8 @@ message GetOrCreateRuntimeEnvRequest {
   /// For details, checkout "//src/ray/common/id.h".
   bytes job_id = 3;
   string source_process = 4;
+  map<string, double> resource_requirements = 5;
+  map<string, ResourceIDs> allocated_instances = 6;
 }
 
 message GetOrCreateRuntimeEnvReply {

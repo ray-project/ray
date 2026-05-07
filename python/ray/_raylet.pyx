@@ -119,7 +119,6 @@ from ray.includes.common cimport (
     LocalMemoryBuffer,
     TASK_TYPE_NORMAL_TASK,
     TASK_TYPE_ACTOR_CREATION_TASK,
-    TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
@@ -2083,16 +2082,8 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids, OMP_NUM_THREADS to restrict availability to this task.
-    # Once actor is created, users can change the visible accelerator ids within
-    # an actor task and we don't want to reset it.
-    if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
-        omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
-    else:
-        original_visible_accelerator_env_vars = None
-        omp_num_threads_overriden = False
+    # Environmental variable restriction for GPUs and thread count is now handled
+    # statically at worker startup by the Raylet and RuntimeEnvAgent.
 
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
@@ -2194,13 +2185,7 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = None
 
-        if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
-            if original_visible_accelerator_env_vars:
-                # Reset the visible accelerator env vars for normal tasks, since they may be reused.
-                ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
-            if omp_num_threads_overriden:
-                # Reset the OMP_NUM_THREADS environ if it was set.
-                os.environ.pop("OMP_NUM_THREADS", None)
+        pass
 
 
     if execution_info.max_calls != 0:

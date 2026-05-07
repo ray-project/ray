@@ -22,6 +22,7 @@
 #include "absl/time/time.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
@@ -172,6 +173,9 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   void SetIsGpu(bool is_gpu);
   void SetIsActorWorker(bool is_actor_worker);
 
+  const ResourceSet &GetResourceRequirements() const override;
+  void SetResourceRequirements(const ResourceSet &resource_requirements) override;
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
@@ -245,6 +249,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Saved process group id captured at registration time. Used for process-group
   /// cleanup validation at disconnect/stop.
   std::optional<pid_t> saved_pgid_ = std::nullopt;
+  /// Resource requirements of this worker process.
+  ResourceSet resource_requirements_;
 };
 
 }  // namespace raylet

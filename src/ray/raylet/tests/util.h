@@ -22,6 +22,7 @@
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/util/clock.h"
 #include "ray/util/compat.h"
@@ -191,6 +192,13 @@ class MockWorker : public WorkerInterface {
     return root_detached_actor_id_;
   }
 
+  const ResourceSet &GetResourceRequirements() const override {
+    return resource_requirements_;
+  }
+  void SetResourceRequirements(const ResourceSet &resource_requirements) override {
+    resource_requirements_ = resource_requirements;
+  }
+
  private:
   WorkerID worker_id_;
   int port_;
@@ -212,6 +220,7 @@ class MockWorker : public WorkerInterface {
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
   ClockInterface &clock_;
+  ResourceSet resource_requirements_;
 };
 
 /**

@@ -142,6 +142,8 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:resource_set",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/rpc/authentication:authentication_token_loader",

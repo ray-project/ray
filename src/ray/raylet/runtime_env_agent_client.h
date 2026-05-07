@@ -29,6 +29,9 @@
 #include "src/ray/protobuf/public/runtime_environment.pb.h"
 
 namespace ray {
+class ResourceSet;
+class TaskResourceInstances;
+
 namespace raylet {
 
 /// Callback that's called after runtime env is created.
@@ -69,10 +72,13 @@ class RuntimeEnvAgentClient {
   /// \param[in] serialized_runtime_env The runtime
   /// environment serialized in JSON as from `RuntimeEnv::Serialize` method.
   /// \param[in] callback The callback function.
-  virtual void GetOrCreateRuntimeEnv(const JobID &job_id,
-                                     const std::string &serialized_runtime_env,
-                                     const rpc::RuntimeEnvConfig &runtime_env_config,
-                                     GetOrCreateRuntimeEnvCallback callback) = 0;
+  virtual void GetOrCreateRuntimeEnv(
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
+      const ResourceSet &resource_requirements,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+      GetOrCreateRuntimeEnvCallback callback) = 0;
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent. The
   /// client automatically retries on network errors.

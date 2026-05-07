@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/fake_process.h"
@@ -112,6 +113,13 @@ class FakeWorker : public WorkerInterface {
     return root_detached_actor_id_;
   }
 
+  const ResourceSet &GetResourceRequirements() const override {
+    return resource_requirements_;
+  }
+  void SetResourceRequirements(const ResourceSet &resource_requirements) override {
+    resource_requirements_ = resource_requirements;
+  }
+
  private:
   WorkerID worker_id_;
   int port_;
@@ -124,6 +132,7 @@ class FakeWorker : public WorkerInterface {
   ActorID actor_id_;
   rpc::Address owner_address_;
   ActorID root_detached_actor_id_;
+  ResourceSet resource_requirements_;
 };
 
 }  // namespace raylet

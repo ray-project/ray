@@ -22,7 +22,9 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MOCK_METHOD(void,
               PopWorker,
-              (const LeaseSpecification &lease_spec, const PopWorkerCallback &callback),
+              (const LeaseSpecification &lease_spec,
+               const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+               const PopWorkerCallback &callback),
               (override));
   MOCK_METHOD(void,
               PushWorker,
