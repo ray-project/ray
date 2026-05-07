@@ -67,7 +67,7 @@ Data ingestion can be set up with four basic steps:
                 batch["y"] = batch["y"] + 1
                 return batch
 
-            train_dataset = train_dataset.map_batches(increment)
+            train_dataset = train_dataset.map_batches(increment, batch_size="auto")
 
 
             def train_func():
@@ -634,7 +634,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Preprocess the data. Transformations that are made before the materialize call
     # below are only run once.
-    train_ds = train_ds.map_batches(normalize_length)
+    train_ds = train_ds.map_batches(normalize_length, batch_size="auto")
 
     # Materialize the dataset in object store memory.
     # Only do this if train_ds is small enough to fit in object store memory.
@@ -646,7 +646,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
     # as data augmentation or randomization, should go after the materialize call.
-    train_ds = train_ds.map_batches(augment_data)
+    train_ds = train_ds.map_batches(augment_data, batch_size="auto")
 
     # Pass train_ds to the Trainer
 

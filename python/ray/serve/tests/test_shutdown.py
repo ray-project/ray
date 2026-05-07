@@ -480,5 +480,43 @@ def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
     wait_for_condition(lambda: _check_deployment_actor_count(0), timeout=15)
 
 
+def test_crash_during_shutdown_no_orphaned_actors(ray_shutdown):
+    """Controller crash mid-shutdown should not orphan replica actors."""
+    address = ray.init(num_cpus=4)["address"]
+    serve.start()
+
+    @serve.deployment(num_replicas=2)
+    class MyModel:
+        def __call__(self, request):
+            return "hello"
+
+    serve.run(MyModel.bind(), name="my_app")
+
+    def replicas_running():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        replicas = [a for a in actors if "ServeReplica" in a.get("class_name", "")]
+        return len(replicas) == 2
+
+    wait_for_condition(replicas_running, timeout=30)
+
+    # Start shutdown, then immediately kill controller to simulate crash.
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    ray.get(controller.graceful_shutdown.remote(wait=False), timeout=10)
+    ray.kill(controller, no_restart=False)
+
+    # Restarted controller should recover and clean up all actors.
+    def check_dead():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_dead, timeout=60)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -22,10 +22,9 @@ uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strate
 if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
   uv pip install \
     --system \
-    --pre \
-    --prefer-binary \
+    --prerelease allow \
     --extra-index-url https://pypi.fury.io/arrow-nightlies/ \
-    --upgrade-package pyarrow
+    --upgrade-package pyarrow \
     pyarrow
 fi
 

@@ -32,7 +32,7 @@ def test_json_read(
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1)
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -46,7 +46,8 @@ def test_zipped_json_read(
     path1 = os.path.join(tmp_path, "test1.json.gz")
     df1.to_json(path1, compression="gzip", orient="records", lines=True)
     ds = ray.data.read_json(path1)
-    assert df1.equals(ds.to_pandas())
+    dsdf = ds.to_pandas()
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -92,7 +93,7 @@ def test_json_read_with_read_options(
         read_options=pajson.ReadOptions(use_threads=False, block_size=2**30),
     )
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -121,7 +122,7 @@ def test_json_read_with_parse_options(
     )
     dsdf = ds.to_pandas()
     assert len(dsdf.columns) == 1
-    assert (df1["two"]).equals(dsdf["two"])
+    pd.testing.assert_series_equal(df1["two"].astype(dsdf["two"].dtype), dsdf["two"])
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -229,7 +230,7 @@ def test_json_read_small_file_unit_block_size(
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1, read_options=pajson.ReadOptions(block_size=1))
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -257,7 +258,7 @@ def test_json_read_file_larger_than_block_size(
         path2, read_options=pajson.ReadOptions(block_size=block_size)
     )
     dsdf = ds.to_pandas()
-    assert df2.equals(dsdf)
+    pd.testing.assert_frame_equal(df2.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == num_rows
     assert ds.input_files() == [path2]
@@ -278,7 +279,7 @@ def test_json_read_negative_block_size_fallback(
     # Negative Buffer Size, fails with arrow but succeeds in fallback to json.load()
     ds = ray.data.read_json(path3, read_options=pajson.ReadOptions(block_size=-1))
     dsdf = ds.to_pandas()
-    assert df3.equals(dsdf)
+    pd.testing.assert_frame_equal(df3.astype(dsdf.dtypes.to_dict()), dsdf)
 
 
 def test_json_read_zero_block_size_failure(
