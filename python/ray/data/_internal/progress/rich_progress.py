@@ -110,7 +110,8 @@ class RichSubProgressBar(BaseProgressBar):
     def update_absolute(self, completed: int, total: Optional[int] = None) -> None:
         if self._enabled:
             self._completed = completed
-            self._total = total
+            if total is not None:
+                self._total = total
             self._update(self._completed, self._total)
 
     def complete(self) -> None:

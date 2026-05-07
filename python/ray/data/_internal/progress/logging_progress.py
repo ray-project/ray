@@ -128,15 +128,15 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
                 if sub_progress_metrics is None:
                     continue
                 for name in self._sub_progress_names[opstate]:
-                    metrics = sub_progress_metrics.get(name)
-                    if metrics is None:
+                    sub_metrics = sub_progress_metrics.get(name)
+                    if sub_metrics is None:
                         continue
                     _log_op_or_sub_progress(
                         _LoggingMetrics(
-                            name=f"    - {metrics.name}",
+                            name=f"    - {sub_metrics.name}",
                             desc=None,
-                            completed=metrics.completed,
-                            total=metrics.total,
+                            completed=sub_metrics.completed,
+                            total=sub_metrics.total,
                         )
                     )
 
