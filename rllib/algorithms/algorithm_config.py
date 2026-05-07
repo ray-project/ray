@@ -370,6 +370,8 @@ class AlgorithmConfig(_Config):
         self.num_cpus_per_learner = "auto"
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
+        self.aggregator_actor_resources = None
+        self.aggregator_actor_node_affinity_soft = True
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -2263,6 +2265,8 @@ class AlgorithmConfig(_Config):
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
+        aggregator_actor_resources: Optional[Dict[str, float]] = NotProvided,
+        aggregator_actor_node_affinity_soft: Optional[bool] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
@@ -2304,6 +2308,20 @@ class AlgorithmConfig(_Config):
                 this strongly depends on your setup and `EnvRunner` throughput.
             max_requests_in_flight_per_aggregator_actor: How many in-flight requests
                 are allowed per aggregator actor before new requests are dropped?
+            aggregator_actor_resources: Optional dict of custom resource requirements
+                for each aggregator actor (e.g. ``{"my_label": 0.001}``). These are
+                hard requirements: if no node in the cluster can satisfy them, the
+                aggregator never schedules and the algorithm fails. They compose with
+                the node-affinity preference set by
+                ``aggregator_actor_node_affinity_soft``: the scheduler first filters
+                to nodes that satisfy these resource requirements, and then prefers
+                the corresponding learner's node from among those candidates.
+            aggregator_actor_node_affinity_soft: If True (default), each aggregator
+                actor *prefers* the node of its assigned learner but may fall back to
+                any other node that can satisfy its resource requirements (a warning
+                is logged in that case, since each MABatch then incurs cross-node
+                transfer cost). If False, an aggregator that cannot land on its
+                assigned learner's node fails immediately.
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
                 `num_learners` < 2, then RLlib uses this GPU index for training. This is
                 an index into the available
@@ -2356,6 +2374,12 @@ class AlgorithmConfig(_Config):
         if max_requests_in_flight_per_aggregator_actor is not NotProvided:
             self.max_requests_in_flight_per_aggregator_actor = (
                 max_requests_in_flight_per_aggregator_actor
+            )
+        if aggregator_actor_resources is not NotProvided:
+            self.aggregator_actor_resources = aggregator_actor_resources
+        if aggregator_actor_node_affinity_soft is not NotProvided:
+            self.aggregator_actor_node_affinity_soft = (
+                aggregator_actor_node_affinity_soft
             )
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx

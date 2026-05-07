@@ -193,6 +193,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.metrics import Counter, Histogram
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.timer import _Timer
 
 if TYPE_CHECKING:
@@ -1069,70 +1070,65 @@ class Algorithm(Checkpointable, Trainable):
                 spaces=self.spaces,
                 inference_only=False,
             )
-            agg_cls = ray.remote(
-                num_cpus=1,
-                max_restarts=-1,
-            )(AggregatorActor)
-            self._aggregator_actor_manager = FaultTolerantActorManager(
-                [
-                    agg_cls.remote(self.config, rl_module_spec)
-                    for _ in range(
-                        (self.config.num_learners or 1)
-                        * self.config.num_aggregator_actors_per_learner
+            # Discover each Learner's node BEFORE creating aggregators, so we can
+            # ask Ray's scheduler to co-locate each aggregator with its assigned
+            # Learner via NodeAffinitySchedulingStrategy.
+            learner_node_ids = [
+                rc.get()
+                for rc in self.learner_group.foreach_learner(
+                    func=lambda _learner: ray.get_runtime_context().get_node_id()
+                )
+            ]
+            agg_options = dict(num_cpus=1, max_restarts=-1)
+            if self.config.aggregator_actor_resources:
+                agg_options["resources"] = self.config.aggregator_actor_resources
+
+            agg_handles = []
+            self._aggregator_actor_to_learner = {}
+            for learner_idx, learner_node_id in enumerate(learner_node_ids):
+                for _ in range(self.config.num_aggregator_actors_per_learner):
+                    options = dict(agg_options)
+                    options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                        node_id=learner_node_id,
+                        soft=self.config.aggregator_actor_node_affinity_soft,
                     )
-                ],
+                    handle = ray.remote(**options)(AggregatorActor).remote(
+                        self.config, rl_module_spec
+                    )
+                    self._aggregator_actor_to_learner[len(agg_handles)] = learner_idx
+                    agg_handles.append(handle)
+
+            self._aggregator_actor_manager = FaultTolerantActorManager(
+                agg_handles,
                 max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-            # Get the devices of each learner.
-            learner_locations = list(
-                enumerate(
-                    self.learner_group.foreach_learner(
-                        func=lambda _learner: (_learner.node, _learner.device),
-                    )
-                )
-            )
-            # Get the devices of each AggregatorActor.
-            aggregator_locations = list(
-                enumerate(
-                    self._aggregator_actor_manager.foreach_actor(
-                        func=lambda actor: (actor._node, actor._device)
-                    )
-                )
-            )
-            self._aggregator_actor_to_learner = {}
-            for agg_idx, aggregator_location in aggregator_locations:
-                aggregator_location = aggregator_location.get()
-                for learner_idx, learner_location in learner_locations:
-                    # TODO (sven): Activate full comparison (including device) when Ray
-                    #  has figured out GPU pre-loading.
-                    if learner_location.get()[0] == aggregator_location[0]:
-                        # Round-robin, in case all Learners are on same device/node.
-                        learner_locations = learner_locations[1:] + [
-                            learner_locations[0]
-                        ]
-                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
-                        break
-                if agg_idx not in self._aggregator_actor_to_learner:
-                    raise RuntimeError(
-                        "No Learner worker found that matches aggregation worker "
-                        f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
-                        f"({aggregator_location[1]})! The Learner workers' locations "
-                        f"are {learner_locations}."
-                    )
 
-            # Make sure, each Learner index is mapped to from at least one
-            # AggregatorActor.
-            if not all(
-                learner_idx in self._aggregator_actor_to_learner.values()
-                for learner_idx in range(self.config.num_learners or 1)
-            ):
-                raise RuntimeError(
-                    "Some Learner indices are not mapped to from any AggregatorActors! "
-                    "Final AggregatorActor idx -> Learner idx mapping is: "
-                    f"{self._aggregator_actor_to_learner}"
+            # Verify placement: warn (don't fail) if a soft fallback put an
+            # aggregator on a different node than its assigned Learner. Each
+            # MABatch in that case incurs a cross-node transfer.
+            actual_node_ids = [
+                rc.get()
+                for rc in self._aggregator_actor_manager.foreach_actor(
+                    func=lambda _a: ray.get_runtime_context().get_node_id()
                 )
+            ]
+            for agg_idx, actual_node_id in enumerate(actual_node_ids):
+                expected_node_id = learner_node_ids[
+                    self._aggregator_actor_to_learner[agg_idx]
+                ]
+                if actual_node_id != expected_node_id:
+                    logger.warning(
+                        f"AggregatorActor #{agg_idx} did not co-locate with its "
+                        f"assigned Learner (expected node {expected_node_id}, got "
+                        f"{actual_node_id}). Each MABatch produced by this actor "
+                        "will be transferred cross-node to the Learner. Set "
+                        "`aggregator_actor_node_affinity_soft=False` in "
+                        "`config.learners(..)` to fail-fast instead, or pass "
+                        "`aggregator_actor_resources={..}` to reserve dedicated "
+                        "capacity on the Learner's node."
+                    )
 
         # Ray metrics
         self._set_up_metrics()
