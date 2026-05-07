@@ -68,9 +68,7 @@ class FuseOperators(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
-        # Update output dependencies after fusion.
-        # TODO(hchen): Instead of updating the depdencies manually,
-        # we need a better abstraction for manipulating the DAG.
+        # Rebuild output dependencies after fusion.
         self._remove_output_deps(fused_dag)
         self._update_output_deps(fused_dag)
 
@@ -79,12 +77,12 @@ class FuseOperators(Rule):
 
     def _remove_output_deps(self, op: PhysicalOperator) -> None:
         for input in op.input_dependencies:
-            input._output_dependencies = []
+            input._clear_output_dependencies()
             self._remove_output_deps(input)
 
     def _update_output_deps(self, op: PhysicalOperator) -> None:
         for input in op.input_dependencies:
-            input._output_dependencies.append(op)
+            input._add_output_dependency(op)
             self._update_output_deps(input)
 
     def _fuse_streaming_repartition_operators_in_dag(
@@ -129,10 +127,12 @@ class FuseOperators(Rule):
             dag = self._get_fused_streaming_repartition_operator(dag, upstream_ops[0])
             upstream_ops = dag.input_dependencies
 
-        dag._input_dependencies = [
-            self._fuse_streaming_repartition_operators_in_dag(upstream_op)
-            for upstream_op in upstream_ops
-        ]
+        dag._replace_input_dependencies(
+            [
+                self._fuse_streaming_repartition_operators_in_dag(upstream_op)
+                for upstream_op in upstream_ops
+            ]
+        )
         return dag
 
     def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
@@ -153,9 +153,12 @@ class FuseOperators(Rule):
 
         # Done fusing back-to-back map operators together here,
         # move up the DAG to find the next map operators to fuse.
-        dag._input_dependencies = [
-            self._fuse_map_operators_in_dag(upstream_op) for upstream_op in upstream_ops
-        ]
+        dag._replace_input_dependencies(
+            [
+                self._fuse_map_operators_in_dag(upstream_op)
+                for upstream_op in upstream_ops
+            ]
+        )
         return dag
 
     def _fuse_all_to_all_operators_in_dag(
@@ -183,10 +186,12 @@ class FuseOperators(Rule):
 
         # Done fusing MapOperator -> AllToAllOperator together here,
         # move up the DAG to find the next pair of operators to fuse.
-        dag._input_dependencies = [
-            self._fuse_all_to_all_operators_in_dag(upstream_op)
-            for upstream_op in upstream_ops
-        ]
+        dag._replace_input_dependencies(
+            [
+                self._fuse_all_to_all_operators_in_dag(upstream_op)
+                for upstream_op in upstream_ops
+            ]
+        )
         return dag
 
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:

@@ -444,6 +444,23 @@ class PhysicalOperator(Operator):
     def input_dependencies(self) -> List["PhysicalOperator"]:
         return self._input_dependencies
 
+    def _replace_input_dependencies(
+        self, input_dependencies: List["PhysicalOperator"]
+    ) -> None:
+        for input_op in self._input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies = [
+                dep for dep in input_op._output_dependencies if dep is not self
+            ]
+        self._input_dependencies = input_dependencies
+        self._wire_output_deps(input_dependencies)
+
+    def _clear_output_dependencies(self) -> None:
+        self._output_dependencies = []
+
+    def _add_output_dependency(self, output_op: "PhysicalOperator") -> None:
+        self._output_dependencies.append(output_op)
+
     @property
     def dag_str(self) -> str:
         """String representation of the whole physical DAG."""

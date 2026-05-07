@@ -36,14 +36,10 @@ class InheritBatchFormatRule(Rule):
                 if isinstance(upstream_op, MapBatches) and upstream_op.batch_format:
                     if not hasattr(node, "batch_format"):
                         return node
-                    if isinstance(node, AbstractAllToAll) and hasattr(
-                        node, "__dataclass_fields__"
-                    ):
-                        return replace(
-                            node,
-                            input_dependencies=[node.input_dependencies[0]],
-                            batch_format=upstream_op.batch_format,
-                        )
+                    return replace(
+                        node,
+                        batch_format=upstream_op.batch_format,
+                    )
                 upstream_op = upstream_op.input_dependencies[0]
 
             return node

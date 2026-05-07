@@ -20,7 +20,8 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
                 continue
 
             def ray_remote_args_fn(
-                op: MapOperator = op, original_ray_remote_args_fn=op._ray_remote_args_fn
+                op: MapOperator = op,
+                original_ray_remote_args_fn=op._get_ray_remote_args_fn(),
             ) -> Dict[str, Any]:
                 assert isinstance(op, MapOperator), op
 
@@ -54,7 +55,7 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
 
                 return dynamic_ray_remote_args
 
-            op._ray_remote_args_fn = ray_remote_args_fn
+            op._set_ray_remote_args_fn(ray_remote_args_fn)
 
         return plan
 

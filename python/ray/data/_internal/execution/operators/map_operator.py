@@ -483,6 +483,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
         return ray_remote_args
 
+    def _get_ray_remote_args_fn(self) -> Optional[Callable[[], Dict[str, Any]]]:
+        return self._ray_remote_args_fn
+
+    def _set_ray_remote_args_fn(
+        self, ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]]
+    ) -> None:
+        self._ray_remote_args_fn = ray_remote_args_fn
+
     @abstractmethod
     def _try_schedule_task(self, refs: RefBundle, strict: bool):
         """Method to try schedule task handling provided bundle

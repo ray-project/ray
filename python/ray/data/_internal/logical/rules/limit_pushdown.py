@@ -1,13 +1,11 @@
-import copy
 import logging
-from dataclasses import is_dataclass, replace
+from dataclasses import replace
 from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators import (
     AbstractMap,
     AbstractOneToOne,
-    Download,
     Limit,
     Read,
     ReadFiles,
@@ -194,51 +192,32 @@ class LimitPushdownRule(Rule):
     ) -> LogicalOperator:
         """Apply per-block limit to operators that support it."""
         if isinstance(op, AbstractMap):
-            if is_dataclass(op):
-                if isinstance(op, Read):
-                    return replace(
-                        op,
-                        per_block_limit=limit,
-                        num_outputs=op.num_outputs,
-                    )
-                if isinstance(op, ReadFiles):
-                    from ray.data._internal.datasource_v2.logical_optimizers import (
-                        SupportsLimitPushdown,
-                    )
-
-                    if isinstance(op.scanner, SupportsLimitPushdown):
-                        return replace(
-                            op,
-                            scanner=op.scanner.push_limit(limit),
-                        )
-                    return op
-                assert len(op.input_dependencies) == 1, len(op.input_dependencies)
+            if isinstance(op, Read):
                 return replace(
                     op,
-                    input_dependencies=[op.input_dependencies[0]],
                     per_block_limit=limit,
                 )
-            new_op = copy.copy(op)
-            new_op.set_per_block_limit(limit)
-            return new_op
+            if isinstance(op, ReadFiles):
+                from ray.data._internal.datasource_v2.logical_optimizers import (
+                    SupportsLimitPushdown,
+                )
+
+                if isinstance(op.scanner, SupportsLimitPushdown):
+                    return replace(
+                        op,
+                        scanner=op.scanner.push_limit(limit),
+                    )
+                return op
+            assert len(op.input_dependencies) == 1, len(op.input_dependencies)
+            return replace(
+                op,
+                per_block_limit=limit,
+            )
         return op
 
     def _recreate_operator_with_new_input(
         self, original_op: LogicalOperator, new_input: LogicalOperator
     ) -> LogicalOperator:
         """Create a new operator of the same type as original_op but with new_input as its input."""
-
-        if isinstance(original_op, Limit):
-            return Limit(original_op.limit, input_dependencies=[new_input])
-        if isinstance(original_op, Download):
-            return Download(
-                uri_column_names=original_op.uri_column_names,
-                output_bytes_column_names=original_op.output_bytes_column_names,
-                input_dependencies=[new_input],
-                ray_remote_args=original_op.ray_remote_args,
-                filesystem=original_op.filesystem,
-            )
-        if isinstance(original_op, AbstractMap) and is_dataclass(original_op):
-            return replace(original_op, input_dependencies=[new_input])
 
         return original_op._with_new_input_dependencies([new_input])
