@@ -79,7 +79,7 @@ class TrainStateManager:
                 checkpoint_score_order=run_config.checkpoint_config.checkpoint_score_order,
             ),
             storage_path=run_config.storage_path,
-            storage_filesystem=run_config.storage_filesystem.type_name
+            storage_filesystem=getattr(run_config.storage_filesystem, "type_name", str(run_config.storage_filesystem))
             if run_config.storage_filesystem is not None
             else None,
         )
