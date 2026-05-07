@@ -246,14 +246,28 @@ def test__wait_generators_bulk(ray_start_regular):
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
 def test__wait_generators_bulk_timeout(ray_start_regular):
+    @ray.remote(num_cpus=0, max_concurrency=2)
+    class Signal:
+        def __init__(self):
+            self.ready = False
+
+        def wait(self):
+            while not self.ready:
+                time.sleep(0.01)
+
+        def send(self):
+            self.ready = True
+
     @ray.remote
-    def slow_gen():
-        time.sleep(3)
+    def slow_gen(signal):
+        ray.get(signal.wait.remote())
         yield 1
 
-    gen = slow_gen.remote()
+    signal = Signal.remote()
+    gen = slow_gen.remote(signal)
     assert _wait_generators_bulk([(gen, [False])], timeout=0.01) == []
-    ready = _wait_generators_bulk([(gen, [False])], timeout=10)
+    ray.get(signal.send.remote())
+    ready = _wait_generators_bulk([(gen, [False])], timeout=5)
     assert len(ready) == 1
     ready_gen, refs = ready[0]
     assert ready_gen is gen
@@ -263,11 +277,10 @@ def test__wait_generators_bulk_timeout(ray_start_regular):
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
 def test__wait_generators_bulk_validation(ray_start_regular):
     @ray.remote
-    def slow_gen():
-        time.sleep(5)
+    def gen():
         yield 1
 
-    gen = slow_gen.remote()
+    gen = gen.remote()
 
     with pytest.raises(TypeError):
         _wait_generators_bulk({})
@@ -288,12 +301,11 @@ def test__wait_generators_bulk_after_eof(ray_start_regular):
         if False:
             yield 1
 
-    gen = empty_gen.remote()
-
-    ready = _wait_generators_bulk([(gen, [True, True, True])], timeout=1)
+    empty = empty_gen.remote()
+    ready = _wait_generators_bulk([(empty, [True, True, True])], timeout=1)
     assert len(ready) == 1
     ready_gen, refs = ready[0]
-    assert ready_gen is gen
+    assert ready_gen is empty
     assert len(set(refs)) == 3
     for ref in refs:
         with pytest.raises(ObjectRefStreamEndOfStreamError):
@@ -306,12 +318,11 @@ def test__wait_generators_bulk_after_partial_eof(ray_start_regular):
     def one_item_gen():
         yield 1
 
-    gen = one_item_gen.remote()
-
-    ready = _wait_generators_bulk([(gen, [False, False, False])], timeout=1)
+    one_item = one_item_gen.remote()
+    ready = _wait_generators_bulk([(one_item, [False, False, False])], timeout=1)
     assert len(ready) == 1
     ready_gen, refs = ready[0]
-    assert ready_gen is gen
+    assert ready_gen is one_item
     assert len(set(refs)) == 3
     assert ray.get(refs[0]) == 1
     for ref in refs[1:]:
@@ -326,12 +337,13 @@ def test__wait_generators_bulk_after_partial_error(ray_start_regular):
         yield 1
         raise ValueError("expected test error")
 
-    gen = one_item_then_error_gen.remote()
-
-    ready = _wait_generators_bulk([(gen, [False, False, False])], timeout=1)
+    one_item_then_error = one_item_then_error_gen.remote()
+    ready = _wait_generators_bulk(
+        [(one_item_then_error, [False, False, False])], timeout=1
+    )
     assert len(ready) == 1
     ready_gen, refs = ready[0]
-    assert ready_gen is gen
+    assert ready_gen is one_item_then_error
     assert len(set(refs)) == 3
     assert ray.get(refs[0]) == 1
     with pytest.raises(RayTaskError) as exc_info:
