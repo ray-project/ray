@@ -28,6 +28,8 @@ ray_cc_test(
     srcs = ["pubsub_integration_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:io_service_pool",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:grpc_util",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher",
