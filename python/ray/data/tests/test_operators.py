@@ -278,8 +278,8 @@ class TestAllToAllOperatorBlockRefCounter:
         op, upstream, counter = self._make_op()
 
         ref1, ref2 = object(), object()
-        counter.on_block_produced(ref1, 100, upstream)
-        counter.on_block_produced(ref2, 200, upstream)
+        counter.on_block_produced(ref1, 100, upstream.id)
+        counter.on_block_produced(ref2, 200, upstream.id)
 
         b1 = self._fake_bundle([(ref1, 100)])
         b2 = self._fake_bundle([(ref2, 200)])
@@ -291,8 +291,8 @@ class TestAllToAllOperatorBlockRefCounter:
         op.all_inputs_done()
 
         # No crash, and both refs still tracked under their original owner.
-        assert counter.get_object_store_memory_usage(upstream) == 300
-        assert counter.get_object_store_memory_usage(op) == 0
+        assert counter.get_object_store_memory_usage(upstream.id) == 300
+        assert counter.get_object_store_memory_usage(op.id) == 0
 
     def test_materializing_bulk_fn_transfers_attribution(self):
         """A bulk_fn that produces new ObjectRefs (e.g. sort) must register
@@ -301,7 +301,7 @@ class TestAllToAllOperatorBlockRefCounter:
         op, upstream, counter = self._make_op()
 
         in_ref = object()
-        counter.on_block_produced(in_ref, 100, upstream)
+        counter.on_block_produced(in_ref, 100, upstream.id)
         in_bundle = self._fake_bundle([(in_ref, 100)])
 
         out_ref = object()
@@ -312,8 +312,8 @@ class TestAllToAllOperatorBlockRefCounter:
         op.all_inputs_done()
 
         # Input consumed, output registered under op.
-        assert counter.get_object_store_memory_usage(upstream) == 0
-        assert counter.get_object_store_memory_usage(op) == 250
+        assert counter.get_object_store_memory_usage(upstream.id) == 0
+        assert counter.get_object_store_memory_usage(op.id) == 250
 
 
 class TestMarkExecutionFinishedBlockRefCounter:

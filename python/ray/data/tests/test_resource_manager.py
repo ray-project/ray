@@ -394,7 +394,7 @@ class TestResourceManager:
 
         # o3's first task finishes consuming o2_block_ref1 and produces its own block.
         # o2_block_ref2 stays attributed to o2 (not yet consumed).
-        counter.on_task_completed(o2_block_ref1)
+        counter.on_block_released(o2_block_ref1)
         o3_block_ref = object()
         counter.on_block_produced(o3_block_ref, 200, o3)
         resource_manager.update_usages()
@@ -425,11 +425,11 @@ class TestResourceManager:
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 550  # 150+400
 
-        counter.on_task_completed(repartition_ref)  # first task done → rc=1, still live
+        counter.on_block_released(repartition_ref)  # first task done → rc=1, still live
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 550  # unchanged
 
-        counter.on_task_completed(repartition_ref)  # second task done → rc=0, removed
+        counter.on_block_released(repartition_ref)  # second task done → rc=0, removed
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 150  # only ref2
 

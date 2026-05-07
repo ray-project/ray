@@ -1354,7 +1354,7 @@ class TestDataOpTask:
 
         This test guards against regressions where an operator creates a DataOpTask
         but forgets to pass block_ref_counter (as happened with GPUShuffleOperator):
-        _ClosingIterator always calls on_task_completed on output blocks, so a missing
+        _ClosingIterator always calls on_block_released on output blocks, so a missing
         on_block_produced call would cause an assertion error at consume time.
         """
         from ray.data._internal.execution.block_ref_counter import BlockRefCounter
