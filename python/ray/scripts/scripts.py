@@ -1472,6 +1472,7 @@ def stop(force: bool, grace_period: int):
         # Reclassify them as stopped so we don't report them as "still running".
         zombies_after_wait = []
         live_alive = []
+        disappeared_after_wait = 0
         for proc in alive:
             try:
                 if proc.status() == psutil.STATUS_ZOMBIE:
@@ -1479,11 +1480,16 @@ def stop(force: bool, grace_period: int):
                 else:
                     live_alive.append(proc)
             except psutil.NoSuchProcess:
-                # Disappeared between status check and now — count as stopped.
-                pass
+                # Reaped between status check and now — also count as stopped.
+                disappeared_after_wait += 1
         alive = live_alive
         # Zombies were already dead; count them toward the stopped total.
-        total_stopped = len(stopped) + len(pre_stopped) + len(zombies_after_wait)
+        total_stopped = (
+            len(stopped)
+            + len(pre_stopped)
+            + len(zombies_after_wait)
+            + disappeared_after_wait
+        )
 
         return total_found, total_stopped, alive
 
