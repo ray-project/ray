@@ -730,12 +730,12 @@ def test_s3_in_out_of_band_checkpointing(
         for expected_path, (ckpt, metrics), i in zip(
             expected_paths, restored_result.best_checkpoints, range(1, 8), strict=True
         ):
+            assert metrics == {"score": i}
             assert ckpt.path == str(expected_path)
             if i < 6:
                 assert isinstance(ckpt.filesystem, pyarrow.fs.S3FileSystem)
             else:
                 assert isinstance(ckpt.filesystem, pyarrow.fs.LocalFileSystem)
-            assert metrics == {"score": i}
 
 
 if __name__ == "__main__":

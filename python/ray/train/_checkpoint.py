@@ -129,9 +129,9 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             filesystem: PyArrow FileSystem to use to access data at the path.
                 If not specified, this is inferred from the URI scheme.
         """
-        assert self.path, "Checkpoint path must not be empty."
+        assert path, "Checkpoint path must not be empty."
         if filesystem is None:
-            self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(path)
+            self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(str(path))
         else:
             self.filesystem, self.path = filesystem, str(path)
 

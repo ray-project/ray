@@ -123,8 +123,7 @@ def _get_training_result_from_state(
     if state.checkpoint_filesystem_type != "local":
         logger.warning(
             "Restoring an out-of-band checkpoint of %s at %s. Its filesystem "
-            "was reconstructed from its type_name only and may be missing "
-            "configurations (e.g. credentials, region, endpoint overrides). "
+            "may be missing configurations (e.g. credentials, region, endpoint overrides). "
             "Update the checkpoint's filesystem with a fully configured filesystem.",
             state.checkpoint_filesystem_type,
             state.checkpoint_dir_name,
@@ -138,7 +137,8 @@ def _get_training_result_from_state(
         )
 
     raise ValueError(
-        "Restoring an out-of-band checkpoint of %s at %s has an unknown filesystem. "
+        f"Restoring an out-of-band checkpoint of {state.checkpoint_filesystem_type} "
+        f"at {state.checkpoint_dir_name} has an unknown filesystem. "
         f"The supported filesystems are {list(_TYPE_NAME_FS_CLS.keys())}."
     )
 
