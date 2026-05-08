@@ -519,7 +519,7 @@ def test_export_optional_fields(enable_export_api_write):
     run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute = (
         "score"
     )
-    run_with_optional.run_settings.run_config.storage_filesystem = "s3"
+    run_with_optional.run_settings.run_config.storage_filesystem = "S3FileSystem"
 
     # Create attempt with optional fields
     attempt_with_optional = create_mock_train_run_attempt(
