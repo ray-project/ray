@@ -26,7 +26,7 @@
 #include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/cgroup2/cgroup_manager_factory.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
@@ -53,6 +53,7 @@
 #include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
@@ -289,6 +290,7 @@ int main(int argc, char *argv[]) {
                                         node_id,
                                         system_reserved_cpu_weight,
                                         system_reserved_memory_bytes,
+                                        object_store_memory,
                                         system_pids);
 
   AddProcessToCgroupHook add_process_to_workers_cgroup_hook =
@@ -650,6 +652,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.resource_dir = resource_dir;
     node_manager_config.ray_debugger_external = ray_debugger_external;
     node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+    node_manager_config.enable_resource_isolation = enable_resource_isolation;
 
     // Configuration for the object manager.
     ray::ObjectManagerConfig object_manager_config;
@@ -1072,8 +1075,11 @@ int main(int argc, char *argv[]) {
     // -1 means metrics agent is not available (minimal install).
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
     if (actual_metrics_agent_port > 0) {
-      metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
+      metrics_agent_client =
+          std::make_unique<ray::rpc::MetricsAgentClientImpl>(ray::GetLocalhostIP(),
+                                                             actual_metrics_agent_port,
+                                                             main_service,
+                                                             *client_call_manager);
       metrics_agent_client->WaitForServerReady(
           [actual_metrics_agent_port](const ray::Status &server_status) {
             if (server_status.ok()) {

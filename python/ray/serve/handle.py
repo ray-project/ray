@@ -239,6 +239,7 @@ class _DeploymentHandleBase(Generic[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1025,6 +1026,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1037,6 +1039,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         Args:
             method_name: The method name to call on the deployment.
             multiplexed_model_id: The model ID to use for multiplexed model requests.
+            session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
             use_new_handle_api: Whether to use the new handle API.
             _prefer_local_routing: Whether to prefer local routing.
@@ -1072,12 +1075,30 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
+            session_id=session_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
             _by_reference=_by_reference,
             request_serialization=request_serialization,
             response_serialization=response_serialization,
         )
+
+    def _get_request_router(
+        self,
+    ) -> Optional["ray.serve._private.request_router.request_router.RequestRouter"]:
+        """Temporary: expose the request router used by the HTTP router.
+
+        TODO(eicherseiji): Replace this with DeploymentHandle.choose_replica()
+        when ray-project/ray#60865 lands.
+        """
+        if self._router is None:
+            return None
+
+        asyncio_router = getattr(self._router, "_asyncio_router", None)
+        if asyncio_router is not None:
+            return asyncio_router.request_router
+
+        return getattr(self._router, "request_router", None)
 
     def remote(
         self, *args, **kwargs

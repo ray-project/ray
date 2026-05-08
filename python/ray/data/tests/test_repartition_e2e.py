@@ -16,20 +16,20 @@ def test_repartition_shuffle(
     ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
 ):
     ds = ray.data.range(20, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.sum() == 190
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2._plan.initial_num_blocks() == 5
+    assert ds2._logical_plan.initial_num_blocks() == 5
     assert ds2.sum() == 190
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3._plan.initial_num_blocks() == 20
+    assert ds3._logical_plan.initial_num_blocks() == 20
     assert ds3.sum() == 190
 
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
-    assert large._plan.initial_num_blocks() == 20
+    assert large._logical_plan.initial_num_blocks() == 20
     assert large.sum() == 49995000
 
 
@@ -44,21 +44,21 @@ def test_key_based_repartition_shuffle(
     context.hash_shuffle_operator_actor_num_cpus_override = 0.001
 
     ds = ray.data.range(20, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(3, keys=["id"])
-    assert ds2._plan.initial_num_blocks() == 3
+    assert ds2._logical_plan.initial_num_blocks() == 3
     assert ds2.sum() == 190
 
     ds3 = ds.repartition(5, keys=["id"])
-    assert ds3._plan.initial_num_blocks() == 5
+    assert ds3._logical_plan.initial_num_blocks() == 5
     assert ds3.sum() == 190
 
     large = ray.data.range(10000, override_num_blocks=100)
     large = large.repartition(20, keys=["id"])
-    assert large._plan.initial_num_blocks() == 20
+    assert large._logical_plan.initial_num_blocks() == 20
 
     # Assert block sizes distribution
     assert sum(large._block_num_rows()) == 10000
@@ -71,29 +71,29 @@ def test_repartition_noshuffle(
     ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
 ):
     ds = ray.data.range(20, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
-    assert ds2._plan.initial_num_blocks() == 5
+    assert ds2._logical_plan.initial_num_blocks() == 5
     assert ds2.sum() == 190
     assert ds2._block_num_rows() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
-    assert ds3._plan.initial_num_blocks() == 20
+    assert ds3._logical_plan.initial_num_blocks() == 20
     assert ds3.sum() == 190
     assert ds3._block_num_rows() == [1] * 20
 
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
-    assert ds4._plan.initial_num_blocks() == 40
+    assert ds4._logical_plan.initial_num_blocks() == 40
 
     assert ds4.sum() == 190
     assert ds4._block_num_rows() == [1] * 20 + [0] * 20
 
     ds5 = ray.data.range(22).repartition(4)
-    assert ds5._plan.initial_num_blocks() == 4
+    assert ds5._logical_plan.initial_num_blocks() == 4
     assert ds5._block_num_rows() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, override_num_blocks=10)
@@ -105,20 +105,20 @@ def test_repartition_shuffle_arrow(
     ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
 ):
     ds = ray.data.range(20, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.count() == 20
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2._plan.initial_num_blocks() == 5
+    assert ds2._logical_plan.initial_num_blocks() == 5
     assert ds2.count() == 20
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3._plan.initial_num_blocks() == 20
+    assert ds3._logical_plan.initial_num_blocks() == 20
     assert ds3.count() == 20
 
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
-    assert large._plan.initial_num_blocks() == 20
+    assert large._logical_plan.initial_num_blocks() == 20
     assert large.count() == 10000
 
 
@@ -422,18 +422,22 @@ def test_streaming_repartition_with_partial_last_block(
     """Test repartition with target_num_rows_per_block where last block has fewer rows.
     This test verifies:
     1. N-1 blocks have exactly target_num_rows_per_block rows
-    2. Only the last block can have fewer rows (remainder)
+    2. Exactly one block has fewer rows, and it can appear anywhere
+       in the output, StreamingRepartition does not guarantee ordering.
     """
     # Configure shuffle strategy
     ctx = DataContext.get_current()
     ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 101
+    target_num_rows_per_block = 20
 
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
-    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
+    ds = ds.repartition(
+        target_num_rows_per_block=target_num_rows_per_block, strict=True
+    )
 
     ds = ds.materialize()
 
@@ -444,14 +448,16 @@ def test_streaming_repartition_with_partial_last_block(
 
     assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
 
-    # Verify that all blocks have 20 rows except one block with 10 rows
-    # The block with 10 rows should be the last one
+    # Verify that all blocks have 20 rows except one block with 1 row
+    # The smaller block may appear anywhere in the output order
+    remainder_blocks = [c for c in block_row_counts if c != target_num_rows_per_block]
     assert (
-        block_row_counts[-1] == 1
-    ), f"Expected last block to have 1 row, got {block_row_counts[-1]}"
-    assert all(
-        count == 20 for count in block_row_counts[:-1]
-    ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+        len(remainder_blocks) == 1
+    ), f"Expected exactly one remainder block, got {block_row_counts}"
+    assert remainder_blocks[0] == num_rows % target_num_rows_per_block, (
+        f"Expected remainder block to have {num_rows % target_num_rows_per_block} rows, "
+        f"got {remainder_blocks[0]}. Block counts: {block_row_counts}"
+    )
 
 
 def test_streaming_repartition_non_strict_mode(

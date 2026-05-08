@@ -49,10 +49,12 @@ from ray.serve.config import (
     gRPCOptions,
 )
 from ray.serve.context import (
+    DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
     _get_deployment_actor,
     _get_global_client,
+    _get_internal_deployment_actor_context,
     _get_internal_replica_context,
     _set_global_client,
 )
@@ -203,6 +205,25 @@ def get_replica_context() -> ReplicaContext:
 
 
 @DeveloperAPI
+def get_deployment_actor_context() -> DeploymentActorContext:
+    """Returns deployment metadata from within a deployment actor at runtime.
+
+    Returns:
+        DeploymentActorContext for the current deployment actor.
+
+    Raises:
+        RayServeException: if not called from within a deployment actor.
+    """
+    internal_context = _get_internal_deployment_actor_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor_context()` may only be called from within "
+            "a Ray Serve deployment actor."
+        )
+    return internal_context
+
+
+@DeveloperAPI
 def get_deployment_actor(actor_name: str):
     """Get a handle to a deployment-scoped actor by name.
 
@@ -285,7 +306,7 @@ def get_deployment_actor(actor_name: str):
 
 
 @PublicAPI(stability="stable")
-def ingress(app: Union[ASGIApp, Callable]) -> Callable:
+def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     """Wrap a deployment class with an ASGI application for HTTP request parsing.
     There are a few different ways to use this functionality.
 
@@ -361,6 +382,9 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
         app: the FastAPI app to wrap this class with.
             Can be any ASGI-compatible callable.
             You can also pass in a builder function that returns an ASGI app.
+            Pass nothing to defer the app to replica init time; in that mode
+            the class must define ``__serve_build_asgi_app__``, which is
+            invoked after the user constructor and must return an ASGI app.
     """
 
     def decorator(cls: Optional[Type[Any]] = None) -> Callable:
@@ -380,16 +404,24 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                 "Classes passed to @serve.ingress may not have __call__ method."
             )
 
+        if app is None and not hasattr(cls, "__serve_build_asgi_app__"):
+            raise ValueError(
+                "serve.ingress() called without an app argument requires "
+                f"{cls.__name__} to define `__serve_build_asgi_app__`."
+            )
+
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         if isinstance(app, (FastAPI, APIRouter)):
             make_fastapi_class_based_view(app, cls)
 
-        frozen_app_or_func: Union[ASGIApp, Callable] = None
+        # Late-bound (`app is None`): the class's `__serve_build_asgi_app__`
+        # produces the real app at replica init time.
+        frozen_app_or_func: Optional[Union[ASGIApp, Callable]] = None
 
         if inspect.isfunction(app):
             frozen_app_or_func = app
-        else:
+        elif app is not None:
             # Free the state of the app so subsequent modification won't affect
             # this ingress deployment. We don't use copy.copy here to avoid
             # recursion issue.
@@ -459,6 +491,7 @@ def deployment(
     deployment_actors: Default[
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
+    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -537,6 +570,10 @@ def deployment(
             Each actor is shared across all replicas of this deployment. Use
             `serve.get_deployment_actor(actor_name)` from within a replica to get
             the actor handle. See `DeploymentActorConfig` for options.
+        rolling_update_percentage: The fraction of replicas to update at a
+            time during a rolling update. Must be in ``(0.0, 1.0]``.
+            Defaults to ``0.2`` (20%).
+
     Returns:
         `Deployment`
     """
@@ -623,6 +660,7 @@ def deployment(
         max_constructor_retry_count=max_constructor_retry_count,
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
+        rolling_update_percentage=rolling_update_percentage,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

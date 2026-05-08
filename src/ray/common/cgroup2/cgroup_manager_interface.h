@@ -77,6 +77,35 @@ class CgroupManagerInterface {
   virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**
+    @return the path to the user cgroup.
+  */
+  virtual std::string GetUserCgroupPath() const = 0;
+
+  /**
+    Gets the constraint value within the system cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint file cannot be read.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  virtual StatusOr<std::string> GetSystemCgroupConstraintValue(
+      const std::string &constraint_name) const = 0;
+
+  /**
+    Gets the constraint value within the user cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint file cannot be read.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  virtual StatusOr<std::string> GetUserCgroupConstraintValue(
+      const std::string &constraint_name) const = 0;
+
+  /**
     Cleans up the cgroup hierarchy, disables all controllers and removes all
     constraints.
   */

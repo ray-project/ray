@@ -4,7 +4,6 @@ import threading
 from typing import Optional
 
 import ray
-from ray.train.v2._internal.constants import GET_ACTOR_TIMEOUT_S
 from ray.train.v2._internal.state.util import is_actor_alive
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 
@@ -21,14 +20,17 @@ class PlacementGroupCleaner:
     def __init__(
         self,
         controller_actor_id: str,
-        check_interval_s: float = 1.0,
+        check_interval_s: float,
+        get_actor_timeout_s: float,
+        stop_timeout: Optional[float],
     ):
         self._controller_actor_id = controller_actor_id
         self._check_interval_s = check_interval_s
+        self._get_actor_timeout_s = get_actor_timeout_s
+        self._stop_timeout = stop_timeout
         self._pg_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
-        self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
         self._exiting: bool = False
 
     def register_placement_group(self, placement_group: PlacementGroup):
@@ -88,6 +90,13 @@ class PlacementGroupCleaner:
 
             # Cleanup if controller is dead
             if not alive:
+                # Drain any queued placement groups
+                while True:
+                    try:
+                        pg = self._pg_queue.get_nowait()
+                        curr_placement_group = pg
+                    except queue.Empty:
+                        break
                 self._cleanup_placement_group(curr_placement_group)
                 break
 
@@ -133,11 +142,10 @@ class PlacementGroupCleaner:
 
         # Signal stop and wait for thread to exit
         self._stop_event.set()
-        join_timeout = max(2.0, self._check_interval_s * 2)
-        self._monitor_thread.join(timeout=join_timeout)
+        self._monitor_thread.join(timeout=self._stop_timeout)
         if self._monitor_thread.is_alive():
             logger.warning(
-                "Monitor thread did not exit within %.2f seconds", join_timeout
+                "Monitor thread did not exit within %.2f seconds", self._stop_timeout
             )
             return False
 

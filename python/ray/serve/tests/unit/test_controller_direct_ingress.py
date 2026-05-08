@@ -53,10 +53,19 @@ class FakeLongPollHost:
 
 # Application State Manager for dependency injection
 class FakeApplicationStateManager:
-    def __init__(self, app_statuses, route_prefixes, ingress_deployments):
+    def __init__(
+        self,
+        app_statuses,
+        route_prefixes,
+        ingress_deployments,
+        ingress_request_router_deployments=None,
+    ):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
         self.ingress_deployments = ingress_deployments
+        self.ingress_request_router_deployments = (
+            ingress_request_router_deployments or {}
+        )
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -67,11 +76,8 @@ class FakeApplicationStateManager:
     def get_ingress_deployment_name(self, app_name):
         return self.ingress_deployments.get(app_name, f"{app_name}_ingress")
 
-
-class FakeDeploymentReplica:
-    def __init__(self, node_id, replica_id: ReplicaID):
-        self.actor_node_id = node_id
-        self.replica_id = replica_id
+    def get_ingress_request_router_deployment_name(self, app_name):
+        return self.ingress_request_router_deployments.get(app_name)
 
 
 class FakeProxyState:
@@ -142,23 +148,6 @@ class FakeProxyStateManager:
         return self._started_fallback_proxy
 
 
-class FakeReplicaStateContainer:
-    def __init__(self, replica_infos: List[RunningReplicaInfo]):
-        self.replica_infos = replica_infos
-
-    def get(self):
-        return [
-            FakeDeploymentReplica(replica_info.node_id, replica_info.replica_id)
-            for replica_info in self.replica_infos
-        ]
-
-
-class FakeDeploymentState:
-    def __init__(self, id, replica_infos):
-        self.id = id
-        self._replicas = FakeReplicaStateContainer(replica_infos)
-
-
 # Deployment State Manager for dependency injection
 class FakeDeploymentStateManager:
     def __init__(
@@ -167,13 +156,22 @@ class FakeDeploymentStateManager:
     ):
         self.running_replica_infos = running_replica_infos
 
-        self._deployment_states = {}
-        for deployment_id, replica_infos in self.running_replica_infos.items():
-            deployment_state = FakeDeploymentState(deployment_id, replica_infos)
-            self._deployment_states[deployment_id] = deployment_state
-
     def get_running_replica_infos(self):
         return self.running_replica_infos
+
+    def get_deployment_ids(self):
+        return list(self.running_replica_infos.keys())
+
+    def get_node_id_to_alive_replica_ids(self):
+        node_id_to_alive_replica_ids = {}
+        for replica_infos in self.running_replica_infos.values():
+            for replica_info in replica_infos:
+                if replica_info.node_id is None:
+                    continue
+                node_id_to_alive_replica_ids.setdefault(
+                    replica_info.node_id, set()
+                ).add(replica_info.replica_id.unique_id)
+        return node_id_to_alive_replica_ids
 
     def get_replica_details(self, replica_info: RunningReplicaInfo) -> ReplicaDetails:
         return ReplicaDetails(
@@ -198,7 +196,7 @@ class FakeDeploymentStateManager:
             status=DeploymentStatus.HEALTHY,
             status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
             message="",
-            deployment_config=mock.Mock(spec=DeploymentSchema),
+            deployment_config=DeploymentSchema(name=id.name),
             target_num_replicas=1,
             required_resources={},
             replicas=replica_details,
@@ -206,6 +204,20 @@ class FakeDeploymentStateManager:
 
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         return []
+
+
+class FakeTestingDeploymentStateManager:
+    def __init__(self):
+        self.dumped_deployment_id = None
+        self.stopped_deployment_id = None
+        self.replica_states = object()
+
+    def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
+        self.dumped_deployment_id = deployment_id
+        return self.replica_states
+
+    def _stop_one_running_replica_for_testing(self, deployment_id: DeploymentID):
+        self.stopped_deployment_id = deployment_id
 
 
 # Test Controller that overrides methods and dependencies
@@ -760,6 +772,81 @@ def test_get_target_groups_only_includes_ingress_deployments(
     )
 
 
+def test_get_target_groups_populates_ingress_request_router_targets(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    app_name = "app1"
+    route_prefix = "/app1"
+    ingress_deployment_id = DeploymentID(name="app1_ingress", app_name=app_name)
+    router_deployment_id = DeploymentID(name="app1_router", app_name=app_name)
+    ingress_replica_id = ReplicaID(
+        unique_id="ingress_replica", deployment_id=ingress_deployment_id
+    )
+    router_replica_id = ReplicaID(
+        unique_id="router_replica", deployment_id=router_deployment_id
+    )
+    ingress_replica_info = RunningReplicaInfo(
+        replica_id=ingress_replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="ingress_replica",
+        max_ongoing_requests=100,
+    )
+    router_replica_info = RunningReplicaInfo(
+        replica_id=router_replica_id,
+        node_id="node2",
+        node_ip="10.0.0.2",
+        availability_zone="az2",
+        actor_name="router_replica",
+        max_ongoing_requests=100,
+    )
+
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: route_prefix},
+        ingress_deployments={app_name: ingress_deployment_id.name},
+        ingress_request_router_deployments={app_name: router_deployment_id.name},
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={
+            ingress_deployment_id: [ingress_replica_info],
+            router_deployment_id: [router_replica_info],
+        },
+    )
+
+    ingress_http_port = direct_ingress_controller.allocate_replica_port(
+        "node1", ingress_replica_id.unique_id, RequestProtocol.HTTP
+    )
+    router_http_port = direct_ingress_controller.allocate_replica_port(
+        "node2", router_replica_id.unique_id, RequestProtocol.HTTP
+    )
+
+    assert direct_ingress_controller.get_target_groups(app_name=app_name) == [
+        TargetGroup(
+            protocol=RequestProtocol.HTTP,
+            route_prefix=route_prefix,
+            app_name=app_name,
+            targets=[
+                Target(
+                    ip="10.0.0.1",
+                    port=ingress_http_port,
+                    instance_id="",
+                    name="ingress_replica",
+                )
+            ],
+            ingress_request_router_targets=[
+                Target(
+                    ip="10.0.0.2",
+                    port=router_http_port,
+                    instance_id="",
+                    name="router_replica",
+                )
+            ],
+        )
+    ]
+
+
 def test_get_target_groups_app_with_no_running_replicas(
     direct_ingress_controller: FakeDirectIngressController,
 ):
@@ -990,6 +1077,63 @@ def test_control_loop_pruning(
         replica_id3.unique_id, RequestProtocol.HTTP
     )
     assert "node3" not in NodePortManager._node_managers  # Entire node should be pruned
+
+
+def test_control_loop_pruning_does_not_require_private_deployment_states(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    replica_id = ReplicaID(unique_id="replica1", deployment_id=deployment_id)
+    replica_info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="replica1",
+        max_ongoing_requests=100,
+    )
+
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={deployment_id: [replica_info]},
+    )
+
+    direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    direct_ingress_controller._maybe_update_ingress_ports()
+
+    assert direct_ingress_controller._is_port_allocated(
+        direct_ingress_controller.deployment_state_manager.get_replica_details(
+            replica_info
+        ),
+        RequestProtocol.HTTP,
+    )
+
+
+def test_dump_replica_states_for_testing_delegates_to_manager(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    deployment_state_manager = FakeTestingDeploymentStateManager()
+    direct_ingress_controller.deployment_state_manager = deployment_state_manager
+
+    assert (
+        direct_ingress_controller._dump_replica_states_for_testing(deployment_id)
+        is deployment_state_manager.replica_states
+    )
+    assert deployment_state_manager.dumped_deployment_id == deployment_id
+
+
+def test_stop_one_running_replica_for_testing_delegates_to_manager(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    deployment_state_manager = FakeTestingDeploymentStateManager()
+    direct_ingress_controller.deployment_state_manager = deployment_state_manager
+
+    direct_ingress_controller._stop_one_running_replica_for_testing(deployment_id)
+
+    assert deployment_state_manager.stopped_deployment_id == deployment_id
 
 
 if __name__ == "__main__":

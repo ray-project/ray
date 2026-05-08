@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
@@ -308,8 +308,3 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestKillingWorkerWithNoLeaseIfMemoryExceed
 }  // namespace raylet
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

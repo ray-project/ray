@@ -468,11 +468,11 @@ TEST_F(LocalResourceManagerTest, MarkFootprintAsBusyResetsIdleTime) {
   ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
 }
 
-TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
-  // Test that when any footprint is marked busy with MarkFootprintAsBusy(),
-  // all saved speculative idle times are cleared. This ensures that if a task
-  // was speculatively marked as pulling arguments but then actually runs,
-  // the idle time is correctly reset rather than restored to an old value.
+TEST_F(LocalResourceManagerTest, NodeWorkersBusyDominatesIdleTime) {
+  // When NODE_WORKERS and PULLING_TASK_ARGUMENTS are both busy and PULLING resolves
+  // first, the node idle time should be anchored to when NODE_WORKERS became idle —
+  // not to any earlier speculative idle time. NODE_WORKERS becoming idle is the
+  // most recent event and must win the max() calculation.
   CreateManagerWithFakeClock();
 
   auto initial_idle_time = AssertIdleAndGetTime();
@@ -481,7 +481,6 @@ TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
   manager->MaybeMarkFootprintAsBusy(WorkFootprint::PULLING_TASK_ARGUMENTS);
   AssertBusy();
 
-  // Actual work starts - this clears saved PULLING_TASK_ARGUMENTS time.
   manager->MarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
 
   AdvanceTime(absl::Milliseconds(50));
@@ -491,7 +490,61 @@ TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
   AdvanceTime(absl::Milliseconds(150));
   manager->MarkFootprintAsIdle(WorkFootprint::NODE_WORKERS);
 
-  // Idle time should be current time (from NODE_WORKERS), not restored initial time.
+  // The most recent idle event is NODE_WORKERS becoming idle (clock_.Now()),
+  // so that must be the reported idle start, regardless of what PULLING restored.
+  ASSERT_EQ(AssertIdleAndGetTime(), clock_.Now());
+  ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
+}
+
+TEST_F(LocalResourceManagerTest, PullingIdleAfterNodeWorkersDoesNotResetIdleTime) {
+  // Regression test: when PULLING_TASK_ARGUMENTS resolves *after* NODE_WORKERS
+  // has already become idle, the node's idle start should remain pinned to when
+  // NODE_WORKERS became idle, not be bumped forward to the later resolution time.
+  //
+  // Without the fix, MarkFootprintAsBusy(NODE_WORKERS) used to clear the saved
+  // idle time for PULLING_TASK_ARGUMENTS. That caused MarkFootprintAsIdle(PULLING)
+  // to reset to clock_.Now(), which was later than when NODE_WORKERS became idle,
+  // pushing the effective idle start into the future and shrinking idle_duration_ms.
+  CreateManagerWithFakeClock();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MaybeMarkFootprintAsBusy(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  AssertBusy();
+
+  manager->MarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+
+  // NODE_WORKERS finishes first.
+  AdvanceTime(absl::Milliseconds(100));
+  manager->MarkFootprintAsIdle(WorkFootprint::NODE_WORKERS);
+  AssertBusy();  // PULLING is still pending.
+
+  auto node_workers_idle_time = clock_.Now();
+
+  // PULLING resolves a bit later.
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+
+  // Idle start must be node_workers_idle_time, not the later PULLING resolution.
+  ASSERT_EQ(AssertIdleAndGetTime(), node_workers_idle_time);
+}
+
+// When a footprint goes from speculatively busy (MaybeMarkFootprintAsBusy)
+// to definitely busy (MarkFootprintAsBusy), the saved idle time must be cleared
+// so that MarkFootprintAsIdle resets to Now() rather than restoring the stale time.
+TEST_F(LocalResourceManagerTest, SpeculativeBusyUpgradedToDefiniteBusyClearsSaved) {
+  CreateManagerWithFakeClock();
+
+  auto initial_idle_time = AssertIdleAndGetTime();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MaybeMarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+  AssertBusy();
+
+  manager->MarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+
+  AdvanceTime(absl::Milliseconds(100));
+  manager->MarkFootprintAsIdle(WorkFootprint::NODE_WORKERS);
+
   ASSERT_EQ(AssertIdleAndGetTime(), clock_.Now());
   ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
 }

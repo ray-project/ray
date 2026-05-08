@@ -2750,13 +2750,19 @@ class MultiAgentEpisode:
                 for i in indices_incl_lookback
                 if i != self.SKIP_ENV_TS_TAG
             ]
-            ret = inf_lookback_buffer.get(
-                indices=indices,
-                neg_index_as_lookback=True,
-                fill=fill,
-                _add_last_ts_value=hanging_val,
-                **one_hot_discrete,
-            )
+            # If all indices were SKIP_ENV_TS_TAG (agent was inactive for all
+            # requested env steps), return an empty list. The caller already
+            # checks `if len(agent_values) > 0` before using this result.
+            if not indices:
+                ret = []
+            else:
+                ret = inf_lookback_buffer.get(
+                    indices=indices,
+                    neg_index_as_lookback=True,
+                    fill=fill,
+                    _add_last_ts_value=hanging_val,
+                    **one_hot_discrete,
+                )
         return ret
 
     def _get_hanging_value(self, what: str, agent_id: AgentID) -> Any:
