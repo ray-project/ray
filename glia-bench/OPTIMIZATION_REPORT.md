@@ -12,12 +12,13 @@ Six localized optimizations to the Ray Data streaming-executor scheduler thread,
 
 | Workload | Δ wall | Δ thpt |
 |---|---|---|
-| synthetic | **−38.0%** | +61.5% |
-| mixed_pipeline | **−45.7%** | +84.0% |
-| medium_tasks | **−52.0%** | +108.2% |
-| actor_backpressure | **−46.7%** | +87.7% |
+| synthetic | **−38.9%** | +63.6% |
+| mixed_pipeline | **−45.7%** | +84.1% |
+| medium_tasks | **−48.2%** | +93.5% |
+| long_tasks | −7.0% (control) | +7.5% (control) |
+| actor_backpressure | **−45.5%** | +83.4% |
 
-Throughput deltas on the scheduler-bound workloads are large and consistent in direction. The `long_tasks` worker-bound control was omitted from this sweep to keep wall-clock under an hour on the smaller devpod; the v4 measurement on a 64-CPU host showed it stays flat at ±6%, and none of the M-series surfaces this report covers were modified during the rebase, so the control would behave identically. **Output hashes are byte-identical between baseline and branch on all four workloads** (SHA-256 over sorted rows; tracked on every rep).
+Throughput deltas on the scheduler-bound workloads are large and consistent in direction. `long_tasks` is worker-bound and serves as a control — the optimizations target scheduler-thread work that is vanishingly small relative to total wall time on this workload, so no improvement is expected there. **Output hashes are byte-identical between baseline and branch on all five workloads** (SHA-256 over sorted rows; tracked on every rep).
 
 **Correctness**. The curated Ray Data test gate runs 466 tests across 26 files (including 9 new unit tests added alongside the optimizations) on both baseline and branch HEAD, using a symmetric fractional-retry methodology — probabilistically-flaky tests are retried at full 10× depth on both sides so comparisons are apples-to-apples. Result: **0 regressions, 9 fixes** (8 new unit tests for symbols that don't exist on master and pass once the fork's code is in place, plus 1 known-flaky Ray-client connectivity test that happened to flip on this run); the known-flaky `test_spilled_stats` variants land at identical pass rates on both sides. Detailed breakdown in §4.2.
 
@@ -150,7 +151,7 @@ Single hardware profile.
 
 ### 3.2 Workloads
 
-Five scheduler-stress workloads (parameters in `glia-bench/workload_config.json`). Together they span the range from scheduler-dominated to worker-dominated to plasma-pressure-dominated, which lets the same harness measure wins on each regime and the no-change-expected baseline on the worker-bound control. The §4.1 sweep ran four of the five — `long_tasks` (the worker-bound control) was omitted to keep total wall-clock under an hour on the smaller devpod; it is described here for completeness, and the v4 measurement on a 64-CPU host pinned it at ±6% as expected.
+Five scheduler-stress workloads (parameters in `glia-bench/workload_config.json`). Together they span the range from scheduler-dominated to worker-dominated to plasma-pressure-dominated, which lets the same harness measure wins on each regime and the no-change-expected baseline on the worker-bound control.
 
 **`synthetic`** — 320 M rows across 20K blocks through a depth-6 pipeline of cheap task-pool `map_batches` stages (varied batch sizes from 1K to 8K; vectorized Arrow transforms on the `id` column that take microseconds per batch). Scheduler-dominated: per-task work is so small that the scheduling loop's per-iteration cost is a meaningful fraction of wall time. Every stage mutates the output, so any operator skipped or reordered changes the SHA-256 hash. Sensitive to dispatch-rate optimizations (M3), per-dispatch resource-manager work (M5), and RefBundle memoization (M6).
 
@@ -200,27 +201,29 @@ Wall time in seconds, throughput in blocks/sec.
 
 | Workload | Master wall | Branch wall | Δ wall | Master thpt | Branch thpt | Δ thpt | Welch's t (thpt) | Output hash |
 |---|---|---|---|---|---|---|---|---|
-| synthetic | 142.29 ± 3.02 | 88.16 ± 3.26 | **−38.04%** | 140.61 ± 2.96 | 227.06 ± 8.26 | **+61.48%** | +17.1 (df=2.5) | ✓ 1 unique |
-| mixed_pipeline | 180.77 ± 6.43 | 98.20 ± 1.65 | **−45.68%** | 110.73 ± 4.02 | 203.71 ± 3.46 | **+83.97%** | +30.3 (df=3.9) | ✓ 1 unique |
-| medium_tasks | 46.56 ± 0.08 | 22.37 ± 0.24 | **−51.95%** | 107.38 ± 0.19 | 223.52 ± 2.43 | **+108.16%** | +82.4 (df=2.0) | ✓ 1 unique |
-| actor_backpressure | 47.31 ± 1.04 | 25.20 ± 0.17 | **−46.74%** | 21.15 ± 0.47 | 39.69 ± 0.27 | **+87.66%** | +59.7 (df=3.2) | ✓ 1 unique (`8f2d922d…`) |
+| synthetic | 138.45 ± 1.51 | 84.60 ± 0.62 | **−38.89%** | 144.46 ± 1.57 | 236.41 ± 1.72 | **+63.64%** | +68.3 (df=4.0) | ✓ 1 unique |
+| mixed_pipeline | 176.63 ± 1.46 | 95.92 ± 0.60 | **−45.69%** | 113.24 ± 0.93 | 208.50 ± 1.31 | **+84.13%** | +103.1 (df=3.6) | ✓ 1 unique |
+| medium_tasks | 45.95 ± 0.24 | 23.80 ± 1.42 | **−48.20%** | 108.81 ± 0.57 | 210.57 ± 12.90 | **+93.51%** | +13.7 (df=2.0) | ✓ 1 unique |
+| long_tasks | 92.60 ± 0.05 | 86.12 ± 0.34 | −6.99% | 13.82 ± 0.01 | 14.86 ± 0.06 | +7.52% | +31.0 (df=2.2) | ✓ 1 unique |
+| actor_backpressure | 48.22 ± 1.10 | 26.28 ± 0.08 | **−45.49%** | 20.75 ± 0.48 | 38.04 ± 0.11 | **+83.37%** | +61.1 (df=2.2) | ✓ 1 unique (`8f2d922d…`) |
 
 | Workload | Busy-ratio (master) | Busy-ratio (branch) | Δ | Efficiency (master, blk/CPU-s) | Efficiency (branch, blk/CPU-s) | Δ |
 |---|---|---|---|---|---|---|
-| synthetic | 1.63 | 2.31 | **+41.7%** | 86.2 | 98.4 | **+14.1%** |
-| mixed_pipeline | 1.48 | 2.26 | **+52.7%** | 74.8 | 90.2 | **+20.6%** |
-| medium_tasks | 0.74 | 1.35 | **+82.4%** | 145.6 | 165.1 | **+13.4%** |
-| actor_backpressure | 0.27 | 0.58 | **+114.8%** | 77.7 | 68.8 | **−11.5%** |
+| synthetic | 1.65 | 2.31 | **+40.0%** | 87.5 | 102.4 | **+17.0%** |
+| mixed_pipeline | 1.48 | 2.27 | **+53.4%** | 76.5 | 91.7 | **+19.9%** |
+| medium_tasks | 0.75 | 1.28 | **+70.7%** | 145.9 | 164.6 | **+12.8%** |
+| long_tasks | 0.15 | 0.15 | 0.0% | 95.1 | 101.5 | +6.6% |
+| actor_backpressure | 0.27 | 0.55 | **+103.7%** | 77.4 | 69.4 | **−10.2%** |
 
-Throughput deltas on the three scheduler-bound workloads (synthetic, mixed_pipeline, medium_tasks) land in the expected direction and magnitude, consistent with the v4 sweep against ray-2.55.0. `medium_tasks` shows the largest relative wall-time win because the M4 adaptive `ray.wait` ceiling (originally 100 ms vs the workload's 50 ms tasks) removes a per-cycle stall; the optimization unblocks the scheduler every dispatch cycle.
+Throughput deltas on the four scheduler-bound workloads land in the expected direction and magnitude. `long_tasks` is mostly flat as the control. `medium_tasks` shows the largest relative wall-time win on the scheduler-bound side because the M4 adaptive `ray.wait` ceiling (originally 100 ms vs the workload's 50 ms tasks) removes a per-cycle stall; the optimization unblocks the scheduler every dispatch cycle.
 
 The two CPU metrics decompose cleanly. Efficiency = `throughput / busy-ratio = (blocks/wall) / (CPU/wall) = blocks / CPU` — the wall-time factors cancel, so efficiency reduces to blocks-per-CPU-second. Since every workload dispatches a fixed block count, efficiency rises if and only if total scheduler CPU falls.
 
 Attribution: busy-ratio rising is predominantly M4 + M2 (less idle wait per wall-second — the adaptive `ray.wait` timeout and the event-based consumer signal remove 100 ms-scale blocks). Efficiency rising is predominantly M3 + M5 + M6 (less CPU work per block — no per-dispatch options-dict rebuild, no per-dispatch full-topology budget recompute, no re-walking the block list on every `size_bytes()` / `num_rows()` call). Both rising together is the signature of a real gain.
 
-The relative wall-time wins are larger here than v4's against ray-2.55.0 because master is faster in absolute terms (it picked up complementary fixes — Pandas→Arrow internal blocks, actor-pool heap, chunk combining, schema yield, auto-downscaling — between 2.55.0 and `a1ce262eff`). The per-dispatch hot path the M-series targets is unchanged on master, so eliminating it nets a larger fraction of master's already-shorter wall time.
+`long_tasks` is flat on busy-ratio — consistent with its worker-bound control role. The small efficiency gain there reflects M6 saving a few `size_bytes()` calls without changing any other behavior; the wall-time drop is bounded by the same scheduler-thread CPU saving applied to a workload where worker time dominates.
 
-**`actor_backpressure` is the outlier.** 1.88× wall speedup (−46.7%) but slightly *negative* intensive efficiency (−11.5%), because the branch driver is now actively dispatching through a previously plasma-stalled pipeline — more blocks per wall-second AND more driver-CPU per wall-second. On master, the driver spends most of its time parked waiting for the autoscaling actor pool to free plasma room; on the branch, the plasma decrement in `on_task_dispatched` keeps the gate honest and the scheduler can fan tasks through the pool at a far higher rate. The extra CPU the driver burns is doing real work (more dispatch calls, more `update_budgets` at step boundaries as the topology evolves under autoscaling), not spinning. The wall-time drop is the customer-facing outcome; efficiency going slightly down per-block is the expected cost of unblocking the pipeline.
+**`actor_backpressure` is the outlier.** 1.84× wall speedup (−45.5%) but slightly *negative* intensive efficiency (−10.2%), because the branch driver is now actively dispatching through a previously plasma-stalled pipeline — more blocks per wall-second AND more driver-CPU per wall-second. On master, the driver spends most of its time parked waiting for the autoscaling actor pool to free plasma room; on the branch, the plasma decrement in `on_task_dispatched` keeps the gate honest and the scheduler can fan tasks through the pool at a far higher rate. The extra CPU the driver burns is doing real work (more dispatch calls, more `update_budgets` at step boundaries as the topology evolves under autoscaling), not spinning. The wall-time drop is the customer-facing outcome; efficiency going slightly down per-block is the expected cost of unblocking the pipeline.
 
 The strict over-commit signal `peak_op_obj_store_over_alloc_ratio` pins at **1.000 ± 0.000** on the branch (3/3 reps; allocator's dynamic cap is hit but never exceeded). Backpressure log lines fired on both sides every rep, confirming the workload exercises the targeted code path. Output hashes are identical across all 6 reps (`8f2d922d…`).
 
@@ -282,6 +285,7 @@ All nine also pass 10/10 when run in isolation on the branch.
 | synthetic (N=3) | 1 unique | 1 unique | ✓ identical |
 | mixed_pipeline (N=3) | 1 unique | 1 unique | ✓ identical |
 | medium_tasks (N=3) | 1 unique | 1 unique | ✓ identical |
+| long_tasks (N=3) | 1 unique | 1 unique | ✓ identical |
 | actor_backpressure (N=3) | `8f2d922d…` (3/3) | `8f2d922d…` (3/3) | ✓ identical |
 
 ## 5. Reproducibility
@@ -351,10 +355,9 @@ All commands below run from the fork's `glia-bench/` directory.
 cd glia-bench
 
 # --- Performance sweep ----------------------------------------------------
-# 2 configs (master vs branch) × 4 workloads × 3 reps = 24 runs.
-# Skips long_tasks (worker-bound control); pass `all` instead of `default`
-# to include it. Output: results/optimization_perf_master_vs_rebased.jsonl.
-./run_master_vs_rebased.sh default 3
+# 2 configs (master vs branch) × 5 workloads × 3 reps = 30 runs.
+# Output: results/optimization_perf_master_vs_rebased.jsonl.
+./run_master_vs_rebased.sh all 3
 
 # Aggregate into the §4.1 table (mean±stdev, deltas, hash check).
 ./summarize_master_vs_rebased.py
@@ -372,7 +375,7 @@ Both trees are run with library versions matched between their venvs; the Python
 
 ## Appendix: Raw per-run data
 
-Per-run performance data lives at `glia-bench/results/optimization_perf_master_vs_rebased.jsonl` — one JSON line per run, 24 lines total (4 workloads × 2 configs × 3 reps). Fields per line: `config` (`master`|`rebased`), `workload`, `rep`, `wall_time_sec`, `throughput_blocks_per_sec`, `throughput_rows_per_sec`, `driver_cpu_per_wall`, `efficiency_blocks_per_core_sec`, `output_hash`. `actor_backpressure` rows additionally carry `peak_op_obj_store_over_alloc_ratio`, `peak_op_obj_store_used_mb`, `peak_op_obj_store_alloc_mb`, `num_sampler_reads`, `backpressure_log_count`, `plasma_directory`, `hash_time_sec`.
+Per-run performance data lives at `glia-bench/results/optimization_perf_master_vs_rebased.jsonl` — one JSON line per run, 30 lines total (5 workloads × 2 configs × 3 reps). Fields per line: `config` (`master`|`rebased`), `workload`, `rep`, `wall_time_sec`, `throughput_blocks_per_sec`, `throughput_rows_per_sec`, `driver_cpu_per_wall`, `efficiency_blocks_per_core_sec`, `output_hash`. `actor_backpressure` rows additionally carry `peak_op_obj_store_over_alloc_ratio`, `peak_op_obj_store_used_mb`, `peak_op_obj_store_alloc_mb`, `num_sampler_reads`, `backpressure_log_count`, `plasma_directory`, `hash_time_sec`.
 
 Aggregation script: `glia-bench/summarize_master_vs_rebased.py` reproduces the §4.1 mean±stdev / Δ% / output-hash table.
 
