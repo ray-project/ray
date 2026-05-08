@@ -1474,6 +1474,7 @@
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
+
 - name: pytest_serve_multi_deployment_1k_noop_replica
   python: "3.10"
   group: Serve tests
@@ -1552,6 +1553,7 @@
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
             - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
+
 
 - name: serve_controller_benchmark_haproxy
   python: "3.10"
