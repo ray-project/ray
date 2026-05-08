@@ -1,5 +1,15 @@
 {
   "results": {
+    "test_actor_pool_map_operator.TestActorPool::test_actor_pool_info_metrics": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_actor_pool_map_operator.TestActorPool::test_actor_pool_info_str_representation_includes_all_fields": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
     "test_actor_pool_map_operator.TestActorPool::test_add_pending": {
       "passed": 1,
       "status": "passed",
@@ -16,6 +26,11 @@
       "total": 1
     },
     "test_actor_pool_map_operator.TestActorPool::test_can_scale_down": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_actor_pool_map_operator.TestActorPool::test_get_actor_info_returns_utilization_metrics": {
       "passed": 1,
       "status": "passed",
       "total": 1
@@ -66,6 +81,11 @@
       "total": 1
     },
     "test_actor_pool_map_operator.TestActorPool::test_pick_ordering_with_returns": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_actor_pool_map_operator.TestActorPool::test_pool_utilization_calculation": {
       "passed": 1,
       "status": "passed",
       "total": 1
@@ -571,8 +591,8 @@
       "total": 1
     },
     "test_consumption::test_read_write_local_node_ray_client": {
-      "passed": 8,
-      "status": "failed",
+      "passed": 10,
+      "status": "passed",
       "total": 10
     },
     "test_consumption::test_schema": {
@@ -986,41 +1006,6 @@
       "total": 1
     },
     "test_limit_operator::test_limit_operator_memory_leak_fix": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data0-3-expected_output0]": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data1-3-expected_output1]": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data2-5-expected_output2]": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data3-3-expected_output3]": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data4-2-expected_output4]": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data5-5-expected_output5]": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
-    "test_limit_operator::test_per_block_limit_fn[blocks_data6-0-expected_output6]": {
       "passed": 1,
       "status": "passed",
       "total": 1
@@ -1630,6 +1615,11 @@
       "status": "failed",
       "total": 10
     },
+    "test_reservation_based_resource_allocator::test_m5_borrow_drift_in_multi_op_topology_is_real_and_quantified": {
+      "passed": 0,
+      "status": "failed",
+      "total": 10
+    },
     "test_reservation_based_resource_allocator::test_on_task_dispatched_clamps_at_zero_never_negative": {
       "passed": 0,
       "status": "failed",
@@ -1661,6 +1651,11 @@
       "total": 10
     },
     "test_resource_manager.TestIdleDetector::test_idle_detector": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_resource_manager.TestResourceAllocatorUnblockingStreamingOutputBackpressure::test_no_unblock_backpressure_terminal_with_external_consumer": {
       "passed": 1,
       "status": "passed",
       "total": 1
@@ -1966,13 +1961,13 @@
       "total": 1
     },
     "test_stats::test_spilled_stats[False]": {
-      "passed": 9,
-      "status": "failed",
+      "passed": 10,
+      "status": "passed",
       "total": 10
     },
     "test_stats::test_spilled_stats[True]": {
-      "passed": 0,
-      "status": "failed",
+      "passed": 10,
+      "status": "passed",
       "total": 10
     },
     "test_stats::test_stats_actor_datasets": {
@@ -2016,9 +2011,9 @@
       "total": 1
     },
     "test_stats::test_sub_operator_num_rows": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
+      "passed": 0,
+      "status": "failed",
+      "total": 10
     },
     "test_stats::test_summarize_blocks": {
       "passed": 1,
@@ -2036,6 +2031,16 @@
       "total": 1
     },
     "test_stats::test_write_ds_stats": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_streaming_executor.GetOutputBlockingTest::test_num_waiting_consumers_concurrent": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_streaming_executor.GetOutputBlockingTest::test_num_waiting_consumers_tracking": {
       "passed": 1,
       "status": "passed",
       "total": 1
@@ -2235,11 +2240,6 @@
       "status": "passed",
       "total": 1
     },
-    "test_streaming_integration::test_backpressure_from_output": {
-      "passed": 1,
-      "status": "passed",
-      "total": 1
-    },
     "test_streaming_integration::test_can_pickle": {
       "passed": 1,
       "status": "passed",
@@ -2260,7 +2260,22 @@
       "status": "passed",
       "total": 1
     },
+    "test_streaming_integration::test_output_backpressure_from_paused_consumer[False]": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_streaming_integration::test_output_backpressure_from_paused_consumer[True]": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
     "test_streaming_integration::test_output_split_e2e": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_streaming_integration::test_output_split_shutdown_preserves_sibling_split_queues": {
       "passed": 1,
       "status": "passed",
       "total": 1
@@ -2326,6 +2341,11 @@
       "total": 1
     },
     "test_streaming_integration::test_streaming_split_schema_during_execution": {
+      "passed": 1,
+      "status": "passed",
+      "total": 1
+    },
+    "test_streaming_integration::test_task_submission_backpressure_from_paused_consumer": {
       "passed": 1,
       "status": "passed",
       "total": 1
