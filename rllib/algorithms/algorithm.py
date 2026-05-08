@@ -1647,7 +1647,10 @@ class Algorithm(Checkpointable, Trainable):
         When *all* configured remote eval EnvRunners are unhealthy, wait up
         to `evaluation_unhealthy_workers_timeout_s` seconds for at least one
         to come back before deciding to skip evaluation or raise (per
-        `evaluation_error_after_n_consecutive_skips`).
+        `evaluation_error_after_n_consecutive_skips`). If any worker
+        recovers during the wait, re-syncs current weights to it: the
+        original `sync_weights` call at the start of `evaluate()` was made
+        before the wait and skipped workers that were unhealthy then.
         """
         timeout_s = self.config.evaluation_unhealthy_workers_timeout_s
         if not timeout_s or timeout_s <= 0:
@@ -1701,6 +1704,21 @@ class Algorithm(Checkpointable, Trainable):
                     timeout_s,
                 )
                 next_log = now + 60.0
+
+        # If any workers recovered during the wait, push current weights
+        # to them. The `sync_weights` call at the start of `evaluate()`
+        # ran before this wait and only targeted workers that were
+        # healthy *then*.
+        if self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+            weights_src = (
+                self.learner_group
+                if self.config.enable_env_runner_and_connector_v2
+                else self.env_runner
+            )
+            self.eval_env_runner_group.sync_weights(
+                from_worker_or_learner_group=weights_src,
+                inference_only=True,
+            )
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
