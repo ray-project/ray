@@ -125,6 +125,73 @@ After the training job is completed, the Ray cluster will be stopped automatical
 
 .. note:: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
 
+.. _ray-slurm-docker-init:
+
+Running inside Docker containers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your SLURM compute nodes run the job inside a Docker container, make sure
+PID 1 inside the container is a proper init process (``tini``, ``dumb-init``,
+or Docker's built-in ``--init``). Otherwise ``ray symmetric-run`` will leave
+Ray processes as zombies on teardown, and ``ray stop`` will report
+``Stopped 0 out of N``.
+
+Why this matters
+^^^^^^^^^^^^^^^^
+
+When ``ray symmetric-run`` finishes, it calls ``ray stop``, which sends
+``SIGTERM`` to each Ray process and then waits for them to exit using
+``psutil.wait_procs``. After a process exits, the kernel marks it as a zombie
+and sends ``SIGCHLD`` to its current parent — the parent must call
+``waitpid`` to reap the zombie.
+
+* On a normal Linux host, PID 1 is ``systemd``, which reaps orphaned
+  processes. Zombies disappear immediately and ``psutil.wait_procs`` reports
+  them as ``gone``.
+* Inside a containerized SLURM compute node where PID 1 is ``slurmd``,
+  ``slurmd`` does not register a ``SIGCHLD`` handler and does not reap
+  children. The dead Ray processes stay in the process table as zombies,
+  ``psutil.wait_procs`` classifies them as still alive, and ``ray stop``
+  reports ``Stopped 0 out of N``.
+
+This is a deployment-layer issue (a container without a proper init), not a
+Ray bug and not a SLURM bug.
+
+How to fix it
+^^^^^^^^^^^^^
+
+Give the container an init process that reaps zombies. Pick one:
+
+* ``docker run --init ...`` — Docker injects ``tini`` as PID 1.
+* ``init: true`` in ``docker-compose.yaml`` — same effect for Compose-managed
+  services.
+* Bake ``tini`` or ``dumb-init`` into the image and use it as the
+  ``ENTRYPOINT``.
+
+Example (Compose service for a containerized SLURM compute node):
+
+.. code-block:: yaml
+
+    services:
+      c1:
+        image: slurm-docker-cluster:25.11.2
+        init: true            # PID 1 becomes tini, which reaps zombies
+        command: ["slurmd"]
+
+After this change, ``ray symmetric-run`` teardown reports each Ray process
+with status ``terminated`` instead of ``zombie``, and ``ray stop`` reports
+``Stopped N out of N``.
+
+References
+^^^^^^^^^^
+
+* Root-cause analysis (PID 1 / ``SIGCHLD`` reaping in containerized SLURM):
+  `ray-project/ray#62591 (comment) <https://github.com/ray-project/ray/pull/62591#issuecomment-4396615458>`__
+* Confirmation that adding an init process resolves the issue:
+  `ray-project/ray#62591 (comment) <https://github.com/ray-project/ray/pull/62591#issuecomment-4403602546>`__
+* Docker docs on multi-service containers and ``--init``:
+  `docs.docker.com/engine/containers/multi-service_container <https://docs.docker.com/engine/containers/multi-service_container/>`__
+
 .. _slurm-network-ray:
 
 SLURM networking caveats
