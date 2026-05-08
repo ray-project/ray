@@ -55,7 +55,7 @@ class LogicalOperator(Operator, ABC):
 
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
-        value = super().input_dependencies  # type: ignore
+        value = self._input_dependencies
         for x in value:
             assert isinstance(x, LogicalOperator), x
         return value
@@ -109,23 +109,6 @@ class LogicalOperator(Operator, ABC):
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
         return args
-
-    @property
-    def dag_str(self) -> str:
-        """String representation of the whole DAG."""
-        if self.input_dependencies:
-            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
-            out_str += " -> "
-        else:
-            out_str = ""
-        out_str += f"{self.__class__.__name__}[{self.name}]"
-        return out_str
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}[{self.name}]"
-
-    def __str__(self) -> str:
-        return repr(self)
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""

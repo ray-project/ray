@@ -15,6 +15,7 @@
 - name: image_classification
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_classification/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
@@ -36,6 +37,7 @@
 - name: large_image_embedding
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: large_image_embedding/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
@@ -57,6 +59,7 @@
 - name: document_embedding
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: document_embedding/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
@@ -79,6 +82,7 @@
 - name: audio_transcription
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: audio_transcription/compute.yaml
     byod:
       runtime_env:
@@ -104,6 +108,7 @@
 - name: video_object_detection
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: video_object_detection/compute.yaml
     byod:
       runtime_env:
