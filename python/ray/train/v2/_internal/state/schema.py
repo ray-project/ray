@@ -1,5 +1,3 @@
-import json
-import logging
 import math
 from collections.abc import Mapping
 from enum import Enum
@@ -11,8 +9,6 @@ from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util.annotations import DeveloperAPI
-
-logger = logging.getLogger(__name__)
 
 MAX_ERROR_STACK_TRACE_LENGTH = 50000
 
@@ -36,6 +32,12 @@ def _to_json_serializable_value(value: Any, *, max_depth: int = 3) -> Any:
     if max_depth <= 0:
         raise ValueError("max_depth must be greater than 0")
 
+    def _safe_str(v):
+        try:
+            return str(v)
+        except Exception:
+            return type(v).__name__
+
     def _walk(value, depth):
         if value is None or isinstance(value, (bool, int, str)):
             return value
@@ -44,7 +46,14 @@ def _to_json_serializable_value(value: Any, *, max_depth: int = 3) -> Any:
         if isinstance(value, Mapping):
             if depth <= 0:
                 return "..."
-            return {str(k): _walk(v, depth - 1) for k, v in value.items()}
+            try:
+                items = list(value.items())
+            except Exception:
+                # Custom Mapping subclass with a broken `.items()`.
+                return type(value).__name__
+            return {_safe_str(k): _walk(v, depth - 1) for k, v in items}
+
+        # Tuples, sets, and frozensets all become lists in JSON.
         if isinstance(value, (list, tuple, set, frozenset)):
             return [_walk(v, depth) for v in value]
 
@@ -52,19 +61,9 @@ def _to_json_serializable_value(value: Any, *, max_depth: int = 3) -> Any:
         # Use class name if no custom string representation is defined.
         if cls.__str__ is object.__str__ and cls.__repr__ is object.__repr__:
             return cls.__name__
-        return str(value)
+        return _safe_str(value)
 
-    json_value = _walk(value, max_depth)
-
-    try:
-        # Validate that the JSON dictionary is serializable
-        return json.loads(json.dumps(json_value))
-    except Exception as e:
-        logger.warning(
-            f"[Train Run State Export]: Failed to convert value to JSON serializable value: {e}"
-        )
-        # Provide best-effort value
-        return json_value
+    return _walk(value, max_depth)
 
 
 @DeveloperAPI
