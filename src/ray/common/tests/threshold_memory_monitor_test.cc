@@ -163,7 +163,6 @@ TEST_F(ThresholdMemoryMonitorTest,
                               0 /*inactive_file*/,
                               0 /*active_file*/);
 
-  // System cgroup: shmem=200 MB (object store)
   std::string system_cgroup_dir = MockCgroupv2MemoryUsage(
       total_memory_bytes, 0, 0 /*anon*/, 0, 0 /*inactive_file*/, 0 /*active_file*/);
 
