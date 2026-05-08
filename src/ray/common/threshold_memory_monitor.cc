@@ -64,8 +64,10 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
               "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB total)",
               cur_memory_snapshot.used_bytes,
               memory_usage_threshold_bytes_,
-              static_cast<float>(memory_usage_threshold_bytes_) /
-                  static_cast<float>(cur_memory_snapshot.total_bytes) * 100,
+              (cur_memory_snapshot.total_bytes > 0
+                   ? static_cast<float>(memory_usage_threshold_bytes_) /
+                         static_cast<float>(cur_memory_snapshot.total_bytes) * 100
+                   : 0.0f),
               cur_memory_snapshot.total_bytes);
           kill_workers_callback_(trigger_reason);
         }
