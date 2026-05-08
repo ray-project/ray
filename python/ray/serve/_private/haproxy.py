@@ -871,7 +871,15 @@ class HAProxyApi(ProxyApi):
             )
             await writer.drain()
             response = await asyncio.wait_for(reader.read(256), timeout=2.0)
-            return b"HTTP/1.0 200" in response or b"HTTP/1.1 200" in response
+            # Accept any HTTP response, not just 200. The signal we want is
+            # "HAProxy is alive and parsing HTTP", not "HAProxy says traffic
+            # is healthy". /-/healthz legitimately returns 503 in two cases:
+            #   - drain mode (disable() sets pass_health_checks=False to
+            #     signal upstream LB to stop routing).
+            #   - initial startup before has_received_routes is True.
+            # In both states HAProxy is functioning and admin-socket-based
+            # `is_running()` would return True; we match that behavior.
+            return response.startswith(b"HTTP/")
         except Exception:
             return False
         finally:
