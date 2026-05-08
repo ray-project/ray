@@ -40,6 +40,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -54,6 +55,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -73,6 +75,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -98,6 +101,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -258,6 +262,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -280,6 +285,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -329,6 +335,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     depends_on:
       - ray-image-cpu-build-aarch64($)
       - ray-image-cuda-build-aarch64($)
@@ -347,6 +354,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -369,6 +377,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -418,6 +427,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     depends_on:
       - ray-extra-image-cpu-build-aarch64($)
       - ray-extra-image-cuda-build-aarch64($)
