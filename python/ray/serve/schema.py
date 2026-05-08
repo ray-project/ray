@@ -518,9 +518,15 @@ class DeploymentSchema(BaseModel):
             if autoscaling_config not in [None, DEFAULT.VALUE]:
                 # Since this is a "before" validator, autoscaling_config may be
                 # either a dict (from raw input) or an AutoscalingConfig instance
-                # (if already constructed). Normalize to dict for uniform access.
+                # (if already constructed). Normalize to a dict of only the
+                # user-set fields so that gang-size multiple validation is not
+                # triggered for default values the user never explicitly set.
+                # This matches how AutoscalingConfig is handled elsewhere in the
+                # codebase (see ray/serve/_private/config.py).
                 if isinstance(autoscaling_config, AutoscalingConfig):
-                    autoscaling_config = autoscaling_config.model_dump()
+                    autoscaling_config = autoscaling_config.model_dump(
+                        exclude_unset=True
+                    )
 
                 min_replicas = autoscaling_config.get("min_replicas")
                 if min_replicas is not None and min_replicas == 0:
