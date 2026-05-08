@@ -226,23 +226,48 @@ For example, after a successful resize, `resizing-at: null` means no resize is i
 }
 ```
 
-You can watch the live container `requests`/`limits` change as the Autoscaler resizes Pods in place:
+You can watch the Kubernetes-side progress of an in-flight resize via the Pod's [resize status conditions](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/#pod-resize-status) (`PodResizePending` and `PodResizeInProgress`) and the resource events the Kubelet emits during the resize. The simplest way to view both at once is `kubectl describe pod <worker-pod>`.
 
-```bash
-kubectl get pods \
-  -o='custom-columns=NAME:.metadata.name,STATUS:.status.phase,CPU_LIMIT:.spec.containers[0].resources.limits.cpu,CPU_REQUEST:.spec.containers[0].resources.requests.cpu' \
-  -w
-```
-
-For example, after a worker is resized in place from 1 CPU to 4 CPU, the same Pod (no new name, no restart) shows the new request and limit:
+After a successful resize, the `Conditions:` table contains only the standard Pod conditions (the transient `PodResizePending` / `PodResizeInProgress` fields are gone), the Pod's `Limits` / `Requests` reflect the new size, and the Kubelet emits a `ResizeCompleted` event:
 
 ```text
-NAME                                       STATUS    CPU_LIMIT   CPU_REQUEST
-raycluster-ippr-head-z48rk                 Running   1           1
-raycluster-ippr-small-group-worker-kkzm5   Running   4           4
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Containers:
+  ray-worker:
+    ...
+    Limits:
+      cpu:     4
+      memory:  4Gi
+    Requests:
+      cpu:     4
+      memory:  4Gi
+    ...
+Events:
+  Type    Reason           Age   From     Message
+  ----    ------           ----  ----     -------
+  Normal  ResizeCompleted  2s    kubelet  Pod resize completed: {"containers":[{"name":"ray-worker","resources":{"limits":{"cpu":"4","memory":"4Gi"},"requests":{"cpu":"4","memory":"4Gi"}}}]}
 ```
 
-For Autoscaler-level observability such as `ray status -v` and Autoscaler logs, see {ref}`kuberay-autoscaler-v2`.
+If a resize can't be granted, the Pod gains a `PodResizePending` condition:
+
+```text
+Conditions:
+  Type                        Status
+  PodResizePending            True 
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+```
+
+See [Pod resize status](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/#pod-resize-status) and [Troubleshooting: Infeasible resize request](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/#troubleshooting-infeasible-resize-request) in the Kubernetes documentation for the meaning of the condition's `reason` and `message` and how to inspect them.
 
 ## Limitations
 
