@@ -126,6 +126,9 @@ def _hash_partition(
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
         ).values
+        # pandas 3.x returns a read-only ndarray; copy so np.mod can write in-place.
+        if not hashes.flags.writeable:
+            hashes = hashes.copy()
         np.mod(hashes, num_partitions, out=hashes)
         partitions = hashes
 
