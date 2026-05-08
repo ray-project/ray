@@ -516,6 +516,12 @@ class DeploymentSchema(BaseModel):
             # Validate autoscaling bounds are multiples of gang_size
             autoscaling_config = values.get("autoscaling_config", None)
             if autoscaling_config not in [None, DEFAULT.VALUE]:
+                # Since this is a "before" validator, autoscaling_config may be
+                # either a dict (from raw input) or an AutoscalingConfig instance
+                # (if already constructed). Normalize to dict for uniform access.
+                if isinstance(autoscaling_config, AutoscalingConfig):
+                    autoscaling_config = autoscaling_config.model_dump()
+
                 min_replicas = autoscaling_config.get("min_replicas")
                 if min_replicas is not None and min_replicas == 0:
                     raise ValueError(
