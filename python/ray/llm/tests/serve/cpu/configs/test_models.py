@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
@@ -416,6 +417,201 @@ class TestAcceleratorConfigLogic:
 
         tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         assert tpu_accel_with_topo.requires_deferred_placement_group is True
+
+
+class TestCheckpointInfo:
+    """Tests for _load_hf_config, _infer_supports_vision, _set_model_architecture,
+    and apply_checkpoint_info."""
+
+    def _make_llm_config(self) -> LLMConfig:
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model")
+        )
+
+    # ------------------------------------------------------------------
+    # _load_hf_config
+    # ------------------------------------------------------------------
+
+    def test_load_hf_config_uses_autoconfig(self):
+        """_load_hf_config must call AutoConfig.from_pretrained, not PretrainedConfig."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock()
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ) as mock_auto:
+            result = llm_config._load_hf_config("some/model")
+
+        mock_auto.assert_called_once_with("some/model", trust_remote_code=False)
+        assert result is mock_hf_config
+
+    def test_load_hf_config_passes_trust_remote_code(self):
+        """trust_remote_code is forwarded to AutoConfig.from_pretrained."""
+        llm_config = self._make_llm_config()
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=MagicMock()
+        ) as mock_auto:
+            llm_config._load_hf_config("some/model", trust_remote_code=True)
+
+        mock_auto.assert_called_once_with("some/model", trust_remote_code=True)
+
+    def test_load_hf_config_wraps_exception(self):
+        """Failures in AutoConfig.from_pretrained become a ValueError with a clear message."""
+        llm_config = self._make_llm_config()
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained",
+            side_effect=RuntimeError("network error"),
+        ):
+            with pytest.raises(ValueError, match="Failed to load Hugging Face config"):
+                llm_config._load_hf_config("bad/model")
+
+    # ------------------------------------------------------------------
+    # _infer_supports_vision
+    # ------------------------------------------------------------------
+
+    def test_infer_supports_vision_with_vision_config(self):
+        """_infer_supports_vision sets _supports_vision=True when config has vision_config."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock(spec=["vision_config"])
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ):
+            llm_config._infer_supports_vision("vision/model")
+
+        assert llm_config._supports_vision is True
+
+    def test_infer_supports_vision_without_vision_config(self):
+        """_infer_supports_vision sets _supports_vision=False when config lacks vision_config."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock(spec=[])  # no vision_config attribute
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ):
+            llm_config._infer_supports_vision("text-only/model")
+
+        assert llm_config._supports_vision is False
+
+    def test_infer_supports_vision_forwards_trust_remote_code(self):
+        """_infer_supports_vision passes trust_remote_code to _load_hf_config."""
+        llm_config = self._make_llm_config()
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=MagicMock(spec=[])
+        ) as mock_auto:
+            llm_config._infer_supports_vision("some/model", trust_remote_code=True)
+
+        mock_auto.assert_called_once_with("some/model", trust_remote_code=True)
+
+    # ------------------------------------------------------------------
+    # _set_model_architecture
+    # ------------------------------------------------------------------
+
+    def test_set_model_architecture_from_hf_config(self):
+        """Architecture is read from hf_config.architectures[0] when model_id is given."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock()
+        mock_hf_config.architectures = ["DeepseekV3ForCausalLM"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ):
+            llm_config._set_model_architecture(model_id_or_path="some/model")
+
+        assert llm_config._model_architecture == "DeepseekV3ForCausalLM"
+
+    def test_set_model_architecture_explicit_kwarg_overrides_hf(self):
+        """An explicit model_architecture kwarg always wins over the HF config value."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock()
+        mock_hf_config.architectures = ["FromHF"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ):
+            llm_config._set_model_architecture(
+                model_id_or_path="some/model",
+                model_architecture="ExplicitArch",
+            )
+
+        assert llm_config._model_architecture == "ExplicitArch"
+
+    def test_set_model_architecture_explicit_kwarg_without_model_id(self):
+        """model_architecture kwarg is applied even when no model_id_or_path is given."""
+        llm_config = self._make_llm_config()
+
+        llm_config._set_model_architecture(model_architecture="StandaloneArch")
+
+        assert llm_config._model_architecture == "StandaloneArch"
+
+    def test_set_model_architecture_no_architectures_attribute(self):
+        """When the hf_config has no architectures, _model_architecture stays at its default."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock(spec=[])  # no architectures attribute
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ):
+            llm_config._set_model_architecture(model_id_or_path="some/model")
+
+        assert llm_config._model_architecture == "UNSPECIFIED"
+
+    def test_set_model_architecture_forwards_trust_remote_code(self):
+        """trust_remote_code is forwarded through _set_model_architecture."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock()
+        mock_hf_config.architectures = ["SomeArch"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ) as mock_auto:
+            llm_config._set_model_architecture(
+                model_id_or_path="some/model", trust_remote_code=True
+            )
+
+        mock_auto.assert_called_once_with("some/model", trust_remote_code=True)
+
+    # ------------------------------------------------------------------
+    # apply_checkpoint_info
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize("trust_remote_code", [False, True])
+    def test_apply_checkpoint_info_threads_trust_remote_code(
+        self, trust_remote_code: bool
+    ):
+        """apply_checkpoint_info passes trust_remote_code to both sub-methods."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock()
+        mock_hf_config.architectures = ["SomeArch"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ) as mock_auto:
+            llm_config.apply_checkpoint_info(
+                "some/model", trust_remote_code=trust_remote_code
+            )
+
+        # AutoConfig should be called twice (once per sub-method), each with the flag.
+        assert mock_auto.call_count == 2
+        for call in mock_auto.call_args_list:
+            assert call.kwargs["trust_remote_code"] == trust_remote_code
+
+    def test_apply_checkpoint_info_sets_both_attributes(self):
+        """apply_checkpoint_info correctly sets _supports_vision and _model_architecture."""
+        llm_config = self._make_llm_config()
+        mock_hf_config = MagicMock(spec=["architectures", "vision_config"])
+        mock_hf_config.architectures = ["LlavaForCausalLM"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ):
+            llm_config.apply_checkpoint_info("vision/model")
+
+        assert llm_config._supports_vision is True
+        assert llm_config._model_architecture == "LlavaForCausalLM"
 
 
 if __name__ == "__main__":
