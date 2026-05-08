@@ -57,10 +57,8 @@ class _TrainingResultState(BaseModel):
     #   Stored relative for portability (copying the experiment dir keeps it valid).
     # Out-of-band: full path on the checkpoint's own filesystem.
     checkpoint_dir_name: str
-    # In-band: None
-    # Out-of-band: pyarrow FileSystem.type_name ("local", "s3", "gcs", ...).
-    #   On resume, fs may lack custom config (credentials, region, endpoint overrides).
-    #   User should overwrite checkpoint filesystem in this case.
+    # checkpoint filesystem is the same as experiment filesystem: None
+    # different filesystem: pyarrow FileSystem.type_name ("local", "s3", "gcs", ...)
     checkpoint_filesystem_type: Optional[str] = None
     # If the checkpoint's path/filesystem is outside the experiment storage path on the storage filesystem.
     out_of_band: bool = False
@@ -106,36 +104,40 @@ def _get_training_result_from_state(
     storage_context: StorageContext,
 ) -> _TrainingResult:
     """Get a TrainingResult object from a Pydantic state object."""
-    if not state.out_of_band:
-        # In-band: resolve relative dir name on the storage filesystem.
+    if state.checkpoint_filesystem_type is None:
+        if state.out_of_band:
+            # Out-of-band: On the same filesystem but absolute file path
+            path = state.checkpoint_dir_name
+        else:
+            # In-band: resolve relative dir name on the storage filesystem.
+            path = Path(
+                storage_context.experiment_fs_path, state.checkpoint_dir_name
+            ).as_posix()
+
         return _TrainingResult(
             checkpoint=Checkpoint(
-                path=storage_context.build_checkpoint_path_from_name(
-                    state.checkpoint_dir_name
-                ),
+                path=path,
                 filesystem=storage_context.storage_filesystem,
             ),
             metrics=state.metrics,
         )
 
-    # Out-of-band: checkpoint_dir_name holds the full path;
-    #   reconstruct the filesystem from type_name.
-    if state.checkpoint_filesystem_type != "local":
-        logger.warning(
-            "Restoring an out-of-band checkpoint of %s at %s. Its filesystem "
-            "may be missing configurations (e.g. credentials, region, endpoint overrides). "
-            "Update the checkpoint's filesystem with a fully configured filesystem.",
-            state.checkpoint_filesystem_type,
-            state.checkpoint_dir_name,
-        )
-
+    # Out-of-band on a different filesystem
     if state.checkpoint_filesystem_type in _TYPE_NAME_FS_CLS:
+        if state.checkpoint_filesystem_type != "local":
+            logger.info(
+                "Restoring an out-of-band checkpoint on a different filesystem of %s at %s. "
+                "The checkpoint's Its filesystem may be missing configurations (e.g. credentials, region, endpoint overrides). "
+                "Update the checkpoint's filesystem with a fully configured filesystem if this causes a problem.",
+                state.checkpoint_filesystem_type,
+                state.checkpoint_dir_name,
+            )
+
         fs = _TYPE_NAME_FS_CLS[state.checkpoint_filesystem_type]
         return _TrainingResult(
             checkpoint=Checkpoint(state.checkpoint_dir_name, filesystem=fs()),
             metrics=state.metrics,
         )
-
     raise ValueError(
         f"Restoring an out-of-band checkpoint of {state.checkpoint_filesystem_type} "
         f"at {state.checkpoint_dir_name} has an unknown filesystem. "
@@ -161,16 +163,20 @@ def _get_state_from_training_result(
             out_of_band=False,
         )
 
-    fs_type = training_result.checkpoint.filesystem.type_name
-    if fs_type != "local":
-        logger.info(
-            "Persisting out-of-band checkpoint reference (%s, %s). On resume, "
-            "the filesystem will be reconstructed from its type_name only, "
-            "which may lose custom configuration such as credentials, region, "
-            "or endpoint overrides.",
-            fs_type,
-            training_result.checkpoint.path,
-        )
+    if training_result.checkpoint.filesystem is storage_context.storage_filesystem:
+        fs_type = None
+    else:
+        fs_type = training_result.checkpoint.filesystem.type_name
+        if fs_type != "local":
+            logger.debug(
+                "Persisting out-of-band checkpoint reference (%s, %s). On resume, "
+                "the filesystem will be reconstructed from its type_name only, "
+                "which may lose custom configuration such as credentials, region, "
+                "or endpoint overrides.",
+                fs_type,
+                training_result.checkpoint.path,
+            )
+
     return _TrainingResultState(
         checkpoint_dir_name=training_result.checkpoint.path,
         checkpoint_filesystem_type=fs_type,

@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+import shutil
 import signal
 import tempfile
 from pathlib import Path
@@ -427,6 +428,51 @@ def test_unsupported_returned_metrics(metric_name, tmp_path):
         "training function is not supported as it will throw an "
         "exception on deserialization."
     )
+
+
+def test_resumption_new_directory(tmp_path):
+    first_dir = tmp_path / "first-dir"
+    second_dir = tmp_path / "second-dir"
+
+    def train_fn():
+        with create_dict_checkpoint({}) as ckpt:
+            ray.train.report(metrics={"score": 1}, checkpoint=ckpt)
+
+        with create_dict_checkpoint({}) as ckpt:
+            ray.train.report(metrics={"score": 2}, checkpoint=ckpt)
+
+        reported_ckpts = ray.train.get_all_reported_checkpoints()
+        assert len(reported_ckpts) == 2
+
+        raise RuntimeError("intentional error")
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        run_config=RunConfig(
+            name="test-resumption-new-directory",
+            storage_path=str(first_dir),
+        ),
+    )
+    with pytest.raises(WorkerGroupError):
+        trainer.fit()
+
+    shutil.copytree(first_dir, second_dir)
+
+    def resumption_train_fn():
+        reported_ckpts = ray.train.get_all_reported_checkpoints()
+        assert len(reported_ckpts) == 2
+
+        assert reported_ckpts[0].metrics == {"score": 1}
+        assert reported_ckpts[1].metrics == {"score": 2}
+
+    resumption_trainer = DataParallelTrainer(
+        resumption_train_fn,
+        run_config=RunConfig(
+            name="test-resumption-new-directory",
+            storage_path=str(second_dir),
+        ),
+    )
+    resumption_trainer.fit()
 
 
 def test_local_in_out_of_band_checkpointing(
