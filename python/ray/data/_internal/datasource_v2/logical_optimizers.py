@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -52,6 +52,17 @@ class SupportsColumnPruning(ABC):
         """
         ...
 
+    @abstractmethod
+    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
+        """Physical column names selected after pruning, if any.
+
+        Returns:
+            ``None`` when no pruning has been applied (read all columns).
+            A tuple (possibly empty) after :meth:`prune_columns` has been
+            applied, listing on-disk / reader column names in read order.
+        """
+        ...
+
 
 @DeveloperAPI
 class SupportsLimitPushdown(ABC):
@@ -81,6 +92,18 @@ class SupportsPartitionPruning(ABC):
     Partition pruning allows skipping entire files/partitions based on
     predicates that reference partition columns.
     """
+
+    @property
+    @abstractmethod
+    def partition_columns(self) -> Set[str]:
+        """Names of columns that are partition keys.
+
+        Callers (e.g. the predicate-pushdown rule) use this to decide
+        whether a predicate should be routed through :meth:`push_filters`
+        (data columns) or :meth:`prune_partitions` (partition columns).
+        Must be fully populated by schema inference at planning time.
+        """
+        ...
 
     @abstractmethod
     def prune_partitions(self, predicate: "Expr") -> "Scanner":

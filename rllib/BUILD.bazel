@@ -1711,6 +1711,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_appo_multi_agent_data_balance",
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_multi_agent_data_balance.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # BC
 py_test(
     name = "test_bc",
@@ -1904,6 +1915,17 @@ py_test(
     name = "algorithms/tests/test_custom_resource",
     size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["algorithms/tests/test_custom_resource.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "algorithms/tests/test_get_main_process_bundle",
+    size = "small",
+    srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -4709,6 +4731,21 @@ py_test(
         "--stop-iters=3",
     ],
     main = "examples/metrics/custom_metrics_in_env_runners.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/metrics/clearing_ema",
+    size = "medium",
+    srcs = ["examples/metrics/clearing_ema.py"],
+    args = [
+        "--stop-iters=3",
+    ],
+    main = "examples/metrics/clearing_ema.py",
     tags = [
         "examples",
         "exclusive",

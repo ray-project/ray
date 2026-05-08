@@ -686,6 +686,9 @@ class AsyncioRouter:
                 ): self.update_deployment_config,
             },
             call_in_event_loop=self._event_loop,
+            # Multiple AsyncioRouters can share an actor (one per downstream
+            # handle), so include the deployment id to disambiguate.
+            client_id=f"{type(self).__name__}:{self_actor_id}:{deployment_id}",
         )
 
         shared = SharedRouterLongPollClient.get_or_create(
@@ -793,9 +796,15 @@ class AsyncioRouter:
                 max_backoff_s=self._max_backoff_s,
             )
 
+        # Guard against the case where request_router is None (e.g., when
+        # request_router_class is None and lazy initialization has not yet
+        # occurred). In that scenario there are no active replicas yet, so
+        # passing 0 is the correct and safe value.
+        _router = self.request_router
+        curr_num_replicas = len(_router.curr_replicas) if _router is not None else 0
         self._metrics_manager.update_deployment_config(
             deployment_config,
-            curr_num_replicas=len(self.request_router.curr_replicas),
+            curr_num_replicas=curr_num_replicas,
         )
 
     async def _resolve_request_arguments(
@@ -1478,6 +1487,7 @@ class SharedRouterLongPollClient:
             controller_handle,
             key_listeners={},
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_worker_id()}",
         )
 
     @classmethod
