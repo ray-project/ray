@@ -182,6 +182,54 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- endif %}
 {%- endif %}
 {%- endfor %}
+{%- if config.grpc_enabled %}
+frontend grpc_frontend
+    # gRPC requires HTTP/2. HAProxy decodes H2 frames into HTTP request
+    # semantics in `mode http` when `proto h2` is on the bind line.
+    bind {{ config.grpc_frontend_host }}:{{ config.grpc_frontend_port }} proto h2
+    mode http
+    log global
+    # gRPC carries metadata as HTTP/2 headers; route per-app on the
+    # `application` metadata that Ray Serve clients attach.
+{%- for backend in grpc_backends %}
+    acl is_{{ backend.name or 'unknown' }} req.hdr(application) -m str {{ backend.app_name }}
+    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
+{%- endfor %}
+{%- if grpc_backends %}
+    # Healthz / ListApplications carry no `application` header; replicas
+    # serve them themselves, so any healthy gRPC backend works.
+    default_backend {{ grpc_backends[0].name or 'unknown' }}
+{%- else %}
+    http-request return status 503 content-type text/plain string "No gRPC applications available"
+{%- endif %}
+{%- for item in grpc_backends_with_health_config %}
+{%- set backend = item.backend %}
+{%- set hc = item.health_config %}
+backend {{ backend.name or 'unknown' }}
+    mode http
+    log global
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_client_s is not none %}
+    timeout client {{ backend.timeout_client_s }}s
+    {%- endif %}
+    # TCP-level health checks: replica direct-ingress gRPC servers don't
+    # expose an HTTP healthz path. Promote to gRPC `Health/Check` later.
+    option tcp-check
+    {{ hc.default_server_directive }}
+    # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
+    {%- for server in backend.servers %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2
+    {%- endfor %}
+    {%- if backend.fallback_server %}
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 backup
+    {%- endif %}
+{%- endfor %}
+{%- endif %}
 listen stats
   bind *:{{ config.stats_port }}
   stats enable
