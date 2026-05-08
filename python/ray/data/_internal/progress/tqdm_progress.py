@@ -109,9 +109,12 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
             sub_progress_updaters = op.get_sub_progress_updaters()
             for name, metrics in sub_progress_metrics.items():
                 if sub_progress_bar_enabled:
+                    display_total = (
+                        metrics.total if metrics.total is not None else total
+                    )
                     display_pg = TqdmSubProgressBar(
                         name=f"  *- {name}",
-                        total=metrics.total,
+                        total=display_total,
                         unit="row",
                         position=num_progress_bars,
                         max_name_length=self.MAX_NAME_LENGTH,

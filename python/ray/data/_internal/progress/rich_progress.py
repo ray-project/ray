@@ -217,12 +217,15 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
 
             for name, metrics in sub_progress_metrics.items():
                 if sub_progress_bar_enabled:
+                    display_total = (
+                        metrics.total if metrics.total is not None else total
+                    )
                     progress = self._make_progress_bar(
                         _TREE_VERTICAL_SUB_PROGRESS, "", 10
                     )
                     tid = progress.add_task(
                         name,
-                        total=metrics.total if metrics.total is not None else 1,
+                        total=display_total if display_total is not None else 1,
                         start=True,
                         rate_str="? rows/s",
                         count_str="0/?",
@@ -230,7 +233,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                     rows.append(progress)
                     display_pg = RichSubProgressBar(
                         name=name,
-                        total=metrics.total,
+                        total=display_total,
                         progress=progress,
                         tid=tid,
                         max_name_length=self.MAX_NAME_LENGTH,
