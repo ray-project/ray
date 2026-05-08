@@ -66,7 +66,7 @@ class EventMemoryMonitorTest : public ::testing::Test {
 TEST_F(EventMemoryMonitorTest, TestNonexistentCgroupPathFailsGracefully) {
   std::string nonexistent_path = "/nonexistent/cgroup/path";
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
-      EventMemoryMonitor::Create(std::move(nonexistent_path), []() {});
+      EventMemoryMonitor::Create(std::move(nonexistent_path), [](const std::string &) {});
 
   ASSERT_TRUE(result.has_error())
       << "Failed to catch invalid cgroup path when creating EventMemoryMonitor";
@@ -78,7 +78,7 @@ TEST_F(EventMemoryMonitorTest, TestMissingMemoryEventsFileFailsGracefully) {
   RAY_CHECK(empty_dir_or.ok()) << empty_dir_or.status().ToString();
   std::unique_ptr<TempDirectory> empty_dir = std::move(empty_dir_or.value());
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
-      EventMemoryMonitor::Create(empty_dir->GetPath(), []() {});
+      EventMemoryMonitor::Create(empty_dir->GetPath(), [](const std::string &) {});
 
   ASSERT_TRUE(result.has_error())
       << "Failed to catch invalid cgroup configuration when creating EventMemoryMonitor";
@@ -87,7 +87,7 @@ TEST_F(EventMemoryMonitorTest, TestMissingMemoryEventsFileFailsGracefully) {
 
 TEST_F(EventMemoryMonitorTest, TestSuccessfulCreationWithValidPath) {
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
-      EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(), []() {});
+      EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(), [](const std::string &) {});
   ASSERT_TRUE(result.has_value())
       << "Failed to create EventMemoryMonitor: " << result.message();
   std::unique_ptr<EventMemoryMonitor> monitor = std::move(result.value());
