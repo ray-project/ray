@@ -417,6 +417,52 @@ class TestAcceleratorConfigLogic:
         tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         assert tpu_accel_with_topo.requires_deferred_placement_group is True
 
+    @pytest.mark.parametrize(
+        "topology,num_devices,accelerator_type_str,expected_bundles_count,expected_chips_per_host",
+        [
+            ("1x1", 1, "TPU-V6E", 1, 1),
+            ("1x1", 1, "TPU-V7X", 1, 1),
+            ("4x4", 16, "TPU-V6E", 4, 4),
+            ("2x2x2", 8, "TPU-V5P", 2, 4),
+            ("2x2", 4, "TPU-V5LITEPOD", 1, 4),
+            ("2x2x1", 4, "TPU-V4", 1, 4),
+            ("2x4", 8, "TPU-V6E", 1, 8),
+        ],
+    )
+    def test_default_bundles_topology(
+        self,
+        topology,
+        num_devices,
+        accelerator_type_str,
+        expected_bundles_count,
+        expected_chips_per_host,
+    ):
+        """Test that different topologies return correct per-host bundles."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology=topology))
+        bundles = tpu_accel.default_bundles(
+            num_devices=num_devices, accelerator_type_str=accelerator_type_str
+        )
+
+        assert len(bundles) == expected_bundles_count
+        for bundle in bundles:
+            assert bundle["TPU"] == expected_chips_per_host
+            assert f"accelerator_type:{accelerator_type_str}" in bundle
+
+    def test_default_bundles_topology_missing_accelerator_type_raises(self):
+        """Test that ValueError is raised when topology is present but accelerator type is missing."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        with pytest.raises(
+            ValueError,
+            match="`accelerator_type` must be specified when `topology` is present",
+        ):
+            tpu_accel.default_bundles(num_devices=16, accelerator_type_str=None)
+
+    def test_default_bundles_topology_non_multiple_num_devices_raises(self):
+        """Test that ValueError is raised when num_devices is not a multiple of chips_per_host."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        with pytest.raises(ValueError, match="must be a multiple of chips_per_host"):
+            tpu_accel.default_bundles(num_devices=6, accelerator_type_str="TPU-V6E")
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
