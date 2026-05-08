@@ -2536,9 +2536,10 @@ class Replica:
 
         # If the HTTP path does not match the deployment route prefix,
         # it is invalid and we should not serve it. Ingress request router
-        # peer deployments (e.g. LLMRouter) have no route prefix; treat
-        # that as "/" so any path matches and downstream code dispatches.
-        route_prefix = self._route_prefix or "/"
+        # peer deployments (e.g. LLMRouter) have no route prefix; fall
+        # back to "" so any path (including the empty-path ASGI edge case)
+        # matches and downstream user code dispatches.
+        route_prefix = self._route_prefix or ""
         if not route.startswith(route_prefix):
             for msg in convert_object_to_asgi_messages(
                 f"Path '{route}' not found. "
