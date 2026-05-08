@@ -187,16 +187,18 @@ class PandasJSONDatasource(FileBasedDatasource):
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         chunksize = self._estimate_chunksize(f)
 
-        stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
-        if chunksize is None:
-            # When chunksize=None, pandas returns DataFrame directly (no context manager)
-            df = pd.read_json(stream, chunksize=chunksize, lines=True)
-            yield _cast_range_index_to_string(df)
-        else:
-            # When chunksize is a number, pandas returns JsonReader (supports context manager)
-            with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
-                for df in reader:
-                    yield _cast_range_index_to_string(df)
+        with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
+            if chunksize is None:
+                # When chunksize=None, pandas returns DataFrame directly
+                # (no context manager).
+                df = pd.read_json(stream, chunksize=chunksize, lines=True)
+                yield _cast_range_index_to_string(df)
+            else:
+                # When chunksize is a number, pandas returns JsonReader
+                # (supports context manager).
+                with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
+                    for df in reader:
+                        yield _cast_range_index_to_string(df)
 
     def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
         """Estimate the chunksize by sampling the first row.
@@ -215,12 +217,12 @@ class PandasJSONDatasource(FileBasedDatasource):
             return None
 
         try:
-            stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
-            with pd.read_json(stream, chunksize=1, lines=True) as reader:
-                try:
-                    df = _cast_range_index_to_string(next(reader))
-                except StopIteration:
-                    return 1
+            with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
+                with pd.read_json(stream, chunksize=1, lines=True) as reader:
+                    try:
+                        df = _cast_range_index_to_string(next(reader))
+                    except StopIteration:
+                        return 1
 
             block_accessor = PandasBlockAccessor.for_block(df)
             if block_accessor.num_rows() == 0:
@@ -288,5 +290,4 @@ class StrictBufferedReader(io.RawIOBase):
     def close(self):
         if not self.closed:
             self._file.detach()
-            self._file.close()
             super().close()
