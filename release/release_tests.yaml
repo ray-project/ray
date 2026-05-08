@@ -5164,7 +5164,7 @@
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
-    timeout: 5000
+    timeout: 3600
     script: bash ci/tests.sh  # relative to working_dir
 
   variations:
