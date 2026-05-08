@@ -5157,7 +5157,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
-  frequency: weekly
+  frequency: manual # was weekly
   python: "3.11"
   group: ray-examples
   team: data
