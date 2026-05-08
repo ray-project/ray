@@ -99,6 +99,11 @@ frontend http_frontend
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    # Fail loudly when the Lua dispatch did not pick a replica. Must appear
+    # before the use_backend rules below so the request never falls back to
+    # the primary backend (which would be a silent bypass of the configured
+    # router policy).
+    http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found }
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
