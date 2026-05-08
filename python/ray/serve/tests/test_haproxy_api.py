@@ -651,6 +651,64 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
         assert "X-Serve-Reason" in cfg, cfg
 
 
+@pytest.mark.parametrize("forward_body", [True, False])
+def test_ingress_request_router_forward_body_gate_renders(
+    haproxy_api_cleanup, monkeypatch, forward_body
+):
+    """The FORWARD_BODY escape hatch must drive both:
+    - HAProxy ``wait-for-body`` + ``tune.bufsize`` directives (memory cost
+      and the per-request body round-trip), and
+    - the Lua ``FORWARD_BODY`` constant (whether the action reads the body
+      and forwards it to ``/internal/route``).
+
+    Off by default: round-robin ignores the body, so neither cost is paid.
+    """
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        forward_body,
+    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = _make_api(
+            temp_dir,
+            {
+                "llm": BackendConfig(
+                    name="llm",
+                    path_prefix="/",
+                    app_name="llm",
+                    servers=[
+                        ServerConfig(
+                            name="r1",
+                            host="10.0.0.1",
+                            port=30001,
+                            replica_id="rid_1",
+                        )
+                    ],
+                    ingress_request_router_servers=[
+                        ServerConfig(name="router", host="10.0.0.10", port=9000)
+                    ],
+                ),
+            },
+        )
+        with mock.patch(
+            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            api.config_file_path,
+        ):
+            api._generate_config_file_internal()
+        with open(api.config_file_path) as f:
+            cfg = f.read()
+        with open(os.path.join(temp_dir, "ingress_request_router.lua")) as f:
+            lua = f.read()
+
+        if forward_body:
+            assert "tune.bufsize" in cfg, cfg
+            assert "wait-for-body" in cfg, cfg
+            assert "local FORWARD_BODY = true" in lua, lua
+        else:
+            assert "tune.bufsize" not in cfg, cfg
+            assert "wait-for-body" not in cfg, cfg
+            assert "local FORWARD_BODY = false" in lua, lua
+
+
 def _create_replica_server(port: int, replica_id_header: str):
     """Fake data-plane replica that echoes its identity in a response header."""
     app = FastAPI()
@@ -693,10 +751,15 @@ def _create_router_server(port: int, replica_id_to_return: str):
 
 
 @pytest.mark.asyncio
-async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
+async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
     """Run actual HAProxy against a fake router + two replicas; verify a POST
     is pinned to the replica the router selects, while a GET (which doesn't
-    trigger the router-routed path) is not."""
+    trigger the router-routed path) is not. Forces FORWARD_BODY=True so the
+    body-forwarding path stays exercised end-to-end."""
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -936,28 +999,25 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 timeout=10,
             )
 
-            # Every dispatch failure mode must surface as a 5xx with a
-            # reason label, never as a silent primary-backend fallback.
-            # ``router_non_200``: router answered with status != 200 (forced
-            # by the broken-router stub).
-            # ``empty_body``: HAProxy's wait-for-body completed but the
-            # request had no body to forward to the router.
-            failure_cases = [
-                (dict(json={"prompt": "hi"}), "router_non_200"),
-                (dict(data=""), "empty_body"),
-            ]
-            for kwargs, expected_reason in failure_cases:
+            # Every dispatch failure must surface as 5xx with a reason
+            # label, never as a silent primary-backend fallback. Both
+            # empty and non-empty bodies are routed through the broken
+            # router (router gets called with body="" when FORWARD_BODY
+            # is off, which is the default), so both shapes surface as
+            # ``router_non_200``. The empty-body shape is included to
+            # pin that empty bodies still go through routing rather than
+            # silently bypassing the router.
+            for body_kwargs in (dict(json={"prompt": "hi"}), dict(data="")):
                 for _ in range(3):
                     resp = requests.post(
                         f"http://127.0.0.1:{haproxy_port}/predict",
                         timeout=5,
-                        **kwargs,
+                        **body_kwargs,
                     )
-                    assert resp.status_code == 503, (expected_reason, resp.text)
-                    assert resp.headers.get("X-Serve-Reason") == expected_reason, (
-                        expected_reason,
-                        resp.headers,
-                    )
+                    assert resp.status_code == 503, resp.text
+                    assert (
+                        resp.headers.get("X-Serve-Reason") == "router_non_200"
+                    ), resp.headers
 
             stats_csv = requests.get(
                 f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5

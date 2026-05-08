@@ -28,6 +28,8 @@ HAPROXY_CONFIG_TEMPLATE = """global
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
+    {%- endif %}
+    {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
@@ -97,7 +99,9 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    {%- endif %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     # Fail loudly when the Lua dispatch did not pick a replica. Must appear
     # before the use_backend rules below so the request never falls back to
