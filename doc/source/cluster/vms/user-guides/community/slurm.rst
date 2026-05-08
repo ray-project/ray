@@ -130,7 +130,7 @@ After the training job is completed, the Ray cluster will be stopped automatical
 Running inside Docker containers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If your SLURM compute nodes run the job inside a Docker container, make
+If your Slurm compute nodes run the job inside a Docker container, make
 sure PID 1 inside the container is a real init process — ``tini``,
 ``dumb-init``, or whatever Docker injects when you pass ``--init``
 (currently ``tini``). Otherwise the Ray processes that ``ray stop``
@@ -191,7 +191,7 @@ to reap the zombie.
 * On a typical modern Linux distribution, PID 1 is ``systemd``, which
   reaps orphaned children. Zombies disappear immediately and
   ``psutil.wait_procs`` reports them as ``gone``.
-* Inside a containerized SLURM compute node where PID 1 is ``slurmd``,
+* Inside a containerized Slurm compute node where PID 1 is ``slurmd``,
   ``slurmd`` registers handlers for ``SIGINT``, ``SIGTERM``, ``SIGQUIT``,
   ``SIGHUP``, ``SIGUSR2``, ``SIGPIPE``, and ``SIGPROF`` — but not
   ``SIGCHLD`` — and so does not reap re-parented orphan processes. (The
@@ -203,7 +203,7 @@ to reap the zombie.
   ``ray stop`` reports ``Stopped only 0 out of N``.
 
 This is a deployment-layer issue (a container without a real init), not
-a Ray bug and not a SLURM bug.
+a Ray bug and not a Slurm bug.
 
 How to fix it
 ^^^^^^^^^^^^^
@@ -229,7 +229,7 @@ exit). Pick the option that matches how you launch the container:
   multiple processes: see
   `Run multiple services in a container <https://docs.docker.com/engine/containers/multi-service_container/>`__.
 
-Example — a ``docker-compose.yaml`` snippet for a containerized SLURM
+Example — a ``docker-compose.yaml`` snippet for a containerized Slurm
 compute node. The line that fixes the zombie problem is ``init: true``:
 
 .. code-block:: yaml
