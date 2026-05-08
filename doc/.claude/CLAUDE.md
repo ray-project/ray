@@ -27,6 +27,5 @@ If a docs-only PR hits unnecessarily broad tests, file a `.buildkite/test.rules.
 
 - `/lint` — run linters on modified files.
 - `/fetch-buildkite-logs` — pull build logs for CI failures.
-- `/rebuild` — guided rebuild after C++/Cython changes.
 
 See top-level `.claude/CLAUDE.md` for the full skill index.
