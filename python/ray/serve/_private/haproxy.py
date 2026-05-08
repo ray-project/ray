@@ -806,9 +806,21 @@ class HAProxyApi(ProxyApi):
 
             await self._wait_for_hap_availability(old_proc)
 
-            # Save server state if optimization is enabled
+            # Save server state if optimization is enabled. Treat failures
+            # as non-fatal: the state file is purely an optimization (lets
+            # the new HAProxy preserve per-server connection counts across
+            # reload), and a stale or missing file just causes HAProxy to
+            # start counters from zero. A `show servers state` admin-socket
+            # timeout here under load used to abort the entire reload --
+            # which then cascaded since the next broadcast retried with
+            # the same overloaded socket.
             if self.cfg.enable_hap_optimization:
-                await self._save_server_state()
+                try:
+                    await self._save_server_state()
+                except Exception as e:
+                    logger.warning(
+                        f"Skipping HAProxy server state save before reload: {e}"
+                    )
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
@@ -829,6 +841,46 @@ class HAProxyApi(ProxyApi):
             logger.error(f"HAProxy graceful reload failed: {e}")
             raise
 
+    async def probe_http_listener(self) -> bool:
+        """Probe the HAProxy HTTP listener via /-/healthz.
+
+        Returns True if HAProxy is serving 200 responses on its frontend
+        port, False otherwise. Used as a readiness signal that does NOT
+        depend on the admin socket -- the admin socket is shared with our
+        runtime-API commands and the `-x` reload FD transfer, and saturates
+        under autoscaling churn. The HTTP listener is served by HAProxy
+        worker threads independent of the CLI mux, so it stays responsive
+        when the admin socket is busy.
+
+        During graceful reload (where the old process is still bound to the
+        same port) this probe may be answered by either the old or the new
+        process; that's acceptable for readiness purposes because either
+        way the port is serving traffic. Crash detection is handled
+        separately by polling `proc.returncode`.
+        """
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", self.cfg.frontend_port),
+                timeout=2.0,
+            )
+        except Exception:
+            return False
+        try:
+            writer.write(
+                b"GET /-/healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+            )
+            await writer.drain()
+            response = await asyncio.wait_for(reader.read(256), timeout=2.0)
+            return b"HTTP/1.0 200" in response or b"HTTP/1.1 200" in response
+        except Exception:
+            return False
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
     async def _wait_for_hap_availability(
         self,
         proc: asyncio.subprocess.Process,
@@ -836,7 +888,6 @@ class HAProxyApi(ProxyApi):
     ) -> None:
         start_time = time.time()
 
-        # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
                 stdout = await proc.stdout.read() if proc.stdout else b""
@@ -850,7 +901,12 @@ class HAProxyApi(ProxyApi):
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
                 )
 
-            if await self.is_running():
+            # Probe the HTTP listener instead of the admin socket. The admin
+            # socket gets saturated under runtime-API load and a benign
+            # `show info` can take >5s to return, falsely flagging a healthy
+            # HAProxy as not-yet-running. The HTTP listener is independent
+            # of the CLI mux and stays responsive.
+            if await self.probe_http_listener():
                 return
 
             await asyncio.sleep(0.5)
@@ -1524,51 +1580,12 @@ class HAProxyManager(ProxyActorInterface):
             return False
 
         logger.debug("Received health check.", extra={"log_to_stderr": False})
-        return await self._probe_http_listener()
-
-    async def _probe_http_listener(self) -> bool:
-        """Probe the HAProxy HTTP listener via /-/healthz.
-
-        The controller's `check_health` previously called `is_running()`,
-        which sends `show info` over the HAProxy admin socket. Under load
-        that socket also carries our runtime-API commands and HAProxy's
-        `-x` reload FD transfer, and saturates: a benign `show info` can
-        take >5s to return, which falsely flags the proxy as unhealthy
-        and triggers the controller to kill+recreate it. The kill orphans
-        the HAProxy child (Ray actor death doesn't cascade to subprocesses),
-        whose listener ports then block the new actor's HAProxy from
-        binding -- compounding the original cascade.
-
-        Probing the HTTP listener directly bypasses the admin socket. The
-        listener is served by HAProxy's worker threads, which are
-        independent of the CLI mux that handles socket commands, so it
-        stays responsive even when admin socket is saturated. This matches
-        what the AWS ALB target group health check sees, so the proxy's
-        self-reported health aligns with what the upstream load balancer
-        will route to.
-        """
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection("127.0.0.1", self._http_options.port),
-                timeout=2.0,
-            )
-        except Exception:
-            return False
-        try:
-            writer.write(
-                b"GET /-/healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-            )
-            await writer.drain()
-            response = await asyncio.wait_for(reader.read(256), timeout=2.0)
-            return b"HTTP/1.0 200" in response or b"HTTP/1.1 200" in response
-        except Exception:
-            return False
-        finally:
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                pass
+        # Probe the HTTP listener instead of the admin socket. See
+        # HAProxyApi.probe_http_listener for the rationale -- briefly: the
+        # admin socket competes with runtime-API load, and a saturated
+        # admin socket would otherwise cause the controller to kill the
+        # actor and trigger a reload-orphan-port cascade.
+        return await self._haproxy.probe_http_listener()
 
     def pong(self) -> str:
         pass
