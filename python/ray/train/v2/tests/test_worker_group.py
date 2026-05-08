@@ -1,13 +1,16 @@
 import collections
 import os
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
 from ray._private.state import state as ray_state
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
+from ray.train.v2._internal.callbacks import backend_setup
+from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -796,6 +799,65 @@ def test_worker_group_callback():
     wg.shutdown()
     assert hooks.shutdown_hook_called
     assert hooks.after_worker_group_shutdown_hook_called
+
+
+def _make_backend_setup_callback_with_failing_shutdown(
+    error: Exception,
+) -> BackendSetupCallback:
+    """Build a `BackendSetupCallback` whose backend raises `error` from `on_shutdown`."""
+    failing_backend = MagicMock()
+    failing_backend.on_shutdown.side_effect = error
+    backend_config = MagicMock()
+    backend_config.backend_cls.return_value = failing_backend
+    cb = BackendSetupCallback(backend_config)
+    cb._backend = failing_backend
+    return cb
+
+
+@pytest.mark.parametrize(
+    "shutdown_error",
+    [
+        RayActorError(actor_id="abc", error_msg="actor died"),
+        RayTaskError(
+            function_name="_shutdown_torch",
+            traceback_str="traceback",
+            cause=RuntimeError("NCCL error: remote process exited"),
+            proctitle="test",
+            pid=1,
+            ip="127.0.0.1",
+        ),
+    ],
+    ids=["RayActorError", "RayTaskError"],
+)
+def test_backend_setup_callback_swallows_shutdown_failure(shutdown_error):
+    """Test `BackendSetupCallback` swallows both RayActorError and RayTaskError so
+    `WorkerGroup.shutdown()` does not propagate the cleanup failure.
+    """
+    cb = _make_backend_setup_callback_with_failing_shutdown(shutdown_error)
+    failing_backend = cb._backend
+
+    wg = _default_inactive_worker_group(callbacks=[cb])
+    wg._start()
+
+    with patch.object(backend_setup, "logger") as mock_logger:
+        wg.shutdown()  # must not raise
+
+    failing_backend.on_shutdown.assert_called_once()
+    mock_logger.warning.assert_called_once()
+    msg = mock_logger.warning.call_args.args[0]
+    assert "Graceful shutdown of backend failed" in msg
+    # exc_info=True keeps the underlying NCCL/actor failure in the logs.
+    assert mock_logger.warning.call_args.kwargs.get("exc_info") is True
+
+
+def test_backend_setup_callback_propagates_unexpected_shutdown_error():
+    """Non-Ray exceptions from `on_shutdown` must propagate so they aren't
+    silently masked."""
+    cb = _make_backend_setup_callback_with_failing_shutdown(
+        ValueError("unexpected backend bug")
+    )
+    with pytest.raises(ValueError, match="unexpected backend bug"):
+        cb.before_execution_group_shutdown(MagicMock())
 
 
 @pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
