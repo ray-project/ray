@@ -424,9 +424,7 @@ class TestCheckpointInfo:
     and apply_checkpoint_info."""
 
     def _make_llm_config(self) -> LLMConfig:
-        return LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model")
-        )
+        return LLMConfig(model_loading_config=ModelLoadingConfig(model_id="test_model"))
 
     # ------------------------------------------------------------------
     # _load_hf_config
