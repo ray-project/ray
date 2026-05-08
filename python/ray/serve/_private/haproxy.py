@@ -725,21 +725,40 @@ class HAProxyApi(ProxyApi):
 
         logger.debug(f"Starting HAProxy with args: {args}")
 
+        spawn_start = time.monotonic()
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        spawn_elapsed = time.monotonic() - spawn_start
 
+        wait_start = time.monotonic()
         try:
             await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
         except Exception:
+            wait_elapsed = time.monotonic() - wait_start
+            logger.warning(
+                "HAProxy start failed (PID=%s): spawn=%.2fs wait=%.2fs args=%s",
+                proc.pid,
+                spawn_elapsed,
+                wait_elapsed,
+                extra_args,
+            )
             # If startup fails, ensure the process is killed to avoid orphaned processes
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
             raise
 
+        wait_elapsed = time.monotonic() - wait_start
+        logger.info(
+            "HAProxy started (PID=%s): spawn=%.2fs wait=%.2fs args=%s",
+            proc.pid,
+            spawn_elapsed,
+            wait_elapsed,
+            extra_args,
+        )
         return proc
 
     async def _save_server_state(self) -> None:
@@ -774,6 +793,8 @@ class HAProxyApi(ProxyApi):
 
     async def _graceful_reload(self) -> None:
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
+        reload_start = time.monotonic()
+        phases: List[str] = []
         try:
             old_proc = self._proc
             # If the previous HAProxy process has already exited (e.g., a prior
@@ -802,11 +823,24 @@ class HAProxyApi(ProxyApi):
                 # those ports until the orphans finish their natural drain
                 # (tens of seconds at minimum). SIGKILL them up front so the
                 # fresh process can bind immediately.
+                t0 = time.monotonic()
                 await self._terminate_old_procs()
+                phases.append(f"terminate_old={time.monotonic() - t0:.2f}s")
+
+                t0 = time.monotonic()
                 self._proc = await self._start_and_wait_for_haproxy()
+                phases.append(f"fresh_start={time.monotonic() - t0:.2f}s")
+
+                logger.info(
+                    "HAProxy fresh-start reload OK in %.2fs (%s)",
+                    time.monotonic() - reload_start,
+                    " ".join(phases),
+                )
                 return
 
+            t0 = time.monotonic()
             await self._wait_for_hap_availability(old_proc)
+            phases.append(f"old_proc_check={time.monotonic() - t0:.2f}s")
 
             # Save server state if optimization is enabled. Treat failures
             # as non-fatal: the state file is purely an optimization (lets
@@ -817,9 +851,12 @@ class HAProxyApi(ProxyApi):
             # which then cascaded since the next broadcast retried with
             # the same overloaded socket.
             if self.cfg.enable_hap_optimization:
+                t0 = time.monotonic()
                 try:
                     await self._save_server_state()
+                    phases.append(f"save_state={time.monotonic() - t0:.2f}s")
                 except Exception as e:
+                    phases.append(f"save_state_skipped={time.monotonic() - t0:.2f}s")
                     logger.warning(
                         f"Skipping HAProxy server state save before reload: {e}"
                     )
@@ -830,17 +867,26 @@ class HAProxyApi(ProxyApi):
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
 
+            t0 = time.monotonic()
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
+            phases.append(f"new_proc_start={time.monotonic() - t0:.2f}s")
 
             # Track old process so we can ensure it's cleaned up during shutdown
             if old_proc is not None:
                 self._old_procs.append(old_proc)
 
             logger.info(
-                "Successfully performed graceful HAProxy reload with process restart."
+                "HAProxy graceful reload OK in %.2fs (%s)",
+                time.monotonic() - reload_start,
+                " ".join(phases),
             )
         except Exception as e:
-            logger.error(f"HAProxy graceful reload failed: {e}")
+            logger.error(
+                "HAProxy graceful reload failed after %.2fs (%s): %s",
+                time.monotonic() - reload_start,
+                " ".join(phases) if phases else "no_phases_completed",
+                e,
+            )
             raise
 
     async def _is_listener_bound(self) -> bool:
@@ -925,9 +971,11 @@ class HAProxyApi(ProxyApi):
         proc: asyncio.subprocess.Process,
         timeout_s: int = RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S,
     ) -> None:
-        start_time = time.time()
+        start_time = time.monotonic()
+        iterations = 0
 
-        while time.time() - start_time < timeout_s:
+        while time.monotonic() - start_time < timeout_s:
+            iterations += 1
             if proc.returncode is not None:
                 stdout = await proc.stdout.read() if proc.stdout else b""
                 stderr = await proc.stderr.read() if proc.stderr else b""
@@ -937,7 +985,10 @@ class HAProxyApi(ProxyApi):
                 )
 
                 raise RuntimeError(
-                    f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
+                    f"HAProxy crashed during startup after "
+                    f"{time.monotonic() - start_time:.2f}s, "
+                    f"{iterations} probe attempts: "
+                    f"{output or f'exit code {proc.returncode}'}"
                 )
 
             # TCP-only check: is the listener accepting connections? We
@@ -946,12 +997,18 @@ class HAProxyApi(ProxyApi):
             # signal for "HAProxy is up"; the controller's check_health
             # uses the HTTP probe to verify ongoing serving capability.
             if await self._is_listener_bound():
+                logger.debug(
+                    "HAProxy listener bound after %.2fs (%d probe attempts)",
+                    time.monotonic() - start_time,
+                    iterations,
+                )
                 return
 
             await asyncio.sleep(0.5)
 
         raise RuntimeError(
-            f"HAProxy did not enter running state within {timeout_s} seconds."
+            f"HAProxy did not enter running state within {timeout_s} seconds "
+            f"({iterations} probe attempts)."
         )
 
     def _generate_config_file_internal(self) -> None:
