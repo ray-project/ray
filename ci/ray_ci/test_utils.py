@@ -5,7 +5,6 @@ from typing import List
 from unittest import mock
 
 import pytest
-from ray_release.test import Test
 
 from ci.ray_ci.utils import (
     chunk_into_n,
@@ -13,6 +12,8 @@ from ci.ray_ci.utils import (
     filter_tests,
     get_flaky_test_names,
 )
+
+from ray_release.test import Test
 
 
 def test_chunk_into_n() -> None:

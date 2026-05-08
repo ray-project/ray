@@ -14,6 +14,7 @@
 
 #include "ray/common/test_utils.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #ifndef _WIN32
@@ -36,8 +37,22 @@
 
 namespace ray {
 
+static void InitRedisPathsFromEnv() {
+  auto init_from_env = [](std::string &path, const char *env_name) {
+    if (path.empty()) {
+      const char *env = std::getenv(env_name);
+      if (env) {
+        path = env;
+      }
+    }
+  };
+  init_from_env(TEST_REDIS_SERVER_EXEC_PATH, "TEST_REDIS_SERVER_EXEC_PATH");
+  init_from_env(TEST_REDIS_CLIENT_EXEC_PATH, "TEST_REDIS_CLIENT_EXEC_PATH");
+}
+
 void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_ports,
                                         bool save) {
+  InitRedisPathsFromEnv();
   if (redis_server_ports.empty()) {
     TEST_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(0, save));
   } else {
@@ -74,7 +89,9 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
 #endif
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  auto [proc, ec] = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!ec) << "Failed to start redis because process failed to spawn: "
+                 << ec.message();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return actual_port;
 }

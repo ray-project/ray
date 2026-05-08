@@ -2,6 +2,8 @@ import os
 import sys
 
 from ray._private.ray_constants import (  # noqa F401
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+    AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
     LABELS_ENVIRONMENT_VARIABLE,
@@ -128,9 +130,22 @@ RAY_PROCESSES = [
     ],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
-    [os.path.join("dashboard", "agent.py"), False],
+    [AGENT_PROCESS_TYPE_DASHBOARD_AGENT, False],
     [os.path.join("dashboard", "dashboard.py"), False],
-    [os.path.join("runtime_env", "agent", "main.py"), False],
+    [AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT, False],
+    # On Windows, setproctitle does not change the process name or command line
+    # visible to psutil, so the "ray::DashboardAgent" / "ray::RuntimeEnvAgent"
+    # keywords above will never match. Add fallback entries that match the
+    # actual script paths in the command line. See
+    # https://github.com/ray-project/ray/issues/61452
+    *(
+        [
+            [os.path.join("dashboard", "agent.py"), False],
+            [os.path.join("runtime_env", "agent", "main.py"), False],
+        ]
+        if sys.platform == "win32"
+        else []
+    ),
     ["ray_process_reaper.py", False],
     ["gcs_server", True],
 ]

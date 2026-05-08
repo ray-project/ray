@@ -46,13 +46,29 @@
 
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
-  FILE *fp = setmntent(mount_file_path_.c_str(), "r");
+  std::string mount_file_path = mount_file_path_;
+
+  int fd = open(mount_file_path.c_str(), O_RDONLY);
+
+  if (fd == -1) {
+    mount_file_path = fallback_mount_file_path_;
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to open mount fail at %s because of error '%s'. Using fallback mount "
+        "file at %s.",
+        mount_file_path_,
+        strerror(errno),
+        fallback_mount_file_path_);
+  } else {
+    close(fd);
+  }
+
+  FILE *fp = setmntent(mount_file_path.c_str(), "r");
 
   if (!fp) {
     return Status::Invalid(
         absl::StrFormat("Failed to open mount file at %s. Could not verify that "
                         "cgroupv2 was mounted correctly. \n%s",
-                        mount_file_path_,
+                        mount_file_path,
                         strerror(errno)));
   }
 
@@ -71,7 +87,7 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
     return Status::Invalid(
         absl::StrFormat("Failed to parse mount file at %s. Could not verify that "
                         "cgroupv2 was mounted correctly.",
-                        mount_file_path_));
+                        mount_file_path));
   }
 
   if (found_cgroupv1 && found_cgroupv2) {
@@ -438,6 +454,29 @@ Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
 
   close(fd);
   return Status::OK();
+}
+
+StatusOr<std::string> SysFsCgroupDriver::GetConstraintValue(
+    const std::string &cgroup_path, const std::string &constraint_name) {
+  std::filesystem::path constraint_file_path =
+      std::filesystem::path(cgroup_path) / constraint_name;
+  if (!std::filesystem::exists(constraint_file_path)) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Cgroup or constraint does not exist: %s/%s.", cgroup_path, constraint_name));
+  }
+  std::ifstream constraint_file(constraint_file_path);
+  if (!constraint_file.is_open()) {
+    return Status::IOError(absl::StrFormat(
+        "Failed to open %s from cgroup %s.", constraint_name, cgroup_path));
+  }
+
+  std::string value;
+  constraint_file >> value;
+  if (value.empty()) {
+    return Status::IOError(absl::StrFormat(
+        "Failed to read %s from cgroup %s.", constraint_name, cgroup_path));
+  }
+  return value;
 }
 
 }  // namespace ray

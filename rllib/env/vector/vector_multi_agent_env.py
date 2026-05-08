@@ -1,11 +1,10 @@
 from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 import gymnasium as gym
+import numpy as np
 from gymnasium.core import RenderFrame
 from gymnasium.envs.registration import EnvSpec
 from gymnasium.utils import seeding
-import numpy as np
-
 
 ArrayType = TypeVar("ArrayType")
 

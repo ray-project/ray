@@ -10,7 +10,7 @@ The checkpoints are synced to S3.
 
 If a trial is restored, it should restart from the last checkpointed iteration.
 
-The test is succesfull if all trials finish with the expected number of iterations,
+The test is successful if all trials finish with the expected number of iterations,
 and that a checkpoint is always available when restoring.
 
 This test only works on AWS as it uses AWS CLI to terminate nodes.

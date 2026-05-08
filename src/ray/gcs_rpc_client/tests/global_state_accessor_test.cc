@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
@@ -86,7 +86,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         fake_storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/fake_storage_operation_count_counter_,
-        fake_scheduler_placement_time_s_histogram_,
+        /*resource_usage_gauge=*/fake_resource_usage_gauge_,
+        fake_scheduler_placement_time_ms_histogram_,
+        /*health_check_rpc_latency_ms_histogram=*/
+        fake_health_check_rpc_latency_ms_histogram_,
     };
 
     gcs_server_.reset(new gcs::GcsServer(config, gcs_server_metrics, *io_service_));
@@ -159,7 +162,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_task_events_stored_gauge_;
   observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter fake_storage_operation_count_counter_;
-  observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
+  observability::FakeGauge fake_resource_usage_gauge_;
+  observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
+  observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 
@@ -390,21 +395,3 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
                          ::testing::Values(false, true));
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

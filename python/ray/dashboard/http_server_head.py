@@ -10,6 +10,7 @@ import time
 from math import floor
 from typing import List
 
+import multidict
 from packaging.version import Version
 
 import ray
@@ -20,7 +21,14 @@ from ray import ray_constants
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
-from ray.dashboard import authentication_utils as auth_utils
+from ray._private.authentication import (
+    authentication_constants,
+    authentication_utils as auth_utils,
+)
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_middleware,
+)
+from ray._raylet import get_authentication_mode
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
@@ -86,6 +94,7 @@ class HttpServerDashboardHead:
         gcs_address: str,
         session_name: str,
         metrics: DashboardPrometheusMetrics,
+        proxy_server_url: str | None = None,
     ):
         self.ip = ip
         self.http_host = http_host
@@ -94,6 +103,7 @@ class HttpServerDashboardHead:
         self.head_node_ip = parse_address(gcs_address)[0]
         self.metrics = metrics
         self._session_name = session_name
+        self.proxy_server_url = proxy_server_url
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -160,33 +170,103 @@ class HttpServerDashboardHead:
                 status=500, text="Internal Server Error:" + str(e)
             )
 
+    @routes.get("/api/authentication_mode")
+    async def get_authentication_mode(self, req) -> aiohttp.web.Response:
+        try:
+            mode = get_authentication_mode()
+            mode_str = auth_utils.get_authentication_mode_name(mode)
+
+            response = aiohttp.web.json_response({"authentication_mode": mode_str})
+
+            # If auth is disabled, clear any existing authentication cookie
+            if mode_str == "disabled":
+                response.set_cookie(
+                    authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME,
+                    "",
+                    max_age=0,
+                    path="/",
+                )
+
+            return response
+        except Exception as e:
+            logger.error(f"Error getting authentication mode: {e}")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error: " + str(e)
+            )
+
+    @routes.post("/api/authenticate")
+    async def authenticate(self, req) -> aiohttp.web.Response:
+        """
+        Authenticate a user by validating their token and setting a secure HttpOnly cookie.
+
+        This endpoint accepts a token via the Authorization header, validates it,
+        and if valid, sets an HttpOnly cookie for subsequent requests from the web dashboard.
+        """
+        try:
+            # Check if token authentication is enabled
+            if not auth_utils.is_token_auth_enabled():
+                return aiohttp.web.Response(
+                    status=401,
+                    text="Unauthorized: Token authentication is not enabled",
+                )
+
+            # Get token from Authorization header
+            auth_header = req.headers.get(
+                authentication_constants.AUTHORIZATION_HEADER_NAME, ""
+            )
+
+            if not auth_header:
+                return aiohttp.web.Response(
+                    status=401,
+                    text="Unauthorized: Missing authentication token",
+                )
+
+            # Validate the token
+            if not auth_utils.validate_request_token(auth_header):
+                return aiohttp.web.Response(
+                    status=403,
+                    text="Forbidden: Invalid authentication token",
+                )
+
+            # Token is valid - extract the token value (remove "Bearer " prefix if present)
+            token = auth_header
+            if auth_header.lower().startswith(
+                authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+            ):
+                token = auth_header[
+                    len(authentication_constants.AUTHORIZATION_BEARER_PREFIX) :
+                ]  # Remove "Bearer " prefix
+
+            # Create successful response
+            response = aiohttp.web.json_response(
+                {"status": "authenticated", "message": "Token is valid"}
+            )
+
+            # Set secure HttpOnly cookie
+            # Check if the connection is secure (HTTPS)
+            is_secure = req.scheme == "https"
+
+            response.set_cookie(
+                authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME,
+                token,
+                max_age=authentication_constants.AUTHENTICATION_TOKEN_COOKIE_MAX_AGE,  # 30 days (matching previous behavior)
+                path="/",
+                httponly=True,  # Prevents JavaScript access (XSS protection)
+                samesite="Strict",  # Prevents CSRF attacks
+                secure=is_secure,  # Only send over HTTPS if connection is secure
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error during authentication: {e}")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error: " + str(e)
+            )
+
     def get_address(self):
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
-
-    @aiohttp.web.middleware
-    async def auth_middleware(self, request, handler):
-        """Authenticate requests when token auth is enabled."""
-
-        # Skip if auth not enabled
-        if not auth_utils.is_token_auth_enabled():
-            return await handler(request)
-
-        # Extract and validate token
-        auth_header = request.headers.get("Authorization", "")
-
-        if not auth_header:
-            return aiohttp.web.Response(
-                status=401, text="Unauthorized: Missing authentication token"
-            )
-
-        # Validate token
-        if not auth_utils.validate_request_token(auth_header):
-            return aiohttp.web.Response(
-                status=403, text="Forbidden: Invalid authentication token"
-            )
-
-        return await handler(request)
 
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
@@ -206,16 +286,89 @@ class HttpServerDashboardHead:
         return await handler(request)
 
     @aiohttp.web.middleware
-    async def browsers_no_post_put_middleware(self, request, handler):
-        if (
-            # A best effort test for browser traffic. All common browsers
-            # start with Mozilla at the time of writing.
-            dashboard_optional_utils.is_browser_request(request)
-            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
-        ):
-            return aiohttp.web.Response(
-                status=405, text="Method Not Allowed for browser traffic."
+    async def proxy_server_middleware(self, request, handler):
+        """Redirects the request to the proxy server if the related proxy server
+        url env var is set.
+        """
+        # paths/endpoints that should not be directed when RAY_API_PROXY_URL_ENV_VAR is set
+        ignored_path = (
+            "/api/gcs_healthz",
+            "/usage_stats_enabled",
+            "/api/healthz",
+            "/api/local_raylet_healthz",
+        )
+
+        rel_path = str(request.rel_url)
+        body_data = None
+        if self.proxy_server_url and not rel_path.startswith(ignored_path):
+            logger.debug(f"Redirecting request to {self.proxy_server_url}")
+            body_data = await request.read()
+
+            # Headers that should be removed from the new request
+            # Case sensitive, keep everything lowercase for checking purposes.
+            headers_to_remove = {
+                "content-encoding",  # This could cause the browser to try to unzip plain-text
+                "content-length",  # Let aiohttp calculate instead
+                "host",
+                "connection",
+                "keep-alive",
+                "te",
+                "trailers",
+                "upgrade",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "transfer-encoding",
+            }
+            # We have to use multidict here since there are multiple cookies being set
+            proxy_headers = multidict.CIMultiDict(
+                (k, v)
+                for k, v in request.headers.items()
+                if k.lower() not in headers_to_remove
             )
+
+            # This is to fix 415 error caused by content-type not in headers
+            proxy_headers.setdefault("Content-Type", "application/json")
+
+            timeout = aiohttp.ClientTimeout(total=30)
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    # Manual concatenation to preserve potential paths in proxy_server_url
+                    full_url = f"{self.proxy_server_url.rstrip('/')}{rel_path}"
+                    logger.debug(
+                        f"Sending request to proxy server instead. {full_url=}"
+                    )
+
+                    async with session.request(
+                        method=request.method,
+                        url=full_url,
+                        headers=proxy_headers,
+                        data=body_data,
+                    ) as resp:
+                        body = await resp.read()
+                        # only fallback if the reponse from the proxy server is not found
+                        if not resp.status == 404:
+                            resp_headers = multidict.CIMultiDict(
+                                (k, v)
+                                for k, v in resp.headers.items()
+                                if k.lower()
+                                not in {
+                                    "transfer-encoding",
+                                    "content-encoding",
+                                    "content-length",
+                                }
+                            )
+
+                            return aiohttp.web.Response(
+                                body=body, status=resp.status, headers=resp_headers
+                            )
+                        else:
+                            logger.warning(
+                                f"Calling endpoint {request.rel_url} returned status {resp.status} and {body}, falling back"
+                            )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to use proxy server endpoint: {e}. Falling back to original handler."
+                )
 
         return await handler(request)
 
@@ -271,16 +424,38 @@ class HttpServerDashboardHead:
         for h in subprocess_module_handles:
             SubprocessRouteTable.bind(h)
 
+        # Public endpoints that don't require authentication.
+        # These are needed for the dashboard to load and request an auth token.
+        public_exact_paths = {
+            "/",  # Root index.html
+            "/favicon.ico",
+            "/api/authentication_mode",
+            "/api/authenticate",  # Token authentication endpoint
+            "/api/healthz",  # General healthcheck
+            "/api/gcs_healthz",  # GCS health check
+            "/api/local_raylet_healthz",  # Raylet health check
+            "/-/healthz",  # Serve health check
+        }
+        public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
+
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
+
         app = aiohttp.web.Application(
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 self.metrics_middleware,
-                self.auth_middleware,
+                get_token_auth_middleware(
+                    aiohttp, public_exact_paths, public_path_prefixes
+                ),
                 self.path_clean_middleware,
-                self.browsers_no_post_put_middleware,
+                dashboard_optional_utils.get_browser_request_middleware(
+                    aiohttp,
+                    allowed_methods={"GET", "HEAD", "OPTIONS"},
+                    allowed_paths=["/api/authenticate"],
+                ),
                 self.cache_control_static_middleware,
+                self.proxy_server_middleware,
             ],
         )
         app.add_routes(routes=routes.bound_routes())

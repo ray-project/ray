@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -36,11 +37,6 @@ class TestableMetricsAgentClientImpl : public MetricsAgentClientImpl {
       : MetricsAgentClientImpl(address, port, io_service, client_call_manager),
         count_to_return_ok_(count_to_return_ok) {}
 
-  // HealthCheck is a macro+template method that supposes to invoke the callback upon
-  // the completion of an RPC call. We override it to invoke the callback directly
-  // without the RPC call. Ideally we would create a GrpcClientMock that overrides
-  // the RPC call. However, currently the RPC call is a template method, which cannot
-  // be overridden.
   void HealthCheck(const HealthCheckRequest &request,
                    const ClientCallback<HealthCheckReply> &callback) override {
     health_check_count_++;
@@ -55,6 +51,25 @@ class TestableMetricsAgentClientImpl : public MetricsAgentClientImpl {
  private:
   int count_to_return_ok_;
   int health_check_count_ = 1;
+};
+
+class DeferredCallbackMetricsAgentClientImpl : public MetricsAgentClientImpl {
+ public:
+  using MetricsAgentClientImpl::MetricsAgentClientImpl;
+
+  void HealthCheck(const HealthCheckRequest &request,
+                   const ClientCallback<HealthCheckReply> &callback) override {
+    pending_callbacks_.push_back(callback);
+  }
+
+  void InvokeAllPendingCallbacksWithOk() {
+    for (auto &callback : pending_callbacks_) {
+      callback(Status::OK(), HealthCheckReply());
+    }
+    pending_callbacks_.clear();
+  }
+
+  std::vector<ClientCallback<HealthCheckReply>> pending_callbacks_;
 };
 
 class MetricsAgentClientTest : public ::testing::Test {
@@ -78,7 +93,7 @@ TEST_F(MetricsAgentClientTest, WaitForServerReadyWithRetrySuccess) {
       kCountToReturnOk,
       kRetryIntervalMs);
   io_service_.run_for(std::chrono::milliseconds(kCountToReturnOk * kRetryIntervalMs));
-  ASSERT_TRUE(client_->exporter_initialized_);
+  ASSERT_TRUE(client_->exporter_initialized_.load());
 }
 
 TEST_F(MetricsAgentClientTest, WaitForServerReadyWithRetryFailure) {
@@ -88,7 +103,51 @@ TEST_F(MetricsAgentClientTest, WaitForServerReadyWithRetryFailure) {
       kCountToReturnOk - 2,
       kRetryIntervalMs);
   io_service_.run_for(std::chrono::milliseconds(kCountToReturnOk * kRetryIntervalMs));
-  ASSERT_FALSE(client_->exporter_initialized_);
+  ASSERT_FALSE(client_->exporter_initialized_.load());
+}
+
+TEST_F(MetricsAgentClientTest, ConcurrentCallbacksCallInitExporterFnOnlyOnce) {
+  auto deferred_client = std::make_unique<DeferredCallbackMetricsAgentClientImpl>(
+      "127.0.0.1", 8000, io_service_, *client_call_manager_);
+
+  int init_call_count = 0;
+  auto init_fn = [&init_call_count](const Status &status) { init_call_count++; };
+
+  deferred_client->WaitForServerReadyWithRetry(init_fn, 0, 10, kRetryIntervalMs);
+  deferred_client->WaitForServerReadyWithRetry(init_fn, 0, 10, kRetryIntervalMs);
+
+  deferred_client->InvokeAllPendingCallbacksWithOk();
+
+  ASSERT_EQ(init_call_count, 1);
+  ASSERT_TRUE(deferred_client->exporter_initialized_.load());
+}
+
+// Test that documents the expected behavior when all retries fail.
+// This test validates that the callback receives a failure status when max retries
+// are exhausted. In minimal installs, the fix is to check port > 0 BEFORE creating
+// the client (in main.cc and core_worker_process.cc), so this code path won't be hit.
+TEST_F(MetricsAgentClientTest, ExhaustedRetriesReturnsFailure) {
+  // Create a client that always fails health checks (count_to_return_ok = INT_MAX)
+  auto always_fail_client = std::make_unique<TestableMetricsAgentClientImpl>(
+      "127.0.0.1", 8000, io_service_, *client_call_manager_, INT_MAX);
+
+  bool callback_called = false;
+  Status final_status;
+  always_fail_client->WaitForServerReadyWithRetry(
+      [&callback_called, &final_status](const Status &status) {
+        callback_called = true;
+        final_status = status;
+      },
+      0,
+      2,  // max_retry = 2, exhaust retries
+      kRetryIntervalMs);
+
+  io_service_.run_for(std::chrono::milliseconds(kRetryIntervalMs * 5));
+
+  // After exhausting retries, callback should be called with failure status.
+  ASSERT_TRUE(callback_called);
+  ASSERT_FALSE(final_status.ok());
+  ASSERT_FALSE(always_fail_client->exporter_initialized_.load());
 }
 
 }  // namespace rpc

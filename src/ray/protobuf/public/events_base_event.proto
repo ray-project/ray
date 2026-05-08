@@ -27,6 +27,11 @@ import "src/ray/protobuf/public/events_actor_definition_event.proto";
 import "src/ray/protobuf/public/events_actor_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_node_definition_event.proto";
 import "src/ray/protobuf/public/events_node_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_placement_group_definition_event.proto";
+import "src/ray/protobuf/public/events_placement_group_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_submission_job_definition_event.proto";
+import "src/ray/protobuf/public/events_submission_job_lifecycle_event.proto";
+import "src/ray/protobuf/public/platform_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -43,8 +48,8 @@ message RayEvent {
 
   // The potential types of events that can be generated.
   // NOTE: When adding a new event type below, if the event should be exposed to external services,
-  // also update the DEFAULT_EXPOSABLE_EVENT_TYPES list in
-  // python/ray/dashboard/modules/aggregator/aggregator_agent.py accordingly.
+  // also update the DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES list in
+  // python/ray/dashboard/modules/aggregator/publisher/configs.py accordingly.
   // This ensures the new event type can be published externally if intended.
   enum EventType {
     EVENT_TYPE_UNSPECIFIED = 0;
@@ -58,6 +63,11 @@ message RayEvent {
     NODE_LIFECYCLE_EVENT = 8;
     ACTOR_DEFINITION_EVENT = 9;
     ACTOR_LIFECYCLE_EVENT = 10;
+    PLACEMENT_GROUP_DEFINITION_EVENT = 11;
+    PLACEMENT_GROUP_LIFECYCLE_EVENT = 12;
+    SUBMISSION_JOB_DEFINITION_EVENT = 13;
+    SUBMISSION_JOB_LIFECYCLE_EVENT = 14;
+    PLATFORM_EVENT = 15;
   }
 
   // The severities of events that can be generated.
@@ -103,4 +113,13 @@ message RayEvent {
   NodeLifecycleEvent node_lifecycle_event = 15;
   ActorDefinitionEvent actor_definition_event = 16;
   ActorLifecycleEvent actor_lifecycle_event = 17;
+
+  // ID of the node where this event is emitted from
+  bytes node_id = 18;
+
+  PlacementGroupDefinitionEvent placement_group_definition_event = 19;
+  PlacementGroupLifecycleEvent placement_group_lifecycle_event = 20;
+  SubmissionJobDefinitionEvent submission_job_definition_event = 21;
+  SubmissionJobLifecycleEvent submission_job_lifecycle_event = 22;
+  PlatformEvent platform_event = 23;
 }

@@ -27,6 +27,8 @@ enum class RpcFailure : uint8_t {
   Request,
   // Failure after server sends the response
   Response,
+  // Failure after server receives the request but before the response is sent
+  InFlight,
 };
 
 /*

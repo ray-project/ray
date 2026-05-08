@@ -1,12 +1,12 @@
-from collections import Counter
 import unittest
+from collections import Counter
 
 import gymnasium as gym
 
 import ray
 from ray import tune
-from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -237,7 +237,8 @@ class TestCallbacksOnEnvRunners(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

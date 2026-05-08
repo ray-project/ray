@@ -1,15 +1,21 @@
 import sys
+import tempfile
 
 import pytest
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 from ray._common.test_utils import TelemetryCallsite, check_library_usage_telemetry
+from ray.train import Checkpoint
+from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.validation_config import ValidationConfig
 
 
 @pytest.fixture
 def mock_record(monkeypatch):
+    import ray._common.usage.usage_lib
     import ray.air._internal.usage
 
     recorded = {}
@@ -19,6 +25,11 @@ def mock_record(monkeypatch):
 
     monkeypatch.setattr(
         ray.air._internal.usage,
+        "record_extra_usage_tag",
+        mock_record_extra_usage_tag,
+    )
+    monkeypatch.setattr(
+        ray._common.usage.usage_lib,
         "record_extra_usage_tag",
         mock_record_extra_usage_tag,
     )
@@ -46,9 +57,17 @@ def test_not_used_on_import(reset_usage_lib, callsite: TelemetryCallsite):
 def test_used_on_trainer_fit(reset_usage_lib, callsite: TelemetryCallsite):
     def _call_trainer_fit():
         def train_fn():
-            pass
+            tmpdir = tempfile.mkdtemp()
+            ray.train.report(
+                {},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+                checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+                validation=True,
+            )
 
-        trainer = DataParallelTrainer(train_fn)
+        trainer = DataParallelTrainer(
+            train_fn, validation_config=ValidationConfig(fn=lambda x: {})
+        )
         trainer.fit()
 
     check_library_usage_telemetry(
@@ -57,6 +76,8 @@ def test_used_on_trainer_fit(reset_usage_lib, callsite: TelemetryCallsite):
         expected_library_usages=[{"train"}, {"core", "train"}],
         expected_extra_usage_tags={
             "train_trainer": "DataParallelTrainer",
+            "train_checkpoint_mode": CheckpointUploadMode.ASYNC.value,
+            "train_asynchronous_validation": "1",
         },
     )
 
@@ -87,6 +108,21 @@ def test_tag_train_entrypoint(mock_record):
             mock_record[ray_usage_lib.TagKey.TRAIN_TRAINER]
             == trainer.__class__.__name__
         )
+
+
+@pytest.mark.parametrize(
+    "scaling_config, elasticity_enabled",
+    [
+        (ScalingConfig(num_workers=(1, 2)), True),
+        (ScalingConfig(num_workers=2), False),
+    ],
+)
+def test_tag_train_elasticity(mock_record, scaling_config, elasticity_enabled):
+    DataParallelTrainer(lambda: None, scaling_config=scaling_config)
+    if elasticity_enabled:
+        assert mock_record[ray_usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED] == "1"
+    else:
+        assert ray_usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED not in mock_record
 
 
 if __name__ == "__main__":

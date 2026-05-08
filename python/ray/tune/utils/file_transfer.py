@@ -383,7 +383,7 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
     target_dir = os.path.normpath(target_dir)
     try:
         # Timeout 0 means there will be only one attempt to acquire
-        # the file lock. If it cannot be aquired, a TimeoutError
+        # the file lock. If it cannot be acquired, a TimeoutError
         # will be thrown.
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             with tarfile.open(fileobj=stream) as tar:
@@ -426,7 +426,7 @@ def _copy_dir(
     target_dir = os.path.normpath(target_dir)
     try:
         # Timeout 0 means there will be only one attempt to acquire
-        # the file lock. If it cannot be aquired, a TimeoutError
+        # the file lock. If it cannot be acquired, a TimeoutError
         # will be thrown.
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             _delete_path_unsafe(target_dir)

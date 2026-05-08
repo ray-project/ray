@@ -1,4 +1,5 @@
 import atexit
+import logging
 import os
 import tempfile
 from typing import Any, Callable, Dict, Optional
@@ -6,6 +7,12 @@ from typing import Any, Callable, Dict, Optional
 import requests
 
 import ray
+from ray.data._internal.datasource.databricks_credentials import (
+    DatabricksCredentialProvider,
+    request_with_401_retry,
+)
+
+logger = logging.getLogger(__name__)
 
 _FILE_FORMAT_TO_RAY_READER = {
     "delta": "read_delta",
@@ -26,17 +33,18 @@ class UnityCatalogConnector:
     def __init__(
         self,
         *,
-        base_url: str,
-        token: str,
         table_full_name: str,
+        credential_provider: DatabricksCredentialProvider,
         region: Optional[str] = None,
         data_format: Optional[str] = "delta",
         operation: str = "READ",
         ray_init_kwargs: Optional[Dict] = None,
         reader_kwargs: Optional[Dict] = None,
     ):
-        self.base_url = base_url.rstrip("/")
-        self.token = token
+        self._credential_provider = credential_provider
+        self.base_url = self._credential_provider.get_host().rstrip("/")
+        if not self.base_url.startswith(("http://", "https://")):
+            self.base_url = f"https://{self.base_url}"
         self.table_full_name = table_full_name
         self.data_format = data_format.lower() if data_format else None
         self.region = region
@@ -47,9 +55,11 @@ class UnityCatalogConnector:
 
     def _get_table_info(self) -> dict:
         url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.table_full_name}"
-        headers = {"Authorization": f"Bearer {self.token}"}
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
+        resp = request_with_401_retry(
+            requests.get,
+            url,
+            self._credential_provider,
+        )
         data = resp.json()
         self._table_info = data
         self._table_id = data["table_id"]
@@ -57,13 +67,13 @@ class UnityCatalogConnector:
 
     def _get_creds(self):
         url = f"{self.base_url}/api/2.1/unity-catalog/temporary-table-credentials"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.token}",
-        }
         payload = {"table_id": self._table_id, "operation": self.operation}
-        resp = requests.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
+        resp = request_with_401_retry(
+            requests.post,
+            url,
+            self._credential_provider,
+            json=payload,
+        )
         self._creds_response = resp.json()
         self._table_url = self._creds_response["url"]
 
@@ -81,6 +91,30 @@ class UnityCatalogConnector:
                 env_vars["AWS_DEFAULT_REGION"] = self.region
         elif "azuresasuri" in creds:
             env_vars["AZURE_STORAGE_SAS_TOKEN"] = creds["azuresasuri"]
+        # Azure UC returns a user delegation SAS; see
+        # https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
+        elif "azure_user_delegation_sas" in creds:
+            azure = creds["azure_user_delegation_sas"] or {}
+            sas_token = (
+                azure.get("sas_token")
+                or azure.get("sas")
+                or azure.get("token")
+                or azure.get("sasToken")
+            )
+            if sas_token and sas_token.startswith("?"):
+                sas_token = sas_token[1:]
+            if sas_token:
+                env_vars["AZURE_STORAGE_SAS_TOKEN"] = sas_token
+            else:
+                known_keys = ", ".join(azure.keys())
+                raise ValueError(
+                    "Azure UC credentials missing SAS token in azure_user_delegation_sas. "
+                    f"Available keys: {known_keys}"
+                )
+            storage_account = azure.get("storage_account")
+            if storage_account:
+                env_vars["AZURE_STORAGE_ACCOUNT"] = storage_account
+                env_vars["AZURE_STORAGE_ACCOUNT_NAME"] = storage_account
         elif "gcp_service_account" in creds:
             gcp_json = creds["gcp_service_account"]
             temp_file = tempfile.NamedTemporaryFile(
@@ -95,8 +129,10 @@ class UnityCatalogConnector:
             self._gcp_temp_file = temp_file.name
             atexit.register(self._cleanup_gcp_temp_file, temp_file.name)
         else:
+            known_keys = ", ".join(creds.keys())
             raise ValueError(
-                "No known credential type found in Databricks UC response."
+                "No known credential type found in Databricks UC response. "
+                f"Available keys: {known_keys}"
             )
 
         for k, v in env_vars.items():

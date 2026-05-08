@@ -4,7 +4,10 @@ region: us-central1
 # Head node
 head_node_type:
   name: head
-  instance_type: g4dn.12xlarge
+  instance_type: g4dn.xlarge
+  resources:
+    cpu: 0
+    gpu: 0
 
 # Worker node
 worker_node_types:

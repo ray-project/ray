@@ -13,6 +13,7 @@ import io.ray.serve.controller.ServeController;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
+import io.ray.serve.generated.ApplicationArgs;
 import io.ray.serve.generated.ApplicationStatus;
 import io.ray.serve.generated.DeploymentArgs;
 import io.ray.serve.generated.EndpointInfo;
@@ -166,13 +167,16 @@ public class ServeControllerClient {
    * @param ingressDeploymentName name of the ingress deployment (the one that is exposed over
    *     HTTP).
    * @param blocking Wait for the applications to be deployed or not.
+   * @param externalScalerEnabled If true, indicates that an external autoscaler will manage replica
+   *     scaling for this application.
    */
   public void deployApplication(
       String name,
       String routePrefix,
       List<Deployment> deployments,
       String ingressDeploymentName,
-      boolean blocking) {
+      boolean blocking,
+      boolean externalScalerEnabled) {
 
     Object[] deploymentArgsArray = new Object[deployments.size()];
 
@@ -192,8 +196,13 @@ public class ServeControllerClient {
       deploymentArgsArray[i] = deploymentArgs.build().toByteArray();
     }
 
+    ApplicationArgs.Builder applicationArgs =
+        ApplicationArgs.newBuilder().setExternalScalerEnabled(externalScalerEnabled);
+    byte[] applicationArgsBytes = applicationArgs.build().toByteArray();
+
     ((PyActorHandle) controller)
-        .task(PyActorMethod.of("deploy_application"), name, deploymentArgsArray)
+        .task(
+            PyActorMethod.of("deploy_application"), name, deploymentArgsArray, applicationArgsBytes)
         .remote()
         .get();
 

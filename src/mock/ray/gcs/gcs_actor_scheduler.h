@@ -16,7 +16,7 @@
 
 #include <gmock/gmock.h>
 
-#include "ray/gcs/gcs_actor_scheduler.h"
+#include "ray/gcs/actor/gcs_actor_scheduler.h"
 
 namespace ray {
 namespace gcs {
@@ -97,8 +97,4 @@ class MockGcsActorScheduler : public GcsActorScheduler {
 };
 
 }  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {}  // namespace gcs
 }  // namespace ray

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from torchvision import models
 
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.train.torch import TorchDetectionPredictor
 
 

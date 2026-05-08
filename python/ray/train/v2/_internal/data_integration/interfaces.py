@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from typing import Callable, Protocol, Union
+from typing import TYPE_CHECKING, Callable, Protocol, Union
 
-from ray.data import DataIterator, Dataset
+if TYPE_CHECKING:
+    from ray.data import DataIterator, Dataset
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
-GenDataset = Union[Dataset, Callable[[], Dataset]]
+GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
 @dataclass
@@ -16,7 +17,7 @@ class DatasetShardMetadata:
 
 
 class DatasetShardProvider(Protocol):
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         """Get the dataset shard for the given dataset info.
         Args:
             dataset_info: The metadata of the shard to retrieve,

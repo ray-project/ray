@@ -1,7 +1,7 @@
 import json
 import os
-from dataclasses import asdict, dataclass
-from typing import Tuple
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Tuple
 
 import pytest
 
@@ -10,11 +10,12 @@ from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.metadata_exporter import (
     UNKNOWN,
+    DataContextMetadata,
     Operator,
     Topology,
     sanitize_for_struct,
 )
-from ray.data._internal.stats import _get_or_create_stats_actor
+from ray.data._internal.stats import get_or_create_stats_actor
 from ray.data.context import DataContext
 from ray.tests.conftest import _ray_start
 
@@ -86,21 +87,26 @@ class TestDataclass:
         self.tuple_field = (1, 2, 3)
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
-    def __init__(self, input_op=None):
-        super().__init__("DummyOperator", [])
-
-        # Test various data types that might be returned by _get_logical_args
-        self._string_value = "test_string"
-        self._int_value = 42
-        self._float_value = 3.14
-        self._bool_value = True
-        self._none_value = None
-        self._list_value = [1, 2, 3, "string", None]
-        self._dict_value = {"key1": "value1", "key2": 123, "key3": None}
-        self._nested_dict = {
+    _name: str = field(init=False, default="DummyOperator", repr=False)
+    _input_dependencies: List[LogicalOperator] = field(
+        init=False, default_factory=list, repr=False
+    )
+    _num_outputs: None = field(init=False, default=None, repr=False)
+    _string_value: str = "test_string"
+    _int_value: int = 42
+    _float_value: float = 3.14
+    _bool_value: bool = True
+    _none_value: None = None
+    _list_value: List[Any] = field(default_factory=lambda: [1, 2, 3, "string", None])
+    _dict_value: Dict[str, Any] = field(
+        default_factory=lambda: {"key1": "value1", "key2": 123, "key3": None}
+    )
+    _nested_dict: Dict[str, Any] = field(
+        default_factory=lambda: {
             "level1": {
                 "level2": {
                     "level3": "deep_value",
@@ -109,21 +115,30 @@ class DummyLogicalOperator(LogicalOperator):
                 }
             }
         }
-        self._tuple_value = (1, "string", None, 3.14)
-        self._set_value = {1}
-        self._bytes_value = b"binary_data"
-        self._complex_dict = {
+    )
+    _tuple_value: Tuple[Any, ...] = (1, "string", None, 3.14)
+    _set_value: set = field(default_factory=lambda: {1})
+    _bytes_value: bytes = b"binary_data"
+    _complex_dict: Dict[str, Any] = field(
+        default_factory=lambda: {
             "string_keys": {"a": 1, "b": 2},
-            "int_keys": {1: "one", 2: "two"},  # This should cause issues if not handled
+            "int_keys": {
+                1: "one",
+                2: "two",
+            },  # This should cause issues if not handled
             "mixed_keys": {"str": "value", 1: "int_key", None: "none_key"},
         }
-        self._empty_containers = {
+    )
+    _empty_containers: Dict[str, Any] = field(
+        default_factory=lambda: {
             "empty_list": [],
             "empty_dict": {},
             "empty_tuple": (),
             "empty_set": set(),
         }
-        self._special_values = {
+    )
+    _special_values: Dict[str, Any] = field(
+        default_factory=lambda: {
             "zero": 0,
             "negative": -1,
             "large_int": 999999999999999999,
@@ -132,8 +147,12 @@ class DummyLogicalOperator(LogicalOperator):
             "neg_inf": float("-inf"),
             "nan": float("nan"),
         }
+    )
+    _data_class: TestDataclass = field(default_factory=TestDataclass)
 
-        self._data_class = TestDataclass()
+    @property
+    def num_outputs(self):
+        return self._num_outputs
 
 
 @pytest.fixture
@@ -343,7 +362,7 @@ def dummy_dataset_topology_expected_output():
 
 def test_export_disabled(ray_start_regular, dummy_dataset_topology):
     """Test that no export files are created when export API is disabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Create or update train run
     ray.get(
@@ -352,7 +371,9 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -362,7 +383,7 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
 
 def _test_dataset_metadata_export(topology, dummy_dataset_topology_expected_output):
     """Test that dataset metadata export events are written when export API is enabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Simulate a dataset registration
     ray.get(
@@ -371,7 +392,9 @@ def _test_dataset_metadata_export(topology, dummy_dataset_topology_expected_outp
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -432,7 +455,7 @@ def test_logical_op_args(
         Udf,
         **expected_logical_op_args,
     )
-    dag = ds._plan._logical_plan.dag
+    dag = ds._logical_plan.dag
     args = dag._get_args()
     assert len(args) > 0, "Export args should not be empty"
     for k, v in expected_logical_op_args.items():
@@ -449,7 +472,7 @@ def test_export_multiple_datasets(
     dummy_dataset_topology_expected_output,
 ):
     """Test that multiple datasets can be exported when export API is enabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Create a second dataset structure that's different from the dummy one
     second_topology = Topology(
@@ -488,7 +511,9 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -499,7 +524,9 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)"],
             topology=second_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -642,7 +669,7 @@ def test_update_dataset_metadata_state(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
     """Test dataset state update at the export API"""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
     # Register dataset
     ray.get(
         stats_actor.register_dataset.remote(
@@ -650,7 +677,9 @@ def test_update_dataset_metadata_state(
             dataset_tag=STUB_DATASET_ID,
             operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
             topology=dummy_dataset_topology,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
     # Check that export files were created as expected
@@ -689,7 +718,7 @@ def test_update_dataset_metadata_state(
 def test_update_dataset_metadata_operator_states(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
     # Register dataset
     ray.get(
         stats_actor.register_dataset.remote(
@@ -697,7 +726,9 @@ def test_update_dataset_metadata_operator_states(
             operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
     data = _get_exported_data()

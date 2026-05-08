@@ -1,15 +1,31 @@
+import logging
 import posixpath
+import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Type,
+    Union,
+)
+
+import numpy as np
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data.expressions import Expr
+
 
 PartitionDataType = Type[Union[int, float, str, bool]]
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -114,6 +130,29 @@ class Partitioning:
         if self._resolved_filesystem is None:
             self._normalize_base_dir()
         return self._resolved_filesystem
+
+    def to_pyarrow(self) -> "pyarrow.dataset.Partitioning":
+        """Convert to a PyArrow dataset Partitioning.
+
+        Returns:
+            Equivalent ``pyarrow.dataset.Partitioning`` instance.
+
+        Raises:
+            ValueError: If the partition style is not supported.
+        """
+        import pyarrow.dataset as pds
+
+        schema = _partition_field_types_to_pa_schema(
+            self.field_names or [],
+            self.field_types or {},
+        )
+
+        if self.style == PartitionStyle.HIVE:
+            return pds.HivePartitioning(schema)
+        elif self.style == PartitionStyle.DIRECTORY:
+            return pds.DirectoryPartitioning(schema)
+        else:
+            raise ValueError(f"Unsupported partition style: {self.style}")
 
     def _normalize_base_dir(self):
         """Normalizes the partition base directory for compatibility with the
@@ -253,6 +292,84 @@ class PathPartitionParser:
 
         return partitions
 
+    def evaluate_predicate_on_partition(self, path: str, predicate: "Expr") -> bool:
+        """Evaluate a predicate expression against partition values from a path.
+
+        This method enables partition pruning by evaluating predicates that reference
+        partition columns against the partition values parsed from file paths.
+
+        Args:
+            path: File path to parse partition values from.
+            predicate: Expression that references partition columns.
+
+        Returns:
+            True if the partition satisfies the predicate (should read the file),
+            False if it doesn't (can skip the file for partition pruning).
+        """
+        import pyarrow as pa
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            NativeExpressionEvaluator,
+        )
+
+        # Parse partition values from the file path
+        partition_values = self(path)
+
+        if not partition_values:
+            # Unpartitioned file - exclude it when filtering on partition columns
+            # If the predicate references partition columns and the file doesn't have
+            # partition values in its path, we can't determine if it matches
+            return False
+
+        try:
+            # Create a single-row table with partition values
+            partition_table = pa.table(
+                {col: [val] for col, val in partition_values.items()}
+            )
+
+            # Evaluate using Ray Data's native evaluator
+            evaluator = NativeExpressionEvaluator(partition_table)
+            result = evaluator.visit(predicate)
+
+            # Extract boolean result from array-like types.
+            # NOTE: We must use ``.as_py()`` for PyArrow scalars because
+            #       ``bool(pa.BooleanScalar(False))`` returns ``True`` (it
+            #       checks validity/not-null, not the boolean value).
+            if isinstance(result, (pa.Array, pa.ChunkedArray)):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
+                return bool(result[0].as_py())
+
+            if isinstance(result, np.ndarray):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
+                return bool(result[0])
+
+            # Import pandas here to avoid circular dependencies
+            import pandas as pd
+
+            if isinstance(result, pd.Series):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
+                return bool(result.iloc[0])
+
+            # Scalar result
+            if isinstance(result, pa.Scalar):
+                return bool(result.as_py())
+
+            return bool(result)
+        except Exception:
+            logger.debug(
+                "Failed to evaluate predicate on partition for path %s, "
+                "conservatively including file.",
+                path,
+                exc_info=True,
+            )
+            return True
+
     @property
     def scheme(self) -> Partitioning:
         """Returns the partitioning for this parser."""
@@ -278,6 +395,11 @@ class PathPartitionParser:
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
+        # NOTE: PyArrow URL-encodes partition values when writing to cloud storage. To
+        #       ensure the values are consistent when you read them back, we need to
+        #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
+        kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
             if len(kv_pairs) != len(field_names):
@@ -444,6 +566,36 @@ class PathPartitionFilter:
     def parser(self) -> PathPartitionParser:
         """Returns the path partition parser for this filter."""
         return self._parser
+
+
+def _partition_field_types_to_pa_schema(
+    field_names: List[str],
+    field_types: Dict[str, PartitionDataType],
+) -> "pyarrow.Schema":
+    """Build a PyArrow schema from partition field names and Python types.
+
+    Args:
+        field_names: Ordered partition key names.
+        field_types: Mapping from field name to Python type. Fields not
+            present in the map default to ``str`` (``pa.string()``).
+
+    Returns:
+        A ``pyarrow.Schema`` with one field per partition key.
+    """
+    import pyarrow as pa
+
+    type_map = {
+        int: pa.int64(),
+        float: pa.float64(),
+        bool: pa.bool_(),
+        str: pa.string(),
+    }
+    fields = []
+    for name in field_names:
+        py_type: PartitionDataType = field_types.get(name, str)
+        pa_type = type_map.get(py_type, pa.string())
+        fields.append(pa.field(name, pa_type))
+    return pa.schema(fields)
 
 
 def _cast_value(value: str, data_type: PartitionDataType) -> Any:

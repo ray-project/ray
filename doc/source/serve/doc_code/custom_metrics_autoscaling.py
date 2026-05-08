@@ -2,6 +2,7 @@
 import time
 from typing import Dict
 
+import psutil
 from ray import serve
 
 
@@ -18,21 +19,25 @@ from ray import serve
 )
 class CustomMetricsDeployment:
     def __init__(self):
-        self.cpu_usage = 50.0
-        self.memory_usage = 60.0
+        self.process = psutil.Process()
 
     def __call__(self) -> str:
+        # Simulate some work
         time.sleep(0.5)
-        self.cpu_usage = min(100, self.cpu_usage + 5)
-        self.memory_usage = min(100, self.memory_usage + 3)
         return "Hello, world!"
 
     def record_autoscaling_stats(self) -> Dict[str, float]:
-        self.cpu_usage = max(20, self.cpu_usage - 2)
-        self.memory_usage = max(30, self.memory_usage - 1)
+        # Get CPU usage as a percentage
+        cpu_usage = self.process.cpu_percent(interval=0.1)
+
+        # Get memory usage as a percentage of system memory
+        memory_info = self.process.memory_full_info()
+        system_memory = psutil.virtual_memory().total
+        memory_usage = (memory_info.uss / system_memory) * 100
+
         return {
-            "cpu_usage": self.cpu_usage,
-            "memory_usage": self.memory_usage,
+            "cpu_usage": cpu_usage,
+            "memory_usage": memory_usage,
         }
 
 

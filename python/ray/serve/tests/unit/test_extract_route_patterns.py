@@ -4,7 +4,22 @@ from fastapi import FastAPI
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
-from ray.serve._private.thirdparty.get_asgi_route_name import extract_route_patterns
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    extract_route_patterns,
+)
+
+
+def has_path(patterns, path):
+    """Helper to check if a path exists in patterns list."""
+    return any(pattern.path == path for pattern in patterns)
+
+
+def get_methods_for_path(patterns, path):
+    """Helper to get methods for a specific path."""
+    for pattern in patterns:
+        if pattern.path == path:
+            return pattern.methods
+    return None
 
 
 def test_extract_route_patterns_fastapi_simple():
@@ -26,12 +41,12 @@ def test_extract_route_patterns_fastapi_simple():
     patterns = extract_route_patterns(app)
 
     # FastAPI automatically adds some default routes
-    assert "/" in patterns
-    assert "/users/{user_id}" in patterns
-    assert "/items/{item_id}" in patterns
+    assert has_path(patterns, "/")
+    assert has_path(patterns, "/users/{user_id}")
+    assert has_path(patterns, "/items/{item_id}")
     # FastAPI adds OpenAPI routes
-    assert "/openapi.json" in patterns
-    assert "/docs" in patterns
+    assert has_path(patterns, "/openapi.json")
+    assert has_path(patterns, "/docs")
 
 
 def test_extract_route_patterns_nested_paths():
@@ -48,8 +63,8 @@ def test_extract_route_patterns_nested_paths():
 
     patterns = extract_route_patterns(app)
 
-    assert "/api/v1/users/{user_id}/posts/{post_id}" in patterns
-    assert "/api/v1/users/{user_id}/settings" in patterns
+    assert has_path(patterns, "/api/v1/users/{user_id}/posts/{post_id}")
+    assert has_path(patterns, "/api/v1/users/{user_id}/settings")
 
 
 def test_extract_route_patterns_with_mounts():
@@ -72,9 +87,9 @@ def test_extract_route_patterns_with_mounts():
 
     patterns = extract_route_patterns(app)
 
-    assert "/" in patterns
-    assert "/admin/health" in patterns
-    assert "/admin/status" in patterns
+    assert has_path(patterns, "/")
+    assert has_path(patterns, "/admin/health")
+    assert has_path(patterns, "/admin/status")
 
 
 def test_extract_route_patterns_nested_mounts():
@@ -104,9 +119,9 @@ def test_extract_route_patterns_nested_mounts():
 
     patterns = extract_route_patterns(app)
 
-    assert "/" in patterns
-    assert "/api/v1/list" in patterns
-    assert "/api/v1/item/details" in patterns
+    assert has_path(patterns, "/")
+    assert has_path(patterns, "/api/v1/list")
+    assert has_path(patterns, "/api/v1/item/details")
 
 
 def test_extract_route_patterns_with_root_path():
@@ -128,9 +143,9 @@ def test_extract_route_patterns_with_root_path():
     patterns = extract_route_patterns(app)
 
     # Root path should be prepended to all routes
-    assert "/v1/" in patterns  # Root route
-    assert "/v1/users" in patterns
-    assert "/v1/items/{item_id}" in patterns
+    assert has_path(patterns, "/v1/")  # Root route
+    assert has_path(patterns, "/v1/users")
+    assert has_path(patterns, "/v1/items/{item_id}")
 
 
 def test_extract_route_patterns_empty_app():
@@ -141,8 +156,8 @@ def test_extract_route_patterns_empty_app():
     patterns = extract_route_patterns(app)
 
     # Should still have FastAPI defaults
-    assert "/openapi.json" in patterns
-    assert "/docs" in patterns
+    assert has_path(patterns, "/openapi.json")
+    assert has_path(patterns, "/docs")
     # May or may not have "/" depending on FastAPI version
 
 
@@ -164,14 +179,14 @@ def test_extract_route_patterns_starlette():
 
     patterns = extract_route_patterns(app)
 
-    assert "/" in patterns
-    assert "/users/{user_id}" in patterns
+    assert has_path(patterns, "/")
+    assert has_path(patterns, "/users/{user_id}")
     # Starlette shouldn't have OpenAPI routes
-    assert "/openapi.json" not in patterns
+    assert not has_path(patterns, "/openapi.json")
 
 
 def test_extract_route_patterns_multiple_methods_same_path():
-    """Test that patterns are deduplicated when multiple methods use same path."""
+    """Test that methods are grouped when multiple methods use same path."""
     app = FastAPI()
 
     @app.get("/items/{item_id}")
@@ -188,9 +203,16 @@ def test_extract_route_patterns_multiple_methods_same_path():
 
     patterns = extract_route_patterns(app)
 
-    # Should appear only once even though 3 methods use it
-    pattern_count = patterns.count("/items/{item_id}")
-    assert pattern_count == 1
+    # Path should appear only once with all methods grouped
+    path_count = sum(1 for pattern in patterns if pattern.path == "/items/{item_id}")
+    assert path_count == 1
+
+    # Check that all methods are present
+    methods = get_methods_for_path(patterns, "/items/{item_id}")
+    assert methods is not None
+    assert "GET" in methods
+    assert "PUT" in methods
+    assert "DELETE" in methods
 
 
 def test_extract_route_patterns_invalid_app():
@@ -225,12 +247,14 @@ def test_extract_route_patterns_mount_without_routes():
 
     patterns = extract_route_patterns(app)
 
-    assert "/" in patterns
-    assert "/custom" in patterns
+    assert has_path(patterns, "/")
+    assert has_path(patterns, "/custom")
+    # Custom mount has no method restrictions
+    assert get_methods_for_path(patterns, "/custom") is None
 
 
 def test_extract_route_patterns_sorted_output():
-    """Test that output is sorted alphabetically."""
+    """Test that output is sorted by path."""
     app = FastAPI()
 
     @app.get("/zebra")
@@ -247,8 +271,11 @@ def test_extract_route_patterns_sorted_output():
 
     patterns = extract_route_patterns(app)
 
+    # Extract just the paths
+    paths = [pattern.path for pattern in patterns]
+
     # Find the user-defined routes
-    user_routes = [p for p in patterns if p in ["/zebra", "/apple", "/banana"]]
+    user_routes = [p for p in paths if p in ["/zebra", "/apple", "/banana"]]
 
     # Should be sorted
     assert user_routes == ["/apple", "/banana", "/zebra"]
@@ -268,9 +295,12 @@ def test_extract_route_patterns_special_characters():
 
     patterns = extract_route_patterns(app)
 
+    # Extract just the paths
+    paths = [pattern.path for pattern in patterns]
+
     # FastAPI converts these to standard patterns
-    assert any("user_id" in p for p in patterns)
-    assert any("item_id" in p for p in patterns)
+    assert any("user_id" in p for p in paths)
+    assert any("item_id" in p for p in paths)
 
 
 def test_extract_route_patterns_websocket_routes():
@@ -288,8 +318,11 @@ def test_extract_route_patterns_websocket_routes():
 
     patterns = extract_route_patterns(app)
 
-    assert "/http" in patterns
-    assert "/ws" in patterns
+    assert has_path(patterns, "/http")
+    assert has_path(patterns, "/ws")
+
+    # WebSocket route should have no method restrictions
+    assert get_methods_for_path(patterns, "/ws") is None
 
 
 if __name__ == "__main__":

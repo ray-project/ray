@@ -3,17 +3,32 @@ import contextvars
 import logging
 import os
 import random
+import time
 from asyncio import sleep
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    Iterable,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo,
     EndpointInfo as EndpointInfoProto,
@@ -47,6 +62,8 @@ class LongPollNamespace(Enum):
     ROUTE_TABLE = auto()
     GLOBAL_LOGGING_CONFIG = auto()
     DEPLOYMENT_CONFIG = auto()
+    TARGET_GROUPS = auto()
+    FALLBACK_TARGETS = auto()
 
 
 @dataclass
@@ -55,6 +72,9 @@ class UpdatedObject:
     # The identifier for the object's version. There is not sequential relation
     # among different object's snapshot_ids.
     snapshot_id: int
+    # Timestamp (in seconds since epoch) when notify_changed was called.
+    # Used by clients to measure end-to-end propagation latency.
+    notify_timestamp: float
 
 
 # Type signature for the update state callbacks. E.g.
@@ -62,6 +82,26 @@ class UpdatedObject:
 #     do_something(updated_object)
 UpdateStateCallable = Callable[[Any], None]
 KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
+
+
+def _get_metric_namespace_tag(key: KeyType) -> str:
+    """Extract the namespace string from a long poll key for metric tags.
+
+    When RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS is enabled, returns only
+    the LongPollNamespace enum name (e.g., "DEPLOYMENT_CONFIG") for tuple keys
+    like (LongPollNamespace.DEPLOYMENT_CONFIG, "deployment_name"), avoiding
+    high-cardinality metric labels that would otherwise include per-deployment
+    identifiers. When disabled (default), returns str(key) preserving
+    deployment-level metric granularity.
+    """
+    if not RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS:
+        return str(key)
+    if isinstance(key, tuple):
+        return key[0].name if isinstance(key[0], LongPollNamespace) else str(key[0])
+    elif isinstance(key, LongPollNamespace):
+        return key.name
+    else:
+        return str(key)
 
 
 class LongPollState(Enum):
@@ -77,6 +117,8 @@ class LongPollClient:
           callbacks to be called on state update for the corresponding keys.
         call_in_event_loop: an asyncio event loop
           to post the callback into.
+        client_id: identifier reported back to the host if this client
+          disables itself.
     """
 
     def __init__(
@@ -84,6 +126,7 @@ class LongPollClient:
         host_actor,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
+        client_id: str,
     ) -> None:
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
@@ -93,14 +136,25 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
-        self.snapshot_ids: Dict[KeyType, int] = {
-            # The initial snapshot id for each key is < 0,
-            # but real snapshot keys in the long poll host are always >= 0,
-            # so this will always trigger an initial update.
-            key: -1
-            for key in self.key_listeners.keys()
-        }
+        self.client_id = client_id
+        # The initial snapshot id for each key is < 0,
+        # but real snapshot keys in the long poll host are always >= 0,
+        # so this will always trigger an initial update.
+        self.snapshot_ids: Dict[KeyType, int] = dict.fromkeys(
+            self.key_listeners.keys(), -1
+        )
         self.is_running = True
+
+        # Metric to track end-to-end latency from controller to client
+        self.long_poll_latency_histogram = metrics.Histogram(
+            "serve_long_poll_latency_ms",
+            description=(
+                "The time in milliseconds for updates to propagate from "
+                "controller to clients."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("namespace",),
+        )
 
         # NOTE(edoakes): we schedule the initial _poll_next call with an empty context
         # so that Ray will not recursively cancel the underlying `listen_for_change`
@@ -171,11 +225,28 @@ class LongPollClient:
         # Schedule the next iteration only if the loop is running.
         # The event loop might not be running if users used a cached
         # version across loops.
+        if not self.is_running:
+            return
+
         if self.event_loop.is_running():
             self.event_loop.call_soon_threadsafe(callback)
         else:
-            logger.error("The event loop is closed, shutting down long poll client.")
+            reason = "Bound asyncio event loop is not running; controller updates cannot be delivered."
+            logger.error(
+                f"LongPollClient {self.client_id!r} has been disabled: {reason} "
+                f"Keep the loop running for the lifetime of this process."
+            )
             self.is_running = False
+            # Fire-and-forget notify so the controller logs this client as disabled.
+            try:
+                self.host_actor.notify_long_poll_client_disabled.remote(
+                    self.client_id, reason
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to notify host that LongPollClient "
+                    f"{self.client_id!r} disabled itself."
+                )
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
         if isinstance(updates, (ray.exceptions.RayActorError)):
@@ -206,13 +277,32 @@ class LongPollClient:
             return
 
         logger.debug(
-            f"LongPollClient {self} received updates for keys: "
-            f"{list(updates.keys())}.",
+            f"LongPollClient {self} received updates for keys: {list(updates.keys())}.",
             extra={"log_to_stderr": False},
         )
         if not updates:  # no updates, no callbacks to run, just poll again
             self._schedule_to_event_loop(self._poll_next)
+
+        # Record latency metrics for received updates.
+        # Skip observations that exceed twice the maximum long poll timeout —
+        # these are catch-up updates received by a client that was offline or
+        # missed several polling cycles, and including them would distort the
+        # metric (e.g. a 10-minute spike just because a new replica connected).
+        max_valid_latency_ms = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S[1] * 2 * 1000
+        receive_time = time.time()
         for key, update in updates.items():
+            latency_ms = (receive_time - update.notify_timestamp) * 1000
+            if latency_ms <= max_valid_latency_ms:
+                self.long_poll_latency_histogram.observe(
+                    latency_ms,
+                    tags={"namespace": _get_metric_namespace_tag(key)},
+                )
+            else:
+                logger.debug(
+                    f"Skipping long poll latency observation of {latency_ms:.0f}ms "
+                    f"for key {key} (exceeds threshold {max_valid_latency_ms:.0f}ms)."
+                )
+
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
 
@@ -253,12 +343,24 @@ class LongPollHost:
         self.notifier_events: DefaultDict[KeyType, Set[asyncio.Event]] = defaultdict(
             set
         )
+        # Map object_key -> timestamp when notify_changed was called
+        # Used to track latency for propagating updates to clients
+        self._notify_timestamps: Dict[KeyType, float] = {}
+        # Aggregate count of pending clients per namespace tag. Needed because
+        # multiple keys can map to the same low-cardinality namespace tag, so
+        # we must track the total rather than setting per-key counts.
+        self._pending_clients_by_namespace: DefaultDict[str, int] = defaultdict(int)
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
         self.transmission_counter = metrics.Counter(
             "serve_long_poll_host_transmission_counter",
             description="The number of times the long poll host transmits data.",
             tag_keys=("namespace_or_state",),
+        )
+        self.pending_clients_gauge = metrics.Gauge(
+            "serve_long_poll_pending_clients",
+            description=("The number of clients waiting for updates per namespace."),
+            tag_keys=("namespace",),
         )
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
@@ -267,6 +369,22 @@ class LongPollHost:
             return len(self.notifier_events[key])
         else:
             return sum(len(events) for events in self.notifier_events.values())
+
+    def _get_pending_clients_by_namespace(self, namespace_tag: str) -> int:
+        """Used for testing. Returns the aggregate pending client count."""
+        return self._pending_clients_by_namespace.get(namespace_tag, 0)
+
+    def notify_client_disabled(self, client_id: str, reason: str) -> None:
+        """Fire-and-forget hook for clients that are shutting themselves down.
+
+        LongPollClient calls this before flipping ``is_running`` to False when
+        it cannot keep delivering updates (e.g. its bound asyncio loop is no
+        longer running).
+        """
+        logger.error(
+            f"LongPollClient {client_id!r} disabled itself and will no longer "
+            f"receive controller updates. Reason: {reason}"
+        )
 
     def _count_send(
         self, timeout_or_data: Union[LongPollState, Dict[KeyType, UpdatedObject]]
@@ -287,7 +405,8 @@ class LongPollHost:
             data = timeout_or_data
             for key in data.keys():
                 self.transmission_counter.inc(
-                    value=1, tags={"namespace_or_state": str(key)}
+                    value=1,
+                    tags={"namespace_or_state": _get_metric_namespace_tag(key)},
                 )
 
     async def listen_for_change(
@@ -326,7 +445,9 @@ class LongPollHost:
 
             if existing_id != client_snapshot_id:
                 updated_objects[key] = UpdatedObject(
-                    self.object_snapshots[key], existing_id
+                    self.object_snapshots[key],
+                    existing_id,
+                    self._notify_timestamps[key],
                 )
         if len(updated_objects) > 0:
             self._count_send(updated_objects)
@@ -343,6 +464,14 @@ class LongPollHost:
             # asyncio Event.
             self.notifier_events[key].add(event)
 
+            # Update aggregate pending clients gauge for this namespace
+            namespace_tag = _get_metric_namespace_tag(key)
+            self._pending_clients_by_namespace[namespace_tag] += 1
+            self.pending_clients_gauge.set(
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
+            )
+
             task = get_or_create_event_loop().create_task(event.wait())
             async_task_to_events[task] = event
             async_task_to_watched_keys[task] = key
@@ -353,15 +482,36 @@ class LongPollHost:
             timeout=random.uniform(*self._listen_for_change_request_timeout_s),
         )
 
+        # Collect per-namespace decrements, flush the gauge once per
+        # unique tag after the loop — a single timed-out poll over many
+        # keys can otherwise do N redundant metric writes for the same
+        # namespace.
+        affected_namespaces = set()
         for task in not_done:
             task.cancel()
+            event = async_task_to_events[task]
+            key = async_task_to_watched_keys[task]
+            # .get() avoids resurrecting a defaultdict entry for a key
+            # evicted while we were parked.
+            events_set = self.notifier_events.get(key)
+            if events_set is None:
+                continue
             try:
-                event = async_task_to_events[task]
-                self.notifier_events[async_task_to_watched_keys[task]].remove(event)
+                events_set.remove(event)
             except KeyError:
-                # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
-                # actually have had its event removed in `notify_changed`.
-                pass
+                # FIRST_COMPLETED: a sibling wake may have popped this
+                # event via notify_changed.
+                continue
+            if not events_set:
+                self.notifier_events.pop(key, None)
+            namespace_tag = _get_metric_namespace_tag(key)
+            self._pending_clients_by_namespace[namespace_tag] -= 1
+            affected_namespaces.add(namespace_tag)
+        for namespace_tag in affected_namespaces:
+            self.pending_clients_gauge.set(
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
+            )
 
         if len(done) == 0:
             self._count_send(LongPollState.TIME_OUT)
@@ -370,9 +520,13 @@ class LongPollHost:
             updated_objects = {}
             for task in done:
                 updated_object_key = async_task_to_watched_keys[task]
+                # Evicted via remove_keys while parked; skip.
+                if updated_object_key not in self.snapshot_ids:
+                    continue
                 updated_objects[updated_object_key] = UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
+                    self._notify_timestamps[updated_object_key],
                 )
             self._count_send(updated_objects)
             return updated_objects
@@ -391,8 +545,14 @@ class LongPollHost:
             self._parse_xlang_key(xlang_key): snapshot_id
             for xlang_key, snapshot_id in request_proto.keys_to_snapshot_ids.items()
         }
-        keys_to_updated_objects = await self.listen_for_change(keys_to_snapshot_ids)
-        return self._listen_result_to_proto_bytes(keys_to_updated_objects)
+        result = await self.listen_for_change(keys_to_snapshot_ids)
+
+        # Java long-poll protocol currently doesn't encode LongPollState.
+        # Convert timeout to an empty update payload so the Java client can retry.
+        if result is LongPollState.TIME_OUT:
+            result = {}
+
+        return self._listen_result_to_proto_bytes(result)
 
     def _parse_poll_namespace(self, name: str):
         if name == LongPollNamespace.ROUTE_TABLE.name:
@@ -472,6 +632,7 @@ class LongPollHost:
         Update the current snapshot of some objects
         and notify any long poll clients.
         """
+        notify_time = time.time()
         for object_key, updated_object in updates.items():
             try:
                 self.snapshot_ids[object_key] += 1
@@ -482,7 +643,51 @@ class LongPollHost:
                 # https://github.com/ray-project/ray/pull/45881#discussion_r1645243485
                 self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
             self.object_snapshots[object_key] = updated_object
+            # Record timestamp for latency tracking
+            self._notify_timestamps[object_key] = notify_time
             logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
-            for event in self.notifier_events.pop(object_key, set()):
+            events_to_notify = self.notifier_events.pop(object_key, set())
+            if events_to_notify:
+                # Decrement aggregate count by the number of events popped
+                namespace_tag = _get_metric_namespace_tag(object_key)
+                self._pending_clients_by_namespace[namespace_tag] -= len(
+                    events_to_notify
+                )
+                self.pending_clients_gauge.set(
+                    self._pending_clients_by_namespace[namespace_tag],
+                    tags={"namespace": namespace_tag},
+                )
+            for event in events_to_notify:
                 event.set()
+
+    def remove_keys(self, keys: Iterable[KeyType]) -> None:
+        """Evict per-key state and wake any parked listeners.
+
+        Do NOT evict a key in the same sync call as ``notify_changed``
+        on it — the waiter only runs after the call returns, by which
+        point ``listen_for_change``'s done-branch guard would drop the
+        payload.
+        """
+        affected_namespaces = set()
+        for key in keys:
+            self.snapshot_ids.pop(key, None)
+            self.object_snapshots.pop(key, None)
+            self._notify_timestamps.pop(key, None)
+            events_to_notify = self.notifier_events.pop(key, set())
+            if events_to_notify:
+                # Decrement before waking: the listen_for_change timeout
+                # cleanup would otherwise skip the decrement on the now-
+                # missing notifier_events entry.
+                namespace_tag = _get_metric_namespace_tag(key)
+                self._pending_clients_by_namespace[namespace_tag] -= len(
+                    events_to_notify
+                )
+                affected_namespaces.add(namespace_tag)
+            for event in events_to_notify:
+                event.set()
+        for namespace_tag in affected_namespaces:
+            self.pending_clients_gauge.set(
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
+            )

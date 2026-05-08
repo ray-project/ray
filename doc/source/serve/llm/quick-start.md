@@ -270,3 +270,11 @@ serve run config.yaml
 
 For monitoring and observability, see {doc}`Observability <user-guides/observability>`.
 
+## Advanced usage patterns
+
+For each usage pattern, Ray Serve LLM provides a server and client code snippet.
+
+### Cross-node parallelism
+
+Ray Serve LLM supports cross-node tensor parallelism (TP) and pipeline parallelism (PP), allowing you to distribute model inference across multiple GPUs and nodes. See {doc}`Cross-node parallelism <user-guides/cross-node-parallelism>` for a comprehensive guide on configuring and deploying models with cross-node parallelism.
+

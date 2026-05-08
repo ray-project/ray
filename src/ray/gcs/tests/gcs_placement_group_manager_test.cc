@@ -22,7 +22,7 @@
 
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
@@ -33,7 +33,6 @@ namespace ray {
 namespace gcs {
 
 using ::testing::_;
-using StatusCallback = std::function<void(Status status)>;
 
 class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterface {
  public:
@@ -113,7 +112,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   // Make placement group registration sync.
   void RegisterPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request,
-                              StatusCallback callback) {
+                              rpc::StatusCallback callback) {
     std::promise<void> promise;
     JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
     std::string ray_namespace = job_namespace_table_[job_id];

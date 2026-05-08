@@ -20,14 +20,14 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 #include "src/ray/protobuf/common.pb.h"
 
 using MessageType = ray::protocol::MessageType;
@@ -55,7 +55,6 @@ class RayletIpcClient : public RayletIpcClientInterface {
                         const rpc::Language &language,
                         const std::string &ip_address,
                         const std::string &serialized_job_config,
-                        const StartupToken &startup_token,
                         NodeID *node_id,
                         int *assigned_port) override;
 
@@ -72,7 +71,8 @@ class RayletIpcClient : public RayletIpcClientInterface {
 
   StatusOr<ScopedResponse> AsyncGetObjects(
       const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) override;
+      const std::vector<rpc::Address> &owner_addresses,
+      int64_t get_request_id) override;
 
   StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,

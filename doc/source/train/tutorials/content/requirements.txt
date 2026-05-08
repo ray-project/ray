@@ -1,0 +1,10 @@
+matplotlib==3.10.6
+torch==2.8.0
+torchvision==0.23.0
+pyarrow==14.0.2
+torchmetrics==1.8.2
+xgboost==3.0.5
+seaborn==0.13.2
+scikit-learn==1.7.2
+lightning==2.5.5
+datasets==2.19.2

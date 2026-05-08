@@ -228,7 +228,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         eps_evicted = []
         eps_evicted_ids = []
-        eps_evicted_idxs = []
+        eps_evicted_indices = []
         while (
             self._num_timesteps > self.capacity
             and self._num_remaining_episodes(new_episode_ids, eps_evicted_ids) != 1
@@ -236,7 +236,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Evict episode
             eps_evicted.append(self.episodes.popleft())
             eps_evicted_ids.append(eps_evicted[-1].id_)
-            eps_evicted_idxs.append(self.episode_id_to_index.pop(eps_evicted_ids[-1]))
+            eps_evicted_indices.append(
+                self.episode_id_to_index.pop(eps_evicted_ids[-1])
+            )
             num_episodes_evicted += 1
             num_env_steps_evicted += len(eps_evicted[-1])
             agent_to_num_episodes_evicted[DEFAULT_AGENT_ID] += 1
@@ -254,7 +256,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             if eps_evicted_ids[-1] in new_episode_ids:
                 # TODO (simon): Apply the same logic as in the MA-case.
                 len_to_subtract = len(
-                    episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
+                    episodes[new_episode_ids.index(eps_evicted_ids[-1])]
                 )
                 self._num_timesteps -= len_to_subtract
                 self._num_timesteps_added -= len_to_subtract
@@ -265,12 +267,12 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         # Remove corresponding indices, if episodes were evicted.
         # TODO (simon): Refactor into method such that MultiAgent
         # version can inherit.
-        if eps_evicted_idxs:
+        if eps_evicted_indices:
             new_indices = []
             i = 0
             for idx_triple in self._indices:
                 # If the index comes from an evicted episode free the nodes.
-                if idx_triple[0] in eps_evicted_idxs:
+                if idx_triple[0] in eps_evicted_indices:
                     # Here we need the index of a sample in the segment tree.
                     self._free_nodes.appendleft(idx_triple[2])
                     # Also remove the potentially maximum index.

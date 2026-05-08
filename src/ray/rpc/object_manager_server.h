@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
@@ -81,7 +81,7 @@ class ObjectManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override {
+      std::shared_ptr<const AuthenticationToken> auth_token) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 

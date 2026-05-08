@@ -34,6 +34,15 @@ message ActorLifecycleEvent {
     DEAD = 4;
   }
 
+  enum RestartReason {
+    // Default: Actor is being restarted due to actor/worker failure.
+    ACTOR_FAILURE = 0;
+    // Actor is being restarted due to lineage reconstruction.
+    LINEAGE_RECONSTRUCTION = 1;
+    // Actor is being restarted because the node was preempted.
+    NODE_PREEMPTION = 2;
+  }
+
   message StateTransition {
     State state = 1;
     google.protobuf.Timestamp timestamp = 2;
@@ -43,8 +52,19 @@ message ActorLifecycleEvent {
     // The worker id of the worker on which this actor is running. available when state is ALIVE.
     // The worker id can change when the actor is restarted.
     bytes worker_id = 4;
+    // The repr name of the actor if specified with a customized repr method, e.g. __repr__
+    // This field is only available after the actor creation task has been run since it
+    // might depend on actor fields to be initialized in __init__.
+    // Default to empty string if no customized repr is defined.
+    string repr_name = 5;
     // Contains metadata about why the actor is dead. available when state is DEAD.
     ActorDeathCause death_cause = 6;
+    // PID of the actor process. Available when state is ALIVE.
+    uint32 pid = 7;
+    // Port of the actor worker. Available when state is ALIVE.
+    int32 port = 8;
+    // Reason for restarting. Only set when state is RESTARTING.
+    RestartReason restart_reason = 9;
   }
 
   // The ID of the actor that was created.

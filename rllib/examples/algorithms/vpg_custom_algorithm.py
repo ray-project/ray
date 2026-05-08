@@ -72,7 +72,7 @@ learning behavior on the CartPole-v1 environment:
 """
 
 from ray.rllib.examples.algorithms.classes.vpg import VPGConfig
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

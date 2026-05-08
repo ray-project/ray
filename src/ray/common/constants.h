@@ -66,6 +66,13 @@ constexpr int kMessagePackOffset = 9;
 /// Should be kept in sync with SETUP_WORKER_FILENAME in ray_constants.py
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
+// Should be kept in sync with port names in ray_constants.py
+constexpr char kRuntimeEnvAgentPortName[] = "runtime_env_agent_port";
+constexpr char kMetricsAgentPortName[] = "metrics_agent_port";
+constexpr char kMetricsExportPortName[] = "metrics_export_port";
+constexpr char kDashboardAgentListenPortName[] = "dashboard_agent_listen_port";
+constexpr char kGcsServerPortName[] = "gcs_server_port";
+
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 
@@ -141,7 +148,14 @@ constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
 // A string representing the current TPU pod type, e.g. v6e-32.
 constexpr char kLabelKeyTpuPodType[] = RAY_LABEL_KEY_PREFIX "tpu-pod-type";
 
+// The GPU domain label key used for rack-aware placement group scheduling.
+constexpr char kGpuDomainLabelKey[] = RAY_LABEL_KEY_PREFIX "gpu-domain";
+
 #undef RAY_LABEL_KEY_PREFIX
+
+/// GPU accelerator type identifiers for rack-aware scheduling.
+constexpr char kGB200[] = "GB200";
+constexpr char kGB300[] = "GB300";
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.
 /// NOTE: DON'T CHANGE THIS since autoscaler depends on it.

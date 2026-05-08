@@ -1,7 +1,7 @@
 import itertools
 import random
 import time
-from typing import Optional
+from typing import Iterator, Optional
 
 import numpy as np
 import pandas as pd
@@ -10,17 +10,19 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     combine_chunks,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
+    AsList,
     Count,
+    CountDistinct,
     Max,
     Mean,
     Min,
@@ -30,7 +32,8 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import ShuffleStrategy
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -108,6 +111,92 @@ def test_map_groups_with_gpus(
     )
 
     assert rows == [{"id": 0}]
+
+
+def test_groupby_with_column_expression_udf(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    import pyarrow.compute as pc
+
+    from ray.data.datatype import DataType
+    from ray.data.expressions import col, udf
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(return_dtype=DataType.int32())
+    def min_value(values: pa.Array) -> pa.Array:
+        scalar = pc.min(values)
+        if isinstance(scalar, pa.Scalar):
+            scalar = scalar.as_py()
+        return pa.array([scalar] * len(values))
+
+    rows = (
+        ds.groupby("group")
+        .with_column("min_value", min_value(col("value")))
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "min_value": 1},
+        {"group": 1, "value": 2, "min_value": 1},
+        {"group": 2, "value": 3, "min_value": 3},
+        {"group": 2, "value": 4, "min_value": 3},
+    ]
+
+
+def test_arrow_nan_element(ray_start_regular_shared_2_cpus):
+    ds = ray.data.from_items(
+        [
+            1.0,
+            1.0,
+            2.0,
+            np.nan,
+            np.nan,
+        ]
+    )
+    ds = ds.groupby("item").count()
+    ds = ds.filter(lambda v: np.isnan(v["item"]))
+    result = ds.take_all()
+    assert result[0]["count()"] == 2
+
+
+def test_groupby_with_column_expression_arithmetic(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    from ray.data.expressions import col
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    rows = (
+        ds.groupby("group")
+        .with_column("value_twice", col("value") * 2)
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "value_twice": 2},
+        {"group": 1, "value": 2, "value_twice": 4},
+        {"group": 2, "value": 3, "value_twice": 6},
+        {"group": 2, "value": 4, "value_twice": 8},
+    ]
 
 
 def test_map_groups_with_actors(
@@ -316,12 +405,13 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
-    ctx = DataContext.get_current()
-
-    if ctx.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE and ds_format == "pandas":
+    if (
+        ds_format == "pandas"
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
         pytest.skip(
-            "Pandas derives integer columns with null as doubles, "
-            "therefore deviating schemas for blocks containing nulls"
+            "PyArrow < 14 cannot unify double vs int64 schemas produced by "
+            "pandas nullable integer columns with nulls"
         )
 
     # Test built-in sum aggregation
@@ -380,13 +470,14 @@ def test_groupby_tabular_sum(
     nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
 
+    result = nan_agg_ds.sort("A").to_pandas()
+
     expected = pd.DataFrame(
         {
-            "A": [0, 1, 2],
-            "sum(B)": pd.Series([None, None, None], dtype="object"),
+            "A": pd.Series([0, 1, 2], dtype=result["A"].dtype),
+            "sum(B)": pd.Series([None, None, None], dtype=result["sum(B)"].dtype),
         },
     )
-    result = nan_agg_ds.sort("A").to_pandas()
 
     print("Result: ", result)
     print("Expected: ", expected)
@@ -395,6 +486,88 @@ def test_groupby_tabular_sum(
         expected,
         result,
     )
+
+
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_e2e(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    ds = (
+        ray.data.range(10)
+        .with_column("group_key", col("id") % 3)
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
+
+    # Listing all elements per group:
+    result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+
+    for i in range(len(result)):
+        result[i]["list(id)"] = sorted(result[i]["list(id)"])
+
+    assert sorted(result, key=lambda x: x["group_key"]) == [
+        {"group_key": 0, "list(id)": [0, 3, 6, 9]},
+        {"group_key": 1, "list(id)": [1, 4, 7]},
+        {"group_key": 2, "list(id)": [2, 5, 8]},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_with_nulls(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    # Test with nulls included (default behavior: ignore_nulls=False)
+    ds = (
+        ray.data.from_items(
+            [
+                {"group": "A", "value": 1},
+                {"group": "A", "value": None},
+                {"group": "A", "value": 3},
+                {"group": "B", "value": None},
+                {"group": "B", "value": 5},
+            ]
+        )
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
+
+    # Default: nulls are included in the list
+    result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    # Sort the lists for comparison (None values will be at the end in sorted order)
+    for r in result_sorted:
+        # Separate None and non-None values for sorting
+        non_nulls = sorted([v for v in r["list(value)"] if v is not None])
+        nulls = [v for v in r["list(value)"] if v is None]
+        r["list(value)"] = non_nulls + nulls
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3, None]},
+        {"group": "B", "list(value)": [5, None]},
+    ]
+
+    # With ignore_nulls=True: nulls are excluded from the list
+    result = (
+        ds.groupby("group").aggregate(AsList(on="value", ignore_nulls=True)).take_all()
+    )
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    for r in result_sorted:
+        r["list(value)"] = sorted(r["list(value)"])
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3]},
+        {"group": "B", "list(value)": [5]},
+    ]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -438,6 +611,7 @@ def test_groupby_arrow_multi_agg(
         .aggregate(
             Count(),
             Count("B"),
+            CountDistinct("B"),
             Sum("B"),
             Min("B"),
             Max("B"),
@@ -456,6 +630,7 @@ def test_groupby_arrow_multi_agg(
             "B": [
                 "count",
                 "count",
+                "nunique",
                 "sum",
                 "min",
                 "max",
@@ -472,6 +647,7 @@ def test_groupby_arrow_multi_agg(
         "A",
         "count()",
         "count(B)",
+        "count_distinct(B)",
         "sum(B)",
         "min(B)",
         "max(B)",
@@ -486,6 +662,12 @@ def test_groupby_arrow_multi_agg(
 
     agg_df["unique(B)"] = _sort_series_of_lists_elements(agg_df["unique(B)"])
     expected_df["unique(B)"] = _sort_series_of_lists_elements(expected_df["unique(B)"])
+
+    # to_pandas() now preserves Arrow-backed dtypes via types_mapper; coerce
+    # the expected DataFrame's numeric columns to match.
+    expected_df = expected_df.astype(
+        {col: agg_df[col].dtype for col in expected_df.columns if col != "unique(B)"}
+    )
 
     print(f"Expected: {expected_df}")
     print(f"Result: {agg_df}")
@@ -567,6 +749,9 @@ def test_groupby_multi_agg_with_nans(
         .groupby("A")
         .aggregate(
             Count("B", alias_name="count_b", ignore_nulls=ignore_nulls),
+            CountDistinct(
+                "B", alias_name="count_distinct_b", ignore_nulls=ignore_nulls
+            ),
             Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
             Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
             Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
@@ -574,7 +759,7 @@ def test_groupby_multi_agg_with_nans(
             Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
             Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
             Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-            Unique("B", alias_name="unique_b"),
+            Unique("B", alias_name="unique_b", ignore_nulls=False),
         )
     )
 
@@ -584,6 +769,7 @@ def test_groupby_multi_agg_with_nans(
         {
             "B": [
                 ("count_b", lambda s: s.count() if ignore_nulls else len(s)),
+                ("count_distinct_b", lambda s: s.nunique(dropna=ignore_nulls)),
                 ("sum_b", lambda s: s.sum(skipna=ignore_nulls)),
                 ("min_b", lambda s: s.min(skipna=ignore_nulls)),
                 ("max_b", lambda s: s.max(skipna=ignore_nulls)),
@@ -604,6 +790,7 @@ def test_groupby_multi_agg_with_nans(
     grouped_df.columns = [
         "A",
         "count_b",
+        "count_distinct_b",
         "sum_b",
         "min_b",
         "max_b",
@@ -674,6 +861,7 @@ def test_groupby_aggregations_are_associative(
 
     aggs = [
         Count("B", alias_name="count_b", ignore_nulls=ignore_nulls),
+        CountDistinct("B", alias_name="count_distinct_b", ignore_nulls=ignore_nulls),
         Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
         Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
         Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
@@ -681,7 +869,7 @@ def test_groupby_aggregations_are_associative(
         Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
         Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
         Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-        Unique("B", alias_name="unique_b"),
+        Unique("B", alias_name="unique_b", ignore_nulls=False),
     ]
 
     # Step 0: Prepare expected output (using Pandas)
@@ -689,6 +877,7 @@ def test_groupby_aggregations_are_associative(
         {
             "B": [
                 ("count", lambda s: s.count() if ignore_nulls else len(s)),
+                ("count_distinct", lambda s: s.nunique(dropna=ignore_nulls)),
                 ("sum", lambda s: s.sum(skipna=ignore_nulls, min_count=1)),
                 ("min", lambda s: s.min(skipna=ignore_nulls)),
                 ("max", lambda s: s.max(skipna=ignore_nulls)),
@@ -709,6 +898,7 @@ def test_groupby_aggregations_are_associative(
     grouped_df.columns = [
         "A",
         "count_b",
+        "count_distinct_b",
         "sum_b",
         "min_b",
         "max_b",
@@ -828,11 +1018,13 @@ def test_groupby_map_groups_for_pandas(
     # The function (i.e. the normalization) performed on each group doesn't
     # aggregate rows, so we still have 3 rows.
     assert mapped.count() == 3
+    result = mapped.sort(["A", "C"]).to_pandas()
+
+    # to_pandas() now preserves Arrow-backed dtypes via types_mapper; build the
+    # expected DataFrame with matching dtypes.
     expected = pd.DataFrame(
         {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
-    )
-
-    result = mapped.sort(["A", "C"]).to_pandas()
+    ).astype(result.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected, result)
 
@@ -1115,7 +1307,7 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
+def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, capsys):
     """
     The partial function name should show up as
     +- Sort
@@ -1139,7 +1331,43 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
         {"x_add_5": 25},
     ]
-    assert "MapBatches(func)" in ds.__repr__()
+    ds.explain()
+    captured = capsys.readouterr()
+    assert "MapBatches(func)" in captured.out
+
+
+def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
+    """
+    Tests that map_groups supports UDFs that return generators (iterators).
+    """
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "data": 10},
+            {"group": 1, "data": 20},
+            {"group": 2, "data": 30},
+        ]
+    )
+
+    def generator_udf(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
+        # For each group, yield two DataFrames.
+        # 1. A DataFrame where 'data' is multiplied by 2.
+        yield df.assign(data=df["data"] * 2)
+        # 2. A DataFrame where 'data' is multiplied by 3.
+        yield df.assign(data=df["data"] * 3)
+
+    # Apply the generator UDF to the grouped data.
+    result_ds = ds.groupby("group").map_groups(generator_udf)
+
+    # The final dataset should contain all results from all yields.
+    # Group 1 -> data: [20, 40] and [30, 60]
+    # Group 2 -> data: [60] and [90]
+    expected_data = sorted([20, 40, 30, 60, 60, 90])
+
+    # Collect and sort the actual data to ensure correctness regardless of order.
+    actual_data = sorted([row["data"] for row in result_ds.take_all()])
+
+    assert actual_data == expected_data
+    assert result_ds.count() == 6
 
 
 if __name__ == "__main__":

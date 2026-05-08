@@ -1,16 +1,37 @@
+import itertools
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    Schema,
+    _take_first_non_empty_schema,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-@dataclass
+@dataclass(frozen=True)
+class BlockSlice:
+    """A slice of a block."""
+
+    # Starting row offset (inclusive) within the block.
+    start_offset: int
+    # Ending row offset (exclusive) within the block.
+    end_offset: int
+
+    @property
+    def num_rows(self) -> int:
+        return self.end_offset - self.start_offset
+
+
+@dataclass(frozen=True)
 class RefBundle:
     """A group of data block references and their metadata.
 
@@ -38,6 +59,12 @@ class RefBundle:
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
 
+    # The slices of the blocks in this bundle. After __post_init__, this is always
+    # a list with length equal to len(blocks). Individual entries can be None to
+    # represent a full block (equivalent to BlockSlice(0, num_rows)).
+    # Pass None during construction to initialize all slices as None (full blocks).
+    slices: Optional[Tuple[Optional[BlockSlice], ...]] = None
+
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
@@ -51,8 +78,41 @@ class RefBundle:
     _cached_preferred_locations: Optional[Dict[NodeIdStr, int]] = None
 
     def __post_init__(self):
+        if self.schema is not None:
+            import pyarrow as pa
+
+            from ray.data._internal.pandas_block import PandasBlockSchema
+
+            assert isinstance(
+                self.schema, (pa.lib.Schema, PandasBlockSchema)
+            ), f"Schema must be a pyarrow or PandasBlockSchema, got {type(self.schema)}"
+
         if not isinstance(self.blocks, tuple):
             object.__setattr__(self, "blocks", tuple(self.blocks))
+
+        if self.slices is None:
+            object.__setattr__(self, "slices", (None,) * len(self.blocks))
+        else:
+            if not isinstance(self.slices, tuple):
+                object.__setattr__(self, "slices", tuple(self.slices))
+
+            assert len(self.blocks) == len(
+                self.slices
+            ), "Number of blocks and slices must match"
+            # Validate slice ranges
+            for (_, metadata), block_slice in zip(self.blocks, self.slices):
+                if block_slice is not None:
+                    assert (
+                        block_slice.start_offset >= 0
+                    ), f"Slice start_offset must be non-negative: {block_slice.start_offset}"
+                    assert (
+                        block_slice.end_offset >= block_slice.start_offset
+                    ), f"Slice end_offset must be >= start_offset: [{block_slice.start_offset}, {block_slice.end_offset})"
+                    if metadata.num_rows is not None:
+                        assert (
+                            block_slice.end_offset <= metadata.num_rows
+                        ), f"Slice range [{block_slice.start_offset}, {block_slice.end_offset}) exceeds block num_rows: {metadata.num_rows}"
+
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
@@ -62,11 +122,6 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
-            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
-        object.__setattr__(self, key, value)
 
     @property
     def block_refs(self) -> List[ObjectRef[Block]]:
@@ -79,18 +134,52 @@ class RefBundle:
         return [metadata for _, metadata in self.blocks]
 
     def num_rows(self) -> Optional[int]:
-        """Number of rows present in this bundle, if known."""
+        """Number of rows present in this bundle, if known.
+
+        Iterates through blocks and their corresponding slices to calculate the total.
+        Note: Block metadata always refers to the full block, not the slice.
+
+        - If block_slice is None, uses the full block's metadata.num_rows
+        - If block_slice is present, uses the slice's num_rows (partial block portion)
+        - Returns None if any full block has unknown row count (metadata.num_rows is None)
+        """
         total = 0
-        for m in self.metadata:
-            if m.num_rows is None:
-                return None
+        for metadata, block_slice in zip(self.metadata, self.slices):
+            if block_slice is None:
+                if metadata.num_rows is None:
+                    return None
+                total += metadata.num_rows
             else:
-                total += m.num_rows
+                total += block_slice.num_rows
         return total
 
     def size_bytes(self) -> int:
-        """Size of the blocks of this bundle in bytes."""
-        return sum(m.size_bytes for m in self.metadata)
+        """Size of the blocks of this bundle in bytes.
+
+        Iterates through blocks and their corresponding slices to calculate the total size.
+        Note: Block metadata always refers to the full block, not the slice.
+
+        - If block_slice is None, uses the full block's metadata.size_bytes
+        - If block_slice is present but num_rows is unknown or zero, uses full metadata.size_bytes
+        - If block_slice represents a partial block, estimates size proportionally based on
+          (metadata.size_bytes / metadata.num_rows) * block_slice.num_rows
+        - Otherwise, uses the full metadata.size_bytes
+        """
+        total = 0
+        for (_, metadata), block_slice in zip(self.blocks, self.slices):
+            if block_slice is None:
+                # Full block
+                total += metadata.size_bytes
+            elif metadata.num_rows is None or metadata.num_rows == 0:
+                # Unknown num_rows or empty block - use full metadata size
+                total += metadata.size_bytes
+            elif metadata.num_rows != block_slice.num_rows:
+                # Partial block - estimate size based on rows
+                per_row = metadata.size_bytes / metadata.num_rows
+                total += max(1, round(per_row * block_slice.num_rows))
+            else:
+                total += metadata.size_bytes
+        return total
 
     def destroy_if_owned(self) -> int:
         """Clears the object store memory for these blocks if owned.
@@ -120,7 +209,9 @@ class RefBundle:
                 for loc in obj_meta.locs:
                     preferred_locs[loc] += obj_meta.size
 
-            self._cached_preferred_locations = preferred_locs
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_preferred_locations", preferred_locs)
 
         return self._cached_preferred_locations
 
@@ -139,18 +230,196 @@ class RefBundle:
                 for ref in self.block_refs
             }
 
-            self._cached_object_meta = object_metas
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_object_meta", object_metas)
 
         return self._cached_object_meta
 
-    def __eq__(self, other) -> bool:
-        return self is other
+    def slice(self, needed_rows: int) -> Tuple["RefBundle", "RefBundle"]:
+        """Slice a Ref Bundle into the first bundle containing the first `needed_rows` rows and the remaining bundle containing the remaining rows.
+
+        Args:
+            needed_rows: Number of rows to take from the head of the bundle.
+
+        Returns:
+            A tuple of (sliced_bundle, remaining_bundle). The needed rows must be less than the number of rows in the bundle.
+        """
+        assert needed_rows > 0, "needed_rows must be positive."
+        assert (
+            self.num_rows() is not None
+        ), "Cannot slice a RefBundle with unknown number of rows."
+        assert (
+            needed_rows < self.num_rows()
+        ), f"To slice a RefBundle, the number of requested rows must be less than the number of rows in the bundle. Requested {needed_rows} rows but bundle only has {self.num_rows()} rows."
+
+        block_slices = []
+        for metadata, block_slice in zip(self.metadata, self.slices):
+            if block_slice is None:
+                # None represents a full block, convert to explicit BlockSlice
+                assert (
+                    metadata.num_rows is not None
+                ), "Cannot derive block slice for a RefBundle with unknown block row counts."
+                block_slices.append(
+                    BlockSlice(start_offset=0, end_offset=metadata.num_rows)
+                )
+            else:
+                block_slices.append(block_slice)
+
+        consumed_blocks: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
+        consumed_slices: List[BlockSlice] = []
+        remaining_blocks: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
+        remaining_slices: List[BlockSlice] = []
+
+        rows_to_take = needed_rows
+
+        for (block_ref, metadata), block_slice in zip(self.blocks, block_slices):
+            block_rows = block_slice.num_rows
+            if rows_to_take >= block_rows:
+                consumed_blocks.append((block_ref, metadata))
+                consumed_slices.append(block_slice)
+                rows_to_take -= block_rows
+            else:
+                if rows_to_take == 0:
+                    remaining_blocks.append((block_ref, metadata))
+                    remaining_slices.append(block_slice)
+                    continue
+                consume_slice = BlockSlice(
+                    start_offset=block_slice.start_offset,
+                    end_offset=block_slice.start_offset + rows_to_take,
+                )
+                consumed_blocks.append((block_ref, metadata))
+                consumed_slices.append(consume_slice)
+
+                leftover_rows = block_rows - rows_to_take
+                if leftover_rows > 0:
+                    remainder_slice = BlockSlice(
+                        start_offset=consume_slice.end_offset,
+                        end_offset=block_slice.end_offset,
+                    )
+                    remaining_blocks.append((block_ref, metadata))
+                    remaining_slices.append(remainder_slice)
+
+                rows_to_take = 0
+
+        sliced_bundle = RefBundle(
+            blocks=tuple(consumed_blocks),
+            schema=self.schema,
+            owns_blocks=False,
+            slices=tuple(consumed_slices) if consumed_slices else None,
+        )
+
+        remaining_bundle = RefBundle(
+            blocks=tuple(remaining_blocks),
+            schema=self.schema,
+            owns_blocks=False,
+            slices=tuple(remaining_slices) if remaining_slices else None,
+        )
+
+        return sliced_bundle, remaining_bundle
+
+    @classmethod
+    def merge_ref_bundles(cls, bundles: Iterable["RefBundle"]) -> "RefBundle":
+        """Merge multiple RefBundles into a single RefBundle.
+
+        Args:
+            bundles: An iterable of RefBundles to merge.
+
+        Returns:
+            A single RefBundle containing all blocks from the input bundles.
+            owns_blocks is True only if all input bundles own their blocks.
+            schema is the first non-empty schema found.
+        """
+
+        bundles = list(bundles)
+        if not bundles:
+            return cls(blocks=(), owns_blocks=True, schema=None)
+
+        merged_blocks = list(
+            itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
+        )
+        merged_slices = list(
+            itertools.chain.from_iterable(bundle.slices for bundle in bundles)
+        )
+        # Ray Data uses the `owns_blocks` flag to determine if the system can eagerly
+        # destroy blocks when they're no longer needed. To be safe, we only set this
+        # to True if all input bundles own their blocks.
+        owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+        # TODO: Reconcile the schemas rather than taking the first non-empty schema.
+        schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
+        return cls(
+            blocks=tuple(merged_blocks),
+            schema=schema,
+            owns_blocks=owns_blocks,
+            slices=merged_slices,
+        )
+
+    def __eq__(self, other: "RefBundle"):
+        if self is other:
+            return True
+        elif not isinstance(other, RefBundle):
+            return False
+
+        return (
+            self.blocks == other.blocks
+            and self.slices == other.slices
+            # NOTE: We're establishing a requirement of schemas for `RefBundle`
+            #       to be exactly the same object for it to be considered equal.
+            #
+            #       This is necessary to avoid a full schema equality check that
+            #       is computationally intensive.
+            and self.schema is other.schema
+            and self.owns_blocks == other.owns_blocks
+            and self.output_split_idx == other.output_split_idx
+        )
 
     def __hash__(self) -> int:
-        return id(self)
+        return hash(
+            (
+                # Only hash block refs
+                *[b for b, _ in self.blocks],
+                *self.slices,
+                # Check out comment in ``__eq__``
+                id(self.schema),
+                self.owns_blocks,
+                self.output_split_idx,
+            )
+        )
 
     def __len__(self) -> int:
         return len(self.blocks)
+
+    def __str__(self) -> str:
+        lines = [
+            f"RefBundle({len(self.blocks)} blocks,",
+            f"  {self.num_rows()} rows,",
+            f"  schema={self.schema},",
+            f"  owns_blocks={self.owns_blocks},",
+            "  blocks=(",
+        ]
+
+        # Loop through each block and show details
+        for i, ((block_ref, metadata), block_slice) in enumerate(
+            zip(self.blocks, self.slices)
+        ):
+            row_str = (
+                f"{metadata.num_rows} rows"
+                if metadata.num_rows is not None
+                else "unknown rows"
+            )
+            bytes_str = f"{metadata.size_bytes} bytes"
+            slice_str = (
+                f"slice={block_slice}"
+                if block_slice is not None
+                else "slice=None (full block)"
+            )
+
+            lines.append(f"    {i}: {row_str}, {bytes_str}, {slice_str}")
+
+        lines.append("  )")
+        lines.append(")")
+
+        return "\n".join(lines)
 
 
 @dataclass
@@ -170,3 +439,25 @@ def _ref_bundles_iterator_to_block_refs_list(
     return [
         block_ref for ref_bundle in ref_bundles for block_ref in ref_bundle.block_refs
     ]
+
+
+def _iter_sliced_blocks(
+    blocks: Iterable[Block],
+    slices: List[Optional[BlockSlice]],
+) -> Iterator[Block]:
+    blocks_list = list(blocks)
+    for block, block_slice in zip(blocks_list, slices):
+        if block_slice is None:
+            # None represents a full block - yield it as is
+            yield block
+        else:
+            accessor = BlockAccessor.for_block(block)
+            start = block_slice.start_offset
+            end = block_slice.end_offset
+            assert start <= end, "start must be less than end"
+            assert start >= 0, "start must be non-negative"
+            assert (
+                end <= accessor.num_rows()
+            ), "end must be less than or equal to the number of rows in the block"
+
+            yield accessor.slice(start, end, copy=False)

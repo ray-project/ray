@@ -4,7 +4,10 @@ ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//src/ray/observability:__pkg__",
+        "//src/ray/rpc:__pkg__",
+    ],
 )
 
 ray_cc_library(
@@ -17,26 +20,30 @@ ray_cc_library(
     deps = [
         ":metrics",
         ":rpc_callback_types",
-        "//src/ray/common:asio",
+        "//src/ray/asio:asio_chaos",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/rpc/authentication:authentication_token_loader",
         "@com_google_absl//absl/synchronization",
     ],
 )
 
 ray_cc_library(
     name = "grpc_client",
+    srcs = ["grpc_client.cc"],
     hdrs = ["grpc_client.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":client_call",
         ":common",
         ":rpc_chaos",
+        "//src/ray/common:constants",
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_mode",
+        "//src/ray/rpc/authentication:token_auth_client_interceptor",
         "//src/ray/util:network_util",
     ],
 )
@@ -91,6 +98,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
+        "@nlohmann_json",
     ],
 )
 
@@ -102,12 +110,16 @@ ray_cc_library(
     deps = [
         ":metrics",
         ":rpc_callback_types",
-        "//src/ray/common:asio",
+        "//src/ray/asio:asio_chaos",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_mode",
         "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/rpc/authentication:authentication_token_validator",
         "//src/ray/stats:stats_metric",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -121,7 +133,7 @@ ray_cc_library(
     deps = [
         ":common",
         ":server_call",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/rpc/authentication:authentication_token_loader",
@@ -154,7 +166,7 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/object_manager:object_manager_grpc_client_manager",
         "//src/ray/protobuf:object_manager_cc_grpc",
         "//src/ray/rpc:grpc_server",

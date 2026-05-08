@@ -1,12 +1,15 @@
 import itertools
 import logging
 from dataclasses import dataclass
-from typing import Generic, Iterable, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Generic, Iterable, List, Optional, TypeVar
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +51,20 @@ class Datasink(Generic[WriteReturnType]):
     and call :meth:`~ray.data.Dataset.write_datasink`.
     """
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         """Callback for when a write job starts.
 
         Use this method to perform setup for write tasks. For example, creating a
         staging bucket in S3.
+
+        This is called on the driver when the first input bundle is ready, just
+        before write tasks are submitted. The schema is extracted from the first
+        input bundle, enabling schema-dependent initialization.
+
+        Args:
+            schema: The PyArrow schema of the data being written. This is
+                automatically extracted from the first input bundle. May be None
+                if the input data has no schema.
         """
         pass
 

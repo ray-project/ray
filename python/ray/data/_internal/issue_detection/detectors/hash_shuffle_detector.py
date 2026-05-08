@@ -1,4 +1,5 @@
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List
 
 import ray
@@ -14,23 +15,60 @@ from ray.data._internal.issue_detection.issue_detector import (
 from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
-    from ray.data.context import DataContext
+
+
+@dataclass
+class HashShuffleAggregatorIssueDetectorConfig:
+    """Configuration for HashShuffleAggregatorIssueDetector."""
+
+    detection_time_interval_s: float = 30.0
+    min_wait_time_s: float = 300.0
 
 
 class HashShuffleAggregatorIssueDetector(IssueDetector):
     """Detector for hash shuffle aggregator health issues."""
 
-    def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
-        super().__init__(executor, ctx)
+    def __init__(
+        self,
+        dataset_id: str,
+        operators: List["PhysicalOperator"],
+        config: HashShuffleAggregatorIssueDetectorConfig,
+    ):
+        self._dataset_id = dataset_id
+        self._operators = operators
+        self._detector_cfg = config
         self._last_warning_times = {}  # Track per-operator warning times
+
+    @classmethod
+    def from_executor(
+        cls, executor: "StreamingExecutor"
+    ) -> "HashShuffleAggregatorIssueDetector":
+        """Factory method to create a HashShuffleAggregatorIssueDetector from a StreamingExecutor.
+
+        Args:
+            executor: The StreamingExecutor instance to extract dependencies from.
+
+        Returns:
+            An instance of HashShuffleAggregatorIssueDetector.
+        """
+        operators = list(executor._topology.keys()) if executor._topology else []
+        ctx = executor._data_context
+        return cls(
+            dataset_id=executor._dataset_id,
+            operators=operators,
+            config=ctx.issue_detectors_config.hash_shuffle_detector_config,
+        )
 
     def detect(self) -> List[Issue]:
         issues = []
         current_time = time.time()
 
         # Find all hash shuffle operators in the topology
-        for op in self._executor._topology.keys():
+        for op in self._operators:
             if not isinstance(op, HashShuffleOperator):
                 continue
 
@@ -53,7 +91,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
                 message = self._format_health_warning(aggregator_info)
                 issues.append(
                     Issue(
-                        dataset_name=self._executor._dataset_id,
+                        dataset_name=self._dataset_id,
                         operator_id=op.id,
                         issue_type=IssueType.HANGING,
                         message=message,
@@ -64,7 +102,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         return issues
 
     def detection_time_interval_s(self) -> float:
-        return self._ctx.hash_shuffle_aggregator_health_warning_interval_s
+        return self._detector_cfg.detection_time_interval_s
 
     def _should_emit_warning(
         self, op_id: str, current_time: float, info: AggregatorHealthInfo
@@ -76,10 +114,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
             return False
 
         # Check if enough time has passed since start
-        if (
-            current_time - info.started_at
-            < self._ctx.min_hash_shuffle_aggregator_wait_time_in_s
-        ):
+        if current_time - info.started_at < self._detector_cfg.min_wait_time_s:
             return False
 
         # Check if enough time has passed since last warning

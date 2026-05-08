@@ -3,18 +3,20 @@ import inspect
 import json
 import logging
 from functools import wraps
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 
-import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
 from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -22,7 +24,6 @@ from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
-    GetAllNodeInfoReply,
     GetAllNodeInfoRequest,
     GetAllPlacementGroupReply,
     GetAllPlacementGroupRequest,
@@ -134,9 +135,6 @@ class StateDataSourceClient:
         self._gcs_pg_info_stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(
             gcs_channel
         )
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
             gcs_channel
         )
@@ -145,14 +143,16 @@ class StateDataSourceClient:
         )
 
     def get_raylet_stub(self, ip: str, port: int):
+        from ray._private.grpc_utils import init_grpc_channel
+
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            build_address(ip, port), options, asynchronous=True
-        )
+        channel = init_grpc_channel(build_address(ip, port), options, asynchronous=True)
         return NodeManagerServiceStub(channel)
 
     async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
         """Returns None if the agent on the node is not registered in Internal KV."""
+        from ray._private.grpc_utils import init_grpc_channel
+
         agent_addr = await self._gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -162,7 +162,7 @@ class StateDataSourceClient:
             return None
         ip, http_port, grpc_port = json.loads(agent_addr)
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
+        channel = init_grpc_channel(
             build_address(ip, grpc_port), options=options, asynchronous=True
         )
         return LogServiceStub(channel)
@@ -300,16 +300,27 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_grpc_network_errors
     async def get_all_node_info(
         self,
         timeout: int = None,
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
-    ) -> Optional[GetAllNodeInfoReply]:
-        # TODO(ryw): move this to GcsClient.async_get_all_node_info, i.e.
-        # InnerGcsClient.async_get_all_node_info
+    ) -> Optional[Tuple[Dict[NodeID, GcsNodeInfo], int]]:
+        """Returns node info and the number of filtered nodes.
 
+        Args:
+            timeout: Timeout in seconds
+            limit: Maximum number of nodes to return
+            filters: List of (key, predicate, value) tuples. Supported keys:
+                - "node_id": Filter by node ID (hex string)
+                - "state": Filter by node state (string, e.g., "ALIVE")
+                - "node_name": Filter by node name
+
+        Returns:
+            A tuple of (node_infos, num_filtered) where:
+                - node_infos: Dict[NodeID, GcsNodeInfo] mapping node IDs to their info
+                - num_filtered: Number of nodes filtered out by the query
+        """
         if filters is None:
             filters = []
 
@@ -337,10 +348,12 @@ class StateDataSourceClient:
             else:
                 continue
 
-        request = GetAllNodeInfoRequest(
-            limit=limit, node_selectors=node_selectors, state_filter=state_filter
+        reply = await self._gcs_client.async_get_all_node_info(
+            timeout=timeout,
+            node_selectors=node_selectors,
+            state_filter=state_filter,
+            limit=limit,
         )
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors
@@ -433,7 +446,10 @@ class StateDataSourceClient:
         url = f"http://{build_address(node_ip, runtime_env_agent_port)}/get_runtime_envs_info"
         request = GetRuntimeEnvsInfoRequest(limit=limit)
         data = request.SerializeToString()
-        async with self._client_session.post(url, data=data, timeout=timeout) as resp:
+        headers = get_auth_headers_if_auth_enabled({})
+        async with self._client_session.post(
+            url, data=data, timeout=timeout, headers=headers
+        ) as resp:
             if resp.status >= 200 and resp.status < 300:
                 response_data = await resp.read()
                 reply = GetRuntimeEnvsInfoReply()

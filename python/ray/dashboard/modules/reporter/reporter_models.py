@@ -36,6 +36,8 @@ if PYDANTIC_INSTALLED:
         processesPids: Optional[
             List[ProcessGPUInfo]
         ] = None  # converted to list in _compose_stats_payload
+        powerMw: Optional[int] = None  # current power draw in milliwatts
+        temperatureC: Optional[int] = None  # temperature in Celsius
 
     class TpuUtilizationInfo(BaseModel):
         """
@@ -107,10 +109,10 @@ if PYDANTIC_INSTALLED:
         pid: int
         createTime: float
         cpuPercent: float
-        cpuTimes: Optional[CpuTimes]  # psutil._pslinux.scputimes object
+        cpuTimes: Optional[CpuTimes] = None  # psutil._pslinux.scputimes object
         cmdline: List[str]
-        memoryInfo: Optional[MemoryInfo]  # psutil._pslinux.svmem object
-        memoryFullInfo: Optional[MemoryFullInfo]  # psutil._pslinux.smem object
+        memoryInfo: Optional[MemoryInfo] = None  # psutil._pslinux.svmem object
+        memoryFullInfo: Optional[MemoryFullInfo] = None  # psutil._pslinux.smem object
         numFds: Optional[int] = None  # Not available on Windows
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers

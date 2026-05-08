@@ -1,6 +1,6 @@
-from pathlib import Path
 import os
 import unittest
+from pathlib import Path
 
 import ray
 from ray.rllib.algorithms import cql
@@ -34,7 +34,7 @@ class TestCQL(unittest.TestCase):
         #   --config='{"output": "/tmp/out"}'
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
+        data_file = os.path.join(rllib_dir, "offline/tests/data/pendulum/small.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         config = (
@@ -121,7 +121,8 @@ class TestCQL(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

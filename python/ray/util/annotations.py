@@ -3,7 +3,12 @@ import sys
 import warnings
 from enum import Enum
 from functools import wraps
-from typing import Optional
+from typing import Any, Callable, Optional, TypeVar, cast, overload
+
+# TypeVar for preserving function/class signatures through decorators.
+# Note: These decorators also accept properties, but we use Callable for the
+# common case. Properties work at runtime but won't get full type inference.
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class AnnotationType(Enum):
@@ -11,6 +16,18 @@ class AnnotationType(Enum):
     DEVELOPER_API = "DeveloperAPI"
     DEPRECATED = "Deprecated"
     UNKNOWN = "Unknown"
+
+
+@overload
+def PublicAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def PublicAPI(
+    *, stability: str = "stable", api_group: str = "Others"
+) -> Callable[[F], F]:
+    ...
 
 
 def PublicAPI(*args, **kwargs):
@@ -55,7 +72,7 @@ def PublicAPI(*args, **kwargs):
         stability = "stable"
     api_group = kwargs.get("api_group", "Others")
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         if stability in ["alpha", "beta"]:
             message = (
                 f"**PublicAPI ({stability}):** This API is in {stability} "
@@ -67,6 +84,16 @@ def PublicAPI(*args, **kwargs):
         return obj
 
     return wrap
+
+
+@overload
+def DeveloperAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def DeveloperAPI() -> Callable[[F], F]:
+    ...
 
 
 def DeveloperAPI(*args, **kwargs):
@@ -85,7 +112,7 @@ def DeveloperAPI(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return DeveloperAPI()(args[0])
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _append_doc(
             obj,
             message="**DeveloperAPI:** This API may change across minor Ray releases.",
@@ -106,6 +133,16 @@ class RayDeprecationWarning(DeprecationWarning):
 # each module where the warning is issued (regardless of line number)
 if not sys.warnoptions:
     warnings.filterwarnings("module", category=RayDeprecationWarning)
+
+
+@overload
+def Deprecated(obj: F) -> F:
+    ...
+
+
+@overload
+def Deprecated(*, message: str = ..., warning: bool = False) -> Callable[[F], F]:
+    ...
 
 
 def Deprecated(*args, **kwargs):
@@ -151,7 +188,7 @@ def Deprecated(*args, **kwargs):
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
 
-    def inner(obj):
+    def inner(obj: F) -> F:
         _append_doc(obj, message=doc_message, directive="warning")
         _mark_annotated(obj, type=AnnotationType.DEPRECATED)
 
@@ -169,17 +206,22 @@ def Deprecated(*args, **kwargs):
             return obj
         else:
             # class method or function.
-            @wraps(obj)
             def wrapper(*args, **kwargs):
                 warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
                 return obj(*args, **kwargs)
 
-            return wrapper
+            # Only apply @wraps for actual callables, not properties/descriptors.
+            # Setting __wrapped__ on a property causes inspect.unwrap() to return
+            # the property, which breaks inspect.signature() in the tracing helper.
+            if callable(obj):
+                wrapper = wraps(obj)(wrapper)
+
+            return cast(F, wrapper)
 
     return inner
 
 
-def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
+def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> None:
     if not obj.__doc__:
         obj.__doc__ = ""
 
@@ -236,7 +278,7 @@ def _get_indent(docstring: str) -> int:
     if not docstring:
         return 0
 
-    non_empty_lines = list(filter(bool, docstring.splitlines()))
+    non_empty_lines = [line for line in docstring.splitlines() if line]
     if len(non_empty_lines) == 1:
         # Docstring contains summary only.
         return 0

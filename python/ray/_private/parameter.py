@@ -1,8 +1,10 @@
 import logging
 import os
+import pathlib
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import get_localhost_ip
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import get_ray_client_dependency_error
 
@@ -30,6 +32,7 @@ class RayParams:
             of that resource available.
         labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
+        available_memory_bytes: The memory available for use on this node in bytes.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         object_manager_port int: The port to use for the object manager.
@@ -48,6 +51,9 @@ class RayParams:
             be started.
         redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
+        log_to_stderr: If set, controls whether non-worker stdout/stderr should be
+            written to stderr (True) or redirected to log files (False). This is the
+            preferred replacement for the deprecated `redirect_output` field.
         external_addresses: The address of external Redis server to
             connect to, in format of "ip1:port1,ip2:port2,...".  If this
             address is provided, then ray won't start Redis instances in the
@@ -74,10 +80,9 @@ class RayParams:
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        dashboard_host: The host to bind the web UI server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
-            external machines.
+        dashboard_host: The host to bind the dashboard server to. Use localhost
+            (127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all
+            interfaces. Defaults to localhost.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
@@ -117,6 +122,9 @@ class RayParams:
         cluster_id: The cluster ID in hex string.
         resource_isolation_config: settings for cgroupv2 based isolation of ray
             system processes (defaults to no isolation if config not provided)
+        proxy_server_url: The proxy url to redirect dashboard backend request to.
+            By default, the dashboard requests will be directed to the Ray api server.
+            Ex: http://historyserver:8080
     """
 
     def __init__(
@@ -128,6 +136,7 @@ class RayParams:
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
+        available_memory_bytes: Optional[int] = None,
         object_store_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
         redis_shard_ports: Optional[List[int]] = None,
@@ -140,8 +149,8 @@ class RayParams:
         max_worker_port: Optional[int] = None,
         worker_port_list: Optional[List[int]] = None,
         ray_client_server_port: Optional[int] = None,
-        driver_mode=None,
         redirect_output: Optional[bool] = None,
+        log_to_stderr: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
         num_redis_shards: Optional[int] = None,
         redis_max_clients: Optional[int] = None,
@@ -153,7 +162,7 @@ class RayParams:
         setup_worker_path: Optional[str] = None,
         huge_pages: Optional[bool] = False,
         include_dashboard: Optional[bool] = None,
-        dashboard_host: Optional[str] = ray_constants.DEFAULT_DASHBOARD_IP,
+        dashboard_host: Optional[str] = get_localhost_ip(),
         dashboard_port: Optional[bool] = ray_constants.DEFAULT_DASHBOARD_PORT,
         dashboard_agent_listen_port: Optional[
             int
@@ -178,12 +187,14 @@ class RayParams:
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
+        proxy_server_url: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
+        self.available_memory_bytes = available_memory_bytes
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.redis_port = redis_port
@@ -197,8 +208,8 @@ class RayParams:
         self.max_worker_port = max_worker_port
         self.worker_port_list = worker_port_list
         self.ray_client_server_port = ray_client_server_port
-        self.driver_mode = driver_mode
         self.redirect_output = redirect_output
+        self.log_to_stderr = log_to_stderr
         self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
@@ -236,11 +247,12 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
+        self.proxy_server_url = proxy_server_url
 
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:
             self.resource_isolation_config = ResourceIsolationConfig(
-                enable_resource_isolation=False
+                object_store_memory=object_store_memory, enable_resource_isolation=False
             )
 
         # Set the internal config options for object reconstruction.
@@ -402,12 +414,12 @@ class RayParams:
                     "between 1024 and 65535."
                 )
         if self.runtime_env_agent_port is not None:
-            if (
+            if self.runtime_env_agent_port != 0 and (
                 self.runtime_env_agent_port < 1024
                 or self.runtime_env_agent_port > 65535
             ):
                 raise ValueError(
-                    "runtime_env_agent_port must be an integer "
+                    "runtime_env_agent_port must be 0 (auto-assign) or an integer "
                     "between 1024 and 65535."
                 )
 
@@ -435,6 +447,22 @@ class RayParams:
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
+
+        if self.temp_dir is not None and os.getenv("VIRTUAL_ENV"):
+            is_relative = True
+            try:
+                (
+                    pathlib.Path(self.temp_dir)
+                    .resolve()
+                    .relative_to(pathlib.Path(os.getenv("VIRTUAL_ENV")).resolve())
+                )
+            except ValueError:
+                is_relative = False
+
+            if is_relative:
+                raise ValueError(
+                    "temp_dir must not be child directory of virtualenv root"
+                )
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

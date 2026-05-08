@@ -1,15 +1,20 @@
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mlflow.tracking import MlflowClient
 
+import ray
 from ray._private.dict import flatten_dict
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup_mlflow
+from ray.train.torch import TorchTrainer
+from ray.tune import Tuner
 
 
 class MockTrial(
@@ -31,6 +36,42 @@ class Mock_MLflowLoggerUtil(_MLflowLoggerUtil):
 def clear_env_vars():
     os.environ.pop("MLFLOW_EXPERIMENT_NAME", None)
     os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    """Automatically start and stop Ray for each test."""
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
+def test_setup_mlflow_in_train_worker(ray_start_4_cpus):
+    """Test that setup_mlflow works in a Train worker."""
+
+    def train_func(config):
+        setup_mlflow(
+            experiment_name="test_exp",
+            create_experiment_if_not_exists=True,
+        )
+
+    trainer = TorchTrainer(train_func)
+    trainer.fit()
+
+
+def test_setup_mlflow_in_tune_trial(ray_start_4_cpus):
+    """Test that setup_mlflow works in a Tune trial."""
+
+    def train_func(config):
+        setup_mlflow(
+            experiment_name="test_exp",
+            create_experiment_if_not_exists=True,
+        )
+
+    tuner = Tuner(train_func)
+    result_grid = tuner.fit()
+
+    assert all(res.error is None for res in result_grid)
 
 
 class MLflowTest(unittest.TestCase):
@@ -398,8 +439,4 @@ class MLflowUtilTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

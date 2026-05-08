@@ -1,12 +1,12 @@
 import os
 from typing import List, Optional
 
-from ray_release.configs.global_config import get_global_config
-
 from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, PYTHON_VERSIONS
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import RAY_REPO_MAP, DockerContainer, RayType
 from ci.ray_ci.utils import RAY_VERSION, docker_pull
+
+from ray_release.configs.global_config import get_global_config
 
 
 class RayDockerContainer(DockerContainer):
@@ -48,14 +48,13 @@ class RayDockerContainer(DockerContainer):
         wheel_name = (
             f"ray-{RAY_VERSION}-{bin_path}-manylinux2014_{self.architecture}.whl"
         )
-        constraints_file = "requirements_compiled.txt"
         tag = self._get_canonical_tag()
         ray_image = f"rayproject/{image_repo}:{tag}"
         pip_freeze = f"{self.image_type}:{tag}_pip-freeze.txt"
 
         cmds = [
             "./ci/build/build-ray-docker.sh "
-            f"{wheel_name} {base_image} {constraints_file} {ray_image} {pip_freeze}"
+            f"{wheel_name} {base_image} {ray_image} {pip_freeze}"
         ]
         if self._should_upload():
             cmds += [

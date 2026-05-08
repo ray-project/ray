@@ -10,9 +10,11 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.utils import run_background_task
+from ray._common.utils import Timer, run_background_task
+from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
+from ray._private.label_utils import validate_label_selector
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -35,10 +37,6 @@ from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    SchedulingStrategyT,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +68,9 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_client: GcsClient, logs_dir: str):
+    def __init__(
+        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+    ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
@@ -78,6 +78,7 @@ class JobManager:
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self._timeout_check_timer = timeout_check_timer or Timer()
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -185,7 +186,10 @@ class JobManager:
                             job_id, timeout=None
                         )
 
-                    if time.time() - job_info.start_time / 1000 > timeout:
+                    if (
+                        self._timeout_check_timer.time() - job_info.start_time / 1000
+                        > timeout
+                    ):
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
@@ -346,6 +350,8 @@ class JobManager:
                 break
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        if job_supervisor is None:
+            job_supervisor = self._get_actor_for_job(job_id)
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
@@ -398,6 +404,8 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
+
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -409,32 +417,31 @@ class JobManager:
             runtime_env["config"] = config
         return runtime_env
 
-    async def _get_scheduling_strategy(
-        self, resources_specified: bool
-    ) -> SchedulingStrategyT:
-        """Get the scheduling strategy for the job.
+    async def _get_label_selector(self, resources_specified: bool) -> Dict:
+        """Determine the scheduling strategy for the job using a label selector.
 
         If resources_specified is true, or if the environment variable is set to
-        allow the job to run on worker nodes, we will use Ray's default actor
-        placement strategy. Otherwise, we will force the job to use the head node.
+        allow the job to run on worker nodes, we will not use any label constraints.
+        Otherwise, we will force the job to use the head node via a label selector
+        specifying the head node id.
 
         Args:
             resources_specified: Whether the job specified any resources
                 (CPUs, GPUs, or custom resources).
 
         Returns:
-            The scheduling strategy to use for the job.
+            The label selector to use for the job.
         """
         if resources_specified:
-            return "DEFAULT"
+            return {}
 
         if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
             logger.info(
                 f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
                 "Using Ray's default actor scheduling strategy for the job "
-                "driver instead of running it on the head node."
+                "driver instead of running it on the head node via a label selector."
             )
-            return "DEFAULT"
+            return {}
 
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
@@ -444,18 +451,15 @@ class JobManager:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
                 "scheduling strategy for the job driver instead of running "
-                "it on the head node."
+                "it on the head node via a label selector."
             )
-            scheduling_strategy = "DEFAULT"
-        else:
-            logger.info(
-                "Head node ID found in GCS; scheduling job driver on "
-                f"head node {head_node_id}"
-            )
-            scheduling_strategy = NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        return scheduling_strategy
+            return {}
+
+        logger.info(
+            "Head node ID found in GCS; scheduling job driver on "
+            f"head node {head_node_id} using a label selector"
+        )
+        return {ray._raylet.RAY_NODE_ID_KEY: head_node_id}
 
     async def submit_job(
         self,
@@ -468,6 +472,7 @@ class JobManager:
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        entrypoint_label_selector: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
@@ -502,6 +507,7 @@ class JobManager:
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
+            entrypoint_label_selector: Label selector for the entrypoint command.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -524,6 +530,10 @@ class JobManager:
         await self._recover_running_jobs_event.wait()
 
         logger.info(f"Starting job with submission_id: {submission_id}")
+        if entrypoint_label_selector:
+            error_message = validate_label_selector(entrypoint_label_selector)
+            if error_message:
+                raise ValueError(error_message)
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
@@ -555,25 +565,27 @@ class JobManager:
                     entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
                     entrypoint_memory is not None and entrypoint_memory > 0,
                     entrypoint_resources not in [None, {}],
+                    entrypoint_label_selector not in [None, {}],
                 ]
             )
-            scheduling_strategy = await self._get_scheduling_strategy(
-                resources_specified
-            )
+            label_selector = await self._get_label_selector(resources_specified)
+            if entrypoint_label_selector:
+                label_selector = {**label_selector, **entrypoint_label_selector}
+
             if self.event_logger:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
             driver_logger.info("Runtime env is setting up.")
-            supervisor = self._supervisor_actor_cls.options(
+            supervisor_options = dict(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
                 memory=entrypoint_memory,
                 resources=entrypoint_resources,
-                scheduling_strategy=scheduling_strategy,
+                label_selector=label_selector,
                 runtime_env=self._get_supervisor_runtime_env(
                     runtime_env, submission_id, resources_specified
                 ),
@@ -581,6 +593,9 @@ class JobManager:
                 # Don't pollute task events with system actor tasks that users don't
                 # know about.
                 enable_task_events=False,
+            )
+            supervisor = self._supervisor_actor_cls.options(
+                **supervisor_options
             ).remote(
                 submission_id,
                 entrypoint,

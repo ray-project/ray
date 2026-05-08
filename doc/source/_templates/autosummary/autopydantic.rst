@@ -3,6 +3,7 @@
 .. currentmodule:: {{ module }}
 
 .. autopydantic_model:: {{ fullname }}
+    :members:
     :inherited-members: BaseModel
     :exclude-members: Config
     :model-show-config-summary: False
@@ -10,4 +11,3 @@
     :model-show-field-summary: False
     :field-list-validators: False
     :model-show-json: False
-    :undoc-members: 

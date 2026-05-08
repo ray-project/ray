@@ -297,6 +297,11 @@ def test_get_and_set_preprocessor():
     ]
 
 
+def test_predictor_deprecated():
+    with pytest.warns(DeprecationWarning):
+        DummyPredictor()
+
+
 if __name__ == "__main__":
     import sys
 

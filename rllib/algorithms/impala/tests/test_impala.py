@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 import ray
 import ray.rllib.algorithms.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -15,6 +17,20 @@ class TestIMPALA(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_impala_minibatch_size_check(self):
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .training(minibatch_size=100)
+            .env_runners(rollout_fragment_length=30)
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"`minibatch_size` \(100\) must either be None or a multiple of `rollout_fragment_length` \(30\)",
+        ):
+            config.validate()
 
     def test_impala_lr_schedule(self):
         # Test whether we correctly ignore the "lr" setting.
@@ -62,9 +78,32 @@ class TestIMPALA(unittest.TestCase):
         finally:
             algo.stop()
 
+    def test_local_learner_thread_stops_on_algo_stop(self):
+        # Regression test: `algo.stop()` -> `LearnerGroup.shutdown()` ->
+        # `IMPALALearner.shutdown()` must stop and join the local IMPALA
+        # `_LearnerThread`. Otherwise the daemon thread keeps spinning and
+        # can race against interpreter shutdown inside an auto_init-wrapped
+        # Ray API.
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .learners(num_learners=0)
+            .env_runners(num_env_runners=0)
+        )
+        algo = config.build()
+        learner_thread = algo.learner_group._learner._learner_thread
+        self.assertTrue(learner_thread.is_alive())
+
+        algo.stop()
+
+        # `Learner.shutdown()` joins the thread, so it must be dead by the
+        # time `algo.stop()` returns — no extra `join()` needed here.
+        self.assertFalse(learner_thread.is_alive())
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

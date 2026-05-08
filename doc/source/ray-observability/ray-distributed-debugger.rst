@@ -30,7 +30,7 @@ Create a new virtual environment and install dependencies.
 .. testcode::
     :skipif: True
 
-    conda create -n myenv python=3.9
+    conda create -n myenv python=3.10
     conda activate myenv
     pip install "ray[default]" debugpy
 

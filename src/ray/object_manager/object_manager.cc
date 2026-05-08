@@ -23,10 +23,11 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/exponential_backoff.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 
@@ -87,7 +88,7 @@ ObjectManager::ObjectManager(
       rpc_service_(rpc_service),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
-                             config_.object_manager_address == "127.0.0.1",
+                             IsLocalhost(config_.object_manager_address),
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
@@ -454,7 +455,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
     return;
   }
 
-  RAY_LOG(DEBUG).WithField(node_id).WithField(node_id)
+  RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
       << "Sending object chunks of object to node, number of chunks: "
       << chunk_reader->GetNumChunks()
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
@@ -720,9 +721,9 @@ std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
   if (it != remote_object_manager_clients_.end()) {
     return it->second;
   }
-  auto *node_info =
+  auto node_info =
       gcs_client_.Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
-  if (node_info == nullptr) {
+  if (!node_info) {
     return nullptr;
   }
   auto object_manager_client =
@@ -756,7 +757,7 @@ std::string ObjectManager::DebugString() const {
          << num_chunks_received_cancelled_;
   result << "\n- num chunks received failed / plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
-  result << "\nEvent stats:" << rpc_service_.stats().StatsString();
+  result << "\nEvent stats:" << rpc_service_.stats()->StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << buffer_pool_.DebugString();

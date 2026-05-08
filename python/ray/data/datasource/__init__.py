@@ -6,6 +6,9 @@ from ray.data._internal.datasource.mcap_datasource import (
     TimeRange,
 )
 from ray.data._internal.datasource.sql_datasource import Connection
+from ray.data._internal.datasource.turbopuffer_datasink import (
+    TurbopufferDatasink,
+)
 from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
     Datasink,
@@ -31,7 +34,6 @@ from ray.data.datasource.file_datasink import (
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
@@ -53,7 +55,6 @@ __all__ = [
     "DefaultFileMetadataProvider",
     "DeltaSharingDatasource",
     "DummyOutputDatasink",
-    "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileShuffleConfig",
     "FileMetadataProvider",
@@ -67,6 +68,7 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "TurbopufferDatasink",
     "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
     "TimeRange",

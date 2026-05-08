@@ -2,7 +2,7 @@ import os
 import sys
 import time
 from dataclasses import astuple, dataclass
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,9 @@ from ray.data.tests.conftest import (
     get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 # Data source generates random bytes data
@@ -49,7 +52,10 @@ class RandomBytesDatasource(Datasource):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def _blocks_generator():
             for _ in range(self.num_batches_per_task):
@@ -204,7 +210,7 @@ def test_dataset(
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
     assert ds.count() == num_blocks_per_task * num_tasks
-    assert ds._plan.initial_num_blocks() == num_tasks
+    assert ds._logical_plan.initial_num_blocks() == num_tasks
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
@@ -222,7 +228,7 @@ def test_dataset(
     map_ds = ds.map_batches(identity_func, compute=compute)
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
-    assert map_ds._plan.initial_num_blocks() == num_blocks_expected
+    assert map_ds._logical_plan.initial_num_blocks() == num_blocks_expected
     expected_actor_name = f"MapWorker(ReadRandomBytes->MapBatches({func_name}))"
     assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
@@ -247,34 +253,45 @@ def test_dataset(
         compute=compute,
     )
     map_ds = map_ds.materialize()
-    assert map_ds._plan.initial_num_blocks() == 1
+    assert map_ds._logical_plan.initial_num_blocks() == 1
     map_ds = ds.map(identity_func, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
+    assert map_ds._logical_plan.initial_num_blocks() == num_blocks_per_task * num_tasks
 
     ds_list = ds.split(5)
     assert len(ds_list) == 5
     for new_ds in ds_list:
-        assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks / 5
+        assert (
+            new_ds._logical_plan.initial_num_blocks()
+            == num_blocks_per_task * num_tasks / 5
+        )
 
     train, test = ds.train_test_split(test_size=0.25)
-    assert train._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 0.75
-    assert test._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 0.25
+    assert (
+        train._logical_plan.initial_num_blocks()
+        == num_blocks_per_task * num_tasks * 0.75
+    )
+    assert (
+        test._logical_plan.initial_num_blocks()
+        == num_blocks_per_task * num_tasks * 0.25
+    )
 
     new_ds = ds.union(ds, ds)
-    assert new_ds._plan.initial_num_blocks() == num_tasks * 3
+    assert new_ds._logical_plan.initial_num_blocks() == num_tasks * 3
     new_ds = new_ds.materialize()
-    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 3
+    assert (
+        new_ds._logical_plan.initial_num_blocks() == num_blocks_per_task * num_tasks * 3
+    )
 
     new_ds = ds.random_shuffle()
-    assert new_ds._plan.initial_num_blocks() == num_tasks
+    assert new_ds._logical_plan.initial_num_blocks() == num_tasks
     new_ds = ds.randomize_block_order()
-    assert new_ds._plan.initial_num_blocks() == num_tasks
+    assert new_ds._logical_plan.initial_num_blocks() == num_tasks
     assert ds.groupby("one").count().count() == num_blocks_per_task * num_tasks
 
     new_ds = ds.zip(ds)
     new_ds = new_ds.materialize()
-    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
+    assert new_ds._logical_plan.initial_num_blocks() == num_blocks_per_task * num_tasks
 
     assert len(ds.take(5)) == 5
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
@@ -300,12 +317,12 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     ds = ds.filter(lambda _: True)
     ds = ds.materialize()
     assert ds.count() == num_blocks_per_task
-    assert ds._plan.initial_num_blocks() == num_blocks_per_task
+    assert ds._logical_plan.initial_num_blocks() == num_blocks_per_task
 
     ds = ds.filter(lambda _: False)
     ds = ds.materialize()
     assert ds.count() == 0
-    assert ds._plan.initial_num_blocks() == num_blocks_per_task
+    assert ds._logical_plan.initial_num_blocks() == num_blocks_per_task
 
 
 @pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
@@ -505,7 +522,7 @@ def test_block_slicing(
         ),
         override_num_blocks=num_tasks,
     ).materialize()
-    assert ds._plan.initial_num_blocks() == expected_num_blocks
+    assert ds._logical_plan.initial_num_blocks() == expected_num_blocks
 
     block_sizes = []
     num_rows = 0
@@ -536,18 +553,13 @@ def test_dynamic_block_split_deterministic(
 
     # ~800 bytes per block
     ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
-    data = [
-        ray.get(block) for block in ds.materialize()._plan._snapshot_bundle.block_refs
-    ]
+    data = [ray.get(block) for block in ds.materialize()._cache._bundle.block_refs]
     # Maps: first item of block -> block
     block_map = {block["id"][0]: block for block in data}
     # Iterate over multiple executions of the dataset,
     # and check that blocks were split in the same way
     for _ in range(TEST_ITERATIONS):
-        data = [
-            ray.get(block)
-            for block in ds.materialize()._plan._snapshot_bundle.block_refs
-        ]
+        data = [ray.get(block) for block in ds.materialize()._cache._bundle.block_refs]
         for block in data:
             assert block_map[block["id"][0]] == block
 

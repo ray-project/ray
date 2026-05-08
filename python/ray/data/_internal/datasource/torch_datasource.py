@@ -7,6 +7,8 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 if TYPE_CHECKING:
     import torch
 
+    from ray.data.context import DataContext
+
 
 TORCH_DATASOURCE_READER_BATCH_SIZE = 32
 
@@ -24,7 +26,10 @@ class TorchDatasource(Datasource):
         self._dataset = dataset
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ):
         assert parallelism == 1
 

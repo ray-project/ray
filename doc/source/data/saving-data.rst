@@ -36,8 +36,8 @@ directory with the `local://` scheme.
 
     ds.write_parquet("local:///tmp/iris/")
 
-To write data to formats other than Parquet, read the
-:ref:`Input/Output reference <input-output>`.
+To write data to formats other than Parquet, see the
+:ref:`Saving Data API <saving-data-api>`.
 
 Writing data to cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -47,7 +47,7 @@ with your cloud service provider. Then, call a method like
 :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with
 the appropriate scheme. URI can point to buckets or folders.
 
-To write data to formats other than Parquet, read the :ref:`Input/Output reference <input-output>`.
+To write data to formats other than Parquet, see the :ref:`Saving Data API <saving-data-api>`.
 
 .. tab-set::
 
@@ -134,8 +134,8 @@ mounted directory.
 
     ds.write_parquet("/mnt/cluster_storage/iris")
 
-To write data to formats other than Parquet, read the
-:ref:`Input/Output reference <input-output>`.
+To write data to formats other than Parquet, see the
+:ref:`Saving Data API <saving-data-api>`.
 
 .. _changing-number-output-files:
 

@@ -22,8 +22,11 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/core_worker/task_submission/task_submission_util.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -65,9 +68,10 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
+    if (!scheduling_key_entry.lease_spec.has_value()) {
+      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
+    }
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
@@ -106,7 +110,6 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.emplace(worker_address).second);
-  RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
 void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
@@ -177,7 +180,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       scheduling_key_entry.num_busy_workers++;
 
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
-      task_spec.EmitTaskMetrics(scheduler_placement_time_s_histogram_);
+      task_spec.EmitTaskMetrics(scheduler_placement_time_ms_histogram_);
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
@@ -190,7 +193,11 @@ void NormalTaskSubmitter::OnWorkerIdle(
 }
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto iter = scheduling_key_entries_.find(scheduling_key);
+  if (iter == scheduling_key_entries_.end()) {
+    return;
+  }
+  auto &scheduling_key_entry = iter->second;
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
     // There are still pending tasks so let the worker lease request succeed.
@@ -230,43 +237,35 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
 void NormalTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
-  ReportWorkerBacklogInternal();
-}
-
-void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
-  absl::flat_hash_map<SchedulingClass, std::pair<LeaseSpecification, int64_t>> backlogs;
-  for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
-    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
-    if (backlogs.find(scheduling_class) == backlogs.end()) {
-      backlogs[scheduling_class].first = scheduling_key_and_entry.second.lease_spec;
-      backlogs[scheduling_class].second = 0;
-    }
+  absl::flat_hash_map<SchedulingClass, std::pair<rpc::LeaseSpec, int64_t>> backlogs;
+  for (const auto &[scheduling_key, scheduling_key_entry] : scheduling_key_entries_) {
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
-    scheduling_key_and_entry.second.last_reported_backlog_size =
-        scheduling_key_and_entry.second.BacklogSize();
+    if (scheduling_key_entry.lease_spec.has_value()) {
+      const auto scheduling_class = std::get<0>(scheduling_key);
+      auto [it, inserted] = backlogs.try_emplace(
+          scheduling_class, scheduling_key_entry.lease_spec->GetMessage(), 0);
+      int64_t &backlog_size = it->second.second;
+      backlog_size += scheduling_key_entry.BacklogSize();
+    }
   }
 
-  std::vector<rpc::WorkerBacklogReport> backlog_reports;
-  for (const auto &backlog : backlogs) {
-    rpc::WorkerBacklogReport backlog_report;
-    backlog_report.mutable_lease_spec()->CopyFrom(backlog.second.first.GetMessage());
-    backlog_report.set_backlog_size(backlog.second.second);
-    backlog_reports.emplace_back(backlog_report);
+  rpc::ReportWorkerBacklogRequest request;
+  request.set_worker_id(worker_id_.Binary());
+  for (auto &[scheduling_class, spec_and_size] : backlogs) {
+    auto &[lease_spec, backlog_size] = spec_and_size;
+    if (backlog_size > 0) {
+      auto *report = request.add_backlog_reports();
+      *report->mutable_lease_spec() = std::move(lease_spec);
+      report->set_backlog_size(backlog_size);
+    }
   }
-  local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
-}
-
-void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
-    const SchedulingKey &scheduling_key) {
-  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-
-  if (scheduling_key_entry.last_reported_backlog_size !=
-      scheduling_key_entry.BacklogSize()) {
-    ReportWorkerBacklogInternal();
+  bool has_backlog = !request.backlog_reports().empty();
+  if (has_backlog || last_backlog_report_nonempty_) {
+    local_raylet_client_->ReportWorkerBacklog(request);
   }
+  last_backlog_report_nonempty_ = has_backlog;
 }
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
@@ -278,6 +277,15 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   if (scheduling_key_entry.pending_lease_requests.size() >=
       kMaxPendingLeaseRequestsPerSchedulingCategory) {
+    size_t backlog_size = scheduling_key_entry.BacklogSize();
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Task submission is being throttled: pending lease requests ("
+        << scheduling_key_entry.pending_lease_requests.size() << ") reached limit ("
+        << kMaxPendingLeaseRequestsPerSchedulingCategory << "), with " << backlog_size
+        << " tasks waiting for lease requests. "
+        << "This especially affects workloads submitting many tasks of the same type "
+           "to a cluster with few nodes but many cores per node. "
+        << "Consider increasing RAY_max_pending_lease_requests_per_scheduling_category.";
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
                    << kMaxPendingLeaseRequestsPerSchedulingCategory;
     return;
@@ -301,12 +309,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     // All tasks have corresponding pending leases, no need to request more
     return;
   }
-  // Counter for generating unique lease IDs.
-  static uint32_t lease_id_counter = 0;
-  const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
-  rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
-  lease_spec_msg.set_lease_id(lease_id.Binary());
-  const LeaseSpecification lease_spec = LeaseSpecification(std::move(lease_spec_msg));
+  RAY_CHECK(scheduling_key_entry.lease_spec.has_value());
+  const LeaseSpecification &lease_spec = *scheduling_key_entry.lease_spec;
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
@@ -319,13 +323,22 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
   const std::string function_or_actor_name = lease_spec.GetFunctionOrActorName();
+
+  // Counter for generating unique lease IDs.
+  static uint32_t lease_id_counter = 0;
+  const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
   RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for "
                  << function_or_actor_name;
 
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.mutable_lease_spec()->set_lease_id(lease_id.Binary());
+  request.set_grant_or_reject(is_spillback);
+  request.set_backlog_size(task_queue.size());
+  request.set_is_selected_based_on_locality(is_selected_based_on_locality);
   raylet_client->RequestWorkerLease(
-      lease_spec.GetMessage(),
-      /*grant_or_reject=*/is_spillback,
+      std::move(request),
       [this,
        scheduling_key,
        lease_id,
@@ -357,7 +370,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                       rpc::RequestWorkerLeaseReply::
                           SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
                   reply.failure_type() ==
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE ||
+                  reply.failure_type() ==
+                      rpc::RequestWorkerLeaseReply::
+                          SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
                 // We need to actively fail all of the pending tasks in the queue when the
                 // placement group was removed or the runtime env failed to be set up.
                 // Such an operation is straightforward for the scenario of placement
@@ -375,6 +391,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
+                  error_type = rpc::ErrorType::WORKER_STARTUP_FAILED;
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
@@ -480,11 +500,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
               task_spec.TaskId(), error_type, &error_status, &error_info);
           tasks_to_fail.pop_front();
         }
-      },
-      task_queue.size(),
-      is_selected_based_on_locality);
+      });
   scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
-  ReportWorkerBacklogIfNeeded(scheduling_key);
 
   // Lease more workers if there are still pending tasks and
   // and we haven't hit the max_pending_lease_requests yet.
@@ -613,6 +630,7 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   bool fail_immediately = false;
+  NodeID node_id = NodeID::FromBinary(addr.node_id());
   if (get_worker_failure_cause_reply_status.ok()) {
     RAY_LOG(WARNING) << "Worker failure cause for task " << task_id << ": "
                      << ray::gcs::RayErrorInfoToString(
@@ -630,22 +648,21 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     RAY_LOG(WARNING) << "Failed to fetch worker failure cause with status "
                      << get_worker_failure_cause_reply_status.ToString()
                      << " worker id: " << WorkerID::FromBinary(addr.worker_id())
-                     << " node id: " << NodeID::FromBinary(addr.node_id())
-                     << " ip: " << addr.ip_address();
+                     << " node id: " << node_id << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
-    std::stringstream buffer;
-    buffer << "Task failed due to the node (where this task was running) "
-           << " was dead or unavailable.\n\nThe node IP: " << addr.ip_address()
-           << ", node ID: " << NodeID::FromBinary(addr.node_id()) << "\n\n"
-           << "This can happen if the instance where the node was running failed, "
-           << "the node was preempted, or raylet crashed unexpectedly "
-           << "(e.g., due to OOM) etc.\n\n"
-           << "To see node death information, use `ray list nodes --filter \"node_id="
-           << NodeID::FromBinary(addr.node_id()) << "\"`, "
-           << "or check Ray dashboard cluster page, or search the node ID in GCS log, "
-           << "or use `ray logs raylet.out -ip " << addr.ip_address() << "`";
+
+    std::string error_message = absl::StrFormat(
+        "Task failed because the node it was running on is dead or unavailable. Node IP: "
+        "%s, node ID: %s. This can happen if the node was preempted, had a hardware "
+        "failure, or its raylet crashed unexpectedly. To see node death information, use "
+        "`ray list nodes --filter node_id=%s`, check the Ray dashboard cluster page, "
+        "search the node ID in the GCS logs, or use `ray logs raylet.out -ip %s`.",
+        addr.ip_address(),
+        node_id.Hex(),
+        node_id.Hex(),
+        addr.ip_address());
     error_info = std::make_unique<rpc::RayErrorInfo>();
-    error_info->set_error_message(buffer.str());
+    error_info->set_error_message(error_message);
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
   return task_manager_.FailOrRetryPendingTask(task_id,
@@ -665,7 +682,9 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                task_spec.GetDependencyIds(),
                                task_spec.GetRuntimeEnvHash());
-  std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+
+  NodeID node_id;
+  std::string executor_worker_id;
   {
     absl::MutexLock lock(&mu_);
     generators_to_resubmit_.erase(task_id);
@@ -700,9 +719,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This will get removed either when the RPC call to cancel is returned, when all
     // dependencies are resolved, or when dependency resolution is successfully cancelled.
     RAY_CHECK(cancelled_tasks_.emplace(task_id).second);
-    auto rpc_client = executing_tasks_.find(task_id);
-
-    if (rpc_client == executing_tasks_.end()) {
+    auto rpc_client_address = executing_tasks_.find(task_id);
+    if (rpc_client_address == executing_tasks_.end()) {
       if (failed_tasks_pending_failure_cause_.contains(task_id)) {
         // We are waiting for the task failure cause. Do not fail it here; instead,
         // wait for the cause to come in and then handle it appropriately.
@@ -722,68 +740,81 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       }
       return;
     }
-    // Looks for an RPC handle for the worker executing the task.
-    client = core_worker_client_pool_->GetOrConnect(rpc_client->second);
+    node_id = NodeID::FromBinary(rpc_client_address->second.node_id());
+    executor_worker_id = rpc_client_address->second.worker_id();
   }
 
-  RAY_CHECK(client != nullptr);
-  auto request = rpc::CancelTaskRequest();
-  request.set_intended_task_id(task_spec.TaskIdBinary());
-  request.set_force_kill(force_kill);
-  request.set_recursive(recursive);
-  request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
-  client->CancelTask(
-      request,
-      [this,
-       task_spec = std::move(task_spec),
-       scheduling_key = std::move(scheduling_key),
-       force_kill,
-       recursive](const Status &status, const rpc::CancelTaskReply &reply) mutable {
-        absl::MutexLock lock(&mu_);
-        RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
-                       << " with status " << status.ToString();
-        cancelled_tasks_.erase(task_spec.TaskId());
+  auto do_cancel_local_task = [this,
+                               task_spec = std::move(task_spec),
+                               scheduling_key = std::move(scheduling_key),
+                               executor_worker_id,
+                               force_kill,
+                               recursive](const rpc::Address &raylet_address) mutable {
+    rpc::CancelLocalTaskRequest request;
+    request.set_intended_task_id(task_spec.TaskIdBinary());
+    request.set_force_kill(force_kill);
+    request.set_recursive(recursive);
+    request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
+    request.set_executor_worker_id(executor_worker_id);
 
-        // Retry is not attempted if !status.ok() because force-kill may kill the worker
-        // before the reply is sent.
-        if (!status.ok()) {
-          RAY_LOG(DEBUG) << "Failed to cancel a task due to " << status.ToString();
-          return;
-        }
-
-        if (!reply.attempt_succeeded()) {
-          if (reply.requested_task_running()) {
-            // Retry cancel request if failed.
-            if (cancel_retry_timer_.expiry().time_since_epoch() <=
-                std::chrono::high_resolution_clock::now().time_since_epoch()) {
-              cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
-                  RayConfig::instance().cancellation_retry_ms()));
-            }
-            cancel_retry_timer_.async_wait(boost::bind(&NormalTaskSubmitter::CancelTask,
-                                                       this,
-                                                       std::move(task_spec),
-                                                       force_kill,
-                                                       recursive));
+    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+    raylet_client->CancelLocalTask(
+        request,
+        [this,
+         task_spec = std::move(task_spec),
+         scheduling_key = std::move(scheduling_key),
+         force_kill,
+         recursive](const Status &status,
+                    const rpc::CancelLocalTaskReply &reply) mutable {
+          absl::MutexLock callback_lock(&mu_);
+          cancelled_tasks_.erase(task_spec.TaskId());
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "CancelLocalTask RPC failed for task " << task_spec.TaskId()
+                          << ": " << status.ToString() << " due to node death";
+            return;
           } else {
-            RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
-                           << " in a worker that doesn't have this task.";
+            RAY_LOG(INFO) << "CancelLocalTask RPC response received for "
+                          << task_spec.TaskId()
+                          << " with attempt_succeeded: " << reply.attempt_succeeded()
+                          << " requested_task_running: "
+                          << reply.requested_task_running();
           }
-        }
-      });
+          if (!reply.attempt_succeeded()) {
+            if (reply.requested_task_running()) {
+              execute_after(
+                  io_service_,
+                  [this, task_spec = std::move(task_spec), force_kill, recursive] {
+                    CancelTask(task_spec, force_kill, recursive);
+                  },
+                  std::chrono::milliseconds(
+                      RayConfig::instance().cancellation_retry_ms()));
+            } else {
+              RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
+                             << " in a worker that doesn't have this task.";
+            }
+          }
+        });
+  };
+  auto failure_callback = [this, task_id]() {
+    absl::MutexLock inner_lock(&mu_);
+    cancelled_tasks_.erase(task_id);
+  };
+  SendCancelLocalTask(
+      gcs_client_, node_id, std::move(do_cancel_local_task), std::move(failure_callback));
 }
 
-void NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
-                                           const rpc::Address &worker_addr,
-                                           bool force_kill,
-                                           bool recursive) {
+void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,
+                                                   const rpc::Address &worker_addr,
+                                                   bool force_kill,
+                                                   bool recursive) {
   auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-  auto request = rpc::CancelRemoteTaskRequest();
+  auto request = rpc::RequestOwnerToCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
-  client->CancelRemoteTask(
+  client->RequestOwnerToCancelTask(
       std::move(request),
-      [](const Status &status, const rpc::CancelRemoteTaskReply &reply) {
+      [](const Status &status, const rpc::RequestOwnerToCancelTaskReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to cancel remote task: " << status.ToString();
         }

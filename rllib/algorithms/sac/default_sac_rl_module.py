@@ -6,8 +6,8 @@ from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
+    override,
 )
 from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI

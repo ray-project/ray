@@ -169,7 +169,7 @@ class ListApiOptions:
         # Check the filters in the ListApiOptions conflicts. Specifically for:
         # - multiple '=' filters with the same key but different values.
         # TODO(myan): More conflicts situation can be added for further optimization.
-        # For exmaple, 2 filters with same key and same value but one with '=' predicate
+        # For example, 2 filters with same key and same value but one with '=' predicate
         # and ther other with '!=' predicate
         equal_filters = {}
         for filter in self.filters:
@@ -520,6 +520,8 @@ class ActorState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the actor.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    #: The fallback options for the label selector.
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -549,6 +551,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
+    #: The node label key used for label-domain scheduling
+    #: (e.g. "ray.io/gpu-domain"). Empty string if the placement group
+    #: does not use label-domain scheduling.
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_key: Optional[str] = state_column(filterable=False, detail=True)
+    #: The selected label domain values for label-domain-aware scheduling.
+    #: Maps the domain label key to the chosen value
+    #: (e.g. {"ray.io/gpu-domain": "rack-1"}).
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_assignments: Optional[dict] = state_column(
+        filterable=False, detail=True
+    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -817,6 +833,7 @@ class TaskState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the task.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -949,7 +966,7 @@ class ListApiResponse:
     #      v
     # - num_filtered
     #      |  With limiting,
-    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERER`, <user-supplied limit>)
+    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERVER`, <user-supplied limit>)
     #      v
     # - len(result)
 
@@ -1335,7 +1352,7 @@ class TaskSummaries:
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
             task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
             task_groups.sort(
-                key=lambda x: x.state_counts.get("FAIELD", 0), reverse=True
+                key=lambda x: x.state_counts.get("FAILED", 0), reverse=True
             )
             task_groups.sort(key=get_pending_tasks_count, reverse=True)
             task_groups.sort(key=get_running_tasks_count, reverse=True)
@@ -1638,6 +1655,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "placement_group_id",
                 "call_site",
                 "label_selector",
+                "fallback_strategy",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),

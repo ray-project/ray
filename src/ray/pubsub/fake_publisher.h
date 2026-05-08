@@ -23,14 +23,23 @@ namespace pubsub {
 
 class FakePublisher : public PublisherInterface {
  public:
-  void RegisterSubscription(const rpc::ChannelType channel_type,
-                            const UniqueID &subscriber_id,
-                            const std::optional<std::string> &key_id) override {}
+  StatusSet<StatusT::InvalidArgument> RegisterSubscription(
+      const rpc::ChannelType channel_type,
+      const UniqueID &subscriber_id,
+      const std::optional<std::string> &key_id) override {
+    return StatusT::OK();
+  }
 
   void Publish(rpc::PubMessage pub_message) override {}
 
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override {}
+
+  void ConnectToSubscriber(
+      const rpc::PubsubLongPollingRequest &request,
+      std::string *publisher_id,
+      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
+      rpc::SendReplyCallback send_reply_callback) override {}
 
   void UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,

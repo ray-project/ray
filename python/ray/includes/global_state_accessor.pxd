@@ -60,9 +60,6 @@ cdef extern from "ray/gcs_rpc_client/global_state_accessor.h" nogil:
         )
         c_vector[c_string] GetAllPlacementGroupInfo()
         c_string GetSystemConfig()
-        CRayStatus GetNodeToConnectForDriver(
-            const c_string &node_ip_address,
-            c_string *node_to_connect)
         CRayStatus GetNode(
           const c_string &node_id_hex_str,
           c_string *node_info)

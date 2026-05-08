@@ -1,13 +1,13 @@
 # __sphinx_doc_begin__
 import gymnasium as gym
 
+from ray.rllib.core.models.base import ActorCriticEncoder, Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
-    MLPHeadConfig,
     FreeLogStdMLPHeadConfig,
+    MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
@@ -96,6 +96,9 @@ class PPOCatalog(Catalog):
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_vf_head_hiddens,
             hidden_layer_activation=self.pi_and_vf_head_activation,
+            hidden_layer_use_layernorm=self._model_config_dict.get(
+                "head_fcnet_use_layernorm", False
+            ),
             output_layer_activation="linear",
             output_layer_dim=1,
         )
@@ -167,6 +170,9 @@ class PPOCatalog(Catalog):
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_vf_head_hiddens,
             hidden_layer_activation=self.pi_and_vf_head_activation,
+            hidden_layer_use_layernorm=self._model_config_dict.get(
+                "head_fcnet_use_layernorm", False
+            ),
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
             clip_log_std=is_diag_gaussian,

@@ -13,13 +13,12 @@ from ray.rllib.connectors.learner import (
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -107,8 +106,6 @@ class PPOLearner(Learner):
             )
             if (
                 config.use_kl_loss
-                and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
-                > 0
                 and (module_id, LEARNER_RESULTS_KL_KEY) in self.metrics
             ):
                 kl_loss = convert_to_numpy(

@@ -1,17 +1,20 @@
 import asyncio
+import json
 import os
 import signal
 import sys
 import tempfile
 import time
 import urllib.request
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_localhost_ip
 from ray._common.test_utils import (
+    FakeTimer,
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
@@ -22,8 +25,8 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
-from ray._raylet import NodeID
 from ray.dashboard.consts import (
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
 )
@@ -41,7 +44,6 @@ from ray.dashboard.modules.job.tests.conftest import (
 )
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.util.state import list_tasks
 
 import psutil
@@ -62,7 +64,20 @@ async def test_get_scheduling_strategy(
     gcs_client = ray._private.worker.global_worker.gcs_client
 
     job_manager = JobManager(gcs_client, tmp_path)
-    node_id = NodeID.from_random().hex()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    async def _submit_and_get_options():
+        with patch.object(
+            job_manager._supervisor_actor_cls,
+            "options",
+            wraps=job_manager._supervisor_actor_cls.options,
+        ) as mocked_options:
+            kwargs = {"entrypoint_num_cpus": 1} if resources_specified else {}
+            job_id = await job_manager.submit_job(entrypoint="echo hi", **kwargs)
+            await async_wait_for_condition(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+            return mocked_options.call_args.kwargs
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_client.async_internal_kv_del(
@@ -70,8 +85,9 @@ async def test_get_scheduling_strategy(
         del_by_prefix=False,
         namespace=KV_NAMESPACE_JOB,
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_client.async_internal_kv_put(
@@ -80,18 +96,21 @@ async def test_get_scheduling_strategy(
         True,
         namespace=KV_NAMESPACE_JOB,
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
     if resources_specified:
-        assert strategy == "DEFAULT"
+        assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy(node_id, soft=False)
-        assert expected_strategy.node_id == strategy.node_id
-        assert expected_strategy.soft == strategy.soft
+        assert (
+            options.get("label_selector", {}).get(ray._raylet.RAY_NODE_ID_KEY)
+            == node_id
+        )
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
 
 @pytest.mark.asyncio
@@ -335,8 +354,9 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     gcs_client = ray._private.worker.global_worker.gcs_client
     job_manager = JobManager(gcs_client, tmp_path)
 
+    entrypoint = "echo hello 1"
     job_id = await job_manager.submit_job(
-        entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
+        entrypoint=entrypoint, submission_id="test_runtime_env_setup_logs"
     )
     await async_wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
@@ -347,10 +367,66 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"job-driver-{job_id}.log",
     )
-    start_message = "Runtime env is setting up."
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
-        assert start_message in logs
+        assert "Runtime env is setting up." in logs
+        assert f"Running entrypoint for job {job_id}: {entrypoint}" in logs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_pending_job_timeout_during_new_head_creation(
+    call_ray_start, tmp_path, monkeypatch  # noqa: F811
+):
+    """Test the timeout for pending jobs during new head node creation."""
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+
+    # Submit a job with unsatisfied resource.
+    start_timer = FakeTimer()
+
+    job_manager = JobManager(gcs_client, tmp_path, timeout_check_timer=start_timer)
+    job_id = "test_job_1"
+    await job_manager.submit_job(
+        submission_id=job_id,
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+    await async_wait_for_condition(
+        check_job_pending, job_manager=job_manager, job_id=job_id
+    )
+
+    # New head node created.
+    timeout = DEFAULT_JOB_START_TIMEOUT_SECONDS
+    timeout_timer = FakeTimer(start_timer.time() + timeout + 1)
+
+    new_job_manager = JobManager(
+        gcs_client, tmp_path, timeout_check_timer=timeout_timer
+    )
+    # wait for the new jobmanager to be initialized
+    await async_wait_for_condition(
+        lambda: new_job_manager._recover_running_jobs_event.is_set(), timeout=5
+    )
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed, job_manager=new_job_manager, job_id=job_id
+    )
+
+    # Check that the job timed out.
+    job_info = await new_job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+    # Check that supervisor has been removed.
+    job_supervisor = new_job_manager._get_actor_for_job(job_id)
+    assert job_supervisor is None
 
 
 @pytest.mark.asyncio
@@ -360,7 +436,22 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         {
             "cmd": "ray start --head",
             "env": {
-                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=2:50:50,CoreWorkerService.grpc_client.PushTask=3:50:50"
+                "RAY_testing_rpc_failure": json.dumps(
+                    {
+                        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                        "CoreWorkerService.grpc_client.PushTask": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                    }
+                )
             },
         },
     ],
@@ -488,6 +579,11 @@ async def check_job_running(job_manager, job_id):
     assert status in {JobStatus.PENDING, JobStatus.RUNNING}
     assert data.driver_exit_code is None
     return status == JobStatus.RUNNING
+
+
+async def check_job_pending(job_manager, job_id):
+    status = await job_manager.get_job_status(job_id)
+    return status == JobStatus.PENDING
 
 
 def check_subprocess_cleaned(pid):
@@ -873,6 +969,8 @@ class TestRuntimeEnv:
         runtime_env = {"env_vars": env_vars}
         if resource_kwarg:
             run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
+            if "entrypoint_num_gpus" in resource_kwarg:
+                run_cmd = "RAY_TEST_GPUS_SPECIFIED=1 " + run_cmd
         job_id = await job_manager.submit_job(
             entrypoint=run_cmd,
             runtime_env=runtime_env,
@@ -881,6 +979,28 @@ class TestRuntimeEnv:
 
         await async_wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+    async def test_entrypoint_label_selector(self, job_manager):
+        label_selector = {"fragile_node": "!1"}
+
+        with patch.object(
+            job_manager._supervisor_actor_cls,
+            "options",
+            wraps=job_manager._supervisor_actor_cls.options,
+        ) as mocked_options:
+            job_id = await job_manager.submit_job(
+                entrypoint="echo hello",
+                entrypoint_label_selector=label_selector,
+            )
+
+            await async_wait_for_condition(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+
+        assert any(
+            call.kwargs.get("label_selector") == label_selector
+            for call in mocked_options.call_args_list
         )
 
 
@@ -1040,7 +1160,9 @@ class TestTailLogs:
         i = 0
         async for lines in job_manager.tail_job_logs(job_id):
             assert all(
-                s == expected_log or "Runtime env" in s
+                s == expected_log
+                or "Runtime env" in s
+                or "Running entrypoint for job" in s
                 for s in lines.strip().split("\n")
             )
             print(lines, end="")
@@ -1080,7 +1202,9 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or "Runtime env" in s
+                    s == "Waiting..."
+                    or "Runtime env" in s
+                    or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -1104,7 +1228,9 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or "Runtime env" in s
+                    s == "Waiting..."
+                    or "Runtime env" in s
+                    or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -1133,7 +1259,10 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or s == "Terminated" or "Runtime env" in s
+                    s == "Waiting..."
+                    or s == "Terminated"
+                    or "Runtime env" in s
+                    or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -1216,7 +1345,7 @@ while True:
             check_job_stopped,
             job_manager=job_manager,
             job_id=job_id,
-            timeout=stop_timeout - 1,
+            timeout=stop_timeout / 2,
         )
 
     await async_wait_for_condition(
@@ -1258,7 +1387,7 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
-    ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
+    ip = get_localhost_ip()
     port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
     monkeypatch.setenv("RAY_ADDRESS", f"http://{build_address(ip, port)}")

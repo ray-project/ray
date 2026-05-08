@@ -14,6 +14,14 @@ if TYPE_CHECKING:
 class BackpressurePolicy(ABC):
     """Interface for back pressure policies."""
 
+    @property
+    def name(self) -> str:
+        """Human-readable name for UX/progress bar display.
+
+        Defaults to the class name. Subclasses can override for a custom name.
+        """
+        return type(self).__name__
+
     def __init__(
         self,
         data_context: DataContext,

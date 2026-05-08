@@ -3,30 +3,20 @@ from typing import Any, Dict, List, Optional, Union
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
+from gymnasium.utils.env_checker import data_equivalence
 
 from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     batch,
-    from_jsonable_if_needed,
-    get_dummy_batch_for_space,
     get_base_struct_from_space,
-    to_jsonable_if_needed,
+    get_dummy_batch_for_space,
 )
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
 class InfiniteLookbackBuffer:
-    @property
-    def space(self):
-        return self._space
-
-    @space.setter
-    def space(self, value):
-        self._space = value
-        self.space_struct = get_base_struct_from_space(value)
-
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
@@ -36,7 +26,7 @@ class InfiniteLookbackBuffer:
         self.data = data if data is not None else []
         self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
-        self.space_struct = None
+
         self.space = space
 
     def __eq__(
@@ -53,16 +43,28 @@ class InfiniteLookbackBuffer:
             `True`, if `other` is an `InfiniteLookbackBuffer` instance and all
             attributes are identical. Otherwise, returns `False`.
         """
-        if isinstance(other, InfiniteLookbackBuffer):
-            if (
-                self.data == other.data
-                and self.lookback == other.lookback
-                and self.finalized == other.finalized
-                and self.space_struct == other.space_struct
-                and self.space == other.space
-            ):
-                return True
-        return False
+        return (
+            isinstance(other, InfiniteLookbackBuffer)
+            # Todo (mark): Replace `data_equivalence` with ray / rllib implementation similar to `check` without asserts
+            and data_equivalence(self.data, other.data)
+            and self.lookback == other.lookback
+            and self.finalized == other.finalized
+            and self.space_struct == other.space_struct
+            and self.space == other.space
+        )
+
+    @property
+    def space(self):
+        return self._space
+
+    @space.setter
+    def space(self, value):
+        self._space = value
+        self._space_struct = get_base_struct_from_space(value)
+
+    @property
+    def space_struct(self):
+        return self._space_struct
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the pickable state of a buffer.
@@ -75,16 +77,14 @@ class InfiniteLookbackBuffer:
             A dict containing all the data and metadata from the buffer.
         """
         return {
-            "data": to_jsonable_if_needed(self.data, self.space)
-            if self.space
-            else self.data,
+            "data": self.data,
             "lookback": self.lookback,
             "finalized": self.finalized,
-            "space": gym_space_to_dict(self.space) if self.space else self.space,
+            "space": gym_space_to_dict(self.space) if self.space else None,
         }
 
     @staticmethod
-    def from_state(state: Dict[str, Any]) -> None:
+    def from_state(state: Dict[str, Any]) -> "InfiniteLookbackBuffer":
         """Creates a new `InfiniteLookbackBuffer` from a state dict.
 
         Args:
@@ -98,23 +98,22 @@ class InfiniteLookbackBuffer:
         buffer.lookback = state["lookback"]
         buffer.finalized = state["finalized"]
         buffer.space = gym_space_from_dict(state["space"]) if state["space"] else None
-        buffer.space_struct = (
-            get_base_struct_from_space(buffer.space) if buffer.space else None
-        )
-        buffer.data = (
-            from_jsonable_if_needed(state["data"], buffer.space)
-            if buffer.space
-            else state["data"]
-        )
+        # space_struct is set when space is assigned
+        buffer.data = state["data"]
 
         return buffer
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
         if self.finalized:
-            self.data = tree.map_structure(
-                lambda d, i: np.concatenate([d, [i]], axis=0), self.data, item
-            )
+            if isinstance(self.data, np.ndarray):
+                self.data = np.concatenate(
+                    [self.data, np.asarray(item)[np.newaxis]], axis=0
+                )
+            else:
+                self.data = tree.map_structure(
+                    lambda d, i: np.concatenate([d, [i]], axis=0), self.data, item
+                )
         else:
             self.data.append(item)
 
@@ -367,6 +366,8 @@ class InfiniteLookbackBuffer:
 
     def len_incl_lookback(self):
         if self.finalized:
+            if isinstance(self.data, np.ndarray):
+                return len(self.data)
             return len(tree.flatten(self.data)[0])
         else:
             return len(self.data)
@@ -395,6 +396,36 @@ class InfiniteLookbackBuffer:
         _ignore_last_ts=False,
         _add_last_ts_value=None,
     ):
+        # Fast path: finalized simple numpy array with no special options.
+        if (
+            self.finalized
+            and isinstance(self.data, np.ndarray)
+            and fill is None
+            and not one_hot_discrete
+            and not _ignore_last_ts
+            and _add_last_ts_value is None
+        ):
+            start = slice_.start
+            stop = slice_.stop
+            step = slice_.step
+            lb = self.lookback
+            # Ultra-fast inline for the common case: positive-only, no step.
+            if (
+                not neg_index_as_lookback
+                and step is None
+                and (start is None or start >= 0)
+                and (stop is None or stop >= 0)
+            ):
+                abs_start = lb if start is None else lb + start
+                abs_stop = len(self.data) if stop is None else lb + stop
+                return self.data[abs_start:abs_stop]
+            adj_slice, _, _, _ = self._interpret_slice(
+                slice_,
+                neg_index_as_lookback,
+                len_self_plus_lookback=len(self.data),
+            )
+            return self.data[adj_slice]
+
         data_to_use = self.data
         if _ignore_last_ts:
             if self.finalized:
@@ -536,6 +567,20 @@ class InfiniteLookbackBuffer:
         _ignore_last_ts=False,
         _add_last_ts_value=None,
     ):
+        # Fast path: finalized simple numpy array with no special options.
+        if (
+            self.finalized
+            and isinstance(self.data, np.ndarray)
+            and fill is None
+            and not one_hot_discrete
+            and not _ignore_last_ts
+            and _add_last_ts_value is None
+        ):
+            actual_idx = (
+                (self.lookback + idx) if (idx >= 0 or neg_index_as_lookback) else idx
+            )
+            return self.data[actual_idx]
+
         data_to_use = self.data
         if _ignore_last_ts:
             if self.finalized:
@@ -579,7 +624,7 @@ class InfiniteLookbackBuffer:
                     one_hot_discrete=one_hot_discrete,
                 )
             else:
-                raise e
+                raise e from ValueError(f"Trying to get index {idx} from {data_to_use}")
 
         # Convert discrete/multi-discrete components to one-hot vectors, if required.
         if one_hot_discrete:

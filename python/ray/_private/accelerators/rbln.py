@@ -3,6 +3,7 @@ import os
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,9 @@ class RBLNAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_rbln_devices: List[str],
     ) -> None:
-        if not os.getenv(NOSET_RBLN_RT_VISIBLE_DEVICES_ENV_VAR):
-            os.environ[
-                RBLNAcceleratorManager.get_visible_accelerator_ids_env_var()
-            ] = ",".join(map(str, visible_rbln_devices))
+        if env_bool(NOSET_RBLN_RT_VISIBLE_DEVICES_ENV_VAR, False):
+            return
+
+        os.environ[
+            RBLNAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join(map(str, visible_rbln_devices))

@@ -126,5 +126,27 @@ def test_thread_limit_set_to_max_ongoing_requests(serve_instance):
     assert h.remote().result() == 10
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+    reason="Run sync method in threadpool FF disabled.",
+)
+@pytest.mark.parametrize(
+    ("num_cpus", "expected_workers"),
+    [(0, 5), (2.2, 7), (30, 32)],
+)
+def test_asyncio_default_executor_limited_by_num_cpus(
+    serve_instance, num_cpus, expected_workers
+):
+    @serve.deployment(ray_actor_options={"num_cpus": num_cpus})
+    class D:
+        async def __call__(self):
+            loop = asyncio.get_running_loop()
+            executor = loop._default_executor
+            return executor._max_workers if executor is not None else None
+
+    h = serve.run(D.bind())
+    assert h.remote().result() == expected_workers
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

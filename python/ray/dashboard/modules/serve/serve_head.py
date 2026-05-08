@@ -7,10 +7,10 @@ from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
+from pydantic import ValidationError
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -151,17 +151,19 @@ class ServeHead(SubprocessModule):
         from ray.serve.schema import ServeDeploySchema
 
         try:
-            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
+            config: ServeDeploySchema = ServeDeploySchema.model_validate(
+                await req.json()
+            )
         except ValidationError as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.dict()
+        config_http_options = config.http_options.model_dump()
         location = ProxyLocation._to_deployment_mode(config.proxy_location)
         full_http_options = dict({"location": location}, **config_http_options)
-        grpc_options = config.grpc_options.dict()
+        grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
@@ -203,7 +205,10 @@ class ServeHead(SubprocessModule):
     @validate_endpoint()
     async def scale_deployment(self, req: Request) -> Response:
         from ray.serve._private.common import DeploymentID
-        from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+        from ray.serve._private.exceptions import (
+            DeploymentIsBeingDeletedError,
+            ExternalScalerDisabledError,
+        )
         from ray.serve.schema import ScaleDeploymentRequest
 
         # Extract path parameters
@@ -250,13 +255,14 @@ class ServeHead(SubprocessModule):
                 200,
             )
         except Exception as e:
-            if isinstance(e.cause, DeploymentIsBeingDeletedError):
+            if isinstance(e, DeploymentIsBeingDeletedError):
+                # From customer's viewpoint, the deployment is deleted instead of being deleted
+                # as they must have already executed the delete command
                 return self._create_json_response(
-                    # From customer's viewpoint, the deployment is deleted instead of being deleted
-                    # as they must have already executed the delete command
-                    {"error": "Deployment is deleted"},
-                    412,
+                    {"error": "Deployment is deleted"}, 412
                 )
+            elif isinstance(e, ExternalScalerDisabledError):
+                return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
                     {"error": "Application or Deployment not found"}, 400

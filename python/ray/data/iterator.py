@@ -9,6 +9,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -20,9 +21,8 @@ import numpy as np
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.logical.operators import InputData
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
     ArrowBatchCollateFn,
@@ -35,18 +35,21 @@ from ray.data.collate_fn import (
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
+from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
+    import jax
     import tensorflow as tf
     import torch
 
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
         TorchBatchType,
+        TorchDeviceType,
     )
 
 
@@ -82,23 +85,37 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_rows=5, schema={id: int64})
+        shape: (5, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
         >>> ds.iterator()
-        DataIterator(Dataset(num_rows=5, schema={id: int64}))
+        DataIterator(shape: (5, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized))
     """
 
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[
+        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
+    ]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
-            A tuple. The first item of the tuple is an iterator over RefBundles.
-            The second item of the tuple is a DatasetStats object used for recording
-            stats during iteration.
-            The third item is a boolean indicating if the blocks can be safely cleared
-            after use.
+            A tuple containing:
+            - An iterator over RefBundles.
+            - A DatasetStats object used for recording stats during iteration.
+            - A boolean indicating if the blocks can be safely cleared after use.
+            - An optional executor (StreamingExecutor) for reporting prefetched bytes.
         """
         ...
 
@@ -134,8 +151,9 @@ class DataIterator(abc.ABC):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
+                select ``pyarrow.Table``, ``"cudf"`` [Experimental] to select
+                ``cudf.DataFrame``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -159,9 +177,16 @@ class DataIterator(abc.ABC):
         )
 
     def _create_batch_iterator(
-        self, ref_bundles_iter: Iterator[RefBundle], **kwargs
+        self,
+        ref_bundles_iter: Iterator[RefBundle],
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        **kwargs,
     ) -> BatchIterator:
-        return BatchIterator(ref_bundles_iter, **kwargs)
+        return BatchIterator(
+            ref_bundles_iter,
+            prefetch_bytes_callback=prefetch_bytes_callback,
+            **kwargs,
+        )
 
     def _iter_batches(
         self,
@@ -179,6 +204,7 @@ class DataIterator(abc.ABC):
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
+
             # Iterate through the dataset from the start each time
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
@@ -187,9 +213,25 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats,
                 blocks_owned_by_consumer,
+                executor,
             ) = self._to_ref_bundle_iterator()
 
             dataset_tag = self._get_dataset_tag()
+
+            # Create a callback to report prefetched bytes to the executor's
+            # resource manager.
+            def make_prefetch_callback(exec):
+                def callback(num_bytes: int) -> None:
+                    exec.set_external_consumer_bytes(num_bytes)
+
+                return callback
+
+            prefetch_bytes_callback = (
+                make_prefetch_callback(executor) if executor is not None else None
+            )
+            if prefetch_bytes_callback is not None:
+                # Register the external consumer with the executor's resource manager.
+                prefetch_bytes_callback(0)
 
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
@@ -204,6 +246,7 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
+                prefetch_bytes_callback=prefetch_bytes_callback,
             )
 
             if stats:
@@ -257,7 +300,7 @@ class DataIterator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def schema(self) -> "Schema":
+    def schema(self) -> Optional["Schema"]:
         """Return the schema of the dataset iterated over."""
         ...
 
@@ -272,7 +315,7 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: str = "auto",
+        device: Union["TorchDeviceType", Literal["auto"]] = "auto",
         collate_fn: Optional[
             Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
         ] = None,
@@ -427,7 +470,7 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
 
-        from ray.air._internal.torch_utils import (
+        from ray.data.util.torch_utils import (
             move_tensors_to_device,
         )
 
@@ -556,7 +599,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
@@ -576,6 +619,129 @@ class DataIterator(abc.ABC):
 
         return mapped_iterable
 
+    @PublicAPI(stability="alpha")
+    def iter_jax_batches(
+        self,
+        *,
+        prefetch_batches: int = 1,
+        batch_size: int = 256,
+        dtypes: Optional[
+            Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
+        ] = None,
+        collate_fn: Optional[CollateFn] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        synchronize_batches: bool = False,
+        paddings: Optional[
+            Union[int, float, bool, Dict[str, Union[int, float, bool]]]
+        ] = None,
+    ) -> Iterable[Any]:
+        """Return a batched iterable of JAX Arrays over the dataset.
+
+        This iterator fetches data blocks, converts them to NumPy arrays, and
+        loads them directly onto JAX-addressable devices using Global Data Parallel
+        sharding. Data types are inferred from the underlying NumPy arrays,
+        unless specified via ``dtypes``.
+
+        This iterable will yield a dictionary of column-tensors, or a single
+        tensor if the underlying dataset consists of a single unnamed column.
+
+        .. note::
+            The returned JAX Arrays are sharded using an internal 1D mesh created by
+            Ray Data. If you are using these arrays within a `jax.set_mesh` context that
+            defines a different mesh (e.g., a multi-dimensional mesh or a different device
+            ordering), JAX may perform an implicit resharding (communication) when
+            the arrays are first used in a JAX operation. To minimize this overhead,
+            ensure your training loop's device ordering aligns with the one produced
+            by `jax.experimental.mesh_utils.create_device_mesh`.
+
+        Args:
+            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            batch_size: The number of rows in each batch for each host. Must be divisible
+                by the number of local devices. Defaults to 256.
+            dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
+                will be inferred from the NumPy ndarray data.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output must be a `np.ndarray` or `Dict[str, np.ndarray]`, and will be
+                automatically sharded across JAX-addressable devices.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
+            drop_last: Whether to drop the last batch if incomplete.
+            local_shuffle_buffer_size: Minimum rows for local in-memory shuffle.
+            local_shuffle_seed: Seed for local random shuffle.
+            synchronize_batches: Whether to synchronize batch shapes across all hosts.
+                Setting this to False can improve performance if you guarantee that all
+                hosts produce identical batch shapes and counts beforehand.
+                Setting this to True can help catch bugs where different hosts
+                produce different batch shapes.
+            paddings: The value to use for padding the last batch to `batch_size`.
+                If a dictionary is provided, it must map column names to padding values.
+                If not None, uneven batches will be padded with this value.
+                Must be castable to the dtypes of the created arrays.
+
+        Returns:
+            An iterable over JAX Array batches.
+        """
+
+        import jax
+
+        from ray.data.util.jax_util import jax_sync_generator
+
+        num_local_devices = jax.local_device_count()
+
+        if batch_size <= 0 or batch_size % num_local_devices != 0:
+            raise ValueError(
+                f"The provided batch_size ({batch_size}) must be a positive integer "
+                f"evenly divisible by the number of local JAX devices "
+                f"({num_local_devices}) on this host."
+            )
+
+        if collate_fn is None:
+            batch_format = "numpy"
+        elif isinstance(collate_fn, ArrowBatchCollateFn):
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, NumpyBatchCollateFn):
+            batch_format = "numpy"
+        elif isinstance(collate_fn, PandasBatchCollateFn):
+            batch_format = "pandas"
+        else:
+            raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
+
+        # Directly Fetch the underlying blocks.
+        batch_iterable = self._iter_batches(
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=collate_fn,
+        )
+
+        # Use prefetch_batches as the lookahead size for synchronization.
+        return jax_sync_generator(
+            batch_iterable,
+            drop_last,
+            batch_size=batch_size,
+            paddings=paddings,
+            dtypes=dtypes,
+            synchronize_batches=synchronize_batches,
+            synchronize_lookahead=max(prefetch_batches, 1),
+        )
+
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -684,10 +850,16 @@ class DataIterator(abc.ABC):
         Returns:
             A torch IterableDataset.
         """
+        warnings.warn(
+            "`DataIterator.to_torch` is deprecated and will be removed after "
+            "October 2026. Use `DataIterator.iter_torch_batches` instead.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
+        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -799,7 +971,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(num_rows=?, schema=...))
+            DataIterator(Dataset(num_rows=?, schema=Unknown schema))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -819,9 +991,6 @@ class DataIterator(abc.ABC):
             >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
             >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> it = preprocessor.transform(ds).iterator()
-            >>> it
-            DataIterator(Concatenator
-            +- Dataset(num_rows=?, schema=...))
             >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -901,7 +1070,7 @@ class DataIterator(abc.ABC):
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
 
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_to_tf_tensor,
             get_type_spec,
         )
@@ -1014,21 +1183,14 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats, self.get_context())
+        context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
-            execution_plan._context,
+            context,
         )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
-
-    def __del__(self):
-        # Clear metrics on deletion in case the iterator was not fully consumed.
-        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
+        return MaterializedDataset(logical_plan, context, stats)
 
 
 # Backwards compatibility alias.

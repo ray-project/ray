@@ -10,23 +10,24 @@ Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
 """
 
-from typing import Optional, Type
-from typing_extensions import Self
 import logging
+from typing import Optional, Type
 
+from typing_extensions import Self
+
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    LEARNER_STATS_KEY,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
 )
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -108,13 +109,19 @@ class APPOConfig(IMPALAConfig):
         self.kl_target = 0.01
         self.target_worker_clipping = 2.0
 
+        # If a circular buffer should be used to store training batches. The
+        # alternative is a simple `Queue`.
+        self.use_circular_buffer = True
         # Circular replay buffer settings.
         # Used in [1] for discrete action tasks:
         # `circular_buffer_num_batches=4` and `circular_buffer_iterations_per_batch=2`
         # For cont. action tasks:
         # `circular_buffer_num_batches=16` and `circular_buffer_iterations_per_batch=20`
-        self.circular_buffer_num_batches = 4
+        self.circular_buffer_num_batches = 8
         self.circular_buffer_iterations_per_batch = 2
+
+        # Size of the simple queue (if `use_circular_buffer` is False).
+        self.simple_queue_size = 32
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
@@ -165,8 +172,10 @@ class APPOConfig(IMPALAConfig):
         target_network_update_freq: Optional[int] = NotProvided,
         tau: Optional[float] = NotProvided,
         target_worker_clipping: Optional[float] = NotProvided,
+        use_circular_buffer: Optional[bool] = NotProvided,
         circular_buffer_num_batches: Optional[int] = NotProvided,
         circular_buffer_iterations_per_batch: Optional[int] = NotProvided,
+        simple_queue_size: Optional[int] = NotProvided,
         # Deprecated keys.
         target_update_frequency=DEPRECATED_VALUE,
         use_critic=DEPRECATED_VALUE,
@@ -211,6 +220,9 @@ class APPOConfig(IMPALAConfig):
             target_worker_clipping: The maximum value for the target-worker-clipping
                 used for computing the IS ratio, described in [1]
                 IS = min(π(i) / π(target), ρ) * (π / π(i))
+            use_circular_buffer: Whether to use a circular buffer for storing
+                training batches. If false, a simple Queue will be used. Defaults to
+                True.
             circular_buffer_num_batches: The number of train batches that fit
                 into the circular buffer. Each such train batch can be sampled for
                 training max. `circular_buffer_iterations_per_batch` times.
@@ -219,6 +231,8 @@ class APPOConfig(IMPALAConfig):
                 evicted from the buffer either if it's the oldest batch in the buffer
                 and a new batch is added OR if the batch reaches this max. number of
                 being sampled.
+            simple_queue_size: The size of the simple queue (if `use_circular_buffer`
+                is False) for storing training batches.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -260,12 +274,16 @@ class APPOConfig(IMPALAConfig):
             self.tau = tau
         if target_worker_clipping is not NotProvided:
             self.target_worker_clipping = target_worker_clipping
+        if use_circular_buffer is not NotProvided:
+            self.use_circular_buffer = use_circular_buffer
         if circular_buffer_num_batches is not NotProvided:
             self.circular_buffer_num_batches = circular_buffer_num_batches
         if circular_buffer_iterations_per_batch is not NotProvided:
             self.circular_buffer_iterations_per_batch = (
                 circular_buffer_iterations_per_batch
             )
+        if simple_queue_size is not NotProvided:
+            self.simple_queue_size = simple_queue_size
 
         return self
 

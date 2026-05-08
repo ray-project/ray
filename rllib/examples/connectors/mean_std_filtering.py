@@ -76,11 +76,11 @@ import numpy as np
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import get_trainable_cls, register_env
 
 torch, _ = try_import_torch()

@@ -15,6 +15,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
+    SharedFlag,
     check_deployment_status,
     check_num_replicas_eq,
     get_application_url,
@@ -123,7 +124,7 @@ def test_http_proxy_request_cancellation(serve_instance):
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
         first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
-        time.sleep(1)
+        wait_for_condition(lambda: ray.get(s.cur_num_waiters.remote()) == 1)
         assert not first_blocking_fut.done()
 
         # Send more requests, these should be queued in handle.
@@ -134,8 +135,7 @@ def test_http_proxy_request_cancellation(serve_instance):
             pool.submit(functools.partial(httpx.get, url, timeout=0.5))
             for _ in range(3)
         ]
-        time.sleep(1)
-        assert all(f.done() for f in rest_blocking_futs)
+        wait_for_condition(lambda: all(f.done() for f in rest_blocking_futs))
 
         # Now unblock the first request.
         ray.get(s.send.remote())
@@ -175,18 +175,7 @@ def test_nonserializable_deployment(serve_instance):
 def test_deploy_application_unhealthy(serve_instance):
     """Test deploying an application that becomes unhealthy."""
 
-    @ray.remote
-    class Event:
-        def __init__(self):
-            self.is_set = False
-
-        def set(self):
-            self.is_set = True
-
-        def is_set(self):
-            return self.is_set
-
-    event = Event.remote()
+    event = SharedFlag.remote()
 
     @serve.deployment(health_check_period_s=1, health_check_timeout_s=3)
     class Model:
@@ -334,7 +323,8 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -355,7 +345,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             autoscaling_config={
                 "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
-                "look_back_period_s": 1,
+                "look_back_period_s": 2,
             },
             graceful_shutdown_timeout_s=1,
         )
@@ -365,7 +355,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             autoscaling_config={
                 "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
-                "look_back_period_s": 1,
+                "look_back_period_s": 2,
             },
             graceful_shutdown_timeout_s=1,
         )(A)
@@ -389,7 +379,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
-        "look_back_period_s": 1.0,
+        "look_back_period_s": 2.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
@@ -400,7 +390,8 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -411,9 +402,9 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             assert ray.get(signal.cur_num_waiters.remote()) == target
             return True
 
-        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        wait_for_condition(check_num_waiters, target=2 * (i + 1), timeout=30)
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 

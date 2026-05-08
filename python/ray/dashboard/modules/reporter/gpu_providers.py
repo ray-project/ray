@@ -11,6 +11,11 @@ import subprocess
 import time
 from typing import Dict, List, Optional, TypedDict, Union
 
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
+
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -47,6 +52,9 @@ class GpuUtilizationInfo(TypedDict):
     memory_used: Megabytes
     memory_total: Megabytes
     processes_pids: Optional[Dict[int, ProcessGPUInfo]]
+    # Optional: power in milliwatts, temperature in Celsius (e.g. from NVIDIA/AMD)
+    power_mw: NotRequired[Optional[int]]
+    temperature_c: NotRequired[Optional[int]]
 
 
 # tpu utilization for google tpu
@@ -289,6 +297,8 @@ class NvidiaGpuProvider(GpuProvider):
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
                 processes_pids=processes_pids,
+                power_mw=None,  # MIG devices don't expose per-slice power in NVML
+                temperature_c=None,
             )
 
         except Exception as e:
@@ -359,6 +369,21 @@ class NvidiaGpuProvider(GpuProvider):
                         f"Failed to retrieve GPU processes using `nvmlDeviceGetComputeRunningProcesses` and `nvmlDeviceGetGraphicsRunningProcesses`: {fallback_e}"
                     )
 
+            # Optional: power (milliwatts) and temperature (Celsius)
+            power_mw = None
+            temperature_c = None
+            try:
+                power_mw = self._pynvml.nvmlDeviceGetPowerUsage(gpu_handle)
+            except (self._pynvml.NVMLError, AttributeError) as e:
+                logger.debug(f"Failed to retrieve GPU power: {e}")
+            try:
+                # NVML_TEMPERATURE_GPU = 0
+                temperature_c = self._pynvml.nvmlDeviceGetTemperature(
+                    gpu_handle, self._pynvml.NVML_TEMPERATURE_GPU
+                )
+            except (self._pynvml.NVMLError, AttributeError) as e:
+                logger.debug(f"Failed to retrieve GPU temperature: {e}")
+
             return GpuUtilizationInfo(
                 index=gpu_index,
                 name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
@@ -367,6 +392,8 @@ class NvidiaGpuProvider(GpuProvider):
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
                 processes_pids=processes_pids,
+                power_mw=power_mw,
+                temperature_c=temperature_c,
             )
 
         except Exception as e:
@@ -451,6 +478,15 @@ class AmdGpuProvider(GpuProvider):
                             gpu_utilization=None,
                         )
 
+                # Optional: power in milliwatts (AMD returns watts)
+                power_mw = None
+                try:
+                    power_watts = self._pyamdsmi.smi_get_device_average_power(i)
+                    if power_watts >= 0:
+                        power_mw = int(power_watts * 1000)
+                except Exception as e:
+                    logger.debug(f"Failed to retrieve AMD GPU power: {e}")
+
                 info = GpuUtilizationInfo(
                     index=i,
                     name=self._decode(self._pyamdsmi.smi_get_device_name(i)),
@@ -460,6 +496,8 @@ class AmdGpuProvider(GpuProvider):
                     memory_total=int(self._pyamdsmi.smi_get_device_memory_total(i))
                     // MB,
                     processes_pids=processes_pids,
+                    power_mw=power_mw,
+                    temperature_c=None,  # not exposed in vendored pyamdsmi
                 )
                 gpu_utilizations.append(info)
 

@@ -12,6 +12,10 @@ import packaging.version
 import yaml
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    format_authentication_http_error,
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
@@ -22,6 +26,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.job.common import uri_to_http_components
+from ray.exceptions import AuthenticationError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -92,6 +97,7 @@ def get_job_submission_client_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
     _use_tls: Optional[bool] = False,
+    **kwargs,
 ) -> ClusterInfo:
     """Get address, cookies, and metadata used for SubmissionClient.
 
@@ -126,6 +132,7 @@ def parse_cluster_info(
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
+    **kwargs,
 ) -> ClusterInfo:
     """Create a cluster if needed and return its address, cookies, and metadata."""
     if address is None:
@@ -171,6 +178,7 @@ def parse_cluster_info(
             metadata=metadata,
             headers=headers,
             _use_tls=(module_string == "https"),
+            **kwargs,
         )
     # Try to dynamically import the function to get cluster info.
     else:
@@ -193,6 +201,7 @@ def parse_cluster_info(
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            **kwargs,
         )
 
 
@@ -205,6 +214,7 @@ class SubmissionClient:
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
         verify: Optional[Union[str, bool]] = True,
+        **kwargs,
     ):
         # Remove any trailing slashes
         if address is not None and address.endswith("/"):
@@ -215,14 +225,16 @@ class SubmissionClient:
             )
 
         cluster_info = parse_cluster_info(
-            address, create_cluster_if_needed, cookies, metadata, headers
+            address, create_cluster_if_needed, cookies, metadata, headers, **kwargs
         )
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
-        self._headers = cluster_info.headers
+        self._headers = cluster_info.headers or {}
+        self._headers.update(**get_auth_headers_if_auth_enabled(self._headers))
+
         # Set SSL verify parameter for the requests library and create an ssl_context
         # object when needed for the aiohttp library.
         self._verify = verify
@@ -241,6 +253,8 @@ class SubmissionClient:
                 self._ssl_context = False
             else:
                 self._ssl_context = None
+
+        self._server_ray_version: Optional[str] = None
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
@@ -267,6 +281,7 @@ class SubmissionClient:
             r.raise_for_status()
 
             running_ray_version = r.json()["ray_version"]
+            self._server_ray_version = running_ray_version
             if packaging.version.parse(running_ray_version) < packaging.version.parse(
                 min_version
             ):
@@ -293,14 +308,15 @@ class SubmissionClient:
         json_data: Optional[dict] = None,
         **kwargs,
     ) -> "requests.Response":
-        """Perform the actual HTTP request
+        """Perform the actual HTTP request with authentication error handling.
 
         Keyword arguments other than "cookies", "headers" are forwarded to the
         `requests.request()`.
         """
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
-        return requests.request(
+
+        response = requests.request(
             method,
             url,
             cookies=self._cookies,
@@ -310,6 +326,15 @@ class SubmissionClient:
             verify=self._verify,
             **kwargs,
         )
+
+        # Check for authentication errors and provide helpful messages
+        formatted_error = format_authentication_http_error(
+            response.status_code, response.text
+        )
+        if formatted_error:
+            raise AuthenticationError(formatted_error)
+
+        return response
 
     def _package_exists(
         self,
@@ -331,6 +356,7 @@ class SubmissionClient:
         self,
         package_uri: str,
         package_path: str,
+        include_gitignore: bool,
         include_parent_dir: Optional[bool] = False,
         excludes: Optional[List[str]] = None,
         is_file: bool = False,
@@ -345,6 +371,7 @@ class SubmissionClient:
                 create_package(
                     package_path,
                     package_file,
+                    include_gitignore=include_gitignore,
                     include_parent_dir=include_parent_dir,
                     excludes=excludes,
                 )
@@ -364,6 +391,7 @@ class SubmissionClient:
     def _upload_package_if_needed(
         self,
         package_path: str,
+        include_gitignore: bool,
         include_parent_dir: bool = False,
         excludes: Optional[List[str]] = None,
         is_file: bool = False,
@@ -371,12 +399,15 @@ class SubmissionClient:
         if is_file:
             package_uri = get_uri_for_package(Path(package_path))
         else:
-            package_uri = get_uri_for_directory(package_path, excludes=excludes)
+            package_uri = get_uri_for_directory(
+                package_path, include_gitignore, excludes=excludes
+            )
 
         if not self._package_exists(package_uri):
             self._upload_package(
                 package_uri,
                 package_path,
+                include_gitignore=include_gitignore,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes,
                 is_file=is_file,
@@ -387,23 +418,44 @@ class SubmissionClient:
         return package_uri
 
     def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+
         def _upload_fn(working_dir, excludes, is_file=False):
             self._upload_package_if_needed(
                 working_dir,
+                include_gitignore=include_gitignore,
                 include_parent_dir=False,
                 excludes=excludes,
                 is_file=is_file,
             )
 
-        upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
+        upload_working_dir_if_needed(
+            runtime_env, include_gitignore=include_gitignore, upload_fn=_upload_fn
+        )
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+
         def _upload_fn(module_path, excludes, is_file=False):
             self._upload_package_if_needed(
-                module_path, include_parent_dir=True, excludes=excludes, is_file=is_file
+                module_path,
+                include_gitignore=include_gitignore,
+                include_parent_dir=True,
+                excludes=excludes,
+                is_file=is_file,
             )
 
-        upload_py_modules_if_needed(runtime_env, upload_fn=_upload_fn)
+        upload_py_modules_if_needed(
+            runtime_env, include_gitignore=include_gitignore, upload_fn=_upload_fn
+        )
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:

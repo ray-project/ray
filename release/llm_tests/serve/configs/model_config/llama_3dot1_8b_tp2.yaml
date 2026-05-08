@@ -3,6 +3,12 @@ model_loading_config:
 
 accelerator_type: A10G
 
+placement_group_config:
+  bundles:
+    - GPU: 1
+    - GPU: 1
+  strategy: STRICT_PACK
+
 engine_kwargs:
   max_model_len: 8192
   tensor_parallel_size: 2

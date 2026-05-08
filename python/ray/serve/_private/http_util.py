@@ -12,6 +12,7 @@ from typing import (
     AsyncGenerator,
     Awaitable,
     Callable,
+    Dict,
     List,
     Optional,
     Tuple,
@@ -31,16 +32,19 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._common.network_utils import is_ipv6
-from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import (
     RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+    SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_SESSION_ID,
 )
+from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -449,7 +453,16 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
         # same name. See #17559.
-        and (cls.__qualname__ in route.endpoint.__qualname__)
+        # NOTE: We check against all classes in the MRO to handle inherited
+        # methods. When a method is inherited, its __qualname__ still references
+        # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
+        # We use "ClassName." prefix matching (not substring) to avoid false
+        # positives where class "A" would incorrectly match routes from "AA".
+        and any(
+            route.endpoint.__qualname__.startswith(base.__qualname__ + ".")
+            for base in cls.__mro__
+            if base is not object
+        )
     ]
 
     # Modify these routes and mount it to a new APIRouter.
@@ -494,19 +507,6 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if not isinstance(route, (APIRoute, APIWebSocketRoute)):
             continue
 
-        # If there is a response model, FastAPI creates a copy of the fields.
-        # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if (
-            # TODO(edoakes): I don't think this check is complete because we need
-            # to support v1 models in v2 (from pydantic.v1 import *).
-            not IS_PYDANTIC_2
-            and isinstance(route, APIRoute)
-            and route.response_model
-        ):
-            route.secure_cloned_response_field.outer_type_ = (
-                route.response_field.outer_type_
-            )
-
         # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
@@ -546,11 +546,21 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+    def __init__(self, app_or_func: Optional[Union[ASGIApp, Callable]]):
+        if app_or_func is None:
+            # Late-bound: `__serve_build_asgi_app__` will supply the app at
+            # replica init time. `__del__` tolerates the missing
+            # `_serve_asgi_lifespan` attribute.
+            return
         if inspect.isfunction(app_or_func):
-            self._asgi_app = app_or_func()
+            app = app_or_func()
         else:
-            self._asgi_app = app_or_func
+            app = app_or_func
+
+        self._set_asgi_app(app)
+
+    def _set_asgi_app(self, app: ASGIApp) -> None:
+        self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -606,6 +616,9 @@ class ASGIAppReplicaWrapper:
     # NOTE: __del__ must be async so that we can run ASGI shutdown
     # in the same event loop.
     async def __del__(self):
+        if not hasattr(self, "_serve_asgi_lifespan"):
+            return
+
         # LifespanOn's logger logs in INFO level thus becomes spammy.
         # Within this block we temporarily uplevel for cleaner logging.
         from ray.serve._private.logging_utils import LoggingContext
@@ -763,14 +776,70 @@ async def start_asgi_http_server(
     return event_loop.create_task(server.serve(sockets=[sock]))
 
 
+def parse_request_timeout_header(
+    headers: Dict[bytes, bytes],
+    default_timeout_s: Optional[float],
+) -> Optional[float]:
+    """Parse the per-request timeout from the ``x-request-timeout-seconds`` header.
+
+    Returns the header value when valid and positive, ``None`` when the header is
+    present but non-positive (meaning "disable the timeout"), or ``default_timeout_s``
+    when the header is absent or malformed.
+    """
+    header_name = SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER.encode("utf-8")
+    if header_name not in headers:
+        return default_timeout_s
+
+    value = headers[header_name].decode("utf-8")
+    try:
+        timeout = float(value)
+        if timeout > 0:
+            return timeout
+        return None  # non-positive → disable timeout
+    except ValueError:
+        return default_timeout_s
+
+
+def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
+    """Return True if the ``x-request-disconnect-disabled`` header equals ``?1``.
+
+    When True, the caller should not monitor for client disconnects.
+    """
+    return (
+        headers.get(
+            SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER.encode("utf-8"), b"?0"
+        ).decode("utf-8")
+        == "?1"
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the SERVE_SESSION_ID header value, or '' if absent.
+
+    Accepts both the underscored constant form (``x_session_id``) and the
+    canonical hyphenated form (``x-session-id``) because intermediate proxies
+    (HAProxy, nginx, AWS API Gateway) canonicalize underscored header names
+    to the hyphenated form. ASGI lowercases header names per spec, so
+    case-folding is not needed here.
+    """
+    for form in (SERVE_SESSION_ID, SERVE_SESSION_ID.replace("_", "-")):
+        value = headers.get(form.encode("utf-8"))
+        if value is not None:
+            return value.decode("utf-8")
+    return ""
+
+
 def get_http_response_status(
-    exc: BaseException, request_timeout_s: float, request_id: str
+    exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
     if isinstance(exc, TimeoutError):
+        timeout_str = (
+            f"after {request_timeout_s}s" if request_timeout_s is not None else ""
+        )
         return ResponseStatus(
             code=408,
             is_error=True,
-            message=f"Request {request_id} timed out after {request_timeout_s}s.",
+            message=f"Request {request_id} timed out {timeout_str}.".strip(),
         )
 
     elif isinstance(exc, asyncio.CancelledError):
@@ -816,6 +885,9 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
     """Enhanced configuration with component-specific options."""
 
     http_options = deepcopy(http_options)
+
+    # Warn if deprecated env var is set
+    warn_if_deprecated_env_var_set("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S")
 
     # Apply environment defaults
     if (RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or 0) > 0:

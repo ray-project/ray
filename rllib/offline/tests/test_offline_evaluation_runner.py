@@ -1,15 +1,16 @@
 import unittest
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict
+
 import gymnasium as gym
 
-from pathlib import Path
-from typing import Any, Dict, TYPE_CHECKING
-
+import ray
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.core import ALL_MODULES, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.offline.offline_evaluation_runner import (
-    OfflineEvaluationRunner,
     TOTAL_EVAL_LOSS_KEY,
+    OfflineEvaluationRunner,
 )
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.typing import ModuleID, ResultDict, TensorType
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 
 class TestOfflineEvaluationRunner(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Assign the observation and action spaces.
@@ -55,9 +56,13 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
             )
         )
 
+    def tearDown(self):
+        # Pull down Ray after each test.
+        ray.shutdown()
+
     def test_offline_evaluation_runner_setup(self):
 
-        # Create an `OfflineEvalautionRunner` instance.
+        # Create an `OfflineEvaluationRunner` instance.
         offline_eval_runner = OfflineEvaluationRunner(config=self.config)
 
         # Ensure that the runner has a config.
@@ -116,9 +121,11 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Ensure that the metrics of the `default_policy` are also a dict.
         self.assertIsInstance(metrics[DEFAULT_MODULE_ID], ResultDict)
         # Make sure that the metric for the total eval loss is a `Stats` instance.
-        from ray.rllib.utils.metrics.stats import Stats
+        from ray.rllib.utils.metrics.stats import StatsBase
 
-        self.assertIsInstance(metrics[DEFAULT_MODULE_ID][TOTAL_EVAL_LOSS_KEY], Stats)
+        self.assertIsInstance(
+            metrics[DEFAULT_MODULE_ID][TOTAL_EVAL_LOSS_KEY], StatsBase
+        )
         # Ensure that the `_batch_iterator` instance was built. Note, this is
         # built in the first call to `OfflineEvaluationRunner.run()`.
         from ray.rllib.utils.minibatch_utils import MiniBatchRayDataIterator
@@ -198,6 +205,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

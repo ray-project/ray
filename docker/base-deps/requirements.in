@@ -1,3 +1,4 @@
+setuptools==80.9.0
 flatbuffers
 cython
 numpy  # Necessary for Dataset to work properly.

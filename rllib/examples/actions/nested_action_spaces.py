@@ -7,7 +7,7 @@ from ray.rllib.examples.envs.classes.multi_agent import (
 from ray.rllib.examples.envs.classes.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

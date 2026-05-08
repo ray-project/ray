@@ -1,7 +1,12 @@
 import logging
 from typing import Optional, Type, Union
+
 from typing_extensions import Self
 
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
@@ -26,24 +31,20 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
-    LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     OFFLINE_SAMPLING_TIMER,
-    TARGET_NET_UPDATE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    TARGET_NET_UPDATE_TIMER,
     TIMERS,
 )
 from ray.rllib.utils.typing import ResultDict, RLModuleSpecType

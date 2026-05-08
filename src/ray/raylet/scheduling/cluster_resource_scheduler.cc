@@ -27,6 +27,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ClockInterface &clock,
     bool is_local_node_with_raylet)
     : local_node_id_(local_node_id),
       is_node_available_fn_(is_node_available_fn),
@@ -35,7 +37,9 @@ ClusterResourceScheduler::ClusterResourceScheduler(
        local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr,
-       /*shutdown_raylet_gracefully=*/nullptr);
+       /*shutdown_raylet_gracefully=*/nullptr,
+       resource_usage_gauge,
+       clock);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -43,6 +47,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ClockInterface &clock,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
@@ -54,7 +60,9 @@ ClusterResourceScheduler::ClusterResourceScheduler(
        node_resources,
        get_used_object_store_memory,
        get_pull_manager_at_capacity,
-       shutdown_raylet_gracefully);
+       shutdown_raylet_gracefully,
+       resource_usage_gauge,
+       clock);
 }
 
 void ClusterResourceScheduler::Init(
@@ -62,7 +70,9 @@ void ClusterResourceScheduler::Init(
     const NodeResources &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully) {
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ClockInterface &clock) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id_,
@@ -72,7 +82,9 @@ void ClusterResourceScheduler::Init(
       shutdown_raylet_gracefully,
       [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
-      });
+      },
+      resource_usage_gauge,
+      clock);
   RAY_CHECK(!local_node_id_.IsNil());
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ =
@@ -83,9 +95,7 @@ void ClusterResourceScheduler::Init(
           [this](auto node_id) { return this->NodeAvailable(node_id); });
   bundle_scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(
-          *cluster_resource_manager_,
-          /*is_node_available_fn*/
-          [this](auto node_id) { return this->NodeAvailable(node_id); });
+          *cluster_resource_manager_);
 }
 
 bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
@@ -388,10 +398,17 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   return highest_priority_unavailable_node;
 }
 
-SchedulingResult ClusterResourceScheduler::Schedule(
+SchedulingResult ClusterResourceScheduler::SchedulePlacementGroup(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options) {
-  return bundle_scheduling_policy_->Schedule(resource_request_list, options);
+  absl::flat_hash_set<scheduling::NodeID> candidate_nodes;
+  for (const auto &[node_id, _] : cluster_resource_manager_->GetResourceView()) {
+    if (NodeAvailable(node_id)) {
+      candidate_nodes.insert(node_id);
+    }
+  }
+  return bundle_scheduling_policy_->Schedule(
+      resource_request_list, options, std::move(candidate_nodes));
 }
 
 }  // namespace ray

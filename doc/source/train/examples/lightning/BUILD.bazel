@@ -22,3 +22,12 @@ py_test_run_all_notebooks(
         "team:ml",
     ],
 )
+
+filegroup(
+    name = "lightning_examples_ci_configs",
+    srcs = glob([
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml",
+    ]),
+    visibility = ["//doc/source/train/examples:__pkg__"],
+)

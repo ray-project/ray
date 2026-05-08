@@ -88,7 +88,7 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 - The Serve Autoscaler runs in the Serve Controller actor.
 - Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
 - For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_ongoing_requests` is reached. Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_ongoing_requests` requests at a time.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_ongoing_requests` is reached. Queries are sent to replicas using a [power of two choices](https://ieeexplore.ieee.org/document/963420) scheduling strategy, subject to the constraint that no replica is handling more than `max_ongoing_requests` requests at a time.
 
 :::{note}
 When the controller dies, requests can still be sent via HTTP, gRPC and `DeploymentHandle`, but autoscaling is paused. When the controller recovers, the autoscaling resumes, but all previous metrics collected are lost.

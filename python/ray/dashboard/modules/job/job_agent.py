@@ -30,7 +30,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         self._job_manager = None
 
     @routes.post("/api/job_agent/jobs/")
-    @optional_utils.deny_browser_requests()
     @optional_utils.init_ray_and_catch_exceptions()
     async def submit_job(self, req: Request) -> Response:
         result = await parse_and_validate_request(req, JobSubmitRequest)
@@ -52,6 +51,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
                 entrypoint_memory=submit_request.entrypoint_memory,
                 entrypoint_resources=submit_request.entrypoint_resources,
+                entrypoint_label_selector=submit_request.entrypoint_label_selector,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
@@ -73,7 +73,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         )
 
     @routes.post("/api/job_agent/jobs/{job_or_submission_id}/stop")
-    @optional_utils.deny_browser_requests()
     @optional_utils.init_ray_and_catch_exceptions()
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]

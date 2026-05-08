@@ -6,9 +6,13 @@ from pydantic import Field, field_validator, model_validator
 
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.dict_utils import deep_merge_dicts
+from ray.llm._internal.common.dict_utils import (
+    maybe_apply_llm_deployment_config_defaults,
+)
 from ray.llm._internal.common.utils.import_utils import load_class
+from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
@@ -16,16 +20,50 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
 
 
+def _build_direct_streaming_llm_deployment(llm_config: LLMConfig) -> Application:
+    """Build the LLMServer deployment with late-bound ASGI ingress enabled.
+
+    The real ASGI app (vLLM FastAPI) is constructed inside
+    `LLMServer.__serve_build_asgi_app__` after the engine starts.
+    """
+    server_cls = llm_config.server_cls or LLMServer
+    return build_llm_deployment(
+        llm_config,
+        deployment_cls=serve.ingress()(server_cls),
+    )
+
+
+def _build_openai_ingress_request_router(*, server: Application) -> Application:
+    """Build the ingress request router peer for OpenAI compatible LLM apps.
+
+    The returned Application is attached to the ingress application with
+    ``Application._with_ingress_request_router``.
+
+    ``num_replicas`` is pinned to 1 because HAProxy's ingress request router
+    backend currently expects a single endpoint. TODO(eicherseiji): expose
+    these as a user-overridable IngressRequestRouterConfig once HAProxy
+    supports multiple router replicas.
+    """
+    from ray.llm._internal.serve.core.ingress.router import LLMRouter
+
+    return serve.deployment(
+        LLMRouter,
+        num_replicas=1,
+        max_ongoing_requests=1000,
+    ).bind(server=server)
+
+
 class IngressClsConfig(BaseModelExtended):
     ingress_cls: Union[str, Type[OpenAiIngress]] = Field(
         default=OpenAiIngress,
-        description="The class name of the ingress to use. It can be in form of `module_name.class_name` or `module_name:class_name` or the class itself. The class constructor should take the following arguments: `(llm_deployments: List[DeploymentHandle], **extra_kwargs)` where `llm_deployments` is a list of DeploymentHandle objects from `LLMServer` deployments.",
+        description="The class name of the ingress to use. It can be in form of `module_name.class_name` or `module_name:class_name` or the class itself. The class constructor should take the following arguments: `(llm_deployments: Dict[str, DeploymentHandle], model_cards: Dict[str, ModelCard], lora_paths: Optional[Dict[str, str]] = None, **extra_kwargs)` where the dicts are keyed by base model ID.",
     )
 
     ingress_extra_kwargs: Optional[dict] = Field(
@@ -101,6 +139,37 @@ class LLMServingArgs(BaseModelExtended):
         return self
 
 
+def _validate_direct_streaming_builder_config(
+    builder_config: LLMServingArgs,
+) -> None:
+    if len(builder_config.llm_configs) > 1:
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING currently supports exactly one "
+            "LLM config. Multi-model direct streaming requires composing multiple "
+            "LLMServer deployments into the main application graph, which is not "
+            "supported yet."
+        )
+
+    if builder_config.ingress_deployment_config:
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
+            "ingress_deployment_config because LLMServer is used directly as "
+            "the ingress deployment. Configure LLMServer through each "
+            "LLMConfig.deployment_config instead."
+        )
+
+    ingress_cls_config = builder_config.ingress_cls_config
+    if (
+        ingress_cls_config.ingress_cls != OpenAiIngress
+        or ingress_cls_config.ingress_extra_kwargs
+    ):
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
+            "ingress_cls_config because LLMServer is used directly as the "
+            "ingress deployment."
+        )
+
+
 def build_openai_app(builder_config: dict) -> Application:
     """Build an OpenAI compatible app with the llm deployment setup from
     the given builder configuration.
@@ -116,15 +185,36 @@ def build_openai_app(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
 
-    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
+    # Direct streaming attaches LLMRouter as the ingress request router and
+    # uses the LLMServer deployment itself as the ingress app, so it returns
+    # before the regular OpenAiIngress wiring.
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_builder_config(builder_config)
+        direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
+        logger.info(
+            "Direct streaming enabled: "
+            "LLMServer=ingress, LLMRouter=ingress_request_router"
+        )
+        return direct_deployment._with_ingress_request_router(
+            _build_openai_ingress_request_router(server=direct_deployment)
+        )
+
+    llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
+    model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
+    lora_paths = {
+        c.model_id: c.lora_config.dynamic_lora_loading_path
+        for c in llm_configs
+        if c.lora_config is not None
+    }
 
     ingress_cls_config = builder_config.ingress_cls_config
-    ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
+    default_ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(
+        llm_configs
+    )
 
-    if builder_config.ingress_deployment_config:
-        ingress_options = deep_merge_dicts(
-            ingress_options, builder_config.ingress_deployment_config
-        )
+    ingress_options = maybe_apply_llm_deployment_config_defaults(
+        default_ingress_options, builder_config.ingress_deployment_config
+    )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
 
@@ -132,5 +222,8 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info(pprint.pformat(ingress_options))
 
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
+        llm_deployments=llm_deployments,
+        model_cards=model_cards,
+        lora_paths=lora_paths,
+        **ingress_cls_config.ingress_extra_kwargs,
     )

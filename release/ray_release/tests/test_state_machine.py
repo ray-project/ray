@@ -3,28 +3,28 @@ from typing import List, Optional
 
 import pytest
 
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.test import (
     Test,
     TestResult,
     TestState,
 )
-from ray_release.result import (
-    Result,
-    ResultStatus,
-)
-from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.ci_state_machine import (
-    CITestStateMachine,
     CONTINUOUS_FAILURE_TO_FLAKY,
     CONTINUOUS_PASSING_TO_PASSING,
     FAILING_TO_FLAKY_MESSAGE,
-    JAILED_TAG,
     JAILED_MESSAGE,
+    JAILED_TAG,
+    CITestStateMachine,
 )
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.state_machine import (
-    TestStateMachine,
-    WEEKLY_RELEASE_BLOCKER_TAG,
     NO_TEAM,
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
 )
 
 
@@ -247,7 +247,7 @@ def test_release_move_from_passing_to_failing():
 
 
 def test_release_move_from_failing_to_consisently_failing():
-    test = Test(name="test", team="ci", stable=False)
+    test = Test(name="test", team="ci")
     test[Test.KEY_BISECT_BUILD_NUMBER] = 1
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -264,7 +264,6 @@ def test_release_move_from_failing_to_consisently_failing():
     assert "Blamed commit: 1234567890" in issue.comments[0]
     labels = [label.name for label in issue.get_labels()]
     assert "ci" in labels
-    assert "unstable-release-test" in labels
 
 
 def test_release_move_from_failing_to_passing():

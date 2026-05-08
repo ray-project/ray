@@ -95,6 +95,9 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
       last_detail = std::string(detail);
     }
   }
+  void WaitForCompletion(std::chrono::milliseconds timeout_ms) override {
+    // No-op for tests - shutdown completes immediately
+  }
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return idle_exit_allowed.load(); }
 };
@@ -113,6 +116,7 @@ class NoOpShutdownExecutor : public ShutdownExecutorInterface {
   void ExecuteExitIfIdle(std::string_view,
                          std::string_view,
                          std::chrono::milliseconds) override {}
+  void WaitForCompletion(std::chrono::milliseconds) override {}
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return false; }
 };

@@ -7,7 +7,8 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.util import rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record
 from ray.data.tests.util import extract_values
@@ -50,7 +51,7 @@ def test_from_modin_e2e(ray_start_regular_shared_2_cpus):
     # Check that metadata fetch is included in stats. This is `FromPandas`
     # instead of `FromModin` because `from_modin` reduces to `from_pandas_refs`.
     assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    assert ds._logical_plan.dag.name == "FromPandas"
     _check_usage_record(["FromPandas"])
 
 
@@ -63,31 +64,27 @@ def test_from_pandas_refs_e2e(ray_start_regular_shared_2_cpus, enable_pandas_blo
     try:
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        expected_df = pd.concat([df1, df2])
 
         ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        values = [(r["one"], r["two"]) for r in ds.take(6)]
-        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-        assert values == rows
+        assert rows_same(ds.to_pandas(), expected_df)
         # Check that metadata fetch is included in stats.
         assert "FromPandas" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromPandas"
+        assert ds._logical_plan.dag.name == "FromPandas"
 
         # Test chaining multiple operations
         ds2 = ds.map_batches(lambda x: x)
-        values = [(r["one"], r["two"]) for r in ds2.take(6)]
-        assert values == rows
+        assert rows_same(ds2.to_pandas(), expected_df)
         assert "MapBatches" in ds2.stats()
         assert "FromPandas" in ds2.stats()
-        assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
+        assert ds2._logical_plan.dag.name == "MapBatches(<lambda>)"
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas_refs(ray.put(df1))
-        values = [(r["one"], r["two"]) for r in ds.take(3)]
-        rows = [(r.one, r.two) for _, r in df1.iterrows()]
-        assert values == rows
+        assert rows_same(ds.to_pandas(), df1)
         # Check that metadata fetch is included in stats.
         assert "FromPandas" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromPandas"
+        assert ds._logical_plan.dag.name == "FromPandas"
         _check_usage_record(["FromPandas"])
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
@@ -103,7 +100,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared_2_cpus):
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
     assert "FromNumpy" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpy"
+    assert ds._logical_plan.dag.name == "FromNumpy"
     _check_usage_record(["FromNumpy"])
 
     # Test chaining multiple operations
@@ -112,7 +109,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared_2_cpus):
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     assert "MapBatches" in ds2.stats()
     assert "FromNumpy" in ds2.stats()
-    assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
+    assert ds2._logical_plan.dag.name == "MapBatches(<lambda>)"
     _check_usage_record(["FromNumpy", "MapBatches"])
 
     # Test from single NumPy ndarray.
@@ -121,7 +118,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared_2_cpus):
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
     assert "FromNumpy" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpy"
+    assert ds._logical_plan.dag.name == "FromNumpy"
     _check_usage_record(["FromNumpy"])
 
 
@@ -138,7 +135,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     assert values == rows
     # Check that metadata fetch is included in stats.
     assert "FromArrow" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    assert ds._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
 
     # test from single pyarrow table ref
@@ -148,7 +145,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
     assert values == rows
     # Check that conversion task is included in stats.
     assert "FromArrow" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    assert ds._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
 
 
@@ -159,7 +156,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared_2_cpus):
 def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     import datasets
 
-    from ray.data.tests.test_huggingface import hfds_assert_equals
+    from ray.data.tests.datasource.test_huggingface import hfds_assert_equals
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
@@ -179,8 +176,8 @@ def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
         # as this is an un-transformed public dataset.
         assert "ReadParquet" in ds.stats() or "FromArrow" in ds.stats()
         assert (
-            ds._plan._logical_plan.dag.name == "ReadParquet"
-            or ds._plan._logical_plan.dag.name == "FromArrow"
+            ds._logical_plan.dag.name == "ReadParquet"
+            or ds._logical_plan.dag.name == "FromArrow"
         )
         # use sort by 'text' to match order of rows
         hfds_assert_equals(data[ds_key], ds)
@@ -200,38 +197,9 @@ def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
     # Check that metadata fetch is included in stats;
     # the underlying implementation uses the `FromArrow` operator.
     assert "FromArrow" in ray_dataset_split_train.stats()
-    assert ray_dataset_split_train._plan._logical_plan.dag.name == "FromArrow"
+    assert ray_dataset_split_train._logical_plan.dag.name == "FromArrow"
     assert ray_dataset_split_train.count() == hf_dataset_split["train"].num_rows
     _check_usage_record(["FromArrow"])
-
-
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Skip due to incompatibility tensorflow with Python 3.12+",
-)
-def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
-    import tensorflow as tf
-    import tensorflow_datasets as tfds
-
-    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
-    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
-
-    ray_dataset = ray.data.from_tf(tf_dataset)
-
-    actual_data = extract_values("item", ray_dataset.take_all())
-    expected_data = list(tf_dataset)
-    assert len(actual_data) == len(expected_data)
-    for (expected_features, expected_label), (actual_features, actual_label) in zip(
-        expected_data, actual_data
-    ):
-        tf.debugging.assert_equal(expected_features, actual_features)
-        tf.debugging.assert_equal(expected_label, actual_label)
-
-    # Check that metadata fetch is included in stats.
-    assert "FromItems" in ray_dataset.stats()
-    # Underlying implementation uses `FromItems` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
-    _check_usage_record(["FromItems"])
 
 
 def test_from_torch_e2e(ray_start_regular_shared_2_cpus, tmp_path):
@@ -249,7 +217,7 @@ def test_from_torch_e2e(ray_start_regular_shared_2_cpus, tmp_path):
     assert "ReadTorch" in ray_dataset.stats()
 
     # Underlying implementation uses `FromItems` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "ReadTorch"
+    assert ray_dataset._logical_plan.dag.name == "ReadTorch"
     _check_usage_record(["ReadTorch"])
 
 

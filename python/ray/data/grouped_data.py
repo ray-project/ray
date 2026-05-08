@@ -1,9 +1,10 @@
+from collections.abc import Iterator as IteratorABC
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+from ray.data._internal.logical.operators import Aggregate
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
@@ -13,7 +14,8 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import ShuffleStrategy
-from ray.data.dataset import Dataset
+from ray.data.dataset import EXPRESSION_API_GROUP, Dataset
+from ray.data.expressions import DownloadExpr, Expr, StarExpr
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"
@@ -61,18 +63,14 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        plan = self._dataset._plan.copy()
         op = Aggregate(
-            self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            input_dependencies=[self._dataset._logical_plan.dag],
             num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
-        return Dataset(
-            plan,
-            logical_plan,
-        )
+        return Dataset._from_parent(self._dataset, logical_plan)
 
     def _aggregate_on(
         self,
@@ -176,8 +174,9 @@ class GroupedData:
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
+                select ``pyarrow.Table``, ``"cudf"`` [Experimental] to select
+                ``cudf.DataFrame``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
@@ -223,7 +222,10 @@ class GroupedData:
         #     same key values)
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
-        elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        elif self._dataset.context.shuffle_strategy in (
+            ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.GPU_SHUFFLE,
+        ):
             num_partitions = (
                 self._num_partitions
                 or self._dataset.context.default_hash_shuffle_parallelism
@@ -301,8 +303,73 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            udf_modifying_row_count=False,
+            udf_modifying_row_count=True,
             ray_remote_args_fn=ray_remote_args_fn,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    def with_column(
+        self,
+        column_name: str,
+        expr: Expr,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Add a new column to each group using an expression.
+
+        The supplied expression is evaluated against every row in each group, and
+        the resulting column is appended to the group's records. The output dataset
+        preserves the original rows and columns.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = (
+            ...     ray.data.from_items([{"group": 1, "value": 1}, {"group": 1, "value": 2}])
+            ...     .groupby("group")
+            ...     .with_column("value_twice", col("value") * 2)
+            ...     .sort(["group", "value"])
+            ... )
+            >>> ds.take_all()
+            [{'group': 1, 'value': 1, 'value_twice': 2}, {'group': 1, 'value': 2, 'value_twice': 4}]
+
+        Args:
+            column_name: Name of the column to add.
+            expr: Expression that yields the values for the new column.
+            **ray_remote_args: Additional resource requirements to request from Ray
+                for the underlying map tasks (for example, ``num_gpus=1``).
+
+        Returns:
+            A new :class:`~ray.data.Dataset` containing all existing columns plus
+            the newly computed column.
+        """
+        if not isinstance(column_name, str) or not column_name:
+            raise ValueError(
+                f"column_name must be a non-empty string, got: {column_name!r}"
+            )
+        if not isinstance(expr, Expr):
+            raise TypeError(
+                "expr must be a Ray Data expression created via the expression API."
+            )
+        if isinstance(expr, DownloadExpr):
+            raise TypeError(
+                "GroupedData.with_column does not yet support download expressions."
+            )
+
+        aliased_expr = expr.alias(column_name)
+        projection_exprs = [StarExpr(), aliased_expr]
+
+        def _project_group(block: Block) -> Block:
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                eval_projection,
+            )
+
+            return eval_projection(projection_exprs, block)
+
+        return self.map_groups(
+            _project_group,
+            batch_format=None,
+            zero_copy_batch=True,
             **ray_remote_args,
         )
 
@@ -538,7 +605,10 @@ class GroupedData:
 
 
 def _apply_udf_to_groups(
-    udf: Callable[[DataBatch, ...], DataBatch],
+    udf: Union[
+        Callable[[DataBatch, ...], DataBatch],
+        Callable[[DataBatch, ...], Iterator[DataBatch]],
+    ],
     block: Block,
     keys: List[str],
     batch_format: Optional[str],
@@ -548,7 +618,8 @@ def _apply_udf_to_groups(
     """Apply UDF to groups of rows having the same set of values of the specified
     columns (keys).
 
-    NOTE: This function is defined at module level to avoid capturing closures and make it serializable."""
+    NOTE: This function is defined at module level to avoid capturing closures and make it serializable.
+    """
     block_accessor = BlockAccessor.for_block(block)
 
     boundaries = block_accessor._get_group_boundaries_sorted(keys)
@@ -560,7 +631,17 @@ def _apply_udf_to_groups(
         # Convert corresponding block of each group to batch format here,
         # because the block format here can be different from batch format
         # (e.g. block is Arrow format, and batch is NumPy format).
-        yield udf(group_block_accessor.to_batch_format(batch_format), *args, **kwargs)
+        result = udf(
+            group_block_accessor.to_batch_format(batch_format), *args, **kwargs
+        )
+
+        # Check if the UDF returned an iterator/generator.
+        if isinstance(result, IteratorABC):
+            # If so, yield each item from the iterator.
+            yield from result
+        else:
+            # Otherwise, yield the single result.
+            yield result
 
 
 # Backwards compatibility alias.

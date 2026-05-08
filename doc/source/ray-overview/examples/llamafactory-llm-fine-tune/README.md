@@ -6,7 +6,7 @@ Each template is an executable notebook that guides you through setup, configura
 
 ## Why LLaMA-Factory?
 
-LLaMA-Factory is an easy-to-use, open-source framework. Its simple, declarative configs and consistent CLI allow you to define Supervised Fine-Tuning (SFT), Direct Preference Optimization (DPO), and Kahneman-Tversky Optimization (KTO) runs once and reuse them across environments. It supports popular adapters like LoRA and QLoRA using Parameter-Efficient Fine-Tuning and integrates with DeepSpeed for efficient multi-GPU training. This enables reproducible, composable workflows that start small and scale on demand.
+LLaMA-Factory is an easy-to-use, open-source framework. Its simple, declarative configs and consistent CLI allow you to define Continued Pre-Training (CPT), Supervised Fine-Tuning (SFT), Direct Preference Optimization (DPO), and Kahneman-Tversky Optimization (KTO) runs once and reuse them across environments. It supports popular adapters like LoRA and QLoRA using Parameter-Efficient Fine-Tuning and integrates with DeepSpeed for efficient multi-GPU training. This enables reproducible, composable workflows that start small and scale on demand.
 
 ## Templates
 
@@ -23,10 +23,21 @@ Preference alignment on pairwise data with **DPO** and **QLoRA** for memory-effi
 ### [KTO with LoRA](./notebooks/kto_lora.ipynb)
 Single-signal feedback alignment with **KTO** and **LoRA** for lightweight, scalable preference tuning.
 
+---
+
+### [CPT with DeepSpeed](./notebooks/cpt_deepspeed.ipynb)
+Continued pre-training on raw text with **full fine-tuning** and **DeepSpeed ZeRO** for efficient, reproducible multi-GPU training.
+
+---
+
+### [Run as an Anyscale Job](./notebooks/run_as_job.ipynb)
+Submit LLaMA-Factory fine-tuning as a production **Anyscale job** with a custom container image and job config.
+
 ## Repository layout
 
-- **`notebooks/`**: End-to-end executable templates for SFT, DPO, and KTO.
+- **`notebooks/`**: End-to-end executable templates for SFT, DPO, KTO, CPT, and Anyscale jobs.
 - **`train-configs/`**: Configuration files for models, adapters, and hyperparameters.
+- **`job-configs/`**: Anyscale job configuration files for production runs.
 - **`dataset-configs/`**: Dataset metadata and registries that the templates reference.
 - **`deepspeed-configs/`**: DeepSpeed ZeRO presets for scaling and memory efficiency.
 

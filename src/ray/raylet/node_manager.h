@@ -20,15 +20,16 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
@@ -42,20 +43,20 @@
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
-#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
+#include "ray/raylet/throttler.h"
 #include "ray/raylet/wait_manager.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_interface.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
-#include "ray/util/throttler.h"
 
 namespace ray::raylet {
 
@@ -78,6 +79,12 @@ struct NodeManagerConfig {
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
+  /// The port to connect the metrics agent (dashboard agent grpc port).
+  int metrics_agent_port;
+  /// The port at which metrics are exposed.
+  int metrics_export_port;
+  /// The port for the dashboard agent to listen on.
+  int dashboard_agent_listen_port;
   /// The lowest port number that workers started will bind on.
   /// If this is set to 0, workers will bind on random ports.
   int min_worker_port;
@@ -122,6 +129,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // Whether resource isolation via cgroupv2 is enabled.
+  bool enable_resource_isolation;
 };
 
 enum RayletShutdownState : std::uint8_t {
@@ -167,7 +176,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::atomic_bool &shutting_down,
       PlacementGroupResourceManager &placement_group_resource_manager,
       boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
-      local_stream_socket socket);
+      local_stream_socket socket,
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+      ray::observability::MetricInterface
+          &node_manager_unexpected_worker_failure_total_count);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -188,6 +200,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
 
+  /// Return the runtime env agent port.
+  int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
+
+  /// Return the metrics agent port.
+  int GetMetricsAgentPort() const { return metrics_agent_port_; }
+
+  /// Return the metrics export port.
+  int GetMetricsExportPort() const { return metrics_export_port_; }
+
+  /// Return the dashboard agent listen port.
+  int GetDashboardAgentListenPort() const { return dashboard_agent_listen_port_; }
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -197,19 +221,29 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void RecordMetrics();
 
   /// Report worker OOM kill stats
-  void ReportWorkerOOMKillStats();
+  void ReportWorkerOomKillStats();
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
+  // Consume a RaySyncer sync message from another Raylet.
+  //
+  // The two types of messages that are received are:
+  //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
+  //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
+  // Generate a RaySyncer sync message to be sent to other Raylets.
+  //
+  // This is currently only used to generate messages for the COMMANDS channel to request
+  // other Raylets to call the Python garbage collector, and is only called on demand
+  // (not periodically polled by the RaySyncer code).
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
-  /// Trigger global GC across the cluster to free up references to actors or
-  /// object ids.
-  void TriggerGlobalGC();
+  /// Setup global GC to be triggered at the next gc check, so that references to actors
+  /// or object ids can be freed up across the cluster.
+  void SetShouldGlobalGC();
 
   /// Mark the specified objects as failed with the given error type.
   ///
@@ -304,6 +338,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleKillLocalActor(rpc::KillLocalActorRequest request,
+                            rpc::KillLocalActorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
+                             rpc::CancelLocalTaskReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -330,7 +376,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
           WorkFootprint::NODE_WORKERS);
     }
   }
@@ -399,9 +445,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Convert a worker to an actor since it's finished an actor creation task.
   /// \param worker The worker that was granted the actor creation lease.
-  /// \param lease The lease of the actor creation task.
+  /// \param lease_spec The lease specification of the actor creation task.
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
-                            const RayLease &lease);
+                            const LeaseSpecification &lease_spec);
 
   /// Start a wait request for the requested objects.
   ///
@@ -415,9 +461,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
   ///
-  /// \return the request_id that will be used to cancel the get request.
-  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                   std::vector<rpc::ObjectReference> &object_refs);
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
+  void AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                std::vector<rpc::ObjectReference> &object_refs,
+                int64_t get_request_id);
 
   /// Cancel all ongoing get requests from the client.
   ///
@@ -480,7 +528,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Register a new worker into worker pool.
   Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
                               pid_t pid,
-                              const StartupToken &worker_startup_token,
                               std::function<void(Status, int)> send_reply_callback = {});
   // Register a new driver into worker pool.
   Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
@@ -610,10 +657,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
-                               rpc::IsLocalWorkerDeadReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
                           rpc::GetNodeStatsReply *reply,
@@ -662,6 +705,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                            rpc::GetWorkerPIDsReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetAgentPIDs` request.
+  void HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
+                          rpc::GetAgentPIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
   /// we disconnect and kill the worker process.
@@ -669,9 +717,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// This is an optimization to avoid processing all messages sent by the worker
   /// before detecing an EOF on the socket.
   void CheckForUnexpectedWorkerDisconnects();
-
-  /// Trigger local GC on each worker of this raylet.
-  void DoLocalGC(bool triggered_by_global_gc = false);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
@@ -713,21 +758,54 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                         const std::string &disconnect_detail,
                         const rpc::RayException *creation_task_exception = nullptr);
 
-  bool TryLocalGC();
+  /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
+  void TriggerLocalOrGlobalGCIfNeeded();
 
-  /// Creates the callback used in the memory monitor.
-  MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+  /**
+   * @brief Creates the callback used by the memory monitor
+   * to select workers to kill via the set killing policy and kill them.
+   */
+  KillWorkersCallback CreateKillWorkersCallback();
 
-  /// Creates the detail message for the worker that is killed due to memory running low.
-  std::string CreateOomKillMessageDetails(const std::shared_ptr<WorkerInterface> &worker,
-                                          const NodeID &node_id,
-                                          const MemorySnapshot &system_memory,
-                                          float usage_threshold) const;
+  /**
+   * @brief Marks kill worker in progress and disables all monitors to
+   * prevent more than one in-flight kill worker operation.
+   * @return True if we successfully marked the kill worker in progress.
+   *         False if the kill worker operation is already in progress.
+   */
+  bool MarkKillWorkerInProgress();
 
-  /// Creates the suggestion message for the worker that is killed due to memory running
-  /// low.
+  /**
+   * @brief Disables kill worker in progress flag and enables all monitors
+   * to begin accepting new kill worker requests.
+   */
+  void ReleaseKillWorkerInProgress();
+
+  /**
+   * @param workers_to_kill The workers to print the kill details for.
+   * @param node_id The ID of the node.
+   * @param system_memory_snapshot The snapshot of the system memory.
+   * @param process_memory_snapshot The snapshot of the process memory.
+   * @param usage_threshold The memory limit.
+   * @return The detail message for the workers that are killed due to memory running low.
+   */
+  std::string CreateOomKillMessageDetails(
+      const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &workers_to_kill,
+      const NodeID &node_id,
+      const SystemMemorySnapshot &system_memory_snapshot,
+      const std::string &object_store_memory_usage,
+      const ProcessesMemorySnapshot &process_memory_snapshot,
+      float usage_threshold) const;
+
+  /**
+   * @param workers_to_kill The workers to print the kill suggestions for.
+   * @return The suggestion message for the workers that are killed due to memory running
+   * low.
+   */
   std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
+      const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &workers_to_kill) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
@@ -742,9 +820,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  std::tuple<int, int, int> WaitForDashboardAgentPorts(const NodeID &self_node_id,
+                                                       const NodeManagerConfig &config);
+
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
+
+  int WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                 const NodeManagerConfig &config);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -806,6 +890,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for the runtime env agent.
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
+  int runtime_env_agent_port_{0};
+  int metrics_agent_port_{0};
+  int metrics_export_port_{0};
+  int dashboard_agent_listen_port_{0};
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
@@ -824,19 +912,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
 
-  /// Whether to trigger global GC in the next resource usage report. This will broadcast
-  /// a global GC message to all raylets except for this one.
+  /// Whether to trigger global GC at the next gc check.
+  /// This will broadcast a global GC message to all raylets except for this one.
   bool should_global_gc_ = false;
 
-  /// Whether to trigger local GC in the next resource usage report. This will trigger gc
-  /// on all local workers of this raylet.
-  bool should_local_gc_ = false;
+  /// Set by global gc triggers to trigger local gc when this is checked (every
+  /// raylet_check_gc_period_milliseconds)
+  /// This will trigger gc on all local workers of this raylet.
+  bool local_gc_triggered_by_global_gc_ = false;
 
-  /// When plasma storage usage is high, we'll run gc to reduce it.
-  double high_plasma_storage_usage_ = 1.0;
+  /// Interval at which local gc will be triggered regardless of global gc
+  const uint64_t local_gc_interval_ns_;
 
-  /// the timestampe local gc run
-  uint64_t local_gc_run_time_ns_;
+  /// If plasma store usage percentage exceeds this number, we'll trigger global gc to
+  /// reduce it.
+  double plasma_store_usage_trigger_gc_threshold_;
 
   /// Throttler for local gc
   Throttler local_gc_throttler_;
@@ -844,11 +934,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
-  /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
+  ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
-  /// Seconds to initialize a local gc
-  const uint64_t local_gc_interval_ns_;
+  ray::observability::MetricInterface
+      &node_manager_unexpected_worker_failure_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
@@ -890,18 +979,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Managers all bundle-related operations.
   PlacementGroupResourceManager &placement_group_resource_manager_;
 
-  /// Next resource broadcast seq no. Non-incrementing sequence numbers
-  /// indicate network issues (dropped/duplicated/ooo packets, etc).
-  int64_t next_resource_seq_no_;
-
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
 
-  /// The Policy for selecting the worker to kill when the node runs out of memory.
-  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
+  /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
+  /// we issue a GC command so that none of the messages are dropped.
+  int64_t gc_command_sync_version_ = 0;
 
-  /// Monitors and reports node memory usage and whether it is above threshold.
-  std::unique_ptr<MemoryMonitor> memory_monitor_;
+  /// The Policy for selecting the worker to kill when the node runs out of memory.
+  std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
+
+  /// Guards worker_killing_in_progress_ and serializes kill callbacks from monitors.
+  absl::Mutex worker_killing_in_progress_mutex_;
+
+  /// True while a kill-workers operation is inflight; prevents concurrent kills.
+  bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
+      false;
+
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;

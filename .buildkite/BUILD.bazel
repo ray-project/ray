@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
 py_binary(

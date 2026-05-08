@@ -145,10 +145,20 @@ class SetRequestIdMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            headers = list(scope.get("headers", []))
+            request_id = None
+            for name, value in headers:
+                if name.lower() == b"x-request-id" and value:
+                    request_id = value.decode()
+                    break
+
+            if request_id is None:
+                request_id = str(uuid.uuid4())
+                headers.append((b"x-request-id", request_id.encode()))
+
+            scope["headers"] = headers
             request = Request(scope)
-            request.state.request_id = request.headers.get("x-request-id", None) or str(
-                uuid.uuid4()
-            )
+            request.state.request_id = request_id
 
         return await self.app(scope, receive, send)
 

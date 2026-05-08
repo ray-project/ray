@@ -19,7 +19,6 @@
 #include <utility>
 
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace raylet {
@@ -120,39 +119,45 @@ void SchedulerStats::RecordMetrics() {
   /// This method intentionally doesn't call ComputeStats() because
   /// that function is expensive. ComputeStats is called by ComputeAndReportDebugStr
   /// method and they are always periodically called by node manager.
-  ray_metric_num_spilled_tasks_.Record(metric_leases_spilled_ +
-                                       local_lease_manager_.GetNumLeaseSpilled());
+  local_lease_manager_.GetSchedulerMetrics().internal_num_spilled_tasks.Record(
+      metric_leases_spilled_ + local_lease_manager_.GetNumLeaseSpilled());
   local_lease_manager_.RecordMetrics();
-  ray_metric_num_infeasible_scheduling_classes_.Record(
-      cluster_lease_manager_.infeasible_leases_.size());
+  local_lease_manager_.GetSchedulerMetrics()
+      .internal_num_infeasible_scheduling_classes.Record(
+          cluster_lease_manager_.infeasible_leases_.size());
   /// Worker startup failure
-  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
-      num_worker_not_started_by_job_config_not_exist_, "JobConfigMissing");
-  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
-      num_worker_not_started_by_registration_timeout_, "RegistrationTimedOut");
-  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
-      num_worker_not_started_by_process_rate_limit_, "RateLimited");
+  local_lease_manager_.GetSchedulerMetrics().scheduler_failed_worker_startup_total.Record(
+      num_worker_not_started_by_job_config_not_exist_, {{"Reason", "JobConfigMissing"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_failed_worker_startup_total.Record(
+      num_worker_not_started_by_registration_timeout_,
+      {{"Reason", "RegistrationTimedOut"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_failed_worker_startup_total.Record(
+      num_worker_not_started_by_process_rate_limit_, {{"Reason", "RateLimited"}});
 
   /// Queued tasks.
-  ray::stats::STATS_scheduler_tasks.Record(num_cancelled_leases_, "Cancelled");
-  ray::stats::STATS_scheduler_tasks.Record(num_leases_to_grant_, "Dispatched");
-  ray::stats::STATS_scheduler_tasks.Record(num_leases_to_schedule_, "Received");
-  ray::stats::STATS_scheduler_tasks.Record(
-      local_lease_manager_.GetNumWaitingLeaseSpilled(), "SpilledWaiting");
-  ray::stats::STATS_scheduler_tasks.Record(
-      local_lease_manager_.GetNumUnschedulableLeaseSpilled(), "SpilledUnschedulable");
+  local_lease_manager_.GetSchedulerMetrics().scheduler_tasks.Record(
+      num_cancelled_leases_, {{"State", "Cancelled"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_tasks.Record(
+      num_leases_to_grant_, {{"State", "Dispatched"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_tasks.Record(
+      num_leases_to_schedule_, {{"State", "Received"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_tasks.Record(
+      local_lease_manager_.GetNumWaitingLeaseSpilled(), {{"State", "SpilledWaiting"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_tasks.Record(
+      local_lease_manager_.GetNumUnschedulableLeaseSpilled(),
+      {{"State", "SpilledUnschedulable"}});
 
   /// Pending task count.
-  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(num_infeasible_leases_,
-                                                          "Infeasible");
-  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(num_waiting_for_resource_,
-                                                          "WaitingForResources");
-  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(num_waiting_for_plasma_memory_,
-                                                          "WaitingForPlasmaMemory");
-  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
-      num_waiting_for_remote_node_resources_, "WaitingForRemoteResources");
-  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(num_tasks_waiting_for_workers_,
-                                                          "WaitingForWorkers");
+  local_lease_manager_.GetSchedulerMetrics().scheduler_unscheduleable_tasks.Record(
+      num_infeasible_leases_, {{"Reason", "Infeasible"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_unscheduleable_tasks.Record(
+      num_waiting_for_resource_, {{"Reason", "WaitingForResources"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_unscheduleable_tasks.Record(
+      num_waiting_for_plasma_memory_, {{"Reason", "WaitingForPlasmaMemory"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_unscheduleable_tasks.Record(
+      num_waiting_for_remote_node_resources_, {{"Reason", "WaitingForRemoteResources"}});
+  local_lease_manager_.GetSchedulerMetrics().scheduler_unscheduleable_tasks.Record(
+      num_tasks_waiting_for_workers_, {{"Reason", "WaitingForWorkers"}});
 }
 
 std::string SchedulerStats::ComputeAndReportDebugStr() {

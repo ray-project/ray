@@ -1,12 +1,14 @@
 import os
+import time
+
+import tqdm
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
 import ray
 import ray._common.test_utils
 import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from many_nodes_tests.dashboard_test import DashboardTestAtScale
-import time
-import tqdm
 
 is_smoke_test = True
 if "SMOKE_TEST" in os.environ:

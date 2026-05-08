@@ -12,14 +12,13 @@ from typing import List, Optional
 import click
 import runfiles
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
+from pip_requirements_parser import RequirementsFile
 
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
+    --no-header
     --generate-hashes
-    --strip-extras
-    --unsafe-package setuptools
-    --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
     --no-strip-markers
     --emit-index-url
@@ -98,6 +97,15 @@ class DependencySetManager:
         check: Optional[bool] = False,
         build_all_configs: Optional[bool] = False,
     ):
+        """Initialize the dependency set manager.
+
+        Args:
+            config_path: Path to the depsets config file.
+            workspace_dir: Path to the workspace directory.
+            uv_cache_dir: Directory to cache uv dependencies.
+            check: Whether to check if lock files are up to date.
+            build_all_configs: Whether to build all configs or just the specified one.
+        """
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_configs(config_path)
         self.config_name = os.path.basename(config_path)
@@ -111,6 +119,7 @@ class DependencySetManager:
             self.copy_to_temp_dir()
 
     def get_output_paths(self) -> List[Path]:
+        """Get all output paths for depset nodes in topological order."""
         output_paths = []
         for node in topological_sort(self.build_graph):
             if self.build_graph.nodes[node]["node_type"] == "depset":
@@ -128,6 +137,7 @@ class DependencySetManager:
             )
 
     def get_diffs(self) -> List[str]:
+        """Compare current lock files with previously saved copies and return unified diffs."""
         diffs = []
         for output_path in self.output_paths:
             new_lock_file_fp, old_lock_file_fp = self.get_source_and_dest(output_path)
@@ -144,6 +154,7 @@ class DependencySetManager:
         return diffs
 
     def diff_lock_files(self):
+        """Check if lock files are up to date and raise an error if not."""
         diffs = self.get_diffs()
         if len(diffs) > 0:
             raise RuntimeError(
@@ -153,9 +164,14 @@ class DependencySetManager:
         click.echo("Lock files are up to date.")
 
     def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
+        """Get the source workspace path and temporary destination path for a lock file."""
         return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
 
     def _build(self, build_all_configs: Optional[bool] = False):
+        """Build the dependency graph from config depsets."""
+        # First pass: add all depset nodes so we can validate edges
+        depset_names = {depset.name for depset in self.config.depsets}
+
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
@@ -166,6 +182,11 @@ class DependencySetManager:
                     config_name=depset.config_name,
                 )
             elif depset.operation == "subset":
+                if depset.source_depset not in depset_names:
+                    raise ValueError(
+                        f"Depset '{depset.name}' references source_depset '{depset.source_depset}' which does not exist. "
+                        f"Available depsets: {sorted(depset_names)}"
+                    )
                 self.build_graph.add_node(
                     depset.name,
                     operation="subset",
@@ -175,6 +196,12 @@ class DependencySetManager:
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
+                for dep_name in depset.depsets:
+                    if dep_name not in depset_names:
+                        raise ValueError(
+                            f"Depset '{depset.name}' references depset '{dep_name}' which does not exist. "
+                            f"Available depsets: {sorted(depset_names)}"
+                        )
                 self.build_graph.add_node(
                     depset.name,
                     operation="expand",
@@ -184,6 +211,20 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            elif depset.operation == "relax":
+                if depset.source_depset not in depset_names:
+                    raise ValueError(
+                        f"Depset '{depset.name}' references source_depset '{depset.source_depset}' which does not exist. "
+                        f"Available depsets: {sorted(depset_names)}"
+                    )
+                self.build_graph.add_node(
+                    depset.name,
+                    operation="relax",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
+                )
+                self.build_graph.add_edge(depset.source_depset, depset.name)
             else:
                 raise ValueError(
                     f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
@@ -203,11 +244,13 @@ class DependencySetManager:
             self.subgraph_config_nodes()
 
     def subgraph_dependency_nodes(self, depset_name: str):
+        """Reduce the build graph to only include the specified depset and its ancestors."""
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
         nodes = dependency_nodes | {depset_name}
         self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def subgraph_config_nodes(self):
+        """Reduce the build graph to nodes matching the current config and their ancestors."""
         # Get all nodes that have the target config name
         config_nodes = [
             node
@@ -226,6 +269,7 @@ class DependencySetManager:
         self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def execute(self, single_depset_name: Optional[str] = None):
+        """Execute all depsets in topological order, optionally limited to a single depset."""
         if single_depset_name:
             # check if the depset exists
             _get_depset(self.config.depsets, single_depset_name)
@@ -242,6 +286,7 @@ class DependencySetManager:
     def exec_uv_cmd(
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
     ) -> str:
+        """Execute a uv pip command with the given arguments."""
         cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {' '.join(cmd)}")
         status = subprocess.run(
@@ -254,6 +299,7 @@ class DependencySetManager:
         return status.stdout.decode("utf-8")
 
     def execute_pre_hook(self, pre_hook: str):
+        """Execute a pre-hook shell command."""
         status = subprocess.run(
             shlex.split(pre_hook),
             cwd=self.workspace.dir,
@@ -267,6 +313,7 @@ class DependencySetManager:
         click.echo(f"Executed pre_hook {pre_hook} successfully")
 
     def execute_depset(self, depset: Depset):
+        """Execute a single depset based on its operation type (compile, subset, or expand)."""
         if depset.operation == "compile":
             self.compile(
                 constraints=depset.constraints,
@@ -276,6 +323,7 @@ class DependencySetManager:
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 packages=depset.packages,
+                include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -285,6 +333,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "expand":
             self.expand(
@@ -293,6 +342,14 @@ class DependencySetManager:
                 constraints=depset.constraints,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                name=depset.name,
+                output=depset.output,
+                include_setuptools=depset.include_setuptools,
+            )
+        elif depset.operation == "relax":
+            self.relax(
+                source_depset=depset.source_depset,
+                packages=depset.packages,
                 name=depset.name,
                 output=depset.output,
             )
@@ -307,10 +364,13 @@ class DependencySetManager:
         override_flags: Optional[List[str]] = None,
         packages: Optional[List[str]] = None,
         requirements: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
         stdin = None
+        if not include_setuptools:
+            args.extend(_flatten_flags(["--unsafe-package setuptools"]))
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -318,10 +378,10 @@ class DependencySetManager:
         if append_flags:
             args.extend(_flatten_flags(append_flags))
         if constraints:
-            for constraint in constraints:
+            for constraint in sorted(constraints):
                 args.extend(["-c", constraint])
         if requirements:
-            for requirement in requirements:
+            for requirement in sorted(requirements):
                 args.extend([requirement])
         if packages:
             # need to add a dash to process stdin
@@ -339,6 +399,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Subset a dependency set."""
         source_depset = _get_depset(self.config.depsets, source_depset)
@@ -350,6 +411,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            include_setuptools=include_setuptools,
         )
 
     def expand(
@@ -361,14 +423,19 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Expand a dependency set."""
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset_req_list.extend(
-                self.get_expanded_depset_requirements(depset_name, [])
-            )
+            dep = _get_depset(self.config.depsets, depset_name)
+            if dep.operation == "relax":
+                depset_req_list.append(dep.output)
+            else:
+                depset_req_list.extend(
+                    self.get_expanded_depset_requirements(depset_name, [])
+                )
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(
@@ -378,20 +445,55 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            include_setuptools=include_setuptools,
+        )
+
+    def relax(
+        self,
+        source_depset: str,
+        packages: List[str],
+        name: str,
+        output: str = None,
+    ):
+        """Relax a dependency set by removing specified packages from the lock file."""
+        source_depset = _get_depset(self.config.depsets, source_depset)
+
+        lock_file_path = self.get_path(source_depset.output)
+        requirements_file = parse_lock_file(str(lock_file_path))
+        requirements_list = [req.name for req in requirements_file.requirements]
+        for package in packages:
+            if package not in requirements_list:
+                raise RuntimeError(
+                    f"Package {package} not found in lock file {source_depset.output}"
+                )
+
+        # Remove specified packages from requirements
+        requirements_file.requirements = [
+            req for req in requirements_file.requirements if req.name not in packages
+        ]
+
+        # Write the modified lock file
+        output_path = self.get_path(output) if output else lock_file_path
+        write_lock_file(requirements_file, str(output_path))
+        click.echo(
+            f"Relaxed {source_depset.name} by removing packages {packages} and wrote to {output_path}"
         )
 
     def read_lock_file(self, file_path: Path) -> List[str]:
+        """Read and return the contents of a lock file as a list of lines."""
         if not file_path.exists():
             raise RuntimeError(f"Lock file {file_path} does not exist")
         with open(file_path, "r") as f:
             return f.readlines()
 
     def get_path(self, path: str) -> Path:
+        """Convert a relative path to an absolute path within the workspace."""
         return Path(self.workspace.dir) / path
 
     def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
+        """Verify that all requirements exist in the source depset."""
         for req in requirements:
-            if req not in source_depset.requirements:
+            if req not in self.get_expanded_depset_requirements(source_depset.name, []):
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name} in config {source_depset.config_name}"
                 )
@@ -416,15 +518,18 @@ class DependencySetManager:
         return list(set(requirements_list))
 
     def cleanup(self):
+        """Remove the temporary directory used for lock file comparisons."""
         if self.temp_dir:
             shutil.rmtree(self.temp_dir)
 
 
 def _get_bytes(packages: List[str]) -> bytes:
+    """Convert a list of package names to newline-separated UTF-8 bytes."""
     return ("\n".join(packages) + "\n").encode("utf-8")
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:
+    """Find and return a depset by name from a list of depsets."""
     for depset in depsets:
         if depset.name == name:
             return depset
@@ -444,6 +549,7 @@ def _flatten_flags(flags: List[str]) -> List[str]:
 
 
 def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
+    """Override existing uv flags in args with new values from flags."""
     flag_names = {f.split()[0] for f in flags if f.startswith("--")}
     new_args = []
     skip_next = False
@@ -459,7 +565,24 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return new_args + _flatten_flags(flags)
 
 
+def parse_lock_file(lock_file_path: str) -> RequirementsFile:
+    """
+    Parses a lock file and returns a RequirementsFile object, which contains
+    all information from the file, including requirements, options, and comments.
+    """
+    return RequirementsFile.from_file(lock_file_path)
+
+
+def write_lock_file(requirements_file: RequirementsFile, lock_file_path: str):
+    """
+    Writes a RequirementsFile object to a lock file, preserving all its content.
+    """
+    with open(lock_file_path, "w") as f:
+        f.write(requirements_file.dumps())
+
+
 def _uv_binary():
+    """Get the path to the uv binary for the current platform."""
     r = runfiles.Create()
     system = platform.system()
     processor = platform.processor()

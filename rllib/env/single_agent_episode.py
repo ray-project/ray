@@ -1,22 +1,24 @@
-from collections import defaultdict
 import copy
 import functools
-import numpy as np
 import time
 import uuid
-
-import gymnasium as gym
-import tree
-from gymnasium.core import ActType, ObsType
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
+import gymnasium as gym
+import numpy as np
+import tree
+from gymnasium.core import ActType, ObsType
+
+from ray._common.deprecation import Deprecated
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
+
+_REWARDS_BOX_SPACE = gym.spaces.Box(float("-inf"), float("inf"), (), np.float32)
 
 
 @PublicAPI(stability="alpha")
@@ -284,6 +286,7 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         self.observation_space = observation_space
+
         # Infos: t0 (initial info) to T.
         if isinstance(infos, InfiniteLookbackBuffer):
             self.infos = infos
@@ -292,6 +295,7 @@ class SingleAgentEpisode:
                 data=infos,
                 lookback=len_lookback_buffer,
             )
+
         # Actions: t1 to T.
         self._action_space = None
         if isinstance(actions, InfiniteLookbackBuffer):
@@ -302,6 +306,7 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         self.action_space = action_space
+
         # Rewards: t1 to T.
         if isinstance(rewards, InfiniteLookbackBuffer):
             self.rewards = rewards
@@ -309,7 +314,7 @@ class SingleAgentEpisode:
             self.rewards = InfiniteLookbackBuffer(
                 data=rewards,
                 lookback=len_lookback_buffer,
-                space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+                space=_REWARDS_BOX_SPACE,
             )
 
         # obs[-1] is the final observation in the episode.
@@ -453,9 +458,6 @@ class SingleAgentEpisode:
                     f"action_space: {self.action_space}!"
                 )
 
-        # Validate our data.
-        self.validate()
-
         # Step time stats.
         self._last_step_time = time.perf_counter()
         if self._start_time is None:
@@ -580,6 +582,8 @@ class SingleAgentEpisode:
         Returns:
              This `SingleAgentEpisode` object with the converted numpy data.
         """
+        # Check that the episode data is correct
+        self.validate()
 
         self.observations.finalize()
         if len(self) > 0:
@@ -595,7 +599,7 @@ class SingleAgentEpisode:
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        (`self.env_t` must be the same as `other.env_t_started`), as well as the
         observations/infos at the concatenation boundaries. Also, `self.is_done` must
         not be True, meaning `self.is_terminated` and `self.is_truncated` are both
         False.
@@ -612,8 +616,9 @@ class SingleAgentEpisode:
         # able to concatenate.
         assert not self.is_done
         # Make sure the timesteps match.
-        assert self.t == other.t_started
-        # Validate `other`.
+        assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
+        # Validate both this and the other episode
+        self.validate()
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.

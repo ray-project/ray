@@ -9,6 +9,9 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 import requests
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -1291,6 +1294,7 @@ def get_log(
         f"{api_server_url}/api/v0/logs/{media_type}?"
         f"{urllib.parse.urlencode(options_dict)}",
         stream=True,
+        headers=get_auth_headers_if_auth_enabled({}),
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
@@ -1348,7 +1352,8 @@ def list_logs(
     options_dict["timeout"] = timeout
 
     r = requests.get(
-        f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
+        f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}",
+        headers=get_auth_headers_if_auth_enabled({}),
     )
     # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()

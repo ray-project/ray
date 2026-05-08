@@ -1,11 +1,11 @@
-import gymnasium as gym
-import numpy as np
 import random
-import tree  # pip install dm-tree
 import unittest
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm-tree
+
 import ray
-from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import (
@@ -20,12 +20,13 @@ from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.metrics import (
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
+from ray.tune.registry import register_env
 
 
 class BasicMultiAgent(MultiAgentEnv):
@@ -820,7 +821,8 @@ class TestMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

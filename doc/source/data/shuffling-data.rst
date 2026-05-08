@@ -20,7 +20,7 @@ resource consumption and runtime. Choose the most appropriate method for your us
 Shuffle the ordering of files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To randomly shuffle the ordering of input files before reading, call a :ref:`read function <input-output>` function that supports shuffling, such as
+To randomly shuffle the ordering of input files before reading, call a :ref:`read function <loading-data-api>` function that supports shuffling, such as
 :func:`~ray.data.read_images`, and use the ``shuffle="files"`` parameter. This randomly assigns
 input files to workers for reading.
 
@@ -75,6 +75,98 @@ ordering of files. See :ref:`Shuffle the ordering of files <shuffling_file_order
     time spent in other steps, decrease ``local_shuffle_buffer_size`` or turn off the local
     shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
 
+.. _map_batches_shuffle:
+
+``map_batches`` shuffle
+~~~~~~~~~~~~~~~~~~~~~~~
+
+To shuffle data as a separate data stage, use :meth:`~ray.data.Dataset.map_batches`
+with a shuffle function that randomly permutes rows within each batch. Compared to local
+buffer shuffle, this approach has several advantages:
+
+- It **decouples shuffling from the iterator**, running as a separate Ray Data operator
+  that doesn't block downstream CPU/GPU processing.
+- Ray Data's resource management automatically schedules shuffle tasks based on available
+  cluster resources (CPU, memory), avoiding resource contention.
+- The shuffle work can happen in parallel across multiple machines, making it more scalable
+  for large datasets.
+
+The ``batch_size`` parameter controls the shuffle window---a larger value shuffles more rows
+together for better randomness but requires more memory.
+
+.. important::
+
+    Always set the ``memory`` parameter when using large batch sizes to avoid out-of-memory
+    errors. Estimate it as ``batch_size * row_bytes``:
+
+.. testcode::
+
+    import numpy as np
+    import pyarrow as pa
+    import ray
+
+    def random_shuffle(batch: pa.Table) -> pa.Table:
+        indices = np.random.permutation(len(batch))
+        return batch.take(indices)
+
+    row_bytes = 4096
+    shuffle_memory = int(2**30)  # 1 GB shuffle window
+    batch_size = int(shuffle_memory / row_bytes)
+
+    ds = ray.data.range(1000)
+    ds = ds.map_batches(
+        random_shuffle,
+        batch_size=batch_size,
+        batch_format="pyarrow",
+        memory=shuffle_memory,
+    )
+    ds.take(10)
+
+.. tip::
+
+    Combine ``map_batches`` shuffle with :ref:`file order shuffling <shuffling_file_order>` for
+    additional randomness. File order shuffling randomizes which files are read first, while
+    ``map_batches`` shuffle randomizes rows within each shuffle window.
+
+.. _map_batches_vs_local_shuffle:
+
+Comparing local buffer shuffle and ``map_batches`` shuffle
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following benchmark compares steady-state training throughput between local buffer shuffle
+and ``map_batches`` shuffle on a synthetic workload (``ray.data.range_tensor``, ~4 KB/row, 4 GPU
+workers, batch size 4096, 200 steps with 100 warmup):
+
+.. list-table:: Local buffer shuffle vs. ``map_batches`` shuffle
+   :header-rows: 1
+   :widths: 30 20 15
+
+   * - Method
+     - Throughput (rows/s)
+     - % of baseline
+   * - No shuffle (baseline)
+     - 1,759,282
+     - 100%
+   * - Local buffer shuffle 1 GB
+     - 225,181
+     - 13%
+   * - Local buffer shuffle 2 GB
+     - 220,644
+     - 13%
+   * - Local buffer shuffle 3 GB
+     - 153,256
+     - 9%
+   * - ``map_batches`` shuffle 1 GB
+     - 1,400,734
+     - 80%
+   * - ``map_batches`` shuffle 2 GB
+     - 1,460,037
+     - 83%
+   * - ``map_batches`` shuffle 3 GB
+     - 1,588,428
+     - 90%
+
+
 Randomizing block order
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -103,12 +195,11 @@ Global shuffle
 
 To shuffle all rows globally, across the whole dataset, multiple options are available
 
-    1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
-    from existing blocks into the new ones using an optionally provided seed.
-
-    2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
-    :ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
-    deterministic way of co-locating rows based on the hash of the column values.
+1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
+from existing blocks into the new ones using an optionally provided seed.
+2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
+:ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
+deterministic way of co-locating rows based on the hash of the column values.
 
 Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization
 barrier---subsequent operators won't be able to start executing until shuffle completion.

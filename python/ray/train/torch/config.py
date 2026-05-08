@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -20,6 +20,7 @@ from ray.train.constants import (
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
+from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,27 @@ class TorchConfig(BackendConfig):
     def train_func_context(self):
         return TorchConfigContextManager
 
+    @property
+    def framework(self):
+        return TrainingFramework.TORCH
+
+    def to_dict(self) -> Dict[str, Any]:
+        config_dict = {
+            "backend": self.backend,
+            "init_method": self.init_method,
+            "timeout_s": self.timeout_s,
+        }
+        return config_dict
+
+
+def _is_backend_nccl(backend: str) -> bool:
+    # Check containment because comma separated lists of backends like cpu:gloo,cuda:nccl are supported.
+    return backend == "nccl" or any(
+        item.split(":")[1] == "nccl"
+        for item in backend.split(",")
+        if item.startswith("cuda:")
+    )
+
 
 def _setup_torch_process_group(
     backend: str,
@@ -98,7 +120,7 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
-    if backend == "nccl":
+    if _is_backend_nccl(backend):
         # See https://github.com/pytorch/pytorch/blob/c263bd43e8e8502d4726643bc6fd046f0130ac0e/torch/distributed/distributed_c10d.py#L803-L823 # noqa: E501
         # We do not use TORCH_NCCL_BLOCKING_WAIT due to performance overhead.
         if Version(torch.__version__) < Version("2.2.0"):
@@ -132,12 +154,13 @@ def _shutdown_torch(destroy_process_group=False):
     from ray.air._internal.torch_utils import get_devices
 
     devices = get_devices()
-    if destroy_process_group:
+    if destroy_process_group and dist.is_initialized():
         dist.destroy_process_group()
     if torch.cuda.is_available():
         for device in devices:
-            with torch.cuda.device(device):
-                torch.cuda.empty_cache()
+            if device.type == "cuda":
+                with torch.cuda.device(device):
+                    torch.cuda.empty_cache()
 
 
 def _set_torch_distributed_env_vars():
@@ -147,10 +170,10 @@ def _set_torch_distributed_env_vars():
 
     context = ray.train.get_context()
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())
-    os.environ["RANK"] = str(context.get_world_rank())
     os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
-    os.environ["WORLD_SIZE"] = str(context.get_world_size())
     os.environ["NODE_RANK"] = str(context.get_node_rank())
+    os.environ["RANK"] = str(context.get_world_rank())
+    os.environ["WORLD_SIZE"] = str(context.get_world_size())
 
     # Makes sure Hugging Face Accelerate uses the correct device
     device = get_device()

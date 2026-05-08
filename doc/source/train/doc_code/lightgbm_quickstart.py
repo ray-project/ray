@@ -60,14 +60,21 @@ def train_func():
     train_shard = ray.train.get_dataset_shard("train")
     eval_shard = ray.train.get_dataset_shard("eval")
 
-    # Convert shards to pandas DataFrames
-    train_df = train_shard.materialize().to_pandas()
-    eval_df = eval_shard.materialize().to_pandas()
+    # Convert shards to PyArrow tables. LightGBM (>=4.2.0) supports PyArrow
+    # natively, which avoids a round-trip through pandas.
+    import pyarrow as pa
 
-    train_X = train_df.drop("target", axis=1)
-    train_y = train_df["target"]
-    eval_X = eval_df.drop("target", axis=1)
-    eval_y = eval_df["target"]
+    train_table = pa.concat_tables(
+        train_shard.iter_batches(batch_format="pyarrow", batch_size=None)
+    )
+    eval_table = pa.concat_tables(
+        eval_shard.iter_batches(batch_format="pyarrow", batch_size=None)
+    )
+
+    train_X = train_table.drop(["target"])
+    train_y = train_table.column("target")
+    eval_X = eval_table.drop(["target"])
+    eval_y = eval_table.column("target")
 
     train_set = lgb.Dataset(train_X, label=train_y)
     eval_set = lgb.Dataset(eval_X, label=eval_y)
@@ -84,8 +91,10 @@ def train_func():
         "feature_fraction": 0.9,
         "bagging_fraction": 0.8,
         "bagging_freq": 5,
-        # Adding the line below is the only change needed
+        # Adding the lines below are the only changes needed
         # for your `lgb.train` call!
+        "tree_learner": "data_parallel",
+        "pre_partition": True,
         **ray.train.lightgbm.get_network_params(),
     }
 

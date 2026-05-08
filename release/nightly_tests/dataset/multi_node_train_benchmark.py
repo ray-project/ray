@@ -9,21 +9,19 @@ import os
 import time
 
 from benchmark import Benchmark, BenchmarkMetric
-from image_loader_microbenchmark import (
-    get_transform,
-    crop_and_flip_image,
-    decode_image_crop_and_flip,
-    center_crop_image,
-)
 
-from image_loader_microbenchmark import get_mosaic_dataloader
-
+import numpy as np
 import torch
 import torch.distributed as dist
+import torchvision
 from torchvision.models import resnet50
 from torchvision.transforms.functional import pil_to_tensor
 import torch.nn as nn
 import torch.optim as optim
+from PIL import Image
+
+import streaming
+from streaming import LocalDataset, StreamingDataset
 
 from dataset_benchmark_util import (
     get_prop_parquet_paths,
@@ -70,15 +68,6 @@ def parse_args():
             "Whether to skip using Ray Train TorchTrainer to consume the data, and "
             "instead iterate over the dataset with the Ray Data "
             "iter_torch_batches() method."
-        ),
-    )
-    parser.add_argument(
-        "--disable-locality-with-output",
-        default=False,
-        action="store_true",
-        help=(
-            "When used, set `DataConfig.default_ingest_options()."
-            "locality_with_output` to False (otherwise defaults to True)."
         ),
     )
     parser.add_argument(
@@ -239,6 +228,164 @@ def parse_args():
 
 # Constants and utility methods for image-based benchmarks.
 DEFAULT_IMAGE_SIZE = 224
+
+
+def get_transform(to_torch_tensor):
+    # Note(swang): This is a different order from tf.data.
+    # torch: decode -> randCrop+resize -> randFlip
+    # tf.data: decode -> randCrop -> randFlip -> resize
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.RandomResizedCrop(
+                antialias=True,
+                size=DEFAULT_IMAGE_SIZE,
+                scale=(0.05, 1.0),
+                ratio=(0.75, 1.33),
+            ),
+            torchvision.transforms.RandomHorizontalFlip(),
+        ]
+        + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
+        + [
+            torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            )
+        ]
+    )
+    return transform
+
+
+# Capture `transform` in the map UDFs.
+transform = get_transform(False)
+
+
+def crop_and_flip_image(row):
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = transform(
+        torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))) / 255.0
+    )
+    return row
+
+
+def center_crop_image(row):
+    # Used to generate the validation set. The main difference between
+    # `crop_and_flip_image` and this method is that the validation set
+    # should avoid random cropping from the full image, but instead
+    # should resize and take the center crop to generate more consistent
+    # outputs.
+    val_transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Resize(256),
+            torchvision.transforms.CenterCrop(224),
+            torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),
+        ]
+    )
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = val_transform(
+        torch.tensor(
+            np.transpose(row["image"], axes=(2, 0, 1)),
+        )
+        / 255.0
+    )
+    return row
+
+
+def decode_image_crop_and_flip(row):
+    row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"])
+    # Convert back np to avoid storing a np.object array.
+    return {"image": np.array(transform(pil_to_tensor(row["image"]) / 255.0))}
+
+
+class MosaicDataset(LocalDataset):
+    def __init__(self, local, transforms):
+        super().__init__(local=local)
+        self.transforms = transforms
+
+    def __getitem__(self, idx):
+        obj = super().__getitem__(idx)
+        image = obj["image"]
+        label = obj["label"]
+        return self.transforms(image), label
+
+
+class S3MosaicDataset(StreamingDataset):
+    def __init__(
+        self,
+        s3_bucket,
+        num_physical_nodes,
+        cache_dir,
+        transforms,
+        cache_limit=None,
+        epoch_size=None,
+    ):
+        super().__init__(
+            remote=s3_bucket,
+            local=cache_dir,
+            cache_limit=cache_limit,
+            epoch_size=epoch_size,
+            # Set StreamingDataset to read sequentially.
+            shuffle=False,
+            num_canonical_nodes=num_physical_nodes,
+        )
+        self.transforms = transforms
+
+    def __getitem__(self, idx):
+        obj = super().__getitem__(idx)
+        image = obj["image"]
+        label = obj["label"]
+        return self.transforms(image), label
+
+
+def get_mosaic_dataloader(
+    mosaic_data_root,
+    batch_size,
+    num_physical_nodes,
+    epoch_size=None,
+    num_workers=None,
+    cache_limit=None,
+):
+    use_s3 = mosaic_data_root.startswith("s3://")
+
+    if not use_s3:
+        assert epoch_size is None, "epoch_size not supported for streaming.LocalDataset"
+        assert (
+            cache_limit is None
+        ), "cache_limit not supported for streaming.LocalDataset"
+
+    if use_s3:
+        MOSAIC_CACHE = "/tmp/mosaic_cache"
+        try:
+            import shutil
+
+            shutil.rmtree(MOSAIC_CACHE)
+        except (OSError, FileNotFoundError):
+            pass
+        streaming.base.util.clean_stale_shared_memory()
+        print(f"Initializing mosaic StreamingDataset, cache_limit={cache_limit}")
+        mosaic_ds = S3MosaicDataset(
+            s3_bucket=mosaic_data_root,
+            num_physical_nodes=num_physical_nodes,
+            cache_dir=MOSAIC_CACHE,
+            cache_limit=cache_limit,
+            epoch_size=epoch_size,
+            transforms=get_transform(True),
+        )
+    else:
+        mosaic_ds = MosaicDataset(mosaic_data_root, transforms=get_transform(True))
+
+    if num_workers is None:
+        num_workers = os.cpu_count()
+
+    print(f"Initializing torch DataLoader with {num_workers} workers.")
+    mosaic_dl = torch.utils.data.DataLoader(
+        mosaic_ds,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        drop_last=True,
+    )
+
+    return mosaic_dl
 
 
 def _get_ray_data_batch_iterator(args, worker_rank):
@@ -683,8 +830,6 @@ def benchmark_code(
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
-    if args.disable_locality_with_output:
-        options.locality_with_output = False
     options.preserve_order = args.preserve_order
 
     if args.skip_ray_trainer:

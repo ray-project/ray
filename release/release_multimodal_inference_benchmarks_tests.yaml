@@ -1,22 +1,32 @@
 - name: DEFAULTS
-  group: multimodal-inference-benchmarks
+  python: "3.10"
+  group: data-multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
   frequency: manual
   team: data
 
+  cluster:
+    byod:
+      runtime_env:
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+
 - name: image_classification
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_classification/compute.yaml
     byod:
-      post_build_script: byod_install_daft_image_classification.sh
+      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
+      python_depset: image_classification_py3.10.lock
 
   run:
     timeout: 3600
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python image_classification/ray_data_main.py
 
@@ -27,15 +37,18 @@
 - name: large_image_embedding
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: large_image_embedding/compute.yaml
     byod:
-      post_build_script: byod_install_daft_image_embedding.sh
+      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
+      python_depset: large_image_embedding_py3.10.lock
 
   run:
     timeout: 3600
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python large_image_embedding/ray_data_main.py
 
@@ -46,15 +59,18 @@
 - name: document_embedding
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: document_embedding/compute.yaml
     byod:
-      post_build_script: byod_install_daft_document_embedding.sh
+      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
+      python_depset: document_embedding_py3.10.lock
 
   run:
     timeout: 3600
 
   variations:
   - __suffix__: ray
+    frequency: nightly
     run:
       script: python document_embedding/ray_data_main.py
 
@@ -64,11 +80,16 @@
 
 
 - name: audio_transcription
-  python: "3.10"
+
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: audio_transcription/compute.yaml
     byod:
-      post_build_script: byod_install_daft_audio_transcription.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
+      type: gpu
+      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: audio_transcription_py3.10.lock
 
   run:
@@ -76,6 +97,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python audio_transcription/ray_data_main.py
 
@@ -86,14 +108,19 @@
 - name: video_object_detection
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: video_object_detection/compute.yaml
     byod:
-      post_build_script: byod_install_daft_video_object_detection.sh
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Expect node death during test
+      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
+      python_depset: video_object_detection_py3.10.lock
   run:
     timeout: 3600
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python video_object_detection/ray_data_main.py
 

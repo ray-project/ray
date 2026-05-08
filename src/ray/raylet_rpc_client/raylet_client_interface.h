@@ -24,15 +24,15 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-
 namespace grpc {
 class Channel;
 }
 
 namespace ray {
+
+// Maps from resource name to its allocation.
+using ResourceMappingType =
+    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 // Forward declarations.
 class Status;
@@ -52,18 +52,11 @@ class RayletClientInterface {
       const rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param lease_spec Lease that is requested by the owner.
-  /// \param grant_or_reject: True if we we should either grant or reject the request
-  ///                         but no spillback.
+  /// \param request The request containing the worker lease request details.
   /// \param callback: The callback to call when the request finishes.
-  /// \param backlog_size The queue length for the given shape on the CoreWorker.
-  /// \param lease_id Unique lease ID for this worker lease request.
   virtual void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1,
-      const bool is_selected_based_on_locality = false) = 0;
+      rpc::RequestWorkerLeaseRequest &&request,
+      const rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -97,11 +90,8 @@ class RayletClientInterface {
 
   /// Report the backlog size of a given worker and a given scheduling class to the
   /// raylet.
-  /// \param worker_id The ID of the worker that reports the backlog size.
-  /// \param backlog_reports The backlog report for each scheduling class
-  virtual void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+  /// \param request The request containing the worker ID and the backlog reports.
+  virtual void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) = 0;
 
   virtual void GetWorkerFailureCause(
       const LeaseID &lease_id,
@@ -197,6 +187,10 @@ class RayletClientInterface {
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void ResizeLocalResourceInstances(
+      google::protobuf::Map<std::string, double> resources,
+      const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) = 0;
+
   virtual void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
       const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback) = 0;
@@ -211,7 +205,15 @@ class RayletClientInterface {
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
 
+  virtual void KillLocalActor(
+      const rpc::KillLocalActorRequest &request,
+      const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) = 0;
+
   virtual int64_t GetPinsInFlight() const = 0;
+
+  virtual void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
 
   virtual ~RayletClientInterface() = default;
 };

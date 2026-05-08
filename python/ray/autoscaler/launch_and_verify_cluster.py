@@ -97,12 +97,12 @@ def get_docker_image(docker_override):
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py39"
+        return "rayproject/ray:latest-py310"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py39"
+        return "rayproject/ray:nightly-py310"
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py39"
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py310"
         else:
             print(
                 "Error: docker image is only available for "
@@ -494,6 +494,7 @@ if __name__ == "__main__":
         ensure_ssh_keys_azure()
     elif provider_type == "aws":
         download_ssh_key_aws()
+        config_yaml["provider"].pop("availability_zone", None)
     elif provider_type == "gcp":
         download_ssh_key_gcp()
         # Get the active account email

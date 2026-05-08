@@ -1,21 +1,27 @@
 import dataclasses
-from collections import namedtuple
 import functools
 import itertools
 import unittest
+from collections import namedtuple
 
 import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 import numpy as np
 import tree
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.distribution.torch.torch_distribution import (
+    TorchCategorical,
+    TorchDiagGaussian,
+    TorchMultiCategorical,
+    TorchMultiDistribution,
+)
 from ray.rllib.core.models.base import (
-    Encoder,
     ENCODER_OUT,
+    Encoder,
 )
 from ray.rllib.core.models.catalog import (
     Catalog,
@@ -23,20 +29,14 @@ from ray.rllib.core.models.catalog import (
     _multi_categorical_dist_partial_helper,
 )
 from ray.rllib.core.models.configs import (
+    CNNEncoderConfig,
     MLPEncoderConfig,
     ModelConfig,
-    CNNEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.core.distribution.torch.torch_distribution import (
-    TorchCategorical,
-    TorchDiagGaussian,
-    TorchMultiCategorical,
-    TorchMultiDistribution,
-)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -397,7 +397,8 @@ class TestCatalog(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

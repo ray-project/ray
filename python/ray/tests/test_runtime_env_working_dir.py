@@ -88,10 +88,12 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     with filepath.open("w") as file:
         file.write("F" * 100)
 
-    uri = get_uri_for_directory(dir_to_upload)
+    uri = get_uri_for_directory(dir_to_upload, include_gitignore=True)
     assert get_directory_size_bytes(dir_to_upload) > 0
 
-    uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+    uploaded = upload_package_if_needed(
+        uri, tmpdir, dir_to_upload, include_gitignore=True
+    )
     assert uploaded
 
     manager = WorkingDirPlugin(tmpdir, gcs_client)
@@ -608,6 +610,55 @@ def test_override_failure(shutdown_only):
 
     with pytest.raises(ValueError):
         B.options(runtime_env={"working_dir": "."})
+
+
+def test_default_excludes(start_cluster, monkeypatch):
+    """Tests that default excludes (.git, .venv, etc.) are applied."""
+    cluster, address = start_cluster
+    monkeypatch.delenv("RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", raising=False)
+
+    excluded_dirs = [".git", ".venv", "venv", "__pycache__"]
+
+    with tempfile.TemporaryDirectory() as tmp_working_dir:
+        # Create excluded directories with a marker file
+        for d in excluded_dirs:
+            os.makedirs(os.path.join(tmp_working_dir, d))
+            Path(tmp_working_dir, d, "to_exclude").write_text("x")
+
+        # Create a file that should be included
+        Path(tmp_working_dir, "included.txt").write_text("x")
+
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+
+        @ray.remote
+        def check_dirs(dirs):
+            return {d: os.path.exists(d) for d in dirs + ["included.txt"]}
+
+        result = ray.get(check_dirs.remote(excluded_dirs))
+
+        assert result["included.txt"], "included.txt should be present"
+        for d in excluded_dirs:
+            assert not result[d], f"{d} should be excluded by default"
+
+
+def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
+    """Tests that RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES='' disables defaults."""
+    cluster, address = start_cluster
+    monkeypatch.setenv("RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", "")
+
+    with tempfile.TemporaryDirectory() as tmp_working_dir:
+        os.makedirs(os.path.join(tmp_working_dir, ".git"))
+        Path(tmp_working_dir, ".git", "to_exclude").write_text("x")
+
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+
+        @ray.remote
+        def check_git():
+            return os.path.exists(".git")
+
+        assert ray.get(
+            check_git.remote()
+        ), ".git should be included when defaults disabled"
 
 
 if __name__ == "__main__":

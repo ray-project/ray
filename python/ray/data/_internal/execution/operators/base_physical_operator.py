@@ -1,39 +1,76 @@
 import abc
+import typing
 from typing import List, Optional
 
+from typing_extensions import override
+
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     PhysicalOperator,
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
+
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
+    @property
     @abc.abstractmethod
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        """Return all the internal input buffer queues for this operator."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        """Return all the internal output buffer queues for this operator."""
+        ...
+
     def internal_input_queue_num_blocks(self) -> int:
         """Returns Operator's internal input queue size (in blocks)"""
-        ...
+        return sum(input_buffer.num_blocks() for input_buffer in self._input_queues)
 
-    @abc.abstractmethod
     def internal_input_queue_num_bytes(self) -> int:
         """Returns Operator's internal input queue size (in bytes)"""
-        ...
+        return sum(
+            input_buffer.estimate_size_bytes() for input_buffer in self._input_queues
+        )
 
-    @abc.abstractmethod
     def internal_output_queue_num_blocks(self) -> int:
         """Returns Operator's internal output queue size (in blocks)"""
-        ...
+        return sum(output_buffer.num_blocks() for output_buffer in self._output_queues)
 
-    @abc.abstractmethod
     def internal_output_queue_num_bytes(self) -> int:
         """Returns Operator's internal output queue size (in bytes)"""
-        ...
+        return sum(
+            output_buffer.estimate_size_bytes() for output_buffer in self._output_queues
+        )
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue(s)."""
+        for input_buffer in self._input_queues:
+            input_buffer.clear()
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue(s)."""
+        for output_buffer in self._output_queues:
+            output_buffer.clear()
+
+    def mark_execution_finished(self) -> None:
+        """Mark execution as finished and clear internal queues.
+
+        This default implementation calls the parent's mark_execution_finished()
+        and then clears internal input and output queues.
+        """
+        super().mark_execution_finished()
+        self.clear_internal_input_queue()
+        self.clear_internal_output_queue()
 
 
 class OneToOneOperator(PhysicalOperator):
@@ -100,10 +137,20 @@ class AllToAllOperator(
         self._output_rows = 0
         self._sub_progress_bar_names = sub_progress_bar_names
         self._sub_progress_bar_dict = None
-        self._input_buffer: List[RefBundle] = []
-        self._output_buffer: List[RefBundle] = []
+        self._input_buffer: FIFOBundleQueue = FIFOBundleQueue()
+        self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], data_context, target_max_block_size_override)
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._input_buffer]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_buffer]
 
     def num_outputs_total(self) -> Optional[int]:
         return (
@@ -120,22 +167,10 @@ class AllToAllOperator(
         )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert input_index == 0, input_index
-        self._input_buffer.append(refs)
-        self._metrics.on_input_queued(refs)
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._input_buffer)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._input_buffer)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
+        self._input_buffer.add(refs)
+        self._metrics.on_input_queued(refs, input_index=0)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
@@ -146,11 +181,12 @@ class AllToAllOperator(
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
-        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
+        output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
+        self._output_buffer = FIFOBundleQueue(output_buffer)
 
-        while self._input_buffer:
-            refs = self._input_buffer.pop()
-            self._metrics.on_input_dequeued(refs)
+        while self._input_buffer.has_next():
+            refs = self._input_buffer.get_next()
+            self._metrics.on_input_dequeued(refs, input_index=0)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)
@@ -163,7 +199,7 @@ class AllToAllOperator(
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        bundle = self._output_buffer.pop(0)
+        bundle = self._output_buffer.get_next()
         self._metrics.on_output_dequeued(bundle)
         self._output_rows += bundle.num_rows()
         return bundle
@@ -177,30 +213,10 @@ class AllToAllOperator(
     def progress_str(self) -> str:
         return f"{self.num_output_rows_total() or 0} rows output"
 
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Initialize all internal sub progress bars, and return the number of bars."""
-        if self._sub_progress_bar_names is not None:
-            self._sub_progress_bar_dict = {}
-            for name in self._sub_progress_bar_names:
-                bar, position = _create_sub_pb(
-                    name, self.num_output_rows_total(), position
-                )
-                self._sub_progress_bar_dict[name] = bar
-            return len(self._sub_progress_bar_dict)
-        else:
-            return 0
-
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        if self._sub_progress_bar_dict is not None:
-            for sub_bar in self._sub_progress_bar_dict.values():
-                sub_bar.close()
-
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         return self._sub_progress_bar_names
 
-    def set_sub_progress_bar(self, name, pg):
-        # not type-checking due to circular imports
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         if self._sub_progress_bar_dict is None:
             self._sub_progress_bar_dict = {}
         self._sub_progress_bar_dict[name] = pg
@@ -208,7 +224,8 @@ class AllToAllOperator(
     def supports_fusion(self):
         return True
 
-    def implements_accurate_memory_accounting(self):
+    def throttling_disabled(self) -> bool:
+        # Disable resource allocation and throttling for the operator
         return True
 
 
@@ -221,12 +238,13 @@ class NAryOperator(PhysicalOperator):
     def __init__(
         self,
         data_context: DataContext,
-        *input_ops: LogicalOperator,
+        *input_ops: PhysicalOperator,
     ):
-        """Create a OneToOneOperator.
+        """Create a NAryOperator.
+
         Args:
-            input_op: Operator generating input data for this op.
-            name: The name of this operator.
+            data_context: The DataContext instance containing configuration settings.
+            *input_ops: Operators generating input data for this op.
         """
         input_names = ", ".join([op._name for op in input_ops])
         op_name = f"{self.__class__.__name__}({input_names})"

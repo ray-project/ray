@@ -5,9 +5,20 @@ import time
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import (
+    build_processor,
+    vLLMEngineProcessorConfig,
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareMultimodalStageConfig,
+    TokenizerStageConfig,
+)
 
 logger = logging.getLogger(__name__)
+
+S3_ARTIFACT_ASSETS_URL = (
+    "https://air-example-data.s3.amazonaws.com/rayllm-ossci/assets/"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -27,8 +38,6 @@ def add_buffer_time_between_tests():
     """Add buffer time after each test to avoid resource conflicts, which cause
     flakiness.
     """
-    # yield  # test runs
-    # time.sleep(10)
     import gc
 
     gc.collect()
@@ -39,7 +48,121 @@ def add_buffer_time_between_tests():
 def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
+    _cleanup_gpu_processes()
     ray.shutdown()
+
+
+def _cleanup_gpu_processes():
+    """
+    Kill GPU processes on all nodes in the cluster. With Ray as the external orchestrator,
+    mp backend suffers from uncoordinated shutdown issues, leaving orphaned GPU processes.
+
+    TODO (jeffreywang): Remove this once https://github.com/vllm-project/vllm/pull/39846 lands.
+    """
+    if not ray.is_initialized():
+        return
+
+    @ray.remote(num_cpus=0)
+    def _remote_kill_gpu_processes():
+        import os
+        import signal
+
+        import pynvml
+
+        pids = set()
+        try:
+            pynvml.nvmlInit()
+            device_count = pynvml.nvmlDeviceGetCount()
+            for i in range(device_count):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+                    pids.add(proc.pid)
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass
+
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
+
+    try:
+        nodes = ray.nodes()
+        refs = []
+        for node in nodes:
+            if not node.get("Alive", False):
+                continue
+            node_id = node["NodeID"]
+            refs.append(
+                _remote_kill_gpu_processes.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                        node_id=node_id, soft=False
+                    ),
+                ).remote()
+            )
+        if refs:
+            ray.get(refs, timeout=30)
+    except Exception as e:
+        logging.warning(f"Failed to kill GPU processes on remote nodes: {e}")
+
+
+@pytest.mark.asyncio
+async def test_vllm_multimodal_utils():
+    """Test vLLM's multimodal utilities.
+
+    This test is adapted from https://github.com/vllm-project/vllm/blob/main/tests/entrypoints/test_chat_utils.py.
+    `parse_chat_messages_async` is thoroughly tested in vLLM. This test serves as an
+    integration test to verify that the function isn't moved to an unexpected location and its signature isn't changed.
+    """
+    from vllm.config import ModelConfig
+    from vllm.entrypoints.chat_utils import parse_chat_messages_async
+
+    image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
+    image_uuid = str(hash(image_url))
+
+    conversation, mm_data, mm_uuids = await parse_chat_messages_async(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image_url},
+                        "uuid": image_uuid,
+                    },
+                    {"type": "text", "text": "What's in the image?"},
+                ],
+            }
+        ],
+        ModelConfig(
+            "microsoft/Phi-3.5-vision-instruct",
+            runner="generate",
+            trust_remote_code=True,
+            limit_mm_per_prompt={"image": 2},
+        ),
+        content_format="string",
+    )
+
+    assert conversation == [
+        {"role": "user", "content": "<|image_1|>\nWhat's in the image?"}
+    ]
+
+    assert mm_data is not None
+    assert set(mm_data.keys()) == {"image"}
+
+    image_data = mm_data.get("image")
+    assert image_data is not None
+
+    assert isinstance(image_data, list) and len(image_data) == 1
+
+    assert mm_uuids is not None
+    assert "image" in mm_uuids
+
+    image_uuids = mm_uuids.get("image")
+    assert image_uuids is not None
+    assert isinstance(image_uuids, list) and len(image_uuids) == 1
+    assert image_uuids[0] == image_uuid
 
 
 def test_chat_template_with_vllm():
@@ -59,7 +182,7 @@ def test_chat_template_with_vllm():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -119,7 +242,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -149,12 +272,76 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
 
 
 def test_vllm_llama_lora():
-    """Test vLLM with Llama model and LoRA adapter support."""
+    """Test vLLM with Llama model and LoRA adapter support.
 
+    Validates that the LoRA adapter is actually applied during generation by
+    using greedy sampling (temperature=0) and short, diverse, open-ended prompts,
+    then asserting that a significant number of base-model vs LoRA paired outputs differ.
+
+    If the LoRA adapter is not being applied, we expect very few pairs to differ
+    due to non-determinism from vLLM's dynamic batching and CUDA. If it is being applied,
+    we expect a significant fraction of pairs to differ due to the adapter's effect on the output.
+
+    The two regimes are separated by the `min_diff_fraction` threshold defined below.
+    """
+    # Minimum fraction of base/LoRA pairs that must differ to pass.
+    # Determined empirically.
+    min_diff_fraction = 0.5
     model_source = "s3://air-example-data/llama-3.2-216M-dummy/"
     lora_path = "s3://air-example-data/"
     lora_name = "llama-3.2-216M-lora-dummy"
     max_lora_rank = 32
+
+    # Short, diverse prompts — shorter prompts let the LoRA perturbation
+    # manifest earlier in generation before the base model's momentum
+    # dominates the output. Also prefer open-ended prompts to encourage LoRA-induced diversity.
+    prompts = [
+        "Hello world",
+        "The capital of France is",
+        "Once upon a time",
+        "1 + 1 =",
+        "def fibonacci(n):",
+        "The quick brown fox",
+        "In the beginning",
+        "To be or not to be",
+        "import numpy as np",
+        "The weather today is",
+        "My favorite color is",
+        "How to cook rice:",
+        "The meaning of life is",
+        "SELECT * FROM",
+        "Dear Sir or Madam,",
+        "Breaking news:",
+        "A long time ago in a galaxy",
+        "The first law of thermodynamics",
+        "class MyClass:",
+        "Roses are red,",
+        "According to recent studies,",
+        "Step 1: Preheat the oven",
+        "The president announced",
+        "In mathematics, a prime number",
+        "function hello() {",
+        "The cat sat on the",
+        "Water boils at",
+        "Happy birthday to",
+        "ERROR: NullPointerException",
+        "The mitochondria is the",
+    ]
+    num_pairs = len(prompts)
+
+    # The following controls are propagated to the vLLM worker to minimize non-determinism:
+    #   * engine_kwargs["seed"]: vLLM seeds its internal torch/np/random state.
+    #   * PYTHONHASHSEED: stabilizes dict/set iteration order in the worker.
+    #   * CUBLAS_WORKSPACE_CONFIG: forces deterministic cuBLAS workspace.
+    # Flash-attention kernels and the vLLM v1 async scheduler still introduce
+    # residual non-determinism we can't eliminate from the test, but in
+    # practice the regime separation (base/LoRA divergence signal vs noise)
+    # is very wide (~30/30 vs ~5/30), so half-of-num_pairs is a robust threshold.
+    # Note for future: VLLM_BATCH_INVARIANT=1 with attention_backend=FLASH_ATTN
+    # eliminates the remaining non-determinism entirely for perfect separation,
+    # but it requires a GPU compute capability (>=9.0) the CI runners don't meet, so
+    # we rely on the median threshold instead. Recommended if CI hardware is upgraded.
+    seed = 42
 
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
@@ -164,50 +351,70 @@ def test_vllm_llama_lora():
             enable_chunked_prefill=True,
             enable_lora=True,
             max_lora_rank=max_lora_rank,
+            seed=seed,
         ),
         tokenize=True,
         detokenize=True,
-        batch_size=16,
+        # minimize non-determinism from vLLM's dynamic batching by sending (1 base + 1 LoRA) per batch
+        batch_size=2,
         concurrency=1,
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+        runtime_env={
+            "env_vars": {
+                "VLLM_DISABLE_COMPILE_CACHE": "1",
+                "PYTHONHASHSEED": "0",
+                "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            }
+        },
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
-            # For even ids, use the base model, for odd ids, use the LoRA adapter
             model=model_source if row["id"] % 2 == 0 else lora_name,
-            messages=[
-                {"role": "system", "content": "You are a calculator"},
-                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-            ],
+            messages=[{"role": "user", "content": row["prompt"]}],
             sampling_params=dict(
-                temperature=0.3,
+                temperature=0,
                 max_tokens=50,
                 detokenize=False,
             ),
         ),
         postprocess=lambda row: {
+            "id": row["id"],
             "resp": row["generated_text"],
         },
     )
 
-    ds = ray.data.range(60)
-    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    # Build paired rows: id 2k = base, id 2k+1 = LoRA, same prompt.
+    rows = []
+    for i, prompt in enumerate(prompts):
+        rows.append({"id": 2 * i, "prompt": prompt})
+        rows.append({"id": 2 * i + 1, "prompt": prompt})
+
+    ds = ray.data.from_items(rows)
     ds = processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
-    assert len(outs) == 60
+
+    assert len(outs) == 2 * num_pairs
     assert all("resp" in out for out in outs)
+
+    # LoRA exercise check: a significant fraction of pairs must differ.
+    by_id = {out["id"]: out["resp"] for out in outs}
+    diffs = sum(1 for k in range(num_pairs) if by_id[2 * k] != by_id[2 * k + 1])
+    min_diffs = int(num_pairs * min_diff_fraction)
+    assert diffs >= min_diffs, (
+        f"Only {diffs}/{num_pairs} base/LoRA pairs differ (need >= {min_diffs}) — "
+        "the LoRA adapter does not appear to be applied."
+    )
 
 
 @pytest.mark.parametrize(
-    "model_source,tp_size,pp_size,concurrency,sample_size",
+    "model_source,tp_size,pp_size,concurrency,sample_size,chat_template_content_format,apply_sys_msg_formatting",
     [
         # LLaVA model with TP=1, PP=1, concurrency=1
-        ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60),
+        ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai", False),
         # Pixtral model with TP=2, PP=1, concurrency=2
-        ("mistral-community/pixtral-12b", 2, 1, 2, 60),
+        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "openai", True),
     ],
 )
 def test_vllm_vision_language_models(
@@ -216,6 +423,8 @@ def test_vllm_vision_language_models(
     pp_size,
     concurrency,
     sample_size,
+    chat_template_content_format,
+    apply_sys_msg_formatting,
 ):
     """Test vLLM with vision language models using different configurations."""
 
@@ -225,7 +434,7 @@ def test_vllm_vision_language_models(
     tokenize = False
     detokenize = False
 
-    processor_config = vLLMEngineProcessorConfig(
+    llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
         task_type="generate",
         engine_kwargs=dict(
@@ -234,19 +443,21 @@ def test_vllm_vision_language_models(
             max_model_len=4096,
             enable_chunked_prefill=True,
         ),
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            chat_template_content_format=chat_template_content_format,
+            apply_sys_msg_formatting=apply_sys_msg_formatting,
+        ),
         apply_chat_template=True,
         tokenize=tokenize,
         detokenize=detokenize,
         batch_size=16,
         concurrency=concurrency,
-        has_image=True,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
-
-    processor = build_llm_processor(
-        processor_config,
+    llm_processor = build_processor(
+        llm_processor_config,
         preprocess=lambda row: dict(
-            model=model_source,
             messages=[
                 {"role": "system", "content": "You are an assistant"},
                 {
@@ -254,11 +465,13 @@ def test_vllm_vision_language_models(
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Say {row['id']} words about this image.",
+                            "text": f"Say {row['val']} words about this image.",
                         },
                         {
-                            "type": "image",
-                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                            "type": "image_url",
+                            "image_url": {
+                                "url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"
+                            },
                         },
                     ],
                 },
@@ -275,10 +488,88 @@ def test_vllm_vision_language_models(
 
     ds = ray.data.range(sample_size)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = processor(ds)
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == sample_size
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize(
+    "multimodal_content",
+    [
+        {
+            "type": "image_url",
+            "image_url": {"url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"},
+        },
+        {
+            "type": "video_url",
+            "video_url": {"url": S3_ARTIFACT_ASSETS_URL + "free-videos.mp4"},
+        },
+    ],
+)
+def test_vllm_qwen_vl_multimodal(multimodal_content):
+    model_source = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_source,
+        task_type="generate",
+        engine_kwargs=dict(
+            enable_chunked_prefill=True,
+            distributed_executor_backend="ray",
+            # A single GPU won't be able to accomodate Qwen/Qwen2.5-VL-3B-Instruct's memory requirements
+            # due to vllm0.12.0 resource/profiling issues.
+            # Issue: https://github.com/vllm-project/vllm/issues/30521.
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
+        ),
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+        batch_size=16,
+        concurrency=1,
+    )
+
+    llm_processor = build_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+            mm_processor_kwargs=dict(
+                min_pixels=28 * 28,
+                max_pixels=1280 * 28 * 28,
+                fps=1,
+            ),
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this asset in {row['id']} sentences.",
+                        },
+                        multimodal_content,
+                    ],
+                },
+            ],
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
 
@@ -304,7 +595,7 @@ def test_async_udf_queue_capped(concurrency):
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             # 1M emoji (4 bytes), should not leak to memory heap.
@@ -347,10 +638,10 @@ def test_async_udf_queue_capped(concurrency):
             "ray",
             dict(bundles=[{"CPU": 1, "GPU": 1}] * 4, strategy="STRICT_PACK"),
         ),
-        # Custom placement group leaving GPU and strategy unspecified
+        # Strategy omitted (PACK default). Omitted GPU now validates as 0.0; explicit GPU: 1 for this GPU job.
         (
             "ray",
-            dict(bundles=[{"CPU": 1}] * 4),
+            dict(bundles=[{"CPU": 1, "GPU": 1}] * 4),
         ),
         # Empty placement group
         (
@@ -390,7 +681,7 @@ def test_vllm_placement_group(backend, placement_group_config):
         placement_group_config=placement_group_config,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=f"You are a calculator. {row['id']} ** 3 = ?",
@@ -412,6 +703,76 @@ def test_vllm_placement_group(backend, placement_group_config):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
+
+
+def test_vllm_autoscaling_no_starvation():
+    """Test that chained vLLMEngineProcessor instances with autoscaling
+    concurrency can run without starving each other.
+    """
+    processor_config_1 = vLLMEngineProcessorConfig(
+        model_source="facebook/opt-1.3b",
+        chat_template_stage=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
+        batch_size=16,
+        concurrency=(1, 4),
+    )
+
+    processor_config_2 = vLLMEngineProcessorConfig(
+        model_source="facebook/opt-1.3b",
+        chat_template_stage=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
+        batch_size=16,
+        concurrency=(3, 4),
+    )
+
+    processor_1 = build_processor(
+        processor_config_1,
+        preprocess=lambda row: dict(
+            prompt=f"Calculate {row['id']} ** 2 = ",
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=30,
+                detokenize=True,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp_1": row["generated_text"],
+            "id": row.get("id", None),
+        },
+    )
+
+    processor_2 = build_processor(
+        processor_config_2,
+        preprocess=lambda row: dict(
+            prompt=f"Previous result: {row.get('resp_1', 'N/A')}. Now calculate its cube: ",
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=30,
+                detokenize=True,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp_2": row["generated_text"],
+            "resp_1": row.get("resp_1", None),
+            "id": row.get("id", None),
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 1})
+
+    processed_ds = processor_2(processor_1(ds))
+    processed_ds = processed_ds.materialize()
+    results = processed_ds.take_all()
+
+    assert len(results) == 60
+    assert all("resp_1" in out for out in results)
+    assert all("resp_2" in out for out in results)
+    assert all("id" in out for out in results)
+    assert all(out.get("resp_1") for out in results)
+    assert all(out.get("resp_2") for out in results)
 
 
 if __name__ == "__main__":

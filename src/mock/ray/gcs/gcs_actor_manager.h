@@ -1,4 +1,4 @@
-// Copyright  The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 #include <gmock/gmock.h>
 
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 
 namespace ray {
 namespace gcs {
@@ -27,6 +29,7 @@ class MockGcsActorManager : public GcsActorManager {
  public:
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
                       GCSFunctionManager &function_manager,
+                      rpc::RayletClientPool &raylet_client_pool,
                       rpc::CoreWorkerClientPool &worker_client_pool)
       : GcsActorManager(
             /*scheduler=*/
@@ -37,11 +40,19 @@ class MockGcsActorManager : public GcsActorManager {
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
+            raylet_client_pool,
             worker_client_pool,
             /*ray_event_recorder=*/fake_ray_event_recorder_,
             /*session_name=*/"",
             /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
-            /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_) {}
+            /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_,
+            /*observability_publisher=*/FakeObsPublisher()) {}
+
+  static pubsub::ObservabilityPublisher *FakeObsPublisher() {
+    static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
+    return holder.get();
+  }
 
   MOCK_METHOD(void,
               HandleRegisterActor,

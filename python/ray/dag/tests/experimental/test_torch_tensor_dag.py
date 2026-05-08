@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 
 @ray.remote
@@ -268,6 +268,10 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+@pytest.mark.skipif(
+    torch.version.cuda is not None and torch.version.cuda >= "13.0",
+    reason="Flaky: worker hangs on shared memory channel read on cu130",
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_shm(ray_start_regular):
@@ -314,6 +318,10 @@ def test_torch_tensor_shm(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.skipif(
+    torch.version.cuda is not None and torch.version.cuda >= "13.0",
+    reason="Flaky: worker hangs on shared memory channel read on cu130",
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])

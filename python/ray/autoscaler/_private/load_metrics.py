@@ -78,7 +78,6 @@ class LoadMetrics:
         self.infeasible_bundles = []
         self.pending_placement_groups = []
         self.resource_requests = []
-        self.cluster_full_of_actors_detected = False
         self.ray_nodes_last_used_time_by_ip = {}
 
     def __bool__(self):
@@ -97,11 +96,9 @@ class LoadMetrics:
         waiting_bundles: List[Dict[str, float]] = None,
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
-        cluster_full_of_actors_detected: bool = False,
     ):
         self.static_resources_by_ip[ip] = static_resources
         self.node_id_by_ip[ip] = node_id
-        self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
 
         if not waiting_bundles:
             waiting_bundles = []

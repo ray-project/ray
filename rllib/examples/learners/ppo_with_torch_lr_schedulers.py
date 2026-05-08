@@ -59,6 +59,10 @@ from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -67,7 +71,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 torch, _ = try_import_torch()
 
@@ -204,6 +207,4 @@ if __name__ == "__main__":
     }
 
     if __name__ == "__main__":
-        from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
         run_rllib_example_script_experiment(config, args, stop=stop)

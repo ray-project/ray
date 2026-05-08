@@ -1,5 +1,6 @@
 import random
 import unittest.mock
+from collections import deque
 from unittest.mock import MagicMock
 
 import pytest
@@ -35,12 +36,12 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     ckpt_tr = _TrainingReport(
         metrics={},
         checkpoint=Checkpoint("mock://bucket/path"),
-        validation_spec=None,
+        validation=False,
     )
     dummy_tr = _TrainingReport(
         metrics={},
         checkpoint=None,
-        validation_spec=None,
+        validation=False,
     )
     ckpt_ws = WorkerStatus(running=True, error=None, training_report=ckpt_tr)
     dummy_ws = WorkerStatus(running=True, error=None, training_report=dummy_tr)
@@ -62,7 +63,10 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
         (10, 1, 8, 1, 0),  # one worker with checkpoint, one worker with None
     ],
 )
-def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected):
+@pytest.mark.asyncio
+async def test_report_handler(
+    tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected
+):
     """`expected` is the number of times that the
     CheckpointManager.register_checkpoint is called.
     """
@@ -95,6 +99,11 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
     ) as fake_register_checkpoint:
         checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected
+
+    checkpoint_handler.after_replica_group_start(worker_group.get_replica_groups()[0])
+    assert checkpoint_handler._training_report_queues == [
+        deque() for _ in range(num_workers)
+    ]
 
     checkpoint_handler.before_worker_group_shutdown(worker_group)
     worker_group.shutdown()

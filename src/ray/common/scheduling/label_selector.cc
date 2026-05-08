@@ -79,6 +79,16 @@ void LabelSelector::AddConstraint(const std::string &key, const std::string &val
   AddConstraint(std::move(constraint));
 }
 
+void LabelSelector::AddConstraint(LabelConstraint constraint) {
+  // Avoid adding duplicate constraints.
+  if (std::find(constraints_.begin(), constraints_.end(), constraint) !=
+      constraints_.end()) {
+    return;
+  }
+
+  constraints_.push_back(std::move(constraint));
+}
+
 std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
 LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string &value) {
   bool is_negated = false;

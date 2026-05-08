@@ -201,7 +201,7 @@ class DataParallelTrainer(BaseTrainer):
     """
 
     # Exposed here for testing purposes. Should never need
-    # to be overriden.
+    # to be overridden.
     _backend_executor_cls: Type[BackendExecutor] = BackendExecutor
     _training_iterator_cls: Type[TrainingIterator] = TrainingIterator
 

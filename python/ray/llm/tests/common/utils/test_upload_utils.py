@@ -54,7 +54,7 @@ def test_upload_downloaded_hf_model(mock_copy_files):
             "ray.llm._internal.common.utils.upload_utils.get_model_entrypoint",
             return_value=model_dir,
         ):
-            upload_model_files(model_id, "s3://bucket/model-id")
+            upload_model_files(model_id, "pyarrow-s3://bucket/model-id")
 
         assert mock_copy_files.call_count == 2
         mock_copy_files.assert_has_calls(
@@ -87,7 +87,7 @@ def test_upload_custom_model(mock_copy_files):
             "ray.llm._internal.common.utils.upload_utils.get_model_entrypoint",
             return_value=model_dir,
         ):
-            upload_model_files(model_id, "s3://bucket/model-id")
+            upload_model_files(model_id, "pyarrow-s3://bucket/model-id")
 
         mock_copy_files.assert_called_once_with(
             source=Path(model_dir),

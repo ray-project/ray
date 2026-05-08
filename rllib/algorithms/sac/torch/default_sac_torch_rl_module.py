@@ -1,17 +1,18 @@
-import gymnasium as gym
 from typing import Any, Dict
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
-    QF_PREDS,
-    QF_TWIN_PREDS,
-    QF_TARGET_NEXT,
-    ACTION_LOG_PROBS_NEXT,
-    ACTION_PROBS_NEXT,
-    ACTION_PROBS,
     ACTION_LOG_PROBS,
+    ACTION_LOG_PROBS_NEXT,
+    ACTION_PROBS,
+    ACTION_PROBS_NEXT,
+    QF_PREDS,
+    QF_TARGET_NEXT,
+    QF_TWIN_PREDS,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
@@ -256,19 +257,8 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
             The estimated Q-value for the input action for continuous action spaces.
             Or the Q-values for all actions for discrete action spaces.
         """
-        # Construct batch. Note, we need to feed observations and actions.
-        if isinstance(self.action_space, gym.spaces.Box):
-            actions = batch[Columns.ACTIONS]
-            qf_batch = {
-                Columns.OBS: torch.concat((batch[Columns.OBS], actions), dim=-1)
-            }
-        else:
-            # For discrete action spaces, we don't need to include the actions
-            # in the batch, as the Q function outputs the Q-values for each action
-            qf_batch = {Columns.OBS: batch[Columns.OBS]}
-
         # Encoder forward pass.
-        qf_encoder_outs = encoder(qf_batch)
+        qf_encoder_outs = encoder(batch)
 
         # Q head forward pass.
         # (B,latent_size) -> (B, 1|action_dim)

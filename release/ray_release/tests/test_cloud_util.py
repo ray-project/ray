@@ -1,13 +1,14 @@
-import sys
 import os
+import sys
+import tempfile
 from unittest.mock import patch
 
 import pytest
-import tempfile
+
 from ray_release.cloud_util import (
-    upload_file_to_azure,
-    upload_working_dir_to_azure,
     _parse_abfss_uri,
+    _upload_file_to_azure,
+    upload_working_dir_to_azure,
 )
 
 
@@ -29,9 +30,7 @@ class FakeBlobClient:
         self.uploaded_data = data.read()
 
 
-@patch("ray_release.cloud_util.BlobServiceClient")
-@patch("ray_release.cloud_util.DefaultAzureCredential")
-def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
+def test_upload_file_to_azure():
     with tempfile.TemporaryDirectory() as tmp_path:
         local_file = os.path.join(tmp_path, "test.txt")
         expected_content = "test content"
@@ -46,14 +45,14 @@ def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
         )
         fake_blob_service_client.blob_client = fake_blob_client
 
-        upload_file_to_azure(str(local_file), azure_path, fake_blob_service_client)
+        _upload_file_to_azure(str(local_file), azure_path, fake_blob_service_client)
 
         with open(local_file, "rb") as f:
             expected_data = f.read()
             assert fake_blob_client.uploaded_data == expected_data
 
 
-@patch("ray_release.cloud_util.upload_file_to_azure")
+@patch("ray_release.cloud_util._upload_file_to_azure")
 def test_upload_working_dir_to_azure(mock_upload_file_to_azure):
     with tempfile.TemporaryDirectory() as tmp_path:
         working_dir = os.path.join(tmp_path, "working_dir")

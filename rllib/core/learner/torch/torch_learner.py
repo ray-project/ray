@@ -1,7 +1,8 @@
-from collections import defaultdict
 import contextlib
 import logging
+from collections import defaultdict
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -9,7 +10,6 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.algorithms.algorithm_config import (
@@ -17,7 +17,7 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import Learner, LR_KEY
+from ray.rllib.core.learner.learner import LR_KEY, Learner
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -33,16 +33,16 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import (
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
-    NUM_TRAINABLE_PARAMETERS,
     NUM_NON_TRAINABLE_PARAMETERS,
+    NUM_TRAINABLE_PARAMETERS,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -185,6 +185,10 @@ class TorchLearner(Learner):
         # If we don't have any loss computations, `sum` returns 0.
         if isinstance(total_loss, int):
             assert total_loss == 0
+            return {}
+
+        # If all parameters for this module are currently frozen, we can't optimize it.
+        if total_loss.grad_fn is None:
             return {}
 
         total_loss.backward()
@@ -349,9 +353,19 @@ class TorchLearner(Learner):
                     config=self.config.get_config_for_module(module_id=module_id),
                 )
             if name in self._named_optimizers:
-                self._named_optimizers[name].load_state_dict(
-                    convert_to_torch_tensor(state_dict["state"], device=self._device)
-                )
+                # Keep optimizer param_groups untouched so scalar metadata such as
+                # betas, lr, eps, foreach, capturable preserve their Python types.
+                # Only convert per-parameter optimizer buffers (exp_avg, exp_avg_sq,
+                # step, etc.) to tensors on the learner device.
+                optimizer_state = state_dict["state"]
+                loaded_state = {
+                    **optimizer_state,
+                    "state": convert_to_torch_tensor(
+                        optimizer_state["state"],
+                        device=self._device,
+                    ),
+                }
+                self._named_optimizers[name].load_state_dict(loaded_state)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -369,15 +383,13 @@ class TorchLearner(Learner):
         pin_memory: bool = False,
         use_stream: bool = False,
     ) -> MultiAgentBatch:
-        batch = convert_to_torch_tensor(
+        batch_dict = convert_to_torch_tensor(
             batch.policy_batches,
             device=self._device if to_device else None,
             pin_memory=pin_memory,
             use_stream=use_stream,
         )
-        # TODO (sven): This computation of `env_steps` is not accurate!
-        length = max(len(b) for b in batch.values())
-        batch = MultiAgentBatch(batch, env_steps=length)
+        batch = MultiAgentBatch(batch_dict, env_steps=batch.env_steps())
         return batch
 
     @override(Learner)

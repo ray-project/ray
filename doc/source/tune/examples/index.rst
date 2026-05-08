@@ -32,6 +32,7 @@ ML frameworks
     Hugging Face Transformers Example <pbt_transformers>
     Ray RLlib Example <pbt_ppo_example>
     Keras Example <tune_mnist_keras>
+    PyTorch with ASHA <tune_pytorch_asha/content/tune_pytorch_asha>
 
 Ray Tune integrates with many popular machine learning frameworks. Here you find a few practical examples showing you how to tune your models. At the end of these guides you will often find links to even more examples.
 
@@ -44,6 +45,7 @@ Ray Tune integrates with many popular machine learning frameworks. Here you find
   * - :doc:`Tuning XGBoost parameters with Tune <tune-xgboost>`
   * - :doc:`Tuning LightGBM parameters with Tune <lightgbm_example>`
   * - :doc:`Tuning Hugging Face Transformers with Tune <pbt_transformers>`
+  * - :doc:`Hyperparameter tuning with PyTorch and ASHA <tune_pytorch_asha/content/tune_pytorch_asha>`
 
 .. _experiment-tracking-tools:
 

@@ -14,15 +14,15 @@
 
 #include "ray/gcs/gcs_placement_group_manager.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -106,7 +106,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
 }
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
-    const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
+    const std::shared_ptr<GcsPlacementGroup> &placement_group,
+    rpc::StatusCallback callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
   // the GCS server is restarted, it is required to continue to register placement group
   // successfully.
@@ -399,7 +400,7 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
 
 void GcsPlacementGroupManager::RemovePlacementGroup(
     const PlacementGroupID &placement_group_id,
-    StatusCallback on_placement_group_removed) {
+    rpc::StatusCallback on_placement_group_removed) {
   RAY_CHECK(on_placement_group_removed);
   // If the placement group has been already removed, don't do anything.
   auto placement_group_it = registered_placement_groups_.find(placement_group_id);
@@ -599,7 +600,7 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
 }
 
 void GcsPlacementGroupManager::WaitPlacementGroup(
-    const PlacementGroupID &placement_group_id, StatusCallback callback) {
+    const PlacementGroupID &placement_group_id, rpc::StatusCallback callback) {
   // If the placement group does not exist or it has been successfully created, return
   // directly.
   const auto &iter = registered_placement_groups_.find(placement_group_id);
@@ -725,6 +726,29 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             iter->second->GetPlacementGroupID(),
             iter->second->GetPlacementGroupTableData(),
             {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
+      } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
+        // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
+        // are now unplaced (total domain failure), move the PG back to the pending queue
+        // so the scheduler can clear the stale domain assignment and retry on a new
+        // domain. The manager here is just reponsible for rescheduling the
+        // placment group, clearing the domain is handled by
+        // ScheduleUnplacedBundles within the scheduler.
+        if (iter->second->AllUnplacedBundles() &&
+            iter->second->GetLabelDomainKey().has_value()) {
+          auto infeasible_pg_iter =
+              std::find_if(infeasible_placement_groups_.begin(),
+                           infeasible_placement_groups_.end(),
+                           [pg_id = iter->second->GetPlacementGroupID()](
+                               const std::shared_ptr<GcsPlacementGroup> &pg) {
+                             return pg_id == pg->GetPlacementGroupID();
+                           });
+
+          if (infeasible_pg_iter != infeasible_placement_groups_.end()) {
+            AddToPendingQueue(*infeasible_pg_iter);
+            infeasible_placement_groups_.erase(infeasible_pg_iter);
+            SchedulePendingPlacementGroups();
+          }
+        }
       }
     }
   }

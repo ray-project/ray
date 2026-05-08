@@ -1,8 +1,8 @@
 .. _data:
 
-==================================
-Ray Data: Scalable Datasets for ML
-==================================
+===================================================
+Ray Data: Scalable Data Processing for AI Workloads
+===================================================
 
 .. toctree::
     :hidden:
@@ -12,12 +12,55 @@ Ray Data: Scalable Datasets for ML
     user-guide
     examples
     api/api
+    contributing/contributing
     comparisons
     benchmark
     data-internals
 
-Ray Data is a scalable data processing library for ML and AI workloads built on Ray.
-Ray Data provides flexible and performant APIs for expressing AI workloads such as :ref:`batch inference <batch_inference_home>`, data preprocessing, and ingest for ML training. Unlike other distributed data systems, Ray Data features a :ref:`streaming execution <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
+Ray Data is a scalable data processing library for AI workloads built on Ray.
+Ray Data provides flexible and performant APIs for common operations such as :ref:`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data features a :ref:`streaming execution engine <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
+
+Quick start
+-----------
+
+First, install Ray Data. To learn more about installing Ray and its libraries, see
+:ref:`Installing Ray <installation>`:
+
+.. code-block:: console
+
+    $ pip install -U 'ray[data]'
+
+Here is an example of how to do perform a simple batch text classification task with Ray Data:
+
+.. testcode::
+
+    import ray
+    import pandas as pd
+
+    class ClassificationModel:
+        def __init__(self):
+            from transformers import pipeline
+            self.pipe = pipeline("text-classification")
+
+        def __call__(self, batch: pd.DataFrame):
+            results = self.pipe(list(batch["text"]))
+            result_df = pd.DataFrame(results)
+            return pd.concat([batch, result_df], axis=1)
+
+    ds = ray.data.read_text("s3://anonymous@ray-example-data/sms_spam_collection_subset.txt")
+    ds = ds.map_batches(
+        ClassificationModel,
+        compute=ray.data.ActorPoolStrategy(size=2),
+        batch_size=64,
+        batch_format="pandas"
+        # num_gpus=1  # this will set 1 GPU per worker
+    )
+    ds.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'ham\tGo until jurong point, crazy.. Available only in bugis n great world la e buffet... Cine there got amore wat...', 'label': 'NEGATIVE', 'score': 0.9935141801834106}
 
 
 Why choose Ray Data?
@@ -40,17 +83,6 @@ Ray Data supports AI workloads as a first-class citizen and offers several key a
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
-Install Ray Data
-----------------
-
-To install Ray Data, run:
-
-.. code-block:: console
-
-    $ pip install -U 'ray[data]'
-
-To learn more about installing Ray and its libraries, see
-:ref:`Installing Ray <installation>`.
 
 Learn more
 ----------

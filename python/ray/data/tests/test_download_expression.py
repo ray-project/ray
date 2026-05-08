@@ -208,7 +208,7 @@ class TestDownloadExpressionFunctionality:
     def test_download_expression_with_pandas_blocks(self, tmp_path):
         """Test download with pandas blocks to ensure arrow conversion works.
 
-        This tests the code path in PartitionActor.__call__ where non-arrow
+        This tests the code path in PartitionActor / AsyncPartitionActor.__call__ where non-arrow
         blocks are converted to arrow format before processing.
         """
         ctx = ray.data.context.DataContext.get_current()
@@ -236,7 +236,7 @@ class TestDownloadExpressionFunctionality:
             )
             ds = ray.data.from_pandas(df)
 
-            # Apply download - this should trigger arrow conversion in PartitionActor
+            # Apply download - this should trigger arrow conversion in the partition actor
             ds_with_downloads = ds.with_column("content", download("file_uri"))
 
             # Verify results
@@ -249,6 +249,39 @@ class TestDownloadExpressionFunctionality:
                 assert result["file_uri"] == f"local://{file_paths[i]}"
         finally:
             ctx.enable_pandas_block = old_enable_pandas_block
+
+    def test_download_expression_with_custom_filesystem(self, tmp_path):
+        import pyarrow.fs as pafs
+
+        # 1. Setup paths
+        subdir = tmp_path / "data"
+        subdir.mkdir()
+
+        file_name = "test_file.txt"
+        file_path = subdir / file_name
+        sample_content = b"File content with custom fs"
+        file_path.write_bytes(sample_content)
+
+        # 2. Setup SubTreeFileSystem
+        # This treats 'subdir' as the root '/'
+        base_fs = pafs.LocalFileSystem()
+        custom_fs = pafs.SubTreeFileSystem(str(subdir), base_fs)
+
+        # 3. Create Dataset
+        # Note: We use the relative 'file_name' because the FS is rooted at 'subdir'
+        ds = ray.data.from_items([{"file_uri": file_name, "file_id": 0}])
+
+        # 4. Execute Download
+        ds_with_downloads = ds.with_column(
+            "content", download("file_uri", filesystem=custom_fs)
+        )
+
+        # 5. Assertions
+        results = ds_with_downloads.take_all()
+
+        assert len(results) == 1
+        assert results[0]["content"] == sample_content
+        assert results[0]["file_id"] == 0
 
 
 class TestDownloadExpressionErrors:
@@ -293,6 +326,64 @@ class TestDownloadExpressionErrors:
         except Exception as e:
             # If it fails, should be a reasonable error (not a crash)
             assert isinstance(e, (ValueError, KeyError, RuntimeError))
+
+    def test_download_expression_with_malformed_uris(self, tmp_path):
+        """Test download expression with malformed URIs.
+
+        This tests that various malformed URIs are caught and return None
+        instead of crashing.
+
+        All of the URIs should be malformed in order to test the ZeroDivisionError
+        described in https://github.com/ray-project/ray/issues/58462.
+        """
+        malformed_uris = [
+            f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
+            "local:///this/path/does/not/exist/file.txt",  # Invalid path
+            "",  # Empty URI
+            "foobar",  # Random string
+            # TODO(xyuzh): Currently, using the below URIs raises an exception
+            # in _resolve_paths_and_filesystem. We need to fix that issue and
+            # add the tests in.
+            # "file:///\x00/null/byte",  # Null byte
+            # "http://host/path\n\r",  # Line breaks
+            # "foo://bar",  # Invalid scheme
+            # "://no-scheme",  # Missing scheme
+            # "http://host/path?query=<script>",  # Injection attempts
+        ]
+
+        ds = ray.data.from_items([{"uri": uri} for uri in malformed_uris])
+        ds_with_downloads = ds.with_column("bytes", download("uri"))
+        results = ds_with_downloads.take_all()
+
+        # All malformed URIs should return None
+        assert len(results) == len(malformed_uris)
+        for result in results:
+            assert result["bytes"] is None
+
+    def test_download_expression_mixed_valid_and_invalid_uris(self, tmp_path):
+        """Test download expression when some but not all of the URIs are invalid."""
+        # Create one valid file
+        valid_file = tmp_path / "valid.txt"
+        valid_file.write_bytes(b"valid content")
+
+        # Create URIs: one valid and one non-existent file.
+        ds = ray.data.from_items(
+            [
+                {"uri": str(valid_file), "id": 0},
+                {"uri": str(tmp_path / "nonexistent.txt"), "id": 1},
+            ]
+        )
+        ds_with_downloads = ds.with_column("bytes", download("uri"))
+
+        # Should not crash - failed downloads return None
+        results = sorted(ds_with_downloads.take_all(), key=lambda row: row["id"])
+        assert len(results) == 2
+
+        # First URI should succeed
+        assert results[0]["bytes"] == b"valid content"
+
+        # Second URI should fail gracefully (return None)
+        assert results[1]["bytes"] is None
 
 
 class TestDownloadExpressionIntegration:

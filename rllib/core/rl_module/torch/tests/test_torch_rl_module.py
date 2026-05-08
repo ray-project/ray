@@ -1,6 +1,6 @@
+import gc
 import tempfile
 import unittest
-import gc
 
 import gymnasium as gym
 import torch
@@ -72,6 +72,34 @@ class TestRLModule(unittest.TestCase):
         # just test if the forward pass runs fine
         module.forward_inference({"obs": obs})
         module.forward_exploration({"obs": obs})
+
+    def test_training_mode_toggling(self):
+        """Test that eval mode is set during inference/exploration and restored after."""
+
+        env = gym.make("CartPole-v1")
+        module = VPGTorchRLModule(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+
+        obs_shape = env.observation_space.shape
+        obs = torch.randn((1,) + obs_shape)
+
+        # Module starts in training mode.
+        self.assertTrue(module.training)
+
+        # forward_inference should set eval mode internally and restore train mode.
+        module.forward_inference({"obs": obs})
+        self.assertTrue(module.training)
+
+        # forward_exploration should also set eval mode and restore train mode.
+        module.forward_exploration({"obs": obs})
+        self.assertTrue(module.training)
+
+        # forward_train should keep train mode.
+        module.forward_train({"obs": obs})
+        self.assertTrue(module.training)
 
     def test_get_set_state(self):
 
@@ -155,8 +183,9 @@ class TestRLModuleGPU(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.

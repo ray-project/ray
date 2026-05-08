@@ -170,9 +170,10 @@ Note that by default, retrying on user raised exceptions is disabled. To enable 
 You can set ``retry_exceptions`` in the `@ray.method(retry_exceptions=...)` decorator, or in the `.options(retry_exceptions=...)` in the method call.
 
 Retry behavior depends on the value you set ``retry_exceptions`` to:
-- ``retry_exceptions == False`` (default): No retries for user exceptions.
-- ``retry_exceptions == True``: Ray retries a method on user exception up to ``max_task_retries`` times.
-- ``retry_exceptions`` is a list of exceptions: Ray retries a method on user exception up to ``max_task_retries`` times, only if the method raises an exception from these specific classes.
+
+- ``False`` (default): No retries for user exceptions.
+- ``True``: Ray retries a method on user exception up to ``max_task_retries`` times.
+- A list of exceptions: Ray retries a method on user exception up to ``max_task_retries`` times, only if the method raises an exception from these specific classes.
 
 ``max_task_retries`` applies to both exceptions and actor crashes. A Ray actor can set this option to apply to all of its methods. A method can also set an overriding option for itself. Ray searches for the first non-default value of ``max_task_retries`` in this order:
 

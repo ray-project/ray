@@ -42,18 +42,18 @@ Here are some examples on how to set these config settings within your `DreamerV
 [documentation page here](https://docs.ray.io/en/latest/rllib/index.html#rllib-in-60-seconds).
 
 Use the config examples and templates in the
-[tuned_examples folder](../../tuned_examples/dreamerv3)
+[examples folder](../../examples/algorithms/dreamerv3)
 in combination with the following scripts and command lines in order to run RLlib's DreamerV3 algorithm in your experiments:
 
-### [Atari100k](../../tuned_examples/dreamerv3/atari_100k_dreamerv3.py)
+### [Atari100k](../../examples/algorithms/dreamerv3/atari_100k_dreamerv3.py)
 ```shell
-$ cd ray/rllib/tuned_examples/dreamerv3/
+$ cd ray/rllib/examples/algorithms/dreamerv3/
 $ python atari_100k_dreamerv3.py --env ale_py:ALE/Pong-v5
 ```
 
-### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision_dreamerv3.py)
+### [DeepMind Control Suite (vision)](../../examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py)
 ```shell
-$ cd ray/rllib/tuned_examples/dreamerv3/
+$ cd ray/rllib/examples/algorithms/dreamerv3/
 $ python dm_control_suite_vision_dreamerv3.py --env DMC/cartpole/swingup
 ```
 Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
@@ -122,8 +122,8 @@ $ python flappy_bird.py
 ```
 
 This should be it. Feel free to try out running this on multiple GPUs using these
-more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k_dreamerv3.py) and
-[here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision_dreamerv3.py).
+more advanced config examples [here (Atari100k)](../../examples/algorithms/dreamerv3/atari_100k_dreamerv3.py) and
+[here (DM Control Suite)](../../examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py).
 Also see the notes below on good recipes for running on multiple GPUs.
 
 <b>IMPORTANT:</b> DreamerV3 out-of-the-box only supports image observation spaces of

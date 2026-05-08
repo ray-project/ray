@@ -7,12 +7,13 @@ from typing import List, Optional
 from unittest import mock
 
 import pytest
-from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import RUN_PER_FLAKY_TEST
 from ci.ray_ci.utils import chunk_into_n, ci_init
+
+from ray_release.configs.global_config import get_global_config
 
 ci_init()
 
@@ -183,6 +184,37 @@ def test_ray_installation() -> None:
             "ci/ray_ci/tests.env.Dockerfile",
             "/ray",
         ]
+
+
+def test_ray_installation_wheel() -> None:
+    install_ray_cmds = []
+
+    def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
+        install_ray_cmds.append(inputs)
+
+    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+        LinuxTesterContainer("team", build_type="wheel", python_version="3.10")
+        docker_image = f"{_DOCKER_ECR_REPO}:team"
+        cmd = install_ray_cmds[-1]
+        assert cmd[0:6] == [
+            "docker",
+            "build",
+            "--pull",
+            "--progress=plain",
+            "-t",
+            docker_image,
+        ]
+        # Verify BUILD_TYPE=wheel is passed
+        build_type_idx = cmd.index("BUILD_TYPE=wheel") - 1
+        assert cmd[build_type_idx] == "--build-arg"
+        # Verify RAY_CORE_IMAGE is passed (for dashboard/redis fallback)
+        assert any("RAY_CORE_IMAGE=" in arg for arg in cmd)
+        # Verify RAY_DASHBOARD_IMAGE is passed
+        assert any("RAY_DASHBOARD_IMAGE=" in arg for arg in cmd)
+        # Verify RAY_WHEEL_IMAGE is passed
+        assert any("RAY_WHEEL_IMAGE=" in arg for arg in cmd)
+        wheel_arg = [arg for arg in cmd if "RAY_WHEEL_IMAGE=" in arg][0]
+        assert "ray-wheel-py3.10" in wheel_arg
 
 
 def test_run_tests() -> None:

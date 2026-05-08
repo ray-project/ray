@@ -1,5 +1,5 @@
 [project]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 [tool.ruff]
 line-length = 88
@@ -37,6 +37,7 @@ ignore = [
     "B026",
     "B027",
     "B904",
+    "B905",
     "C419",
     # Below are auto-fixable rules
     "I001",
@@ -48,7 +49,7 @@ avoid-escape = false
 [tool.ruff.lint.isort]
 combine-as-imports = true
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder", "afterray"]
-known-local-folder = ["ray"]
+known-local-folder = ["ray", "ray_release"]
 known-third-party = ["grpc"]
 
 [tool.ruff.lint.isort.sections]
@@ -65,23 +66,7 @@ afterray = ["psutil", "setproctitle"]
 "python/ray/__init__.py" = ["I"]
 "python/ray/dag/__init__.py" = ["I"]
 "python/ray/air/__init__.py" = ["I"]
-# "rllib/__init__.py" = ["I"]
-# "rllib/benchmarks/*" = ["I"]
-# "rllib/connectors/*" = ["I"]
-# "rllib/evaluation/*" = ["I"]
-# "rllib/models/*" = ["I"]
-"rllib/utils/*" = ["I"]
-"rllib/algorithms/*" = ["I"]
-"rllib/core/*" = ["I"]
-# "rllib/examples/*" = ["I"]
-"rllib/offline/*" = ["I"]
-"rllib/tests/*" = ["I"]
-"rllib/callbacks/*" = ["I"]
-"rllib/env/*" = ["I"]
-# "rllib/execution/*" = ["I"]
-# "rllib/policy/*" = ["I"]
-# "rllib/tuned_examples/*" = ["I"]
-"release/*" = ["I"]
+"release/*_tests/*.py" = ["I"]
 
 # TODO(matthewdeng): Remove this line
 "python/ray/tune/__init__.py" = ["I"]

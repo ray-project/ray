@@ -113,7 +113,10 @@ class DifferentiableLearner(Checkpointable):
         # custom user-defined ones (e.g. custom loss values). When returning from an
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+        )
 
         # In case of offline learning and multiple learners, each learner receives a
         # repeatable iterator that iterates over a split of the streamed data.
@@ -331,8 +334,6 @@ class DifferentiableLearner(Checkpointable):
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
 
-        self.metrics.activate_tensor_mode()
-
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -367,12 +368,11 @@ class DifferentiableLearner(Checkpointable):
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
                 iteration + 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
                 iteration + 1,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -391,7 +391,6 @@ class DifferentiableLearner(Checkpointable):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         # self.after_gradient_based_update(timesteps=timesteps or {})
-        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
@@ -712,15 +711,15 @@ class DifferentiableLearner(Checkpointable):
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _reset(self):
-        self.metrics = MetricsLogger()
+        self.metrics = MetricsLogger(
+            stats_cls_lookup=self.config.stats_cls_lookup,
+            root=False,
+        )
         self._is_built = False
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
-        # Collect all module steps and add them for `ALL_MODULES` to avoid
-        # biasing the throughput by looping through modules.
-        total_module_steps = 0
         # Loop through all modules.
         for mid, module_batch in batch.policy_batches.items():
             # Log weights seq no for this batch.
@@ -741,40 +740,33 @@ class DifferentiableLearner(Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_TRAINED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
-                with_throughput=True,
+                reduce="lifetime_sum",
             )
-            total_module_steps += module_batch_size
-
-        # Log module steps (sum of all modules).
-        self.metrics.log_value(
-            key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
-            value=total_module_steps,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
-            value=total_module_steps,
-            reduce="sum",
-            with_throughput=True,
-        )
+            # Log module steps (sum of all modules).
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+            )
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="lifetime_sum",
+            )
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
             batch.env_steps(),
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
 

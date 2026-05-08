@@ -240,11 +240,14 @@ class Checkpointable(abc.ABC):
                 if _state_provided:
                     comp_state_ref = ray.put(state.pop(comp_name))
 
+                # If worker_addr == self_addr, save directly to the path
+                # provided by the user, make sure to use filesystem.
                 if worker_ip_addr == self_ip_addr:
                     comp.foreach_actor(
-                        lambda w, _path=comp_path, _state=comp_state_ref, _use_msgpack=use_msgpack: (  # noqa
+                        lambda w, _path=comp_path, _filesystem=filesystem, _state=comp_state_ref, _use_msgpack=use_msgpack: (  # noqa
                             w.save_to_path(
-                                _path,
+                                path=_path,
+                                filesystem=_filesystem,
                                 state=(
                                     ray.get(_state)
                                     if _state is not None
@@ -255,6 +258,7 @@ class Checkpointable(abc.ABC):
                         ),
                         remote_actor_ids=[actor_to_use],
                     )
+                # Transfer state files from the worker node to the head node
                 else:
                     # Save the checkpoint to the temporary directory on the worker.
                     def _save(w, _state=comp_state_ref, _use_msgpack=use_msgpack):
@@ -263,7 +267,7 @@ class Checkpointable(abc.ABC):
                         # Create a temporary directory on the worker.
                         tmpdir = tempfile.mkdtemp()
                         w.save_to_path(
-                            tmpdir,
+                            path=tmpdir,
                             state=(
                                 ray.get(_state) if _state is not None else w.get_state()
                             ),
@@ -304,7 +308,7 @@ class Checkpointable(abc.ABC):
                 # have to call its own `get_state()` anymore, but uses what's provided
                 # here.
                 comp.save_to_path(
-                    comp_path,
+                    path=comp_path,
                     filesystem=filesystem,
                     state=comp_state,
                     use_msgpack=use_msgpack,
@@ -387,7 +391,10 @@ class Checkpointable(abc.ABC):
         # Restore components of `self` that themselves are `Checkpointable`.
         orig_comp_names = {c[0] for c in self.get_checkpointable_components()}
         self._restore_all_subcomponents_from_path(
-            path, filesystem, component=component, **kwargs
+            path=path,
+            filesystem=filesystem,
+            component=component,
+            **kwargs,
         )
 
         # Restore the "base" state (not individual subcomponents).
@@ -410,7 +417,10 @@ class Checkpointable(abc.ABC):
             diff_comp_names = new_comp_names - orig_comp_names
             if diff_comp_names:
                 self._restore_all_subcomponents_from_path(
-                    path, filesystem, only_comp_names=diff_comp_names, **kwargs
+                    path=path,
+                    filesystem=filesystem,
+                    only_comp_names=diff_comp_names,
+                    **kwargs,
                 )
 
     @classmethod
@@ -668,7 +678,12 @@ class Checkpointable(abc.ABC):
                     # directly from the path otherwise sync the checkpoint from the head
                     # to the worker and load it from there.
                     if worker_node_ip == _head_ip:
-                        w.restore_from_path(_path, component=_comp_arg, **_kwargs)
+                        w.restore_from_path(
+                            path=_path,
+                            filesystem=filesystem,
+                            component=_comp_arg,
+                            **_kwargs,
+                        )
                     else:
                         with tempfile.TemporaryDirectory() as temp_dir:
                             sync_dir_between_nodes(

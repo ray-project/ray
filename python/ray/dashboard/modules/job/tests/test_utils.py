@@ -1,3 +1,4 @@
+import os
 import sys
 from tempfile import NamedTemporaryFile
 
@@ -5,6 +6,7 @@ import pytest
 
 from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
+    fast_tail_last_n_lines,
     file_tail_iterator,
     parse_and_validate_request,
     redact_url_password,
@@ -214,6 +216,87 @@ class TestIterLine:
 
         # Calls should continue returning None after file deleted.
         assert await anext(it) is None
+
+
+class TestFastTailLastNLines:
+    def test_nonexistent_path(self, tmp):
+        missing = tmp + ".missing"
+        assert not os.path.exists(missing)
+        with pytest.raises(FileNotFoundError):
+            fast_tail_last_n_lines(missing, num_lines=10, max_chars=1000)
+
+    def test_basic_last_n(self, tmp):
+        # Write 100 lines, check that we get the last 10 lines.
+        with open(tmp, "w") as f:
+            for i in range(100):
+                f.write(f"line-{i}\n")
+        out = fast_tail_last_n_lines(tmp, num_lines=10, max_chars=1000)
+        expected = "".join([f"line-{i}\n" for i in range(90, 100)])
+        assert out == expected
+
+    def test_truncate_max_chars(self, tmp):
+        # Construct a log file with two lines, each over max_chars,
+        # check that we truncate to max_chars.
+        with open(tmp, "w") as f:
+            f.write("x" * 5000 + "\n")
+            f.write("y" * 5000 + "\n")
+        out = fast_tail_last_n_lines(tmp, num_lines=2, max_chars=3000)
+        assert len(out) == 3000
+        # Check that we truncate to max_chars, and include the last line.
+        assert out.endswith("\n")
+
+    def test_partial_last_line(self, tmp):
+        # Write a log file with a partial last line, check that we include it.
+        with open(tmp, "w") as f:
+            f.write("a\n")
+            f.write("b\n")
+            f.write("partial_last_line")  # No newline at end
+        out = fast_tail_last_n_lines(tmp, num_lines=3, max_chars=1000)
+        assert out == "a\nb\npartial_last_line"
+
+    def test_small_block_size(self, tmp):
+        # Write 30 lines, check that we can read a small block size and get the last N lines.
+        with open(tmp, "w") as f:
+            for i in range(30):
+                f.write(f"{i}\n")
+        out = fast_tail_last_n_lines(tmp, num_lines=5, max_chars=1000, block_size=16)
+        expected = "".join([f"{i}\n" for i in range(25, 30)])
+        assert out == expected
+
+    def test_mixed_long_lines(self, tmp):
+        # Write a log file with a mix of short and long lines, check that we get the last N lines.
+        with open(tmp, "w") as f:
+            f.write("short-1\n")
+            f.write("short-2\n")
+            f.write("long-" + ("Z" * 10000) + "\n")
+            f.write("short-3\n")
+            f.write("short-4\n")
+        out = fast_tail_last_n_lines(tmp, num_lines=3, max_chars=20000)
+        # Check that we get the last 3 lines, including the long line.
+        assert out.splitlines()[-1] == "short-4"
+        assert out.splitlines()[-2] == "short-3"
+        assert out.splitlines()[-3].startswith("long-Z")
+
+    def test_sparse_large_file_tail_max_chars(self, tmp):
+        """Simulate ~8 GiB sparse file tail and verify max_chars=20000 truncation."""
+        size_8g = 8 * 1024 * 1024 * 1024
+        # Build tail of two extremely long lines
+        tail = "\n" + ("Q" * 25000 + "\n") + ("R" * 25000 + "\n")
+        tail_bytes = tail.encode("utf-8")
+
+        print("Start writing sparse file tail...")
+        # Create a sparse file: seek to near EOF then write only the tail.
+        with open(tmp, "wb") as f:
+            f.seek(size_8g - len(tail_bytes))
+            f.write(tail_bytes)
+            f.flush()
+
+        print("Finish writing sparse file tail.")
+        out = fast_tail_last_n_lines(tmp, num_lines=2, max_chars=20000)
+        print("Finish reading sparse file tail.")
+        assert len(out) == 20000
+        assert out.endswith("\n")
+        assert "R" * 100 in out  # sampling check for last line content
 
 
 if __name__ == "__main__":

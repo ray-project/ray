@@ -61,7 +61,7 @@ from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.examples.connectors.classes.euclidian_distance_based_curiosity import (
     EuclidianDistanceBasedCuriosity,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

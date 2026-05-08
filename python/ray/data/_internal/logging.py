@@ -1,7 +1,8 @@
 import logging
 import logging.config
 import os
-from typing import List, Optional
+import sys
+from typing import Callable, List, Optional
 
 import yaml
 
@@ -45,11 +46,6 @@ DEFAULT_CONFIG = {
     },
     "loggers": {
         "ray.data": {
-            "level": "DEBUG",
-            "handlers": ["file", "console"],
-            "propagate": False,
-        },
-        "ray.air.util.tensor_extensions": {
             "level": "DEBUG",
             "handlers": ["file", "console"],
             "propagate": False,
@@ -101,6 +97,19 @@ class HiddenRecordFilter:
         return not getattr(record, "hide", False)
 
 
+def get_log_directory() -> Optional[str]:
+    """Return the directory where Ray Data writes log files.
+
+    If Ray isn't initialized, this function returns ``None``.
+    """
+    global_node = ray._private.worker._global_node
+    if global_node is None:
+        return None
+
+    session_dir = global_node.get_session_dir_path()
+    return os.path.join(session_dir, "logs", "ray-data")
+
+
 class SessionFileHandler(logging.Handler):
     """A handler that writes to a log file in the Ray session directory.
 
@@ -110,11 +119,24 @@ class SessionFileHandler(logging.Handler):
     Args:
         filename: The name of the log file. The file is created in the 'logs' directory
             of the Ray session directory.
+        platform: The platform to use for the log file. Defaults to the value of
+            ``sys.platform``.
+        get_log_directory: A function that returns the directory where log files
+            should be written. Defaults to the module-level `get_log_directory`.
     """
 
-    def __init__(self, filename: str):
+    def __init__(
+        self,
+        filename: str,
+        *,
+        platform: str = sys.platform,
+        get_log_directory: Callable[[], Optional[str]] = get_log_directory,
+    ):
         super().__init__()
         self._filename = filename
+        self._platform = platform
+        self._get_log_directory = get_log_directory
+
         self._handler = None
         self._formatter = None
         self._path = None
@@ -125,22 +147,32 @@ class SessionFileHandler(logging.Handler):
         if self._handler is not None:
             self._handler.emit(record)
 
-    def setFormatter(self, fmt: logging.Formatter) -> None:
+    def setFormatter(self, fmt: Optional[logging.Formatter]) -> None:
         if self._handler is not None:
             self._handler.setFormatter(fmt)
         self._formatter = fmt
 
+    def close(self) -> None:
+        if self._handler is not None:
+            self._handler.close()
+            self._handler = None
+        super().close()
+
     def _try_create_handler(self):
         assert self._handler is None
 
-        log_directory = get_log_directory()
+        log_directory = self._get_log_directory()
         if log_directory is None:
             return
 
         os.makedirs(log_directory, exist_ok=True)
 
         self._path = os.path.join(log_directory, self._filename)
-        self._handler = logging.FileHandler(self._path)
+        # On Windows, defaulting to UTF-8 prevents UnicodeEncodeError when Ray Data
+        # logs non-cp1252 characters (e.g., checkmarks). Check
+        # https://github.com/ray-project/ray/issues/49527 for more details.
+        encoding = "utf-8" if self._platform == "win32" else None
+        self._handler = logging.FileHandler(self._path, encoding=encoding)
         if self._formatter is not None:
             self._handler.setFormatter(self._formatter)
 
@@ -324,19 +356,6 @@ def reset_logging() -> None:
     _ACTIVE_DATASET = None
 
 
-def get_log_directory() -> Optional[str]:
-    """Return the directory where Ray Data writes log files.
-
-    If Ray isn't initialized, this function returns ``None``.
-    """
-    global_node = ray._private.worker._global_node
-    if global_node is None:
-        return None
-
-    session_dir = global_node.get_session_dir_path()
-    return os.path.join(session_dir, "logs", "ray-data")
-
-
 def _get_default_formatter() -> logging.Formatter:
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     if log_encoding is not None and log_encoding.upper() == "JSON":
@@ -394,7 +413,7 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
     # regardless of whether it is active or inactive.
     local_logger = logging.getLogger(__name__)
     local_logger.addHandler(log_handler)
-    local_logger.info("Registered dataset logger for dataset %s", dataset_id)
+    local_logger.debug("Registered dataset logger for dataset %s", dataset_id)
 
     _DATASET_LOGGER_HANDLER[dataset_id] = log_handler
     if not _ACTIVE_DATASET:

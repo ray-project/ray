@@ -1,14 +1,15 @@
 import io
 import os
-import time
 import sys
-import requests
+import time
 from copy import deepcopy
 from typing import Optional
-from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 import boto3
+import requests
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 from botocore.exceptions import ClientError
+
 from ray_release.logger import logger
 from ray_release.util import DeferredEnvVar
 

@@ -30,7 +30,6 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "opencensus/stats/stats.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
@@ -326,8 +325,3 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

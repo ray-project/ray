@@ -34,6 +34,11 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
+
+namespace gcs {
+class GcsClient;
+}  // namespace gcs
+
 namespace core {
 
 // The task queues are keyed on resource shape & function descriptor
@@ -85,6 +90,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<RayletClientInterface> local_raylet_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
@@ -95,11 +101,12 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
-      boost::asio::steady_timer cancel_timer,
-      ray::observability::MetricInterface &scheduler_placement_time_s_histogram)
+      instrumented_io_context &io_service,
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
+        gcs_client_(std::move(gcs_client)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
@@ -110,11 +117,13 @@ class NormalTaskSubmitter {
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
-        cancel_retry_timer_(std::move(cancel_timer)),
-        scheduler_placement_time_s_histogram_(scheduler_placement_time_s_histogram) {}
+        io_service_(io_service),
+        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
+
+  void FlushMetrics() { scheduler_placement_time_ms_histogram_.Flush(); }
 
   /// Either remove a pending task or send an RPC to kill a running task
   ///
@@ -126,10 +135,10 @@ class NormalTaskSubmitter {
   /// It is used when a object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
-  void CancelRemoteTask(const ObjectID &object_id,
-                        const rpc::Address &worker_addr,
-                        bool force_kill,
-                        bool recursive);
+  void RequestOwnerToCancelTask(const ObjectID &object_id,
+                                const rpc::Address &worker_addr,
+                                bool force_kill,
+                                bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit
@@ -167,14 +176,6 @@ class NormalTaskSubmitter {
       const std::string &error_detail,
       bool worker_exiting,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Report worker backlog information to the local raylet
-  void ReportWorkerBacklogInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Report backlog if the backlog size is changed for this scheduling key
-  /// since last report
-  void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
@@ -244,6 +245,9 @@ class NormalTaskSubmitter {
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
+  /// GCS client for checking node liveness.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   /// Provider of worker leasing decisions for the first lease request (not on
   /// spillback).
   std::unique_ptr<LeasePolicyInterface> lease_policy_;
@@ -300,7 +304,7 @@ class NormalTaskSubmitter {
     // Keep track of pending worker lease requests to the raylet.
     absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
 
-    LeaseSpecification lease_spec;
+    std::optional<LeaseSpecification> lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue;
@@ -309,7 +313,6 @@ class NormalTaskSubmitter {
     absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
-    int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
@@ -359,13 +362,17 @@ class NormalTaskSubmitter {
   // should be retried or permanently failed.
   absl::flat_hash_set<TaskID> failed_tasks_pending_failure_cause_ ABSL_GUARDED_BY(mu_);
 
+  // True if the last backlog report sent to the raylet was non-empty.
+  // Used to ensure we send one final empty report to clear stale backlog.
+  bool last_backlog_report_nonempty_ = false;
+
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
-  boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
+  instrumented_io_context &io_service_;
 
-  ray::observability::MetricInterface &scheduler_placement_time_s_histogram_;
+  ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
 };
 
 }  // namespace core

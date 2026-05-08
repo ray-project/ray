@@ -29,10 +29,10 @@ Select the guide that matches your needs:
 
 Use individual libraries for ML workloads. Each library specializes in a specific part of the ML workflow, from data processing to model serving. Click on the dropdowns for your workload below.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Data Processing for AI Workloads
 :animate: fade-in-slide-down
 
-[Ray Data](data_quickstart) provides distributed data processing optimized for machine learning and AI workloads. It efficiently streams data through data pipelines.
+[Ray Data](data_quickstart) provides distributed data processing capabilities for AI workloads. It efficiently streams data through data pipelines.
 
 Here's an example of how to scale offline inference and training ingest with Ray Data.
 
@@ -59,7 +59,7 @@ def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     batch["petal area (cm^2)"] = length * width
     return batch
 
-transformed_ds = ds.map_batches(compute_area)
+transformed_ds = ds.map_batches(compute_area, batch_size="auto")
 
 # Iterate over batches of data.
 for batch in transformed_ds.iter_batches(batch_size=4):

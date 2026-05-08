@@ -48,7 +48,9 @@ class HTTPStatusCode(IntEnum):
     OK = 200
 
     # 4xx Client Errors
+    BAD_REQUEST = 400
     NOT_FOUND = 404
+    TOO_MANY_REQUESTS = 429
 
     # 5xx Server Errors
     INTERNAL_ERROR = 500

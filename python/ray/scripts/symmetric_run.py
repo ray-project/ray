@@ -9,8 +9,10 @@ from typing import List
 import click
 
 import ray
+from ray._common.network_utils import is_localhost
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
+from ray.exceptions import RpcError
 
 import psutil
 
@@ -50,9 +52,12 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
-        if gcs_client.check_alive([], timeout=1):
+        try:
+            gcs_client.check_alive([], timeout=1)
             click.echo("Ray cluster is ready!")
             return True
+        except RpcError:
+            pass
         time.sleep(5)
     return False
 
@@ -133,6 +138,10 @@ SEPARATOR REQUIREMENT:
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
+
+    if all_args and all_args[0] == "symmetric-run":
+        all_args = all_args[1:]
+
     try:
         separator = all_args.index("--")
     except ValueError:
@@ -186,7 +195,7 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     if min_nodes > 1:
         # Ban localhost ips if we are not running on a single node
         # to avoid starting N head nodes
-        my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
+        my_ips = [ip for ip in my_ips if not is_localhost(ip)]
 
     is_head = resolved_gcs_host in my_ips
 

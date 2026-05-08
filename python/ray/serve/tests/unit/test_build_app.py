@@ -2,9 +2,11 @@ import sys
 from typing import Any, Dict, List, Optional
 
 import pytest
+from fastapi import FastAPI
 
 from ray import serve
 from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle
@@ -478,6 +480,195 @@ def test_default_runtime_env():
         ],
         default_runtime_env=default_runtime_env,
     )
+
+
+def test_external_scaler_enabled():
+    """Test that external_scaler_enabled is correctly set in BuiltApplication.
+
+    This test verifies that when build_app is called with external_scaler_enabled=True
+    or external_scaler_enabled=False, the resulting BuiltApplication object correctly
+    stores the external_scaler_enabled value.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    app = D.bind()
+
+    # Test with external_scaler_enabled=True
+    built_app_with_scaler: BuiltApplication = build_app(
+        app,
+        name="app-with-scaler",
+        external_scaler_enabled=True,
+    )
+    assert built_app_with_scaler.external_scaler_enabled is True
+    assert built_app_with_scaler.name == "app-with-scaler"
+
+    # Test with external_scaler_enabled=False (explicit)
+    built_app_without_scaler: BuiltApplication = build_app(
+        app,
+        name="app-without-scaler",
+        external_scaler_enabled=False,
+    )
+    assert built_app_without_scaler.external_scaler_enabled is False
+    assert built_app_without_scaler.name == "app-without-scaler"
+
+    # Test with default value (should be False)
+    built_app_default: BuiltApplication = build_app(
+        app,
+        name="app-default",
+    )
+    assert built_app_default.external_scaler_enabled is False
+    assert built_app_default.name == "app-default"
+
+
+def test_ingress_name_got_modified():
+    """Test that the ingress deployment name is modified when there are name
+    collisions.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    app = D.bind(D.bind(D.bind()))
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    # The ingress deployment name should be modified to avoid collision.
+    assert built_app.ingress_deployment_name == "D_2"
+
+    # The ingress deployment should be the last one.
+    assert len(built_app.deployments) == 3
+    assert built_app.deployments[-1].name == "D_2"
+
+
+def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class Ingress:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=ingress_app)
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
+    assert set(built_app.deployment_handles) == {"Ingress"}
+    assert built_app.ingress_request_router_deployment is not None
+    assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
+
+
+def test_build_app_requires_ingress_request_router_to_be_single_deployment(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class Ingress:
+        pass
+
+    @serve.deployment
+    class RouterChild:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        def __init__(self, child):
+            self._child = child
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "`ingress_request_router` to build into exactly one standalone "
+            "deployment"
+        ),
+    ):
+        ingress_app = Ingress.bind()
+        app = ingress_app._with_ingress_request_router(
+            IngressRequestRouter.bind(RouterChild.bind())
+        )
+        build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+
+def test_build_app_rejects_ingress_request_router_in_main_app_graph(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, router):
+            self._router = router
+
+    ingress_request_router = IngressRequestRouter.bind()
+    ingress_app = Ingress.bind(ingress_request_router)
+    app = ingress_app._with_ingress_request_router(ingress_request_router)
+
+    with pytest.raises(
+        ValueError,
+        match="did not produce any new deployments",
+    ):
+        build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+
+def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class Ingress:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class IngressRequestRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=ingress_app)
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    client = object.__new__(ServeControllerClient)
+    client._check_ingress_deployments([built_app])
 
 
 if __name__ == "__main__":

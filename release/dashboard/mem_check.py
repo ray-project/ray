@@ -1,17 +1,16 @@
 import argparse
-import time
-import os
 import json
+import os
+import time
 
 import ray
-
 from ray._private.memory_monitor import MemoryMonitor, get_top_n_memory_usage
 from ray._private.test_utils import get_system_metric_for_component
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray.dashboard.modules.metrics.metrics_head import (
     DEFAULT_PROMETHEUS_HOST,
     PROMETHEUS_HOST_ENV_VAR,
 )
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 # Initialize ray to avoid autosuspend.
 addr = ray.init()

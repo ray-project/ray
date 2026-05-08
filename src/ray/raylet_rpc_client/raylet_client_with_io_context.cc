@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -48,8 +48,13 @@ RayletClientWithIoContext::RayletClientWithIoContext(const std::string &ip_addre
 }
 
 void RayletClientWithIoContext::GetWorkerPIDs(
-    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
   raylet_client_->GetWorkerPIDs(callback, timeout_ms);
+}
+
+void RayletClientWithIoContext::GetAgentPIDs(
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  raylet_client_->GetAgentPIDs(callback, timeout_ms);
 }
 
 }  // namespace rpc

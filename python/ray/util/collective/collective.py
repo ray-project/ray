@@ -2,19 +2,18 @@
 
 import logging
 import os
-import time
-from typing import List
+import socket
+import threading
+from typing import List, Tuple
 
 import numpy as np
 
 import ray
-import ray.experimental.internal_kv as _internal_kv
 from . import types
-from ray.experimental.collective.util import (
-    get_address_and_port as _get_address_and_port,
-)
-from ray.util.collective.collective_group.torch_gloo_collective_group import (
-    get_master_address_metadata_key as _get_master_addr_key,
+from ray._common.network_utils import find_free_port, is_ipv6
+from ray.util.collective.backend_registry import (
+    _global_registry,
+    register_collective_backend,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,54 +21,45 @@ logger = logging.getLogger(__name__)
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
-    _NCCL_AVAILABLE = True
-    _LOG_NCCL_WARNING = False
+    register_collective_backend("NCCL", NCCLGroup)
 except ImportError:
-    _NCCL_AVAILABLE = False
-    _LOG_NCCL_WARNING = True
-
+    pass
 
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
     )
 
-    _TORCH_DISTRIBUTED_AVAILABLE = True
+    register_collective_backend("GLOO", TorchGLOOGroup)
 except ImportError:
-    _TORCH_DISTRIBUTED_AVAILABLE = False
-
-try:
-    from ray.util.collective.collective_group.nixl_backend import NixlBackend
-
-    _NIXL_AVAILABLE = True
-except ImportError:
-    _NIXL_AVAILABLE = False
+    pass
 
 
 def nccl_available():
-    global _LOG_NCCL_WARNING
-    if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
-        logger.warning(
-            "NCCL seems unavailable. Please install Cupy "
-            "following the guide at: "
-            "https://docs.cupy.dev/en/stable/install.html."
-        )
-        _LOG_NCCL_WARNING = False
-    return _NCCL_AVAILABLE
+    return is_backend_available("NCCL")
 
 
 def gloo_available():
-    # Since we use torch_gloo as the backend for Gloo,
-    # we can just return the availability of torch.distributed.
-    return _TORCH_DISTRIBUTED_AVAILABLE
+    return is_backend_available("GLOO")
 
 
-def torch_distributed_available():
-    return _TORCH_DISTRIBUTED_AVAILABLE
+def is_backend_available(backend: str) -> bool:
+    """Check if a collective backend is available.
+
+    Args:
+        backend: The name of the backend to check (e.g., "NCCL", "GLOO").
+
+    Returns:
+        True if the backend is available, False otherwise.
+    """
+    return _global_registry.check(backend)
 
 
-def nixl_available():
-    return _NIXL_AVAILABLE
+def get_address_and_port() -> Tuple[str, int]:
+    """Returns the IP address and a free port on this node."""
+    addr = ray.util.get_node_ip_address()
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
+    return addr, port
 
 
 class GroupManager(object):
@@ -82,58 +72,33 @@ class GroupManager(object):
 
     def __init__(self):
         self._name_group_map = {}
-        self._group_name_map = {}
+        self._registry = _global_registry
 
     def create_collective_group(
-        self, backend, world_size, rank, group_name, gloo_timeout
+        self, backend, world_size, rank, group_name, gloo_timeout=None
     ):
         """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
         metadata as well.
         """
-        backend = types.Backend(backend)
-        if backend == types.Backend.MPI:
-            raise RuntimeError("Ray does not support MPI.")
-        elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
-            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
-            metadata_key = _get_master_addr_key(group_name)
-            if rank == 0:
-                addr, port = _get_address_and_port()
-                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
-            else:
-                # Wait until rank 0 publishes the metadata or timeout.
-                deadline_s = time.time() + (
-                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
-                )
-                while True:
-                    meta = _internal_kv._internal_kv_get(metadata_key)
-                    if meta is not None:
-                        break
-                    if time.time() > deadline_s:
-                        raise TimeoutError(
-                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
-                        )
-                    time.sleep(0.05)
+        backend = backend.upper()
+        backend_cls = self._registry.get(backend)
 
+        if not backend_cls.check_backend_availability():
+            raise RuntimeError(
+                f"Backend {backend} is not available. Please check the installation."
+            )
+
+        if backend == "GLOO":
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
-            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
-        elif backend == types.Backend.NCCL:
-            _check_backend_availability(backend)
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)
-        elif backend == types.Backend.NIXL:
-            _check_backend_availability(backend)
-            logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
-            g = NixlBackend()
+            g = backend_cls(world_size, rank, group_name, gloo_timeout)
         else:
-            raise RuntimeError(f"Unexpected backend: {backend}")
+            g = backend_cls(world_size, rank, group_name)
 
         self._name_group_map[group_name] = g
-        self._group_name_map[g] = group_name
-
         return self._name_group_map[group_name]
 
     def is_group_exist(self, group_name):
@@ -155,7 +120,6 @@ class GroupManager(object):
         # release the collective group resource
         g = self._name_group_map[group_name]
         # clean up the dicts
-        del self._group_name_map[g]
         del self._name_group_map[group_name]
         # Release the communicator resources
         g.destroy_group()
@@ -170,17 +134,22 @@ class GroupManager(object):
 
 
 _group_mgr = GroupManager()
+# This lock is used to make external calls to the _group_mgr thread-safe.
+_group_mgr_lock = threading.Lock()
 
 
 def is_group_initialized(group_name):
     """Check if the group is initialized in this process by the group name."""
-    return _group_mgr.is_group_exist(group_name)
+    global _group_mgr
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        return _group_mgr.is_group_exist(group_name)
 
 
 def init_collective_group(
     world_size: int,
     rank: int,
-    backend=types.Backend.NCCL,
+    backend: types.Backend = types.Backend.NCCL,
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -196,22 +165,24 @@ def init_collective_group(
         None
     """
     _check_inside_actor()
-    backend = types.Backend(backend)
-    _check_backend_availability(backend)
+
     global _group_mgr
+    global _group_mgr_lock
+
     # TODO(Hao): implement a group auto-counter.
     if not group_name:
         raise ValueError("group_name '{}' needs to be a string.".format(group_name))
 
-    if _group_mgr.is_group_exist(group_name):
-        raise RuntimeError("Trying to initialize a group twice.")
+    with _group_mgr_lock:
+        if _group_mgr.is_group_exist(group_name):
+            raise RuntimeError("Trying to initialize a group a second time.")
 
-    assert world_size > 0
-    assert rank >= 0
-    assert rank < world_size
-    _group_mgr.create_collective_group(
-        backend, world_size, rank, group_name, gloo_timeout
-    )
+        assert world_size > 0
+        assert rank >= 0
+        assert rank < world_size
+        _group_mgr.create_collective_group(
+            backend, world_size, rank, group_name, gloo_timeout
+        )
 
 
 def create_collective_group(
@@ -236,8 +207,6 @@ def create_collective_group(
     Returns:
         None
     """
-    backend = types.Backend(backend)
-    _check_backend_availability(backend)
 
     name = "info_" + group_name
     try:
@@ -268,6 +237,19 @@ def create_collective_group(
     if not all(ranks) < world_size:
         raise RuntimeError("Ranks cannot be greater than world_size.")
 
+    # Check if backend is registered and available
+    backend_upper = backend.upper()
+    if not _global_registry.is_registered(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is not registered. "
+            f"Please register it using register_collective_backend('{backend_upper}', YourBackendClass)."
+        )
+    if not _global_registry.check(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is registered but not available. "
+            f"Please check the installation requirements for this backend."
+        )
+
     # avoid a circular dependency
     from ray.util.collective.util import Info
 
@@ -284,7 +266,9 @@ def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     _check_inside_actor()
     global _group_mgr
-    _group_mgr.destroy_collective_group(group_name)
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        _group_mgr.destroy_collective_group(group_name)
 
 
 def get_rank(group_name: str = "default") -> int:
@@ -299,10 +283,14 @@ def get_rank(group_name: str = "default") -> int:
         not belong to the group.
     """
     _check_inside_actor()
-    if not is_group_initialized(group_name):
-        return -1
-    g = _group_mgr.get_group_by_name(group_name)
-    return g.rank
+
+    global _group_mgr
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name):
+            return -1
+        g = _group_mgr.get_group_by_name(group_name)
+        return g.rank
 
 
 def get_collective_group_size(group_name: str = "default") -> int:
@@ -316,10 +304,13 @@ def get_collective_group_size(group_name: str = "default") -> int:
             not exist or the process does not belong to the group.
     """
     _check_inside_actor()
-    if not is_group_initialized(group_name):
-        return -1
-    g = _group_mgr.get_group_by_name(group_name)
-    return g.world_size
+    global _group_mgr
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name):
+            return -1
+        g = _group_mgr.get_group_by_name(group_name)
+        return g.world_size
 
 
 def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
@@ -744,17 +735,13 @@ def get_group_handle(group_name: str = "default"):
     Returns:
         The collective group handle.
     """
-    if group_name != types.NIXL_GROUP_NAME:
-        _check_inside_actor()
+    _check_inside_actor()
     global _group_mgr
-    if not is_group_initialized(group_name):
-        # try loading from remote info store
-        try:
-            if group_name == types.NIXL_GROUP_NAME:
-                _group_mgr.create_collective_group(
-                    types.Backend.NIXL, None, None, group_name, None
-                )
-            else:
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name):
+            # try loading from remote info store
+            try:
                 # if the information is stored in an Info object,
                 # get and create the group.
                 name = "info_" + group_name
@@ -768,26 +755,26 @@ def get_group_handle(group_name: str = "default"):
                 _group_mgr.create_collective_group(
                     backend, world_size, r, group_name, gloo_timeout
                 )
-        except ValueError as exc:
-            # check if this group is initialized using options()
-            if (
-                "collective_group_name" in os.environ
-                and os.environ["collective_group_name"] == group_name
-            ):
-                rank = int(os.environ["collective_rank"])
-                world_size = int(os.environ["collective_world_size"])
-                backend = os.environ["collective_backend"]
-                gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
-                _group_mgr.create_collective_group(
-                    backend, world_size, rank, group_name, gloo_timeout
-                )
-            else:
-                raise RuntimeError(
-                    "The collective group '{}' is not "
-                    "initialized in the process.".format(group_name)
-                ) from exc
-    g = _group_mgr.get_group_by_name(group_name)
-    return g
+            except ValueError as exc:
+                # check if this group is initialized using options()
+                if (
+                    "collective_group_name" in os.environ
+                    and os.environ["collective_group_name"] == group_name
+                ):
+                    rank = int(os.environ["collective_rank"])
+                    world_size = int(os.environ["collective_world_size"])
+                    backend = os.environ["collective_backend"]
+                    gloo_timeout = int(os.getenv("collective_gloo_timeout", 30000))
+                    _group_mgr.create_collective_group(
+                        backend, world_size, rank, group_name, gloo_timeout
+                    )
+                else:
+                    raise RuntimeError(
+                        "The collective group '{}' is not "
+                        "initialized in the process.".format(group_name)
+                    ) from exc
+        g = _group_mgr.get_group_by_name(group_name)
+        return g
 
 
 def _check_single_tensor_input(tensor):
@@ -804,23 +791,6 @@ def _check_single_tensor_input(tensor):
         "Unrecognized tensor type '{}'. Supported types are: "
         "np.ndarray, torch.Tensor, cupy.ndarray.".format(type(tensor))
     )
-
-
-def _check_backend_availability(backend: types.Backend):
-    """Check whether the backend is available."""
-    if backend == types.Backend.GLOO:
-        # Now we have deprecated pygloo, and use torch_gloo in all cases.
-        if not torch_distributed_available():
-            raise RuntimeError("torch.distributed is not available.")
-    elif backend == types.Backend.NCCL:
-        if not nccl_available():
-            raise RuntimeError("NCCL is not available.")
-    elif backend == types.Backend.TORCH_GLOO:
-        if not torch_distributed_available():
-            raise RuntimeError("torch.distributed is not available.")
-    elif backend == types.Backend.NIXL:
-        if not nixl_available():
-            raise RuntimeError("NIXL is not available.")
 
 
 def _check_inside_actor():

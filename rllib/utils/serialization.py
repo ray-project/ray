@@ -27,7 +27,15 @@ def convert_numpy_to_python_primitives(obj: Any):
     Args:
         obj: The object to convert.
     """
-    if isinstance(obj, np.integer):
+    if isinstance(obj, dict):
+        return {
+            key: convert_numpy_to_python_primitives(val) for key, val in obj.items()
+        }
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_to_python_primitives(val) for val in obj)
+    elif isinstance(obj, list):
+        return [convert_numpy_to_python_primitives(val) for val in obj]
+    elif isinstance(obj, np.integer):
         return int(obj)
     elif isinstance(obj, np.floating):
         return float(obj)
@@ -194,7 +202,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     elif isinstance(space, FlexDict):
         return _flex_dict(space)
     else:
-        raise ValueError("Unknown space type for serialization, ", type(space))
+        raise ValueError(f"Unknown space type for serialization: {type(space)}")
 
 
 @DeveloperAPI
@@ -299,7 +307,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
 
     space_type = d["space"]
     if space_type not in space_map:
-        raise ValueError("Unknown space type for de-serialization, ", space_type)
+        raise ValueError(f"Unknown space type for de-serialization: {space_type}")
 
     return space_map[space_type](d)
 

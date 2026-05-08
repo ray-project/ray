@@ -21,7 +21,7 @@ class ConvergenceTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=False, num_cpus=1, num_gpus=0)
+        ray.init(num_cpus=1, num_gpus=0)
 
     @classmethod
     def tearDownClass(cls) -> None:

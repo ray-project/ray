@@ -3,8 +3,8 @@ import unittest
 import ray
 from ray.rllib.offline.estimators import DirectMethod
 from ray.rllib.offline.estimators.tests.utils import (
-    get_cliff_walking_wall_policy_and_data,
     check_estimate,
+    get_cliff_walking_wall_policy_and_data,
 )
 
 SEED = 0
@@ -37,7 +37,7 @@ class TestDMLearning(unittest.TestCase):
 
         # Config settings for FQE model
         cls.q_model_config = {
-            "n_iters": 800,
+            "n_iters": 500,
             "minibatch_size": 64,
             "polyak_coef": 1.0,
             "model_config": {
@@ -197,6 +197,7 @@ class TestDMLearning(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

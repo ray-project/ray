@@ -1,26 +1,27 @@
 import sys
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
 import pytest
 
 import ray
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
+from ray.data._internal.logical.operators import (
+    Filter,
+    FlatMap,
     FromArrow,
     FromItems,
     FromNumpy,
     FromPandas,
-)
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
     MapBatches,
     MapRows,
     Project,
@@ -43,7 +44,8 @@ def test_read_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     op = get_parquet_read_logical_op()
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "ReadParquet"
     assert isinstance(physical_op, MapOperator)
@@ -60,7 +62,10 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             return None
 
         def get_read_tasks(
-            self, parallelism: int, per_task_row_limit: Optional[int] = None
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
         ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
@@ -86,7 +91,7 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -98,11 +103,11 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
 
     # Test that split blocks prevents fusion.
     op = MapBatches(
-        op,
         lambda x: x,
+        input_dependencies=[op],
     )
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert physical_op.name == "MapBatches(<lambda>)"
@@ -125,7 +130,8 @@ def test_from_operators(ray_start_regular_shared_2_cpus):
         planner = create_planner()
         op = op_cls([], [])
         plan = LogicalPlan(op, ctx)
-        physical_op = planner.plan(plan).dag
+        physical_plan, _ = planner.plan(plan)
+        physical_op = physical_plan.dag
 
         assert op.name == op_cls.__name__
         assert isinstance(physical_op, InputDataBuffer)
@@ -142,7 +148,7 @@ def test_from_items_e2e(ray_start_regular_shared_2_cpus):
 
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromItems"
+    assert ds._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
 
 
@@ -184,8 +190,8 @@ def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
 
     for udf, expected_name in zip(udf_list, expected_names):
         op = MapRows(
-            get_parquet_read_logical_op(),
             udf,
+            input_dependencies=[get_parquet_read_logical_op()],
         )
         assert op.name == f"Map({expected_name})"
 
@@ -196,11 +202,12 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
@@ -214,7 +221,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
 def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
-    assert extract_values("id", ds.take_all()) == list(range(5)), ds
+    assert sorted(extract_values("id", ds.take_all())) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
@@ -224,11 +231,12 @@ def test_map_rows_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Map(<lambda>)"
     assert isinstance(physical_op, MapOperator)
@@ -251,11 +259,12 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
-        read_op,
         fn=lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Filter(<lambda>)"
     assert isinstance(physical_op, MapOperator)
@@ -281,12 +290,12 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     cols = ["sepal.length", "petal.width"]
     ds = ds.select_columns(cols)
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.exprs == [col("sepal.length"), col("petal.width")]
 
-    physical_plan = create_planner().plan(logical_plan)
+    physical_plan, _ = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -306,7 +315,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     cols_rename = {"sepal.length": "sepal_length", "petal.width": "pedal_width"}
     ds = ds.rename_columns(cols_rename)
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.exprs == [
@@ -314,7 +323,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
         col("sepal.length").alias("sepal_length"),
         col("petal.width").alias("pedal_width"),
     ]
-    physical_plan = create_planner().plan(logical_plan)
+    physical_plan, _ = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -327,11 +336,12 @@ def test_flat_map(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "FlatMap(<lambda>)"
     assert isinstance(physical_op, MapOperator)

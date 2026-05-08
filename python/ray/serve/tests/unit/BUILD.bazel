@@ -9,7 +9,7 @@ py_library(
 py_test_run_all_subdirectory(
     size = "small",
     include = glob(["test_*.py"]),
-    exclude = [],
+    exclude = ["test_haproxy_binary.py"],
     extra_srcs = [],
     tags = ["team:serve"],
     deps = [
@@ -21,16 +21,30 @@ py_test_run_all_subdirectory(
 
 py_test_module_list(
     size = "small",
+    files = ["test_haproxy_binary.py"],
+    tags = [
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
     timeout = "short",
     env = {
-        "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
         "test_deployment_scheduler.py",
         "test_deployment_state.py",
     ],
-    name_suffix = "_with_compact_scheduling",
+    name_suffix = "_with_pack_scheduling",
     tags = [
         "no_windows",
         "team:serve",

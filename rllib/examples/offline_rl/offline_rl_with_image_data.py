@@ -46,7 +46,9 @@ import numpy as np
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
-from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
+from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
+    DefaultBCTorchRLModule,
+)
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import DefaultModelConfig, RLModuleSpec
 from ray.rllib.examples.offline_rl.classes.image_offline_data import ImageOfflineData
@@ -79,7 +81,7 @@ module_spec = MultiRLModuleSpec(
                 conv_activation="relu",
             ),
             inference_only=False,
-            module_class=BCTorchRLModule,
+            module_class=DefaultBCTorchRLModule,
             catalog_class=BCCatalog,
             action_space=gym.spaces.Discrete(2),
             observation_space=gym.spaces.Box(0, 255, (32, 32, 3), np.float32),

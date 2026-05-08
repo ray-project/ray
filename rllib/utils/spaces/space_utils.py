@@ -3,8 +3,6 @@ from typing import Any, List, Optional, Union
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from gymnasium.core import ActType, ObsType
-from gymnasium.spaces import Dict, Tuple
 
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -71,55 +69,6 @@ def is_composite_space(space: gym.Space) -> bool:
 
 
 @DeveloperAPI
-def to_jsonable_if_needed(
-    sample: Union[ActType, ObsType], space: gym.Space
-) -> Union[ActType, ObsType, List]:
-    """Returns a jsonabled space sample, if the space is composite.
-
-    Checks, if the space is composite and converts the sample to a jsonable
-    struct in this case. Otherwise return the sample as is.
-
-    Args:
-        sample: Any action or observation type possible in `gymnasium`.
-        space: Any space defined in `gymnasium.spaces`.
-
-    Returns:
-        The `sample` as-is, if the `space` is composite, otherwise converts the
-        composite sample to a JSONable data type.
-    """
-
-    if is_composite_space(space):
-        return space.to_jsonable([sample])
-    else:
-        return sample
-
-
-@DeveloperAPI
-def from_jsonable_if_needed(
-    sample: Union[ActType, ObsType], space: gym.Space
-) -> Union[ActType, ObsType, List]:
-    """Returns a jsonabled space sample, if the space is composite.
-
-    Checks, if the space is composite and converts the sample to a JSONable
-    struct in this case. Otherwise return the sample as is.
-
-    Args:
-        sample: Any action or observation type possible in `gymnasium`, or a
-            JSONable data type.
-        space: Any space defined in `gymnasium.spaces`.
-
-    Returns:
-        The `sample` as-is, if the `space` is not composite, otherwise converts the
-        composite sample jsonable to an actual `space` sample..
-    """
-
-    if is_composite_space(space):
-        return space.from_jsonable(sample)[0]
-    else:
-        return sample
-
-
-@DeveloperAPI
 def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
@@ -137,10 +86,10 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
     def _helper_flatten(space_, return_list):
         from ray.rllib.utils.spaces.flexdict import FlexDict
 
-        if isinstance(space_, Tuple):
+        if isinstance(space_, gym.spaces.Tuple):
             for s in space_:
                 _helper_flatten(s, return_list)
-        elif isinstance(space_, (Dict, FlexDict)):
+        elif isinstance(space_, (gym.spaces.Dict, FlexDict)):
             for k in sorted(space_.spaces):
                 _helper_flatten(space_[k], return_list)
         else:
@@ -177,9 +126,9 @@ def get_base_struct_from_space(space):
     """
 
     def _helper_struct(space_):
-        if isinstance(space_, Tuple):
+        if isinstance(space_, gym.spaces.Tuple):
             return tuple(_helper_struct(s) for s in space_)
-        elif isinstance(space_, Dict):
+        elif isinstance(space_, gym.spaces.Dict):
             return {k: _helper_struct(space_[k]) for k in space_.spaces}
         else:
             return space_
@@ -247,7 +196,7 @@ def get_dummy_batch_for_space(
         elif isinstance(space, gym.spaces.MultiDiscrete):
             space = gym.spaces.Box(0.0, 1.0, (np.sum(space.nvec),), np.float32)
 
-    # Primivite spaces: Box, Discrete, MultiDiscrete.
+    # Primitive spaces: Box, Discrete, MultiDiscrete.
     # Random values: Use gym's sample() method.
     if fill_value == "random":
         if time_size is not None:
@@ -365,16 +314,50 @@ def batch(
     if not list_of_structs:
         raise ValueError("Input `list_of_structs` does not contain any items.")
 
+    first = list_of_structs[0]
+    # Nested structures (dict/tuple) require tree traversal; leaves do not.
+    is_nested = isinstance(first, (dict, tuple))
+
     # TODO (sven): Maybe replace this by a list-override (usage of which indicated
     #  this method that concatenate should be used (not stack)).
     if individual_items_already_have_batch_dim == "auto":
-        flat = tree.flatten(list_of_structs[0])
-        individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
+        if isinstance(first, BatchedNdArray):
+            individual_items_already_have_batch_dim = True
+        elif is_nested:
+            flat = tree.flatten(first)
+            individual_items_already_have_batch_dim = isinstance(
+                flat[0], BatchedNdArray
+            )
+        else:
+            individual_items_already_have_batch_dim = False
 
-    np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
-    ret = tree.map_structure(
-        lambda *s: np.ascontiguousarray(np_func(s, axis=0)), *list_of_structs
-    )
+    if individual_items_already_have_batch_dim:
+        if is_nested:
+            ret = tree.map_structure(
+                lambda *s: np.concatenate(s, axis=0), *list_of_structs
+            )
+        else:
+            # Fast path: simple numpy arrays or scalars — no tree traversal needed.
+            ret = np.concatenate(list_of_structs, axis=0)
+    else:
+        n = len(list_of_structs)
+
+        def fast_stack(*s):
+            # NOTE (Artur): This is a faster version of np.stack as per my benchmarks.
+            s0 = s[0]
+            if not isinstance(s0, np.ndarray):
+                return np.array(s)
+            out = np.empty((n, *s0.shape), dtype=s0.dtype)
+            for i in range(n):
+                out[i] = s[i]
+            return out
+
+        if is_nested:
+            ret = tree.map_structure(fast_stack, *list_of_structs)
+        else:
+            # Fast path: simple numpy arrays or scalars — no tree traversal needed.
+            ret = fast_stack(*list_of_structs)
+
     return ret
 
 
@@ -552,11 +535,11 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
                 elem = elem.astype(s.dtype)
 
         # Gymnasium now uses np.int_64 as the dtype of a Discrete action space
-        elif isinstance(s, int) or isinstance(s, np.int_):
+        elif isinstance(s, int) or isinstance(s, np.intp):
             if isinstance(elem, float) and elem.is_integer():
                 elem = int(elem)
             # Note: This does not check if the float element is actually an integer
-            if isinstance(elem, np.float_):
+            if isinstance(elem, np.floating):
                 elem = np.int64(elem)
 
         return elem

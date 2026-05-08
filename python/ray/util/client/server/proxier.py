@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from itertools import chain
 from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse, urlunparse
 
 import grpc
 
@@ -18,15 +19,31 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
-from ray._common.network_utils import build_address, is_ipv6, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_ipv6,
+    is_localhost,
+)
+from ray._common.tls_utils import add_port_to_grpc_server
+from ray._common.utils import env_integer
+from ray._private.authentication.http_token_authentication import (
+    format_authentication_http_error,
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.services import ProcessInfo, start_ray_client_server
-from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.services import (
+    ProcessInfo,
+    get_node_with_retry,
+    start_ray_client_server,
+)
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
 from ray.cloudpickle.compat import pickle
+from ray.exceptions import AuthenticationError
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -47,7 +64,7 @@ CHECK_PROCESS_INTERVAL_S = 30
 MIN_SPECIFIC_SERVER_PORT = 23000
 MAX_SPECIFIC_SERVER_PORT = 24000
 
-CHECK_CHANNEL_TIMEOUT_S = 30
+CHECK_CHANNEL_TIMEOUT_S = env_integer("RAY_CLIENT_SERVER_CHECK_CHANNEL_TIMEOUT_S", 30)
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2
@@ -116,7 +133,7 @@ class ProxyManager:
         session_dir: Optional[str] = None,
         redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
-        runtime_env_agent_port: int = 0,
+        node_id: Optional[str] = None,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
@@ -126,6 +143,22 @@ class ProxyManager:
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
         )
+
+        if runtime_env_agent_address:
+            parsed = urlparse(runtime_env_agent_address)
+            # runtime env agent self-assigns a free port, fetch it from GCS
+            if parsed.port is None or parsed.port == 0:
+                if node_id is None:
+                    raise ValueError(
+                        "node_id is required when runtime_env_agent_address "
+                        "has no port specified"
+                    )
+                node_info = get_node_with_retry(address, node_id)
+                runtime_env_agent_address = urlunparse(
+                    parsed._replace(
+                        netloc=f"{parsed.hostname}:{node_info['runtime_env_agent_port']}"
+                    )
+                )
 
         self._runtime_env_agent_address = runtime_env_agent_address
 
@@ -198,7 +231,7 @@ class ProxyManager:
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
 
-            host = "127.0.0.1"
+            host = get_localhost_ip()
             port = self._get_unused_port(
                 socket.AF_INET6 if is_ipv6(host) else socket.AF_INET
             )
@@ -206,7 +239,7 @@ class ProxyManager:
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
-                channel=ray._private.utils.init_grpc_channel(
+                channel=init_grpc_channel(
                     build_address(host, port), options=GRPC_OPTIONS
                 ),
             )
@@ -251,8 +284,11 @@ class ProxyManager:
                     self._runtime_env_agent_address, "/get_or_create_runtime_env"
                 )
                 data = create_env_request.SerializeToString()
-                req = urllib.request.Request(url, data=data, method="POST")
-                req.add_header("Content-Type", "application/octet-stream")
+                headers = {"Content-Type": "application/octet-stream"}
+                headers.update(**get_auth_headers_if_auth_enabled(headers))
+                req = urllib.request.Request(
+                    url, data=data, method="POST", headers=headers
+                )
                 response = urllib.request.urlopen(req, timeout=None)
                 response_data = response.read()
                 r = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply()
@@ -270,6 +306,25 @@ class ProxyManager:
                     )
                 else:
                     assert False, f"Unknown status: {r.status}."
+            except urllib.error.HTTPError as e:
+                body = ""
+                try:
+                    body = e.read().decode("utf-8", "ignore")
+                except Exception:
+                    body = e.reason if hasattr(e, "reason") else str(e)
+
+                formatted_error = format_authentication_http_error(e.code, body or "")
+                if formatted_error:
+                    raise AuthenticationError(formatted_error) from e
+
+                # Treat non-auth HTTP errors like URLError (retry with backoff)
+                last_exception = e
+                logger.warning(
+                    f"GetOrCreateRuntimeEnv request failed with HTTP {e.code}: {body or e}. "
+                    f"Retrying after {wait_time_s}s. "
+                    f"{max_retries-retries} retries remaining."
+                )
+
             except urllib.error.URLError as e:
                 last_exception = e
                 logger.warning(
@@ -315,7 +370,7 @@ class ProxyManager:
 
         proc = start_ray_client_server(
             self.address,
-            "127.0.0.1",
+            get_localhost_ip(),
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
@@ -839,6 +894,7 @@ def serve_proxier(
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
     runtime_env_agent_address: Optional[str] = None,
+    node_id: Optional[str] = None,
 ):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
@@ -848,9 +904,13 @@ def serve_proxier(
         gcs_cli = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+    from ray._private.grpc_utils import create_grpc_server_with_interceptors
+
+    server = create_grpc_server_with_interceptors(
+        max_workers=CLIENT_SERVER_MAX_THREADS,
+        thread_name_prefix="ray_client_proxier",
         options=GRPC_OPTIONS,
+        asynchronous=False,
     )
     proxy_manager = ProxyManager(
         gcs_address,
@@ -858,6 +918,7 @@ def serve_proxier(
         redis_username=redis_username,
         redis_password=redis_password,
         runtime_env_agent_address=runtime_env_agent_address,
+        node_id=node_id,
     )
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
@@ -866,8 +927,8 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, f"{host}:{port}")
+        add_port_to_grpc_server(server, build_address(get_localhost_ip(), port))
+    add_port_to_grpc_server(server, build_address(host, port))
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,

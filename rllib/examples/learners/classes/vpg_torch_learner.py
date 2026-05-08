@@ -54,7 +54,6 @@ class VPGTorchLearner(TorchLearner):
                 key=(module_id, f"action_{act}_return_to_go_mean"),
                 value=ret_to_go,
                 reduce="mean",
-                clear_on_reduce=True,
             )
 
         return loss

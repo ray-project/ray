@@ -24,12 +24,11 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_ray_event_converter.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {

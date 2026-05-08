@@ -1,5 +1,5 @@
-import copy
 from collections import deque
+from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
@@ -37,7 +37,7 @@ class LimitOperator(OneToOneOperator):
         return self._consumed_rows >= self._limit
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert input_index == 0, input_index
         if self._limit_reached():
             return
@@ -57,9 +57,11 @@ class LimitOperator(OneToOneOperator):
                     block = BlockAccessor.for_block(block).slice(
                         0, num_rows, copy=False
                     )
-                    metadata = copy.deepcopy(metadata)
-                    metadata.num_rows = num_rows
-                    metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
+                    metadata = replace(
+                        metadata,
+                        num_rows=num_rows,
+                        size_bytes=BlockAccessor.for_block(block).size_bytes(),
+                    )
                     return block, metadata
 
                 block, metadata_ref = cached_remote_fn(
@@ -117,7 +119,7 @@ class LimitOperator(OneToOneOperator):
     def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
-        if self._execution_finished:
+        if self.has_execution_finished():
             return self._cur_output_bundles
         return self._estimated_num_output_bundles
 
@@ -130,7 +132,4 @@ class LimitOperator(OneToOneOperator):
         return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
-        return True
-
-    def implements_accurate_memory_accounting(self) -> bool:
         return True

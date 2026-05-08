@@ -41,8 +41,11 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   /**
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
-      : mount_file_path_(std::move(mount_file_path)) {}
+  explicit SysFsCgroupDriver(
+      std::string mount_file_path = MOUNTED,
+      std::string fallback_mount_file_path = kFallbackMountsFilePath)
+      : mount_file_path_(std::move(mount_file_path)),
+        fallback_mount_file_path_(fallback_mount_file_path) {}
 
   ~SysFsCgroupDriver() override = default;
   SysFsCgroupDriver(const SysFsCgroupDriver &other) = delete;
@@ -168,7 +171,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
   /**
     Reads the cgroup.procs of "from" and writes them out to the given file.
-    The cgroup.procs file is newline seperated. The current user must have
+    The cgroup.procs file is newline separated. The current user must have
     read-write permissions to both cgroup.procs file as well as the common ancestor
     of the source and destination cgroups.
 
@@ -273,6 +276,19 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
    */
   Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid) override;
 
+  /**
+    Gets the constraint value within a specific cgroup for a given constraint name.
+
+    @param cgroup_path the path to the cgroup to get the constraint value from.
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint file cannot be read.
+    @return Status::InvalidArgument if the cgroup or constraint does not exist.
+  */
+  StatusOr<std::string> GetConstraintValue(const std::string &cgroup_path,
+                                           const std::string &constraint_name) override;
+
  private:
   /**
     @param controller_file_path the absolute path of the controller file to read which is
@@ -286,10 +302,12 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
   // Used for unit testing through the constructor.
   std::string mount_file_path_;
+  std::string fallback_mount_file_path_;
 
   static constexpr std::string_view kCgroupProcsFilename = "cgroup.procs";
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
+  static inline std::string kFallbackMountsFilePath = "/proc/mounts";
 };
 }  // namespace ray

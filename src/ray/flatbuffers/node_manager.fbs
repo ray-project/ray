@@ -40,8 +40,6 @@ enum MessageType:int {
   DisconnectClientReply,
   // Request the Raylet to pull a set of objects to the local node.
   AsyncGetObjectsRequest,
-  // Reply contains the request id that will be used to clean up the request.
-  AsyncGetObjectsReply,
   // Cleanup a given get request on the raylet.
   CancelGetRequest,
   // Notify the current worker is blocked for objects to become available. The raylet
@@ -85,9 +83,6 @@ table RegisterClientRequest {
   worker_type: int;
   worker_id: string;
   worker_pid: long;
-  // The startup token of the process assigned to
-  // it during startup as a command line argument.
-  startup_token: long;
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
   // The hash of the runtime env for this worker.
@@ -134,10 +129,7 @@ table AsyncGetObjectsRequest {
   // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
   owner_addresses: [Address];
-}
-
-table AsyncGetObjectsReply {
-  request_id: long;
+  get_request_id: long;
 }
 
 table CancelGetRequest {

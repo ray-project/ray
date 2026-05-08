@@ -147,6 +147,12 @@ class TrainLoopRunner:
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(f"Skipping {self._num_batches_to_skip} batches...")
 
+            # Zero before the skip loop drives the wrapper, which would
+            # otherwise double-count against the value restored from the
+            # checkpoint. After the skip, _train_batch_idx is rebuilt to
+            # _num_batches_to_skip — matching the restored value.
+            self._train_batch_idx = 0
+
             for _ in range(self._num_batches_to_skip):
                 with self._metrics["train/iter_skip_batch"].timer():
                     next(train_dataloader)
@@ -155,6 +161,8 @@ class TrainLoopRunner:
             with self._metrics["train/step"].timer():
                 if not self.benchmark_config.skip_train_step:
                     self._train_step(batch)
+                if self.benchmark_config.train_step_sleep_s > 0:
+                    time.sleep(self.benchmark_config.train_step_sleep_s)
 
             # TODO: This is slightly off if the last batch is a partial batch (if drop_last=False)
             global_batch_size = (
@@ -174,6 +182,12 @@ class TrainLoopRunner:
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
+
+            if (
+                self.benchmark_config.max_train_batches > 0
+                and self._train_batch_idx >= self.benchmark_config.max_train_batches
+            ):
+                break
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
@@ -343,8 +357,8 @@ class TrainLoopRunner:
         train_time = (
             metrics["train/dataset_creation_time"]
             + self._metrics["train/step"].get()
-            # Exclude the time it takes to get the first batch.
-            # + self._metrics["train/iter_first_batch"].get()
+            # Include the time it takes to get the first batch.
+            + self._metrics["train/iter_first_batch"].get()
             + self._metrics["train/iter_batch"].get()
         )
         if train_time > 0:
@@ -355,8 +369,8 @@ class TrainLoopRunner:
         validation_time = (
             metrics["validation/dataset_creation_time"]
             + self._metrics["validation/step"].get()
-            # Exclude the time it takes to get the first batch.
-            # + self._metrics["validation/iter_first_batch"].get()
+            # Include the time it takes to get the first batch.
+            + self._metrics["validation/iter_first_batch"].get()
             + self._metrics["validation/iter_batch"].get()
         )
         if validation_time > 0:

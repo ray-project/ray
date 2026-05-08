@@ -15,7 +15,7 @@ ray_cc_library(
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/rpc:rpc_callback_types",
@@ -33,6 +33,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/rpc:rpc_callback_types",
+        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -41,7 +42,7 @@ ray_cc_library(
     srcs = ["subscriber.cc"],
     hdrs = ["subscriber.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:rpc_callback_types",
@@ -67,7 +68,6 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":publisher_interface",
-        "//src/ray/common:asio",
     ],
 )
 
@@ -87,8 +87,8 @@ ray_cc_library(
     hdrs = ["gcs_subscriber.h"],
     deps = [
         ":subscriber_interface",
-        "//src/ray/common:gcs_callback_types",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 

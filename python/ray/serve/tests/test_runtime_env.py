@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

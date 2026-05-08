@@ -72,7 +72,15 @@ export const ExpandableTableRow = ({
             size="large"
           >
             {length}
-            {isExpanded ? <KeyboardArrowDown /> : <KeyboardArrowRight />}
+            {isExpanded ? (
+              <KeyboardArrowDown
+                sx={(theme) => ({ color: theme.palette.text.secondary })}
+              />
+            ) : (
+              <KeyboardArrowRight
+                sx={(theme) => ({ color: theme.palette.text.secondary })}
+              />
+            )}
           </IconButton>
         </TableCell>
         {children}

@@ -132,7 +132,10 @@ const LogLineDetailDialog = ({
               <Box
                 sx={(theme) => ({
                   padding: 1,
-                  bgcolor: "#EEEEEE",
+                  bgcolor:
+                    theme.palette.mode === "dark"
+                      ? theme.palette.grey[900]
+                      : theme.palette.grey[200],
                   borderRadius: 1,
                   border: `1px solid ${theme.palette.divider}`,
                   marginBottom: 2,
@@ -164,7 +167,10 @@ const LogLineDetailDialog = ({
           <Box
             sx={(theme) => ({
               padding: 1,
-              bgcolor: "#EEEEEE",
+              bgcolor:
+                theme.palette.mode === "dark"
+                  ? theme.palette.grey[900]
+                  : theme.palette.grey[200],
               borderRadius: 1,
               border: `1px solid ${theme.palette.divider}`,
             })}
@@ -251,27 +257,58 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       <Box
         key={`${index}list`}
         style={style}
-        sx={{
+        sx={(theme) => ({
+          // Explicitly create a stacking context so that the ::after pseudo-element
+          // with z-index: -1 stays behind the text but in front of the list background.
+          zIndex: 0,
           overflowX: "visible",
           whiteSpace: "nowrap",
+          // Reveal the hidden button on row hover using a CSS-only selector.
+          // This avoids React state changes on every mouse move, keeping
+          // scroll and render performance smooth for large log files.
+          "&:hover .log-line-details-btn": {
+            opacity: 1,
+            pointerEvents: "auto",
+          },
+          // Expand the row hover area to cover blank viewport space when
+          // the log panel is horizontally scrolled.
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            right: "calc(-1 * var(--log-view-scroll-left, 0px))",
+            width: "var(--log-view-scroll-left, 0px)",
+            height: "100%",
+            zIndex: -1,
+          },
           "&::before": {
             content: `"${i + 1}"`,
             marginRight: 0.5,
             width: `${logs.length}`.length * 6 + 4,
-            color: "#999",
+            color: theme.palette.text.disabled,
             display: "inline-block",
           },
-        }}
-        onClick={() => {
-          if ((window.getSelection()?.toString().length ?? 0) === 0) {
-            // Only open if user is not selecting text
-            handleLogLineClick(formattedLogLine, message);
-          }
-        }}
+        })}
       >
         {lowlight
           .highlight(language, message)
           .children.map((v) => value2react(v, index.toString(), keywords))}
+        {/* Only render the button for structured (JSON) log lines.
+            Plain text lines have no additional data to show in the dialog. */}
+
+        {formattedLogLine !== null && (
+          <button
+            className="log-line-details-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              if ((window.getSelection()?.toString().length ?? 0) === 0) {
+                handleLogLineClick(formattedLogLine, message);
+              }
+            }}
+          >
+            Show details
+          </button>
+        )}
         <br />
       </Box>
     );
@@ -320,8 +357,19 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   useEffect(() => {
     let outterCurrentValue: any = null;
     if (outter.current) {
+      outter.current.style.setProperty("--log-view-scroll-left", "0px");
+
       const scrollFunc = (event: any) => {
         const { target } = event;
+        if (target) {
+          const scrollLeft = `${target.scrollLeft ?? 0}px`;
+          if (
+            target.style.getPropertyValue("--log-view-scroll-left") !==
+            scrollLeft
+          ) {
+            target.style.setProperty("--log-view-scroll-left", scrollLeft);
+          }
+        }
         if (
           target &&
           target.scrollTop + target.clientHeight === target.scrollHeight

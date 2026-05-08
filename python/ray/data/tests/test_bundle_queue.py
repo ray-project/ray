@@ -30,24 +30,30 @@ def test_get_next():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
-    bundle2 = _create_bundle("test2")
+    bundle2 = _create_bundle("test11")
     queue.add(bundle2)
 
     popped_bundle = queue.get_next()
     assert popped_bundle is bundle1
     assert len(queue) == 1
+    assert queue.num_blocks() == 1
+    assert queue.num_rows() == 1
+    assert queue.estimate_size_bytes() == bundle2.size_bytes()
 
 
 def test_peek_next():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
-    bundle2 = _create_bundle("test2")
+    bundle2 = _create_bundle("test11")
     queue.add(bundle2)
 
     peeked_bundle = queue.peek_next()
     assert peeked_bundle is bundle1
     assert len(queue) == 2  # Length should remain unchanged
+    assert queue.num_blocks() == 2
+    assert queue.num_rows() == 2
+    assert queue.estimate_size_bytes() == bundle1.size_bytes() + bundle2.size_bytes()
 
 
 def test_get_next_empty_queue():
@@ -58,28 +64,37 @@ def test_get_next_empty_queue():
 
 def test_get_next_does_not_leak_objects():
     queue = create_bundle_queue()
-    bundle1 = _create_bundle("test1")
+    bundle1 = _create_bundle("test11")
     queue.add(bundle1)
     queue.get_next()
-    assert queue.is_empty()
+    assert len(queue) == 0
+    assert queue.estimate_size_bytes() == 0
+    assert queue.num_rows() == 0
+    assert queue.num_blocks() == 0
 
 
 def test_peek_next_empty_queue():
     queue = create_bundle_queue()
     assert queue.peek_next() is None
-    assert queue.is_empty()
+    assert len(queue) == 0
+    assert queue.num_blocks() == 0
+    assert queue.estimate_size_bytes() == 0
+    assert queue.num_rows() == 0
 
 
 def test_remove():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
-    bundle2 = _create_bundle("test2")
+    bundle2 = _create_bundle("test11")
     queue.add(bundle1)
     queue.add(bundle2)
 
     queue.remove(bundle1)
     assert len(queue) == 1
+    assert queue.num_blocks() == 1
     assert queue.peek_next() is bundle2
+    assert queue.estimate_size_bytes() == bundle2.size_bytes()
+    assert queue.num_rows() == bundle2.num_rows()
 
 
 def test_remove_does_not_leak_objects():
@@ -87,40 +102,41 @@ def test_remove_does_not_leak_objects():
     bundle1 = _create_bundle("test1")
     queue.add(bundle1)
     queue.remove(bundle1)
-    assert queue.is_empty()
+    assert len(queue) == 0
+    assert queue.num_blocks() == 0
+    assert queue.estimate_size_bytes() == 0
+    assert queue.num_rows() == 0
 
 
 def test_add_and_remove_duplicates():
     queue = create_bundle_queue()
     bundle1 = _create_bundle("test1")
-    bundle2 = _create_bundle("test2")
+    bundle2 = _create_bundle("test11")
     queue.add(bundle1)
     queue.add(bundle2)
     queue.add(bundle1)
 
     assert len(queue) == 3
+    assert queue.num_rows() == 3
+    assert queue.num_blocks() == 3
     queue.remove(bundle1)
     assert len(queue) == 2
+
+    assert queue.estimate_size_bytes() == bundle1.size_bytes() + bundle2.size_bytes()
+    assert queue.num_rows() == 2
+    assert queue.num_blocks() == 2
     assert queue.peek_next() is bundle2
 
 
 def test_clear():
     queue = create_bundle_queue()
     queue.add(_create_bundle("test1"))
-    queue.add(_create_bundle("test2"))
+    queue.add(_create_bundle("test11"))
     queue.clear()
     assert len(queue) == 0
     assert queue.estimate_size_bytes() == 0
-    assert queue.is_empty()
-
-
-def test_estimate_size_bytes():
-    queue = create_bundle_queue()
-    bundle1 = _create_bundle("test1")
-    bundle2 = _create_bundle("test2")
-    queue.add(bundle1)
-    queue.add(bundle2)
-    assert queue.estimate_size_bytes() == bundle1.size_bytes() + bundle2.size_bytes()
+    assert queue.num_blocks() == 0
+    assert queue.num_rows() == 0
 
 
 # CVGA-end

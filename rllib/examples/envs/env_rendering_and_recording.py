@@ -62,16 +62,15 @@ from typing import Optional, Sequence
 import gymnasium as gym
 import numpy as np
 
-from ray import tune
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.utils.images import resize
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.images import resize
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=20.0)
@@ -222,12 +221,11 @@ class EnvRenderCallback(RLlibCallback):
                 # Do not reduce the videos (across the various parallel EnvRunners).
                 # This would not make sense (mean over the pixels?). Instead, we want to
                 # log all best videos of all EnvRunners per iteration.
-                reduce=None,
+                reduce="item_series",
                 # B/c we do NOT reduce over the video data (mean/min/max), we need to
                 # make sure the list of videos in our MetricsLogger does not grow
                 # infinitely and gets cleared after each `reduce()` operation, meaning
                 # every time, the EnvRunner is asked to send its logged metrics.
-                clear_on_reduce=True,
             )
             self.best_episode_and_return = (None, float("-inf"))
         # Worst video.
@@ -236,8 +234,7 @@ class EnvRenderCallback(RLlibCallback):
                 "episode_videos_worst",
                 self.worst_episode_and_return[0],
                 # Same logging options as above.
-                reduce=None,
-                clear_on_reduce=True,
+                reduce="item_series",
             )
             self.worst_episode_and_return = (None, float("inf"))
 
@@ -271,9 +268,6 @@ if __name__ == "__main__":
         # and worst per sampling cycle per EnvRunner) and then logged via the
         # `MetricsLogger` API.
         .callbacks(EnvRenderCallback)
-        # Switch off RLlib's logging to avoid having the large videos show up in any log
-        # files.
-        .debugging(logger_config={"type": tune.logger.NoopLogger})
         # The following settings are beneficial for Atari-type environments. Feel free
         # to adjust these when providing a non-Atari `--env` option.
         .training(

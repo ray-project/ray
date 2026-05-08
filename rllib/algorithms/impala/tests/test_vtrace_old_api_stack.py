@@ -20,9 +20,10 @@ Importance Weighted Actor-Learner Architectures"
 by Espeholt, Soyer, Munos et al.
 """
 
-from gymnasium.spaces import Box
-import numpy as np
 import unittest
+
+import numpy as np
+from gymnasium.spaces import Box
 
 from ray.rllib.algorithms.impala import vtrace_torch as vtrace_torch
 from ray.rllib.utils.framework import try_import_torch
@@ -282,7 +283,8 @@ class VtraceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

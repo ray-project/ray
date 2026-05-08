@@ -62,6 +62,15 @@ TEST(SysFsCgroupDriverTest,
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriverTest,
+     CheckCgroupv2EnabledSucceedsIfMountFileNotFoundButFallbackFileIsCorrect) {
+  TempFile temp_fallback_mount_file;
+  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
+  SysFsCgroupDriver driver("/does/not/exist", temp_fallback_mount_file.GetPath());
+  Status s = driver.CheckCgroupv2Enabled();
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledSucceedsIfOnlyCgroupv2Mounted) {
   TempFile temp_mount_file;
   temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
@@ -144,6 +153,33 @@ TEST(SysFsCgroupDriver, AddConstraintFailsIfNotCgroupv2Path) {
   SysFsCgroupDriver driver;
   Status s = driver.AddConstraint(temp_dir->GetPath(), "memory.min", "1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, GetConstraintValueFailsIfConstraintDoesNotExist) {
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  StatusOr<std::string> result =
+      driver.GetConstraintValue(temp_dir->GetPath(), "cpu.weight");
+  ASSERT_TRUE(result.IsInvalidArgument()) << result.ToString();
+}
+
+TEST(SysFsCgroupDriver, GetConstraintValueSucceedsIfConstraintExists) {
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+
+  std::filesystem::path constraint_file_path =
+      std::filesystem::path(temp_dir->GetPath()) / "cpu.weight";
+  TempFile constraint_file(constraint_file_path);
+  constraint_file.AppendLine("100");
+
+  SysFsCgroupDriver driver;
+  StatusOr<std::string> result =
+      driver.GetConstraintValue(temp_dir->GetPath(), "cpu.weight");
+  ASSERT_TRUE(result.ok()) << result.ToString();
+  EXPECT_EQ(result.value(), "100");
 }
 
 };  // namespace ray

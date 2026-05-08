@@ -19,12 +19,12 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/gcs/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_job_manager.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
@@ -39,6 +39,7 @@
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -67,9 +68,13 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
-                  config.node_ip_address == "127.0.0.1",
+                  IsLocalhost(config.node_ip_address),
                   config.grpc_server_thread_num,
-                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
+                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
+                  /*auth_token=*/nullptr,
+                  // The health check implementation is overridden to check the health
+                  // of our boost::asio event loop threads.
+                  /*enable_default_health_check_service=*/false),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            config.node_ip_address,
@@ -130,16 +135,22 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           config.node_ip_address,
           ClusterID::Nil(),
           RayConfig::instance().gcs_server_rpc_client_thread_num()),
+      // Use deferred connection - will connect when actual port is known.
       event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
-          config_.metrics_agent_port, event_aggregator_client_call_manager_)),
+          event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
-          metrics_.event_recorder_dropped_events_counter)),
+          metrics_.event_recorder_dropped_events_counter,
+          config.node_id.empty() ? NodeID::Nil() : NodeID::FromHex(config.node_id))),
+      gcs_node_id_(config.node_id.empty() ? NodeID::Nil()
+                                          : NodeID::FromHex(config.node_id)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
+      observability_pubsub_periodical_runner_(PeriodicalRunner::Create(
+          io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>())),
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
@@ -147,6 +158,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  RAY_LOG(INFO).WithField(gcs_node_id_) << "GCS node ID initialized from config";
+
   auto &io_context = io_context_provider_.GetDefaultIOContext();
   std::shared_ptr<StoreClient> store_client;
   switch (storage_type_) {
@@ -188,9 +201,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_JOB_CHANNEL,
           rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-          rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
           rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
@@ -199,11 +209,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
-  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
-      config_.metrics_agent_port,
-      io_context_provider_.GetDefaultIOContext(),
-      client_call_manager_);
+
+  auto observability_inner_publisher = std::make_unique<pubsub::Publisher>(
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                    rpc::ChannelType::RAY_LOG_CHANNEL,
+                                    rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
+      /*periodical_runner=*/*observability_pubsub_periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      /*publisher_id=*/NodeID::FromRandom());
+
+  observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+      std::move(observability_inner_publisher));
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -265,7 +284,6 @@ void GcsServer::GetOrGenerateClusterId(
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitClusterResourceScheduler();
   InitGcsNodeManager(gcs_init_data);
-  InitClusterLeaseManager();
   InitGcsResourceManager(gcs_init_data);
   InitGcsHealthCheckManager(gcs_init_data);
   InitRaySyncer(gcs_init_data);
@@ -293,22 +311,18 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
 
-  // Init metrics and event exporter.
-  metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    if (server_status.ok()) {
-      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
-      ray_event_recorder_->StartExportingEvents();
-    } else {
-      RAY_LOG(ERROR)
-          << "Failed to establish connection to the event+metrics exporter agent. "
-             "Events and metrics will not be exported. "
-          << "Exporter agent status: " << server_status.ToString();
-    }
-  });
+  // Register a custom health check service that runs on the io_context instead of the
+  // default gRPC health check (which responds directly from gRPC threads). This way,
+  // if the GCS event loop is stuck, health checks will time out.
+  rpc_server_.RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(
+      io_context_provider_.GetDefaultIOContext()));
 
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
+  if (port_ready_callback_) {
+    port_ready_callback_(rpc_server_.GetPort());
+  }
 
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
@@ -320,13 +334,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
 
-  global_gc_throttler_ =
-      std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
-
-  periodical_runner_->RunFnPeriodically(
-      [this] { TryGlobalGC(); },
-      /*ms*/ RayConfig::instance().gcs_global_gc_interval_milliseconds(),
-      "GCSServer.deadline_timer.gcs_global_gc");
+  // If the metrics agent port is already known (not dynamically assigned),
+  // initialize the metrics exporter now. Otherwise, it will be initialized
+  // when the raylet registers and reports the actual port.
+  if (config_.metrics_agent_port > 0) {
+    InitMetricsExporter(config_.metrics_agent_port);
+  }
 
   is_started_ = true;
 }
@@ -335,9 +348,15 @@ void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
 
+    // Flush any remaining events before stopping.
+    if (ray_event_recorder_) {
+      ray_event_recorder_->StopExportingEvents();
+    }
+
     io_context_provider_.StopAllDedicatedIOContexts();
 
     ray_syncer_.reset();
+    observability_pubsub_handler_.reset();
     pubsub_handler_.reset();
 
     // Shutdown the rpc server
@@ -352,7 +371,7 @@ void GcsServer::Stop() {
 }
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && observability_publisher_);
   gcs_node_manager_ = std::make_unique<GcsNodeManager>(
       gcs_publisher_.get(),
       gcs_table_storage_.get(),
@@ -360,7 +379,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       &raylet_client_pool_,
       rpc_server_.GetClusterId(),
       *ray_event_recorder_,
-      config_.session_name);
+      config_.session_name,
+      observability_publisher_.get());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -377,8 +397,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
-      io_context_provider_.GetDefaultIOContext(), node_death_callback);
+  gcs_healthcheck_manager_ =
+      GcsHealthCheckManager::Create(io_context_provider_.GetDefaultIOContext(),
+                                    node_death_callback,
+                                    metrics_.health_check_rpc_latency_ms_histogram);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -392,13 +414,11 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(cluster_resource_scheduler_ && cluster_lease_manager_);
   gcs_resource_manager_ = std::make_unique<GcsResourceManager>(
       io_context_provider_.GetDefaultIOContext(),
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
-      kGCSNodeID,
-      cluster_lease_manager_.get());
+      kGCSNodeID);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -448,20 +468,9 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
+      /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
+      /*clock=*/clock_,
       /*is_local_node_with_raylet=*/false);
-}
-
-void GcsServer::InitClusterLeaseManager() {
-  RAY_CHECK(cluster_resource_scheduler_);
-  cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
-      kGCSNodeID,
-      *cluster_resource_scheduler_,
-      /*get_node_info=*/
-      [this](const NodeID &node_id) {
-        return gcs_node_manager_->GetAliveNodeAddress(node_id);
-      },
-      /*announce_infeasible_task=*/nullptr,
-      /*local_lease_manager=*/local_lease_manager_);
 }
 
 void GcsServer::InitGcsJobManager(
@@ -495,7 +504,8 @@ void GcsServer::InitGcsActorManager(
     const GcsInitData &gcs_init_data,
     ray::observability::MetricInterface &actor_by_state_gauge,
     ray::observability::MetricInterface &gcs_actor_by_state_gauge) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && observability_publisher_ &&
+            gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler =
       [this](std::shared_ptr<GcsActor> actor,
@@ -513,22 +523,16 @@ void GcsServer::InitGcsActorManager(
     gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
-  RAY_CHECK(gcs_resource_manager_ && cluster_lease_manager_);
-  scheduler = std::make_unique<GcsActorScheduler>(
-      io_context_provider_.GetDefaultIOContext(),
-      gcs_table_storage_->ActorTable(),
-      *gcs_node_manager_,
-      *cluster_lease_manager_,
-      schedule_failure_handler,
-      schedule_success_handler,
-      raylet_client_pool_,
-      worker_client_pool_,
-      metrics_.scheduler_placement_time_s_histogram,
-      /*normal_task_resources_changed_callback=*/
-      [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
-        gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
-      });
-  gcs_actor_manager_ = std::make_unique<GcsActorManager>(
+  scheduler =
+      std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
+                                          gcs_table_storage_->ActorTable(),
+                                          *gcs_node_manager_,
+                                          schedule_failure_handler,
+                                          schedule_success_handler,
+                                          raylet_client_pool_,
+                                          worker_client_pool_,
+                                          metrics_.scheduler_placement_time_ms_histogram);
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
       io_context_provider_.GetDefaultIOContext(),
@@ -538,11 +542,13 @@ void GcsServer::InitGcsActorManager(
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      raylet_client_pool_,
       worker_client_pool_,
       *ray_event_recorder_,
       config_.session_name,
       actor_by_state_gauge,
-      gcs_actor_by_state_gauge);
+      gcs_actor_by_state_gauge,
+      observability_publisher_.get());
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
@@ -605,9 +611,23 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
+  if (RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms() > 0 &&
+      RayConfig::instance().gcs_resource_broadcast_max_batch_size() == 1) {
+    RAY_LOG(WARNING) << "Configuration inconsistency detected: "
+                        "gcs_resource_broadcast_max_batch_delay_ms > 0 "
+                     << "but gcs_resource_broadcast_max_batch_size = 1. The delay "
+                        "setting will have no effect "
+                     << "since only one message can be batched at a time. Consider "
+                        "increasing batch_size or "
+                     << "setting delay_ms to 0.";
+  }
+
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
       kGCSNodeID.Binary(),
+      /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
+      /* batch_delay_ms */
+      RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms(),
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
       });
@@ -615,7 +635,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(*ray_syncer_));
+  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
+      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
 }
 
 void GcsServer::InitFunctionManager() {
@@ -683,11 +704,18 @@ void GcsServer::InitKVService() {
 
 void GcsServer::InitPubSubHandler() {
   auto &io_context = io_context_provider_.GetIOContext<pubsub::GcsPublisher>();
-  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
+  pubsub_handler_ =
+      std::make_unique<ControlPlanePubSubHandler>(io_context, *gcs_publisher_);
 
   // This service is used to handle long poll requests, so we don't limit active RPCs.
-  rpc_server_.RegisterService(std::make_unique<rpc::InternalPubSubGrpcService>(
+  rpc_server_.RegisterService(std::make_unique<rpc::ControlPlanePubSubGrpcService>(
       io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
+
+  auto &obs_io = io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>();
+  observability_pubsub_handler_ =
+      std::make_unique<ObservabilityPubSubHandler>(obs_io, *observability_publisher_);
+  rpc_server_.RegisterService(std::make_unique<rpc::ObservabilityPubSubGrpcService>(
+      obs_io, *observability_pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
 }
 
 void GcsServer::InitRuntimeEnvManager() {
@@ -784,7 +812,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       raylet_client_pool_,
       kv_manager_->GetInstance(),
       io_context_provider_.GetDefaultIOContext(),
-      gcs_publisher_.get());
+      gcs_publisher_.get(),
+      observability_publisher_.get());
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
@@ -824,6 +853,19 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
+
+        // Initialize the metrics exporter when the head node registers,
+        // but only if we haven't already initialized it (i.e., when using
+        // dynamic port assignment where config_.metrics_agent_port was 0).
+        if (node->is_head_node() && !metrics_exporter_initialized_.load()) {
+          int actual_port = node->metrics_agent_port();
+          if (actual_port > 0) {
+            InitMetricsExporter(actual_port);
+          } else {
+            RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install "
+                             "Ray with dashboard support: `pip install 'ray[default]'`.";
+          }
+        }
         auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
             node_id, node->node_manager_address(), node->node_manager_port());
 
@@ -835,7 +877,6 @@ void GcsServer::InstallEventListeners() {
           RAY_CHECK(channel != nullptr);
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
-        cluster_lease_manager_->ScheduleAndGrantLeases();
       },
       io_context_provider_.GetDefaultIOContext());
   gcs_node_manager_->AddNodeRemovedListener(
@@ -852,9 +893,15 @@ void GcsServer::InstallEventListeners() {
         worker_client_pool_.Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());
+        observability_pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());
         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
       },
       io_context_provider_.GetDefaultIOContext());
+  gcs_node_manager_->AddNodeDrainingListener(
+      [this](const NodeID &node_id, bool is_draining, int64_t deadline_timestamp_ms) {
+        gcs_resource_manager_->SetNodeDraining(
+            node_id, is_draining, deadline_timestamp_ms);
+      });
 
   // Install worker event listener.
   gcs_worker_manager_->AddWorkerDeadListener(
@@ -876,6 +923,7 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
+        observability_pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 
@@ -885,31 +933,6 @@ void GcsServer::InstallEventListeners() {
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
-
-  // Install scheduling event listeners.
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    gcs_resource_manager_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIOContext().post(
-          [this] {
-            // Because resources have been changed, we need to try to schedule the
-            // pending placement groups and actors.
-            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_lease_manager_->ScheduleAndGrantLeases();
-          },
-          "GcsServer.SchedulePendingActors");
-    });
-
-    gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIOContext().post(
-          [this] {
-            // Because some placement group resources have been committed or deleted, we
-            // need to try to schedule the pending placement groups and actors.
-            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_lease_manager_->ScheduleAndGrantLeases();
-          },
-          "GcsServer.SchedulePendingPGActors");
-    });
-  }
 }
 
 void GcsServer::RecordMetrics() const {
@@ -926,6 +949,7 @@ void GcsServer::PrintDebugState() const {
                 << gcs_resource_manager_->DebugString() << "\n\n"
                 << gcs_placement_group_manager_->DebugString() << "\n\n"
                 << gcs_publisher_->DebugString() << "\n\n"
+                << observability_publisher_->DebugString() << "\n\n"
                 << runtime_env_manager_->DebugString() << "\n\n"
                 << gcs_task_manager_->DebugString() << "\n\n"
                 << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
@@ -935,11 +959,11 @@ void GcsServer::PrintDebugState() const {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Main service Event stats:\n\n"
-                  << io_context_provider_.GetDefaultIOContext().stats().StatsString()
+                  << io_context_provider_.GetDefaultIOContext().stats()->StatsString()
                   << "\n\n";
     for (const auto &io_context : io_context_provider_.GetAllDedicatedIOContexts()) {
       RAY_LOG(INFO) << io_context->GetName() << " Event stats:\n\n"
-                    << io_context->GetIoService().stats().StatsString() << "\n\n";
+                    << io_context->GetIoService().stats()->StatsString() << "\n\n";
     }
   }
 }
@@ -952,29 +976,33 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
                             config_.enable_redis_ssl};
 }
 
-void GcsServer::TryGlobalGC() {
-  if (cluster_lease_manager_->GetPendingQueueSize() == 0) {
-    task_pending_schedule_detected_ = 0;
+void GcsServer::InitMetricsExporter(int metrics_agent_port) {
+  if (metrics_exporter_initialized_.exchange(true, std::memory_order_acquire)) {
+    // Exit early as exporter has been initialized
     return;
   }
-  // Trigger global gc to solve task pending.
-  // To avoid spurious triggers, only those after two consecutive
-  // detections and under throttling are sent out (similar to
-  // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.set_should_global_gc(true);
+  event_aggregator_client_->Connect(metrics_agent_port);
 
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    msg->set_version(absl::GetCurrentTimeNanos());
-    msg->set_node_id(kGCSNodeID.Binary());
-    msg->set_message_type(syncer::MessageType::COMMANDS);
-    std::string serialized_msg;
-    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-    msg->set_sync_message(std::move(serialized_msg));
-    ray_syncer_->BroadcastMessage(std::move(msg));
-    global_gc_throttler_->RunNow();
-  }
+  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
+      GetLocalhostIP(),
+      metrics_agent_port,
+      io_context_provider_.GetDefaultIOContext(),
+      client_call_manager_);
+
+  metrics_agent_client_->WaitForServerReady([this, metrics_agent_port](
+                                                const Status &server_status) {
+    if (server_status.ok()) {
+      stats::ConnectOpenCensusExporter(metrics_agent_port);
+      stats::InitOpenTelemetryExporter(metrics_agent_port);
+      ray_event_recorder_->StartExportingEvents();
+      RAY_LOG(INFO) << "Metrics exporter initialized with port " << metrics_agent_port;
+    } else {
+      RAY_LOG(ERROR)
+          << "Failed to establish connection to the event+metrics exporter agent. "
+             "Events and metrics will not be exported. "
+          << "Exporter agent status: " << server_status.ToString();
+    }
+  });
 }
 
 }  // namespace gcs

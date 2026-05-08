@@ -11,6 +11,7 @@ develop-and-deploy
 model_composition
 multi-app
 model-multiplexing
+model-registries
 configure-serve-deployment
 http-guide
 Serving LLMs <llm/index>
@@ -304,6 +305,22 @@ or head over to the {doc}`examples` to get started building your Ray Serve appli
             :expand:
 
             Read the API Reference
+
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        **Ray Serve Office Hours**
+        ^^^
+
+        Join our bi-weekly community office hours for anyone working with Ray Serve. Bring questions, issues you're experiencing, or ideas you want to sanity check with the Ray Serve team.
+
+        +++
+        .. button-link:: https://docs.google.com/forms/d/e/1FAIpQLSfyeVy7wYqvjpEz8wjPQg--0fmQc5WvuNoVkW6vPaAJG0Cizw/viewform
+            :color: primary
+            :outline:
+            :expand:
+
+            Sign Up Here
 
 ```
 

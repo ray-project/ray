@@ -14,12 +14,12 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/postable.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/gcs/metrics.h"
+#include "ray/gcs/postable/postable.h"
 #include "ray/gcs/pubsub_handler.h"
 #include "ray/gcs/runtime_env_handler.h"
 #include "ray/gcs/usage_stats_client.h"
@@ -38,16 +39,13 @@
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/util/throttler.h"
+#include "ray/util/clock.h"
 
 namespace ray {
-using raylet::ClusterLeaseManager;
-using raylet::NoopLocalLeaseManager;
 
 namespace rpc {
 class ClientCallManager;
@@ -68,6 +66,7 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = false;
   std::string node_ip_address;
+  std::string node_id;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
@@ -110,6 +109,11 @@ class GcsServer {
 
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
+
+  /// Set a callback invoked once the RPC server has bound to a port.
+  void SetPortReadyCallback(std::function<void(int)> cb) {
+    port_ready_callback_ = std::move(cb);
+  }
 
   /// Check if gcs server is started.
   bool IsStarted() const { return is_started_; }
@@ -154,9 +158,6 @@ class GcsServer {
 
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
-
-  /// Initialize cluster lease manager.
-  void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(
@@ -203,11 +204,14 @@ class GcsServer {
   /// Initialize function manager.
   void InitFunctionManager();
 
-  /// Initializes PubSub handler.
+  /// Initialize PubSub handler.
   void InitPubSubHandler();
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
+
+  /// Initialize metrics exporter with the given port.
+  void InitMetricsExporter(int metrics_agent_port);
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -230,11 +234,10 @@ class GcsServer {
 
   RedisClientOptions GetRedisClientOptions();
 
-  void TryGlobalGC();
-
   /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
   IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
+  Clock clock_;
 
   /// NOTICE: The declaration order for data members should follow dependency.
   ///
@@ -252,19 +255,17 @@ class GcsServer {
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Local lease manager.
-  NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// The cluster lease manager.
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
-  /// A publisher for publishing gcs messages.
+  /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  /// Publisher for observability pubsub (logs, errors, dashboard resource JSON).
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
@@ -272,7 +273,7 @@ class GcsServer {
   /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs actor manager.
-  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
   /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
@@ -295,7 +296,7 @@ class GcsServer {
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
   /// The node id of GCS.
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
 
   /// The usage stats client.
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
@@ -303,20 +304,24 @@ class GcsServer {
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
-  /// GCS PubSub handler.
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  /// GCS PubSub handler (control-plane).
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
+  /// Observability pubsub handler.
+  std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
   /// GCS Task info manager for managing task states change events.
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
   /// Grpc based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> observability_pubsub_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
-  int task_pending_schedule_detected_ = 0;
-  /// Throttler for global gc
-  std::unique_ptr<Throttler> global_gc_throttler_;
+  /// Flag to ensure InitMetricsExporter is only called once.
+  std::atomic<bool> metrics_exporter_initialized_ = false;
+  // Invoked when the RPC server has bound to a port.
+  std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
 };

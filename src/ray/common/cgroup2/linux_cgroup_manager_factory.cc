@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +28,8 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/cgroup2/sysfs_cgroup_driver.h"
+#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -36,6 +39,7 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
     const std::string &node_id,
     const int64_t system_reserved_cpu_weight,
     const int64_t system_reserved_memory_bytes,
+    const int64_t object_store_memory_bytes,
     const std::string &system_pids) {
   if (!enable_resource_isolation) {
     return std::make_unique<NoopCgroupManager>();
@@ -53,11 +57,32 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
       << "Failed to start CgroupManager. If enable_resource_isolation is set to true, "
          "system_reserved_memory_bytes must be set to a value > 0";
 
+  int64_t system_memory_bytes_min = RayConfig::instance().system_memory_bytes_min();
+  int64_t system_memory_bytes_low = system_reserved_memory_bytes;
+
+  // Compute user memory limits from proportions
+  SystemMemorySnapshot memory_snapshot =
+      MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path);
+  int64_t total_memory_bytes = memory_snapshot.total_bytes;
+  float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
+  float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();
+
+  // The system reserved memory here already includes object store memory when
+  // we resolved the resource isolation config.
+  int64_t user_memory_high_bytes = std::min(
+      total_memory_bytes - system_reserved_memory_bytes + object_store_memory_bytes,
+      static_cast<int64_t>(total_memory_bytes * user_memory_proportion_high));
+  int64_t user_memory_max_bytes =
+      static_cast<int64_t>(total_memory_bytes * user_memory_proportion_max);
+
   StatusOr<std::unique_ptr<CgroupManagerInterface>> cgroup_manager_s =
       CgroupManager::Create(cgroup_path,
                             node_id,
                             system_reserved_cpu_weight,
-                            system_reserved_memory_bytes,
+                            system_memory_bytes_min,
+                            system_memory_bytes_low,
+                            user_memory_high_bytes,
+                            user_memory_max_bytes,
                             std::make_unique<SysFsCgroupDriver>());
 
   RAY_CHECK(cgroup_manager_s.ok()) << absl::StrFormat(

@@ -10,3 +10,9 @@ Class
 
 .. autoclass:: DataType
     :members:
+
+Enumeration
+-----------
+
+.. autoclass:: TypeCategory
+    :members:

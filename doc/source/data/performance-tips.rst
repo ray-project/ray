@@ -15,6 +15,23 @@ faster.
 
 If your transformation isn't vectorized, there's no performance benefit.
 
+Enabling Polars for sort operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can speed up :meth:`~ray.data.Dataset.sort` and operations that sort internally,
+such as :meth:`~ray.data.grouped_data.GroupedData.map_groups`, by enabling Polars:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_polars_sort = True
+
+When you enable this flag, Ray Data uses Polars instead of PyArrow for the internal
+sorting step, which can improve performance for large tabular datasets.
+This flag doesn't affect other operations such as :meth:`~ray.data.Dataset.map_batches`.
+
 Optimizing reads
 ----------------
 
@@ -25,7 +42,7 @@ Tuning output blocks for read
 
 By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
 
-- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
+- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <loading-data-api>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
 - Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
 
 Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
@@ -209,8 +226,7 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
     # Read just two of the five columns of the Iris dataset.
     ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
-        columns=["sepal.length", "variety"],
-    )
+    ).select_columns(["sepal.length", "variety"])
     
     print(ds.schema())
 
@@ -247,11 +263,11 @@ However, too-large blocks are still possible, and they can lead to out-of-memory
 To avoid these issues:
 
 1. Make sure no single item in your dataset is too large. Aim for rows that are <10 MB each.
-2. Always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with a batch size small enough such that the output batch can comfortably fit into heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
+2. Call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with ``batch_size="auto"`` to let Ray Data automatically pick an appropriate batch size, or specify an explicit integer batch size small enough that the output batch fits comfortably in heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
 3. If neither of these is sufficient, manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
 
 As an example of tuning batch size, the following code uses one task to load a 1 GB :class:`~ray.data.Dataset` with 1000 1 MB rows and applies an identity function using :func:`~ray.data.Dataset.map_batches`.
-Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 1024 rows, this code produces only one very large batch, causing the heap memory usage to increase to 4 GB.
+Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is ``None``, this code passes entire blocks as batches to the UDF, causing the heap memory usage to increase significantly.
 
 .. testcode::
     :hide:
@@ -267,7 +283,7 @@ Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 
 
     # Force Ray Data to use one task to show the memory issue.
     ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
-    # The default batch size is 1024 rows.
+    # The default batch_size=None passes entire blocks as batches.
     ds = ds.map_batches(lambda batch: batch)
     print(ds.materialize().stats())
 
@@ -409,6 +425,7 @@ Configuring resources and locality
 By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
 
 You may want to customize these limits in the following scenarios:
+
 - If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
 - If you want to fine-tune the memory limit to maximize performance.
 - For data loading into training jobs, you may want to set the object store memory to a low value (for example, 2 GB) to limit resource usage.
@@ -426,15 +443,6 @@ You can configure execution options with the global DataContext. The options are
 
 .. note::
     Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
-
-Locality with output (ML ingest use case)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block::
-
-   ctx.execution_options.locality_with_output = True
-
-Setting this parameter to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This setting can be useful if you know you are consuming the output data directly on the consumer node (such as, for ML training ingest). However, other use cases may incur a performance penalty with this setting.
 
 Reproducibility
 ---------------

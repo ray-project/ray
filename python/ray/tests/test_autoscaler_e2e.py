@@ -5,11 +5,13 @@ import pytest
 
 import ray
 from ray._common.network_utils import build_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
-    get_metric_check_condition,
+    PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
 )
+from ray._private.test_utils import get_metric_check_condition
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
@@ -174,6 +176,7 @@ def test_metrics(local_autoscaling_cluster, shutdown_only):
         def ping(self):
             return True
 
+    timeseries = PrometheusTimeseries()
     zero_reported_condition = get_metric_check_condition(
         [
             MetricSamplePattern(
@@ -199,6 +202,7 @@ def test_metrics(local_autoscaling_cluster, shutdown_only):
                 partial_label_match={"NodeType": "ray.head.default"},
             ),
         ],
+        timeseries,
         export_addr=autoscaler_export_addr,
     )
     wait_for_condition(zero_reported_condition)
@@ -239,6 +243,7 @@ def test_metrics(local_autoscaling_cluster, shutdown_only):
                 partial_label_match={"NodeType": "ray.head.default"},
             ),
         ],
+        timeseries,
         export_addr=autoscaler_export_addr,
     )
     wait_for_condition(two_cpu_no_pending_condition)

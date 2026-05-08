@@ -43,6 +43,48 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     )
 
 
+class _DummyConn:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class _DummyProcess:
+    def __init__(self, alive: bool = True, pid: int = 12345):
+        self._alive = alive
+        self.pid = pid
+        self.terminate_called = False
+        self.kill_called = False
+        self.join_called = False
+        self.join_timeout = None
+
+    def is_alive(self) -> bool:
+        return self._alive
+
+    def terminate(self):
+        self.terminate_called = True
+        # Simulate graceful exit.
+        self._alive = False
+
+    def kill(self):
+        self.kill_called = True
+        self._alive = False
+
+    def join(self, timeout: float | None = None):
+        self.join_called = True
+        self.join_timeout = timeout
+
+
+class _DummySession:
+    def __init__(self):
+        self.closed = False
+
+    async def close(self):
+        self.closed = True
+
+
 @pytest.mark.asyncio
 async def test_handle_can_health_check(default_module_config):
     loop = asyncio.get_event_loop()
@@ -53,6 +95,49 @@ async def test_handle_can_health_check(default_module_config):
     response = await subprocess_handle._health_check()
     assert response.status == 200
     assert response.body == b"success"
+
+
+@pytest.mark.asyncio
+async def test_destroy_module_cleans_up_resources(default_module_config, monkeypatch):
+    """Ensure destroy_module closes connections, terminates process, and cancels tasks."""
+    loop = asyncio.get_event_loop()
+    handle = SubprocessModuleHandle(loop, TestModule, default_module_config)
+
+    # Inject dummy resources.
+    parent_conn = _DummyConn()
+    process = _DummyProcess(alive=True)
+    http_session = _DummySession()
+    health_task = asyncio.create_task(asyncio.sleep(1000))
+
+    handle.parent_conn = parent_conn
+    handle.process = process
+    handle.http_client_session = http_session
+    handle.health_check_task = health_task
+
+    await handle.destroy_module()
+
+    # Parent connection is closed and cleared.
+    assert parent_conn.closed
+    assert handle.parent_conn is None
+
+    # Process was terminated gracefully and cleared.
+    assert process.terminate_called
+    assert process.join_called
+    assert not process.kill_called
+    assert handle.process is None
+
+    # HTTP client session is closed and cleared.
+    assert http_session.closed
+    assert handle.http_client_session is None
+
+    # Health check task is cancelled and cleared.
+    # Note: destroy_module() may call cancel() without awaiting the task, so the
+    # cancelled state might not be observable immediately. Wait briefly for the
+    # cancellation to be delivered.
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(health_task, timeout=0.2)
+    assert health_task.cancelled()
+    assert handle.health_check_task is None
 
 
 async def start_http_server_app(
@@ -73,6 +158,28 @@ async def start_http_server_app(
 
     app = aiohttp.web.Application()
     app.add_routes(routes=SubprocessRouteTable.bound_routes())
+
+    async def _cleanup_app(app):
+        # Best-effort cleanup to avoid leaking subprocesses across the pytest session.
+        # If subprocesses leak, later tests (e.g. starting a Ray cluster) can fail due
+        # to process/FD exhaustion and manifest as unrelated startup errors.
+        for handle in handles:
+            try:
+                await handle.destroy_module()
+            except Exception:
+                # Don't mask original test failures.
+                pass
+
+        # SubprocessRouteTable is a global singleton route table. Ensure we drop strong
+        # references to handles so they can be GC'd.
+        for _, path_map in list(SubprocessRouteTable._bind_map.items()):
+            for _, bind_info in list(path_map.items()):
+                try:
+                    bind_info.instance = None
+                except Exception:
+                    pass
+
+    app.on_cleanup.append(_cleanup_app)
     return app
 
 

@@ -15,13 +15,14 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager_interface.h"
 
@@ -29,7 +30,7 @@ namespace ray {
 namespace core {
 
 using TensorTransportGetter =
-    std::function<std::optional<rpc::TensorTransport>(const ObjectID &object_id)>;
+    std::function<std::optional<std::string>(const ObjectID &object_id)>;
 
 // This class is thread-safe.
 class LocalDependencyResolver {

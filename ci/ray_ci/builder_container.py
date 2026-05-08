@@ -13,7 +13,7 @@ class BuilderContainer(LinuxContainer):
         upload: bool = False,
     ) -> None:
         super().__init__(
-            "manylinux" if architecture == "x86_64" else f"manylinux-{architecture}",
+            f"manylinux-{architecture}",
             volumes=[f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/rayci"],
         )
         python_version_info = PYTHON_VERSIONS.get(python_version)

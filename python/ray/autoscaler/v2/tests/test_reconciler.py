@@ -21,6 +21,9 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
 )
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+    CloudResourceMonitor,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     RayInstallError,
@@ -80,9 +83,12 @@ class MockAutoscalingConfig:
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
 
+    def get_provider_instance_type(self, ray_node_type):
+        return self._configs.get("provider_instance_types", {}).get(ray_node_type, "")
+
     @property
     def provider(self):
-        return Provider.UNKNOWN
+        return self._configs.get("provider", Provider.UNKNOWN)
 
 
 class MockScheduler(IResourceScheduler):
@@ -117,7 +123,9 @@ def setup():
         instance_status_update_subscribers=[mock_subscriber],
     )
 
-    yield instance_manager, instance_storage, mock_subscriber
+    cloud_resource_monitor = CloudResourceMonitor()
+
+    yield instance_manager, instance_storage, mock_subscriber, cloud_resource_monitor
 
 
 class TestReconciler:
@@ -129,7 +137,7 @@ class TestReconciler:
 
     @staticmethod
     def test_requested_instance_no_op(setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
         # Request no timeout yet.
         TestReconciler._add_instances(
             instance_storage,
@@ -148,6 +156,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
@@ -163,7 +172,7 @@ class TestReconciler:
     def test_requested_instance_to_allocated(setup):
         # When there's a matching cloud instance for the requested instance.
         # The requested instance should be moved to ALLOCATED.
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
         TestReconciler._add_instances(
             instance_storage,
             [
@@ -192,6 +201,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -212,7 +222,7 @@ class TestReconciler:
         Test that the instance should be transitioned to ALLOCATION_FAILED
         when launch error happens.
         """
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         instances = [
             # Should succeed with instance matched.
@@ -248,6 +258,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=launch_errors,
@@ -264,7 +275,7 @@ class TestReconciler:
     @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         instances = [
             create_instance(
@@ -304,6 +315,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=termination_errors,
@@ -322,6 +334,7 @@ class TestReconciler:
         assert len(events_i_1) == 1
         assert events_i_1[0].new_instance_status == Instance.TERMINATED
         assert events_i_1[0].instance_id == "i-1"
+        assert events_i_1[0].cloud_instance_id == "c-1"
 
         events_i_2 = subscriber.events_by_id("i-2")
         assert len(events_i_2) == 2
@@ -330,7 +343,7 @@ class TestReconciler:
 
     @staticmethod
     def test_ray_reconciler_no_op(setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         im_instances = [
             create_instance(
@@ -352,6 +365,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -372,6 +386,7 @@ class TestReconciler:
                 instance_manager,
                 scheduler=MockScheduler(),
                 cloud_provider=MagicMock(),
+                cloud_resource_monitor=cloud_resource_monitor,
                 ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
                 non_terminated_cloud_instances=cloud_instances,
                 cloud_provider_errors=[],
@@ -384,7 +399,7 @@ class TestReconciler:
 
     @staticmethod
     def test_ray_reconciler_new_ray(setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         # A newly running ray node with matching cloud instance id
         node_states = [
@@ -404,6 +419,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=node_states),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -419,7 +435,7 @@ class TestReconciler:
 
     @staticmethod
     def test_ray_reconciler_already_ray_running(setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         # A running ray node already reconciled.
         TestReconciler._add_instances(
             instance_storage,
@@ -448,6 +464,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -459,7 +476,7 @@ class TestReconciler:
 
     @staticmethod
     def test_ray_reconciler_stopping_ray(setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         # draining ray nodes
         im_instances = [
@@ -491,6 +508,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -506,7 +524,7 @@ class TestReconciler:
 
     @staticmethod
     def test_ray_reconciler_stopped_ray(setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         # dead ray nodes
         im_instances = [
@@ -538,6 +556,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -553,7 +572,7 @@ class TestReconciler:
 
     @staticmethod
     def test_reconcile_ray_installer_failures(setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         # dead ray nodes
         im_instances = [
@@ -578,6 +597,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=[]),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -596,7 +616,7 @@ class TestReconciler:
         transition the instance to TERMINATED.
         """
 
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         im_instances = [
             create_instance(
@@ -627,6 +647,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -664,7 +685,7 @@ class TestReconciler:
         upscaling_speed,
         setup,
     ):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         next_id = 0
 
         # Add some allocated instances.
@@ -724,6 +745,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -748,7 +770,7 @@ class TestReconciler:
     @staticmethod
     @mock.patch("time.time_ns")
     def test_stuck_instances_requested(mock_time_ns, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         cur_time_s = 10
         mock_time_ns.return_value = cur_time_s * s_to_ns
 
@@ -787,6 +809,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
@@ -807,7 +830,7 @@ class TestReconciler:
     @staticmethod
     @mock.patch("time.time_ns")
     def test_stuck_instances_ray_stop_requested(mock_time_ns, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         timeout_s = 5
         cur_time_s = 20
         mock_time_ns.return_value = cur_time_s * s_to_ns
@@ -838,6 +861,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
@@ -860,7 +884,7 @@ class TestReconciler:
         # Test that the instance should be transitioned to RAY_RUNNING
         # when the ray stop request fails.
 
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
         mock_time_ns.return_value = 10 * s_to_ns
 
         instances = [
@@ -900,6 +924,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -924,7 +949,7 @@ class TestReconciler:
         ],
     )
     def test_stuck_instances(mock_time_ns, cur_status, expect_status, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         timeout_s = 5
         cur_time_s = 20
         mock_time_ns.return_value = cur_time_s * s_to_ns
@@ -961,6 +986,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -987,7 +1013,7 @@ class TestReconciler:
         ],
     )
     def test_warn_stuck_transient_instances(mock_time_ns, status, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         cur_time_s = 10
         mock_time_ns.return_value = cur_time_s * s_to_ns
         timeout_s = 5
@@ -1027,6 +1053,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances
             if status != Instance.QUEUED
@@ -1047,7 +1074,7 @@ class TestReconciler:
     @staticmethod
     @mock.patch("time.time_ns")
     def test_stuck_instances_no_op(mock_time_ns, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
         # Large enough to not trigger any timeouts
         mock_time_ns.return_value = 999999 * s_to_ns
 
@@ -1068,6 +1095,7 @@ class TestReconciler:
             Instance.RAY_STOPPED,
             Instance.TERMINATION_FAILED,
             Instance.QUEUED,
+            Instance.ALLOCATION_TIMEOUT,
         }
         no_op_statuses = all_status - reconciled_stuck_statuses - transient_statuses
 
@@ -1087,6 +1115,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
@@ -1110,7 +1139,7 @@ class TestReconciler:
         ids=["ray_running", "allocated"],
     )
     def test_is_head_node_running(status, expected_running, setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         instances = [
             create_instance(
@@ -1130,7 +1159,7 @@ class TestReconciler:
         Tests that new instances should be launched due to autoscaling
         decisions, and existing instances should be terminated if needed.
         """
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         im_instances = [
             create_instance(
@@ -1185,6 +1214,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=mock_scheduler,
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1212,7 +1242,7 @@ class TestReconciler:
 
     @staticmethod
     def test_terminating_instances(setup):
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         instances = [
             create_instance(
@@ -1244,6 +1274,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1266,7 +1297,7 @@ class TestReconciler:
         [True, False],
     )
     def test_ray_install(disable_node_updaters, cloud_instance_running, setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         instances = [
             create_instance(
@@ -1290,6 +1321,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1310,7 +1342,7 @@ class TestReconciler:
     @staticmethod
     @mock.patch("time.time_ns")
     def test_autoscaler_state(mock_time_ns, setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
         mock_time_ns.return_value = 5
 
         instances = [
@@ -1403,6 +1435,7 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=mock_scheduler,
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(
                 cluster_resource_state_version=1,
             ),
@@ -1412,6 +1445,13 @@ class TestReconciler:
             autoscaling_config=MockAutoscalingConfig(
                 configs={
                     "max_concurrent_launches": 0,  # don't launch anything.
+                    "provider_instance_types": {
+                        "type-1": "m5.large",
+                        "type-2": "m5.xlarge",
+                        "type-3": "c5.large",
+                        "type-4": "g5.xlarge",
+                        "type-5": "r5.large",
+                    },
                 }
             ),
         )
@@ -1420,23 +1460,36 @@ class TestReconciler:
         assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
         assert len(autoscaling_state.infeasible_resource_requests) == 1
         assert len(autoscaling_state.pending_instances) == 2
-        pending_instances = {i.instance_id for i in autoscaling_state.pending_instances}
-        assert pending_instances == {"i-1", "i-5"}
+        pending_instances = {
+            (i.instance_id, i.instance_type_name, i.ray_node_type_name)
+            for i in autoscaling_state.pending_instances
+        }
+        assert pending_instances == {
+            ("i-1", "m5.large", "type-1"),
+            ("i-5", "r5.large", "type-5"),
+        }
         pending_instance_requests = defaultdict(int)
         for r in autoscaling_state.pending_instance_requests:
-            pending_instance_requests[r.ray_node_type_name] += r.count
+            pending_instance_requests[
+                (r.instance_type_name, r.ray_node_type_name)
+            ] += r.count
         failed_instance_requests = defaultdict(int)
         for r in autoscaling_state.failed_instance_requests:
-            failed_instance_requests[r.ray_node_type_name] += r.count
-        assert pending_instance_requests == {"type-2": 1, "type-3": 1}
-        assert failed_instance_requests == {"type-4": 1}
+            failed_instance_requests[
+                (r.instance_type_name, r.ray_node_type_name)
+            ] += r.count
+        assert pending_instance_requests == {
+            ("m5.xlarge", "type-2"): 1,
+            ("c5.large", "type-3"): 1,
+        }
+        assert failed_instance_requests == {("g5.xlarge", "type-4"): 1}
 
     @staticmethod
     def test_extra_cloud_instances_cloud_provider(setup):
         """
         Test that extra cloud instances should be terminated.
         """
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         im_instances = [
             create_instance(
@@ -1467,6 +1520,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1491,7 +1545,7 @@ class TestReconciler:
         """
         Test that the case of booting up a previous stopped cloud instance.
         """
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         im_instances = [
             create_instance(
@@ -1521,6 +1575,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1542,7 +1597,7 @@ class TestReconciler:
         """
         Test that the case of reusing cloud instances.
         """
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         im_instances = [
             create_instance(
@@ -1578,6 +1633,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1610,7 +1666,7 @@ class TestReconciler:
         """
         Test that the case of restarting Head node with GCS FT.
         """
-        instance_manager, instance_storage, subscriber = setup
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 
         ray_nodes = [
             NodeState(
@@ -1636,6 +1692,7 @@ class TestReconciler:
             instance_manager,
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances=cloud_instances,
             cloud_provider_errors=[],
@@ -1672,7 +1729,7 @@ class TestReconciler:
 
     @staticmethod
     def test_reconcile_max_worker_nodes_limit_triggers_termination(setup):
-        instance_manager, instance_storage, _ = setup
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
 
         instances = [
             create_instance(
@@ -1734,6 +1791,177 @@ class TestReconciler:
             instance_manager=instance_manager,
             scheduler=mock_scheduler,
             cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(
+                node_states=ray_nodes,
+                cluster_resource_state_version=1,
+            ),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": {
+                        "type-1": {
+                            "name": "type-1",
+                            "resources": {"CPU": 1},
+                            "min_worker_nodes": 0,
+                            "max_worker_nodes": 0,
+                        }
+                    },
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+
+        assert instances["i-0"].status == Instance.TERMINATING
+        assert instances["i-1"].status == Instance.TERMINATING
+
+    @staticmethod
+    def test_terminate_queued_instances_max_workers(setup):
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "head",
+                status=Instance.RAY_RUNNING,
+                node_kind=NodeKind.HEAD,
+                cloud_instance_id="c-head",
+                ray_node_id=binary_to_hex(b"r-head"),
+            ),
+            create_instance(
+                "i-0",
+                status=Instance.QUEUED,
+                instance_type="type-1",
+            ),
+            create_instance(
+                "i-1",
+                status=Instance.QUEUED,
+                instance_type="type-1",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Empty list of Ray nodes - QUEUED instances have not launched ray yet
+        ray_nodes = []
+
+        # Cloud instance for head node only
+        cloud_instances = {
+            "c-head": CloudInstance("c-head", "head", True, NodeKind.HEAD),
+        }
+
+        # Scheduler should terminate QUEUED instances due to max_workers limit
+        mock_scheduler = MockScheduler(
+            to_launch=[],
+            to_terminate=[
+                TerminationRequest(
+                    id="t0",
+                    instance_id="i-0",
+                    instance_status=Instance.QUEUED,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                ),
+                TerminationRequest(
+                    id="t1",
+                    instance_id="i-1",
+                    instance_status=Instance.QUEUED,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                ),
+            ],
+        )
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=mock_scheduler,
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(
+                node_states=ray_nodes,
+                cluster_resource_state_version=1,
+            ),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": {
+                        "type-1": {
+                            "name": "type-1",
+                            "resources": {"CPU": 1},
+                            "min_worker_nodes": 0,
+                            "max_worker_nodes": 0,
+                        }
+                    },
+                }
+            ),
+        )
+
+        instances, _ = instance_storage.get_instances()
+
+        assert instances["i-0"].status == Instance.TERMINATED
+        assert instances["i-1"].status == Instance.TERMINATED
+
+    @staticmethod
+    def test_terminate_ray_installing_instances_max_workers(setup):
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "head",
+                status=Instance.RAY_RUNNING,
+                node_kind=NodeKind.HEAD,
+                cloud_instance_id="c-head",
+                ray_node_id=binary_to_hex(b"r-head"),
+            ),
+            create_instance(
+                "i-0",
+                status=Instance.RAY_INSTALLING,
+                instance_type="type-1",
+                cloud_instance_id="c-0",
+            ),
+            create_instance(
+                "i-1",
+                status=Instance.RAY_INSTALLING,
+                instance_type="type-1",
+                cloud_instance_id="c-1",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Empty list of Ray nodes - RAY_INSTALLING instances have not started ray yet
+        ray_nodes = []
+
+        # Cloud instances for head and installing workers
+        cloud_instances = {
+            "c-head": CloudInstance("c-head", "head", True, NodeKind.HEAD),
+            "c-0": CloudInstance("c-0", "type-1", True, NodeKind.WORKER),
+            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.WORKER),
+        }
+
+        # Scheduler should terminate RAY_INSTALLING instances due to max_workers limit
+        mock_scheduler = MockScheduler(
+            to_launch=[],
+            to_terminate=[
+                TerminationRequest(
+                    id="t0",
+                    instance_id="i-0",
+                    instance_status=Instance.RAY_INSTALLING,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                ),
+                TerminationRequest(
+                    id="t1",
+                    instance_id="i-1",
+                    instance_status=Instance.RAY_INSTALLING,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                ),
+            ],
+        )
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=mock_scheduler,
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ClusterResourceState(
                 node_states=ray_nodes,
                 cluster_resource_state_version=1,

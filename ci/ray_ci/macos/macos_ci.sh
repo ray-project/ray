@@ -3,15 +3,16 @@
 set -ex
 
 export CI="true"
-export PYTHON="3.9"
+export PYTHON="3.10"
+export RAY_BUILD_ENV="macos-py${PYTHON}"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
-export TORCH_VERSION=2.0.1
-export TORCHVISION_VERSION=0.15.2
+export TORCH_VERSION=2.3.0
+export TORCHVISION_VERSION=0.18.0
 
 filter_out_flaky_tests() {
   if [[ "${RAYCI_DISABLE_TEST_DB:-}" == "1" ]]; then
@@ -36,10 +37,15 @@ run_tests() {
 run_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "ray_client|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2|medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
+  (bazel query 'attr(tags, "ray_client|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2|medium_size_python_tests_shard_0|medium_size_python_tests_shard_1", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
+}
+
+run_smoke_test() {
+  # 42 is the universal rayci exit code for test failures
+  (run_tests //python/ray/tests:test_basic) || exit 42
 }
 
 run_small_test() {
@@ -51,17 +57,17 @@ run_small_test() {
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
-run_medium_a_j_test() {
+run_medium_test_shard_0() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "medium_size_python_tests_a_to_j", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+  (bazel query 'attr(tags, "medium_size_python_tests_shard_0", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
 }
 
-run_medium_k_z_test() {
+run_medium_test_shard_1() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+  (bazel query 'attr(tags, "medium_size_python_tests_shard_1", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
 }
 
@@ -90,15 +96,18 @@ run_ray_cpp() {
   bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   echo "--- Test //cpp:all"
-  bazel test --config=ci --test_strategy=exclusive --build_tests_only \
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_strategy=exclusive --build_tests_only \
     --test_tag_filters=-no_macos //cpp:all
 
   echo "--- Test //cpp:cluster_mode_test"
-  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) //cpp:cluster_mode_test --test_arg=--external_cluster=true \
     --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
 
   echo "--- Test //cpp:test_python_call_cpp"
-  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_output=all //cpp:test_python_call_cpp
 }
 
 bisect() {
@@ -112,6 +121,7 @@ _prelude() {
     rm -rf /tmp/bazel_event_logs
     (which bazel && bazel clean) || true;
   fi
+  export SKIP_PIP_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 
@@ -120,6 +130,11 @@ _prelude() {
     # Otherwise, python/python3 might point to ones under /opt/homebrew/bin/
     export PATH="/opt/homebrew/opt/miniforge/bin:$PATH"
   fi
+
+  # Install locked dependencies to ensure consistent package versions
+  # Strip hashes from lock file since pip can't verify hashes for VCS dependencies
+  sed 's/ \\$//; s/ --hash[^ ]*//g' python/deplocks/ci/macos_depset_py3.10.lock > /tmp/macos_depset_no_hashes.txt
+  pip install -r /tmp/macos_depset_no_hashes.txt --no-deps
 
   ./ci/ci.sh build
   ./ci/env/env_info.sh
