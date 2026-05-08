@@ -370,7 +370,8 @@ class AlgorithmConfig(_Config):
         self.num_cpus_per_learner = "auto"
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
-        self.aggregator_actor_resources = None
+        self.num_cpus_per_aggregator_actor = 1
+        self.custom_resources_per_aggregator_actor = {}
         self.aggregator_actor_node_affinity_soft = True
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
@@ -2265,7 +2266,8 @@ class AlgorithmConfig(_Config):
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
-        aggregator_actor_resources: Optional[Dict[str, float]] = NotProvided,
+        num_cpus_per_aggregator_actor: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_aggregator_actor: Optional[Dict[str, float]] = NotProvided,
         aggregator_actor_node_affinity_soft: Optional[bool] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
@@ -2308,14 +2310,20 @@ class AlgorithmConfig(_Config):
                 this strongly depends on your setup and `EnvRunner` throughput.
             max_requests_in_flight_per_aggregator_actor: How many in-flight requests
                 are allowed per aggregator actor before new requests are dropped?
-            aggregator_actor_resources: Optional dict of custom resource requirements
-                for each aggregator actor (e.g. ``{"my_label": 0.001}``). These are
+            num_cpus_per_aggregator_actor: Number of CPUs allocated per aggregator
+                actor. Default is 1.
+            custom_resources_per_aggregator_actor: Optional dict of custom Ray
+                resource requirements for each aggregator actor (e.g.
+                ``{"my_label": 0.001}``). Do *not* put ``"CPU"`` or ``"GPU"`` in
+                here -- use ``num_cpus_per_aggregator_actor`` instead and note
+                that aggregator actors do not currently support GPUs. These are
                 hard requirements: if no node in the cluster can satisfy them, the
-                aggregator never schedules and the algorithm fails. They compose with
-                the node-affinity preference set by
-                ``aggregator_actor_node_affinity_soft``: the scheduler first filters
-                to nodes that satisfy these resource requirements, and then prefers
-                the corresponding learner's node from among those candidates.
+                aggregator never schedules and the algorithm fails. They compose
+                with the node-affinity preference set by
+                ``aggregator_actor_node_affinity_soft``: the scheduler first
+                filters to nodes that satisfy these resource requirements, and
+                then prefers the corresponding learner's node from among those
+                candidates.
             aggregator_actor_node_affinity_soft: If True (default), each aggregator
                 actor *prefers* the node of its assigned learner but may fall back to
                 any other node that can satisfy its resource requirements (a warning
@@ -2375,8 +2383,12 @@ class AlgorithmConfig(_Config):
             self.max_requests_in_flight_per_aggregator_actor = (
                 max_requests_in_flight_per_aggregator_actor
             )
-        if aggregator_actor_resources is not NotProvided:
-            self.aggregator_actor_resources = aggregator_actor_resources
+        if num_cpus_per_aggregator_actor is not NotProvided:
+            self.num_cpus_per_aggregator_actor = num_cpus_per_aggregator_actor
+        if custom_resources_per_aggregator_actor is not NotProvided:
+            self.custom_resources_per_aggregator_actor = (
+                custom_resources_per_aggregator_actor
+            )
         if aggregator_actor_node_affinity_soft is not NotProvided:
             self.aggregator_actor_node_affinity_soft = (
                 aggregator_actor_node_affinity_soft

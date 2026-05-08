@@ -1079,22 +1079,29 @@ class Algorithm(Checkpointable, Trainable):
                     func=lambda _learner: ray.get_runtime_context().get_node_id()
                 )
             ]
-            agg_options = dict(num_cpus=1, max_restarts=-1)
-            if self.config.aggregator_actor_resources:
-                agg_options["resources"] = self.config.aggregator_actor_resources
+            # Wrap the actor class once; per-instance options (including the
+            # node-affinity strategy) go through `.options(...)` below.
+            agg_cls = ray.remote(AggregatorActor)
+            base_options = dict(
+                num_cpus=self.config.num_cpus_per_aggregator_actor,
+                max_restarts=-1,
+            )
+            if self.config.custom_resources_per_aggregator_actor:
+                base_options[
+                    "resources"
+                ] = self.config.custom_resources_per_aggregator_actor
 
             agg_handles = []
             self._aggregator_actor_to_learner = {}
             for learner_idx, learner_node_id in enumerate(learner_node_ids):
                 for _ in range(self.config.num_aggregator_actors_per_learner):
-                    options = dict(agg_options)
-                    options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                        node_id=learner_node_id,
-                        soft=self.config.aggregator_actor_node_affinity_soft,
-                    )
-                    handle = ray.remote(**options)(AggregatorActor).remote(
-                        self.config, rl_module_spec
-                    )
+                    handle = agg_cls.options(
+                        **base_options,
+                        scheduling_strategy=NodeAffinitySchedulingStrategy(
+                            node_id=learner_node_id,
+                            soft=self.config.aggregator_actor_node_affinity_soft,
+                        ),
+                    ).remote(self.config, rl_module_spec)
                     self._aggregator_actor_to_learner[len(agg_handles)] = learner_idx
                     agg_handles.append(handle)
 
@@ -1126,8 +1133,8 @@ class Algorithm(Checkpointable, Trainable):
                         "will be transferred cross-node to the Learner. Set "
                         "`aggregator_actor_node_affinity_soft=False` in "
                         "`config.learners(..)` to fail-fast instead, or pass "
-                        "`aggregator_actor_resources={..}` to reserve dedicated "
-                        "capacity on the Learner's node."
+                        "`custom_resources_per_aggregator_actor={..}` to reserve "
+                        "dedicated capacity on the Learner's node."
                     )
 
         # Ray metrics
