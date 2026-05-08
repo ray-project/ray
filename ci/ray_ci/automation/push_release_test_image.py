@@ -60,17 +60,18 @@ def _annotate_pushed_image(image_uri: str, image_type: str) -> None:
         for key in os.environ.get("RAYCI_SELECT", "").split(",")
         if key.strip()
     }
-    if step_key in selected_step_keys:
-        subprocess.run(
-            [
-                "buildkite-agent",
-                "annotate",
-                "--style=info",
-                f"--context=release-test-{image_type}-images",
-                "--append",
-                f"{image_uri}<br/>",
-            ],
-        )
+    if step_key not in selected_step_keys:
+        return
+    subprocess.run(
+        [
+            "buildkite-agent",
+            "annotate",
+            "--style=info",
+            f"--context=release-test-{image_type}-images",
+            "--append",
+            f"{image_uri}<br/>",
+        ],
+    )
 
 
 def _run_gcloud_docker_login() -> None:

@@ -328,6 +328,22 @@ class TestAnnotatePushedImage:
                 },
                 id="step_key_unset",
             ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "",
+                    "RAYCI_SELECT": "release-ray,release-ray-ml",
+                },
+                id="step_key_empty_string",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "  ,  ",
+                },
+                id="rayci_select_whitespace_only",
+            ),
         ],
     )
     def test_skips_annotation(self, monkeypatch, captured_calls, env):
