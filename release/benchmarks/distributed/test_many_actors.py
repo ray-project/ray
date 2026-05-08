@@ -12,8 +12,12 @@ from ray._private.state_api_test_utils import summarize_worker_startup_time
 is_smoke_test = True
 if "SMOKE_TEST" in os.environ:
     MAX_ACTORS_IN_CLUSTER = 100
+    MIN_NODES = 1
+    MIN_CPUS_PER_NODE = 1
 else:
     MAX_ACTORS_IN_CLUSTER = 10000
+    MIN_NODES = 65
+    MIN_CPUS_PER_NODE = 64
     is_smoke_test = False
 
 
@@ -36,6 +40,23 @@ def test_max_actors():
         assert result is None
 
 
+def check_min_nodes():
+    nodes = [node for node in ray.nodes() if node.get("Alive")]
+    if len(nodes) < MIN_NODES:
+        raise Exception(
+            f"Not enough nodes. Expected at least {MIN_NODES} nodes, "
+            f"got {len(nodes)}."
+        )
+
+    for node in tqdm.tqdm(nodes, desc="Verifying minimum resources per Node"):
+        cpus = node.get("Resources", {}).get("CPU", 0)
+        if cpus < MIN_CPUS_PER_NODE:
+            raise Exception(
+                f"Node {node.get('NodeID')} has {cpus} CPUs, "
+                f"expected at least {MIN_CPUS_PER_NODE}."
+            )
+
+
 def no_resource_leaks():
     return test_utils.no_resource_leaks_excluding_node_resources()
 
@@ -45,6 +66,7 @@ addr = ray.init(address="auto")
 ray._common.test_utils.wait_for_condition(no_resource_leaks)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
+check_min_nodes()
 
 start_time = time.time()
 test_max_actors()
