@@ -19,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -68,7 +68,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
-                  config.node_ip_address == "127.0.0.1",
+                  IsLocalhost(config.node_ip_address),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
                   /*auth_token=*/nullptr,
@@ -984,7 +984,7 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
   event_aggregator_client_->Connect(metrics_agent_port);
 
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
+      GetLocalhostIP(),
       metrics_agent_port,
       io_context_provider_.GetDefaultIOContext(),
       client_call_manager_);
