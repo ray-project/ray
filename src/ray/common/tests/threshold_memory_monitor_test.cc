@@ -104,7 +104,7 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [callback_triggered]() { callback_triggered->store(true); },
+      [callback_triggered](const std::string &) { callback_triggered->store(true); },
       cgroup_dir /*root_cgroup_path*/);
 
   std::this_thread::sleep_for(std::chrono::seconds(5));
