@@ -39,6 +39,7 @@ if is_v2_enabled():
     from ray.train.v2.api.config import (  # noqa: F811
         CheckpointConfig,
         FailureConfig,
+        LoggingConfig,
         RunConfig,
         ScalingConfig,
     )
@@ -113,6 +114,7 @@ if is_v2_enabled():
             "CheckpointUploadMode",
             "CheckpointConsistencyMode",
             "ControllerError",
+            "LoggingConfig",
             "ReportedCheckpoint",
             "ReportedCheckpointStatus",
             "UserCallback",
@@ -127,6 +129,7 @@ if is_v2_enabled():
     CheckpointUploadMode.__module__ = "ray.train"
     CheckpointConsistencyMode.__module__ = "ray.train"
     ControllerError.__module__ = "ray.train"
+    LoggingConfig.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
     ReportedCheckpointStatus.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"

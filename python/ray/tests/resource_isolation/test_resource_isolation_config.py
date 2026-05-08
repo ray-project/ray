@@ -107,7 +107,7 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
     # 2) DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES
     # NOTE: if you change the DEFAULT_MIN_SYSTEM_* constants, you may need to modify this test.
     # if the total number of cpus is between [1,19] the system cgroup will a weight that is equal to 1 cpu core.
-    # if the total amount of memory is between [1GB, 9GB] the system cgroup will get 1GB + object store memory.
+    # if the total amount of memory is between [0.5GB, 4.8GB] the system cgroup will get 0.5GB + object store memory.
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 2)
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 1024**3
@@ -116,17 +116,17 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 5000
-    assert config.system_reserved_memory == 1024**3
+    assert config.system_reserved_memory == 500 * (1024**2)
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 19)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 9 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 4.8 * (1024**3)
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 526
-    assert config.system_reserved_memory == 1024**3
+    assert config.system_reserved_memory == 500 * (1024**2)
 
 
 def test_enabled_resource_isolation_with_default_config_values_scale_with_system(
@@ -137,16 +137,16 @@ def test_enabled_resource_isolation_with_default_config_values_scale_with_system
     # 2) DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
     # NOTE: if you change the DEFAULT_SYSTEM_RESERVED_* constants, you may need to modify this test.
     # if the number of cpus on the system is [20,60] the reserved cpu cores will scale proportionately.
-    # if the amount of memory on the system is [10GB, 100GB] the reserved system memory will scale proportionately.
+    # if the amount of memory on the system is [5GB, 100GB] the reserved system memory will scale proportionately.
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 20)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 10 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 5 * (1024**3)
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 500
-    assert config.system_reserved_memory == 1024**3
+    assert config.system_reserved_memory == 512 * (1024**2)
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 59)
     monkeypatch.setattr(

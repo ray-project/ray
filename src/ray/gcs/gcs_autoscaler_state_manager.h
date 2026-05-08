@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
@@ -47,7 +47,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                             rpc::RayletClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
-                            pubsub::GcsPublisher *gcs_publisher);
+                            pubsub::GcsPublisher *gcs_publisher,
+                            pubsub::ObservabilityPublisher *observability_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -201,6 +202,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
 
   // A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
