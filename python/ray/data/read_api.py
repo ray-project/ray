@@ -78,7 +78,6 @@ from ray.data._internal.logical.operators import (
     Read,
     ReadFiles,
 )
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -159,15 +158,10 @@ def from_blocks(blocks: List[Block]):
     meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
 
     from_blocks_op = FromBlocks(block_refs, meta_with_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(from_blocks_op, context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -256,15 +250,10 @@ def from_items(
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(from_items_op, execution_plan._context)
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(from_items_op, context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -390,6 +379,52 @@ def range_tensor(
     )
 
 
+def _resolve_read_remote_args(
+    datasource: Datasource,
+    ray_remote_args: Optional[Dict[str, Any]],
+    num_cpus: Optional[float],
+    num_gpus: Optional[float],
+    memory: Optional[float],
+    ctx: DataContext,
+) -> Dict[str, Any]:
+    """Common ``ray_remote_args`` setup shared between ``read_datasource`` and
+    ``_read_datasource_v2``.
+
+    Local-scheme reads (``local://...``) must run on the driver so tasks can
+    see the driver's filesystem. We use the ``ray.io/node-id`` label selector
+    rather than ``NodeAffinitySchedulingStrategy(soft=False)`` — matches the
+    Ray-wide migration in PR #54940. ``supports_distributed_reads`` is
+    captured on the datasource against the original (pre-resolution) paths,
+    so the check survives the scheme-stripping done by
+    ``_resolve_paths_and_filesystem``.
+
+    Callers handle datasource-specific guards (Ray Client rejection,
+    ``_validate_head_node_resources_for_local_scheduling``) themselves since
+    they sit in different positions in the V1 and V2 flows.
+    """
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    if not datasource.supports_distributed_reads:
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+    return merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
+
+@wrap_auto_init
 def _read_datasource_v2(
     datasource,
     *,
@@ -418,12 +453,8 @@ def _read_datasource_v2(
     """
     import time
 
-    from ray.data._internal.datasource_v2.listing.file_pruners import (
-        FileExtensionPruner,
-        FilePruner,
-        PartitionPruner,
-    )
     from ray.data._internal.datasource_v2.listing.listing_utils import (
+        _build_pruners,
         sample_files,
     )
     from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
@@ -433,24 +464,27 @@ def _read_datasource_v2(
 
     ctx = DataContext.get_current()
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
+    if not datasource.supports_distributed_reads:
+        import ray.util.client
 
-    if "scheduling_strategy" not in ray_remote_args and (
-        "label_selector" not in ray_remote_args
-    ):
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the "
+                "Ray cluster can't access your local files. To fix this issue, "
+                "store files in cloud storage or a distributed filesystem like "
+                "NFS."
+            )
 
-    ray_remote_args = merge_resources_to_ray_remote_args(
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ctx,
     )
 
-    pruners: List[FilePruner] = [FileExtensionPruner(datasource.file_extensions)]
-    if partition_filter is not None:
-        pruners.append(PartitionPruner(partition_filter))
+    pruners = _build_pruners(datasource.file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
 
@@ -535,9 +569,14 @@ def _read_datasource_v2(
     )
 
     stats = DatasetStats(metadata={"Read": []}, parent=None)
-    execution_plan = ExecutionPlan(stats, DataContext.get_current().copy())
-    logical_plan = LogicalPlan(read_op, execution_plan._context)
-    return Dataset(plan=execution_plan, logical_plan=logical_plan)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(read_op, context)
+
+    return Dataset(
+        logical_plan=logical_plan,
+        context=context,
+        in_stats=stats,
+    )
 
 
 @PublicAPI
@@ -610,28 +649,13 @@ def read_datasource(
 
     ctx = DataContext.get_current()
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-
-    if not datasource.supports_distributed_reads:
-        label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
-        ray_remote_args["label_selector"] = label_selector
-        ray_remote_args.pop("scheduling_strategy", None)
-
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and "label_selector" not in ray_remote_args
-    ):
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-
-    ray_remote_args = merge_resources_to_ray_remote_args(
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ctx,
     )
 
     if not datasource.supports_distributed_reads:
@@ -682,15 +706,9 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
     )
-    execution_plan = ExecutionPlan(
-        stats,
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(read_op, execution_plan._context)
-    return Dataset(
-        plan=execution_plan,
-        logical_plan=logical_plan,
-    )
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(read_op, context)
+    return Dataset(logical_plan, context, stats)
 
 
 @PublicAPI(stability="alpha")
@@ -1175,9 +1193,8 @@ def read_parquet(
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
                 "s3://anonymous@ray-example-data/iris.parquet",
-                columns=["sepal.length", "variety"],
                 filter=pa.dataset.field("sepal.length") > 5.0,
-            )
+            ).select_columns(["sepal.length", "variety"])
 
             ds.show(2)
 
@@ -3426,34 +3443,20 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
-        execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
-            DataContext.get_current().copy(),
-        )
-        logical_plan = LogicalPlan(
-            FromPandas(dfs, metadata_schema), execution_plan._context
-        )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
+        ctx = DataContext.get_current().copy()
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata_schema), ctx)
+        return MaterializedDataset(logical_plan, ctx, stats)
 
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(
-        FromPandas(blocks, metadata_schema), execution_plan._context
-    )
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
+    ctx = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata_schema), ctx)
+    return MaterializedDataset(logical_plan, ctx, stats)
 
 
 @PublicAPI
@@ -3569,19 +3572,10 @@ def from_numpy_refs(
     blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
 
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-
-    logical_plan = LogicalPlan(
-        FromNumpy(blocks, metadata_schema), execution_plan._context
-    )
-
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata_schema), context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -3724,18 +3718,10 @@ def from_arrow_refs(
 
     get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
     metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(
-        FromArrow(tables, metadata_schema), execution_plan._context
-    )
-
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromArrow(tables, metadata_schema), context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI(stability="alpha")
