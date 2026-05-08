@@ -268,7 +268,10 @@ class TestBuildPDOpenaiApp:
 
         # The app should have an ingress deployment bound to the decode deployment
         ingress_deployment = app._bound_deployment
-        decode_app = ingress_deployment.init_kwargs["llm_deployments"][0]
+        llm_deployments = ingress_deployment.init_kwargs["llm_deployments"]
+        # Single model id -> single decode app (P/D shares the same model_id).
+        assert len(llm_deployments) == 1
+        decode_app = next(iter(llm_deployments.values()))
         decode_deployment = decode_app._bound_deployment
 
         assert decode_deployment.func_or_class is PDDecodeServer
