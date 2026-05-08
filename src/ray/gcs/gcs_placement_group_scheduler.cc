@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 
 namespace ray {
 namespace gcs {
@@ -61,15 +61,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
   // domain assignment so a new domain can be selected. If only some bundles are
   // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
-  if (placement_group->GetLabelDomainKey().has_value()) {
-    const std::vector<std::shared_ptr<const BundleSpecification>> &all_bundles =
-        placement_group->GetBundles();
-    bool is_total_failure = (bundles.size() == all_bundles.size());
-    if (is_total_failure) {
-      placement_group->ClearLabelDomainAssignments();
-      RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
-                    << " are unplaced, rescheduling on a new label domain";
-    }
+  if (placement_group->AllUnplacedBundles() &&
+      placement_group->GetLabelDomainKey().has_value()) {
+    placement_group->ClearLabelDomainAssignments();
+    RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
+                  << " are unplaced, rescheduling on a new label domain";
   }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
@@ -214,14 +210,16 @@ void GcsPlacementGroupScheduler::PrepareResources(
       bundles,
       [node_id, bundles, callback](const Status &status,
                                    const rpc::PrepareBundleResourcesReply &reply) {
-        auto result = reply.success() ? Status::OK()
-                                      : Status::IOError("Failed to reserve resource");
+        auto result = !status.ok()      ? status
+                      : reply.success() ? Status::OK()
+                                        : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
           RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(INFO) << "Failed to lease resource from " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+                        << " for bundles: " << GetDebugStringForBundles(bundles)
+                        << ". Status: " << result;
         }
         callback(result);
       });
@@ -246,7 +244,8 @@ void GcsPlacementGroupScheduler::CommitResources(
                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(INFO) << "Failed to commit resource to " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+                        << " for bundles: " << GetDebugStringForBundles(bundles)
+                        << ". Status: " << status;
         }
         RAY_CHECK(callback);
         callback(status);

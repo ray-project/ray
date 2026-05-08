@@ -383,6 +383,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
 
@@ -653,6 +654,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -699,6 +701,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -792,6 +795,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 

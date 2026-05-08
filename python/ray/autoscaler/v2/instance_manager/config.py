@@ -309,7 +309,9 @@ class AutoscalingConfig:
 
     def get_provider_instance_type(self, ray_node_type: NodeType) -> str:
         provider = self.provider
-        node_config = self.get_node_type_specific_config(ray_node_type, "node_config")
+        node_config = (
+            self.get_node_type_specific_config(ray_node_type, "node_config") or {}
+        )
         if provider in [Provider.AWS, Provider.ALIYUN]:
             return node_config.get("InstanceType", "")
         elif provider == Provider.AZURE:
@@ -541,7 +543,9 @@ class ReadOnlyProviderConfigReader(IConfigReader):
 
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
-            self._configs["max_workers"] = len(available_node_types)
+            self._configs["max_workers"] = sum(
+                v["max_workers"] for v in available_node_types.values()
+            )
             assert head_node_type, "Head node type should be found."
             self._configs["head_node_type"] = head_node_type
 

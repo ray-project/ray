@@ -179,9 +179,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 execution_id=execution_id,
             )
 
-        if autoscaling_coordinator is None:
-            autoscaling_coordinator = DefaultAutoscalingCoordinator()
-
         self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
@@ -198,14 +195,22 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # resources into explicit autoscaler demand.
         self._last_non_empty_resource_request: List[ResourceDict] = []
         self._last_non_empty_request_time: Optional[float] = None
+        # Unique identifier for the cluster autoscaler as a requester for
+        # the autoscaling coordinator.
         self._requester_id = f"data-{execution_id}"
+        if autoscaling_coordinator is None:
+            autoscaling_coordinator = DefaultAutoscalingCoordinator(
+                requester_id=self._requester_id
+            )
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
         self._get_time = get_time
         self._autoscaling_enabled = is_autoscaling_enabled()
 
-        # Send an empty request to register ourselves as soon as possible,
-        # so the first `get_total_resources` call can get the allocated resources.
+        # Register with the coordinator immediately so the actor knows about this
+        # requester before the first ``get_allocated_resources call``. The cached value
+        # returned by ``get_allocated_resources`` (and thus ``get_total_resources``) will
+        # be empty until the actor responds with the first allocation (cold-start).
         self._send_resource_request([])
 
     def try_trigger_scaling(self):
@@ -316,7 +321,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
         # Make autoscaler resource request.
         self._autoscaling_coordinator.request_resources(
-            requester_id=self._requester_id,
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
             request_remaining=True,
@@ -334,8 +338,11 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def on_executor_shutdown(self):
         # Cancel the resource request when the executor is shutting down.
         try:
-            self._autoscaling_coordinator.cancel_request(self._requester_id)
+            self._autoscaling_coordinator.cancel_request()
         except Exception:
+            # cancel_request is fire-and-forget and shouldn't raise, but guard
+            # against unexpected Ray Core errors at submit time. At shutdown
+            # there's nothing useful to do except log and let the request expire.
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
@@ -345,9 +352,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         """Get total resources available from the autoscaling coordinator."""
-        resources = self._autoscaling_coordinator.get_allocated_resources(
-            requester_id=self._requester_id
-        )
+        resources = self._autoscaling_coordinator.get_allocated_resources()
         total = ExecutionResources.zero()
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))

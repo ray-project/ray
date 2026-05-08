@@ -1632,8 +1632,9 @@ sphinx==7.3.7 \
     #   sphinx-copybutton
     #   sphinx-design
     #   sphinx-docsearch
+    #   sphinx-last-updated-by-git
+    #   sphinx-llms-txt
     #   sphinx-remove-toctrees
-    #   sphinx-sitemap
     #   sphinxcontrib-redoc
     #   sphinxemoji
 sphinx-autobuild==2024.4.16 \
@@ -1663,13 +1664,21 @@ sphinx-docsearch==0.0.7 \
 sphinx-jsonschema==1.19.1 \
     --hash=sha256:b2385fe1c7acf2e759152aefed0cb17c920645b2a75c9934000c9c528e7d53c1
     # via -r doc/requirements-doc.txt
+sphinx-last-updated-by-git==0.3.8 \
+    --hash=sha256:6382c8285ac1f222483a58569b78c0371af5e55f7fbf9c01e5e8a72d6fdfa499 \
+    --hash=sha256:c145011f4609d841805b69a9300099fc02fed8f5bb9e5bcef77d97aea97b7761
+    # via sphinx-sitemap
+sphinx-llms-txt==0.7.1 \
+    --hash=sha256:8f1cfcfe5897f5be118792f33f73eeb04cbbf66fc60c4c15982ec59252522263 \
+    --hash=sha256:b5cefec19d3fd56670aa4a28917d17d32b22c61a9feadbab8564ad11e932f5c0
+    # via -r doc/requirements-doc.txt
 sphinx-remove-toctrees==0.0.3 \
     --hash=sha256:1077ebc00652f8a896ce27404d31cb5bdde9eeaefc80ada72d95a7a0a7b99a9d \
     --hash=sha256:e4792cc4e5d25ceb1a44dd1490c45d578e6b36f1b1e385ede659e4c324b98cba
     # via -r doc/requirements-doc.txt
-sphinx-sitemap==2.5.1 \
-    --hash=sha256:0b7bce2835f287687f75584d7695e4eb8efaec028e5e7b36e9f791de3c344686 \
-    --hash=sha256:984bef068bbdbc26cfae209a8b61392e9681abc9191b477cd30da406e3a60ee5
+sphinx-sitemap==2.9.0 \
+    --hash=sha256:70f97bcdf444e3d68e118355cf82a1f54c4d3c03d651cd17fe87398b26e25e21 \
+    --hash=sha256:f1f1d3a9ad012ba17a7ef0b560d303bff2d0db26647567d6e810bcc754466664
     # via -r doc/requirements-doc.txt
 sphinxcontrib-applehelp==2.0.0 \
     --hash=sha256:2f29ef331735ce958efa4734873f084941970894c6090408b079c61b2e1c06d1 \
