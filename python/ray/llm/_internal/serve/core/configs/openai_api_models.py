@@ -35,7 +35,7 @@ try:
         EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
         EmbeddingResponse as _EmbeddingResponse,
     )
-    from vllm.entrypoints.pooling.score.protocol import (
+    from vllm.entrypoints.pooling.scoring.protocol import (
         ScoreResponse as _ScoreResponse,
         ScoreTextRequest as _ScoreTextRequest,
     )
