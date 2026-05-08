@@ -368,6 +368,7 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = "auto"
+        self.custom_resources_per_learner = {}
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.num_cpus_per_aggregator_actor = 1
@@ -2264,6 +2265,7 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_learner: Optional[Dict[str, float]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         num_cpus_per_aggregator_actor: Optional[Union[float, int]] = NotProvided,
@@ -2302,6 +2304,12 @@ class AlgorithmConfig(_Config):
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
                 the training on main process CPUs.
+            custom_resources_per_learner: Optional dict of custom Ray resource
+                requirements for each Learner worker (e.g.
+                ``{"my_label": 0.001}``). Do *not* put ``"CPU"`` or ``"GPU"`` in
+                here -- use ``num_cpus_per_learner`` /
+                ``num_gpus_per_learner`` instead. Useful for pinning Learners to
+                specific nodes via custom resource labels.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -2377,6 +2385,8 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if custom_resources_per_learner is not NotProvided:
+            self.custom_resources_per_learner = custom_resources_per_learner
         if num_aggregator_actors_per_learner is not NotProvided:
             self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
         if max_requests_in_flight_per_aggregator_actor is not NotProvided:

@@ -80,27 +80,26 @@ class TestIMPALA(unittest.TestCase):
             algo.stop()
 
     def test_aggregator_actors_colocate_with_learners(self):
-        """Verifies NodeAffinitySchedulingStrategy-based aggregator placement
+        """Verifies NodeAffinitySchedulingStrategy-based aggregator placement.
 
-        With one node, colocation is trivially true, so we spin up a fake 2-node cluster, force learners
-        to spread across both nodes, and then check that each AggregatorActor
-        lands on the same node as its assigned Learner.
+        With one node, colocation is trivially true, so we spin up a fake
+        2-node cluster, force Learners onto distinct nodes by giving each
+        node 1 unit of a custom ``learner_slot`` resource and asking each
+        Learner for 1 unit, then check that each AggregatorActor lands on
+        the same node as its assigned Learner.
         """
         # Shutdown ray first to make sure we have a clean cluster to work with.
         ray.shutdown()
 
-        # `scheduler_spread_threshold=0.0` makes Ray prefer a different node
-        # whenever the current candidate has any utilization. Without this,
-        # both 1-CPU Learners pack onto the head node by default and the
-        # cross-node affinity check below becomes meaningless.
+        # Each node advertises 1 unit of `learner_slot`. With 2 Learners
+        # each requesting 1 unit (via `custom_resources_per_learner`), Ray
+        # *must* place them on different nodes -- the only way both can
+        # claim the resource.
         cluster = Cluster(
             initialize_head=True,
-            head_node_args={
-                "num_cpus": 4,
-                "_system_config": {"scheduler_spread_threshold": 0.0},
-            },
+            head_node_args={"num_cpus": 4, "resources": {"learner_slot": 1}},
         )
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4, resources={"learner_slot": 1})
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
@@ -110,6 +109,7 @@ class TestIMPALA(unittest.TestCase):
             .learners(
                 num_learners=2,
                 num_aggregator_actors_per_learner=2,
+                custom_resources_per_learner={"learner_slot": 1},
             )
             .env_runners(num_env_runners=0)
         )
@@ -134,13 +134,7 @@ class TestIMPALA(unittest.TestCase):
         # Sanity check: with 2 nodes and 2 Learners, learners must land
         # on distinct nodes for the affinity assertion below to be
         # meaningful. If they don't, the spread config is broken.
-        self.assertEqual(
-            len(set(learner_node_ids)),
-            2,
-            f"Expected Learners on 2 distinct nodes, got "
-            f"{learner_node_ids}. Cross-node affinity cannot be "
-            f"verified.",
-        )
+        self.assertEqual(len(set(learner_node_ids)), 2)
 
         agg_node_ids = [
             rc.get()
@@ -150,12 +144,7 @@ class TestIMPALA(unittest.TestCase):
         ]
         for agg_idx, agg_node in enumerate(agg_node_ids):
             expected = learner_node_ids[mapping[agg_idx]]
-            self.assertEqual(
-                agg_node,
-                expected,
-                f"Aggregator {agg_idx} on node {agg_node}; expected "
-                f"node {expected} (Learner {mapping[agg_idx]}).",
-            )
+            self.assertEqual(agg_node, expected)
 
         # Disconnect the driver BEFORE tearing down the cluster — otherwise
         # `cluster.shutdown()` raises `ValueError: Removing a node that is
