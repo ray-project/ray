@@ -593,7 +593,12 @@ def _compute_backend_diff(
 
         # Any backend-level config change → reload. Compare the fields that
         # affect the rendered backend block (excluding the servers list).
+        # `name` is included defensively: callers in this file invariably
+        # use the dict key as the BackendConfig.name, but the helper itself
+        # shouldn't assume that invariant — a name change has to reload to
+        # update the frontend ACL labels and `use_backend` directives.
         backend_level_fields = (
+            "name",
             "path_prefix",
             "fallback_server",
             "app_name",
@@ -963,6 +968,54 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             raise RuntimeError(f"Failed to send socket command '{command}': {e}")
 
+    async def _send_runtime_command(self, command: str) -> str:
+        """Send an admin-socket command and treat error responses as failures.
+
+        HAProxy's admin socket conveys command failures by returning an
+        error string in the response body — not by closing the connection
+        or raising at the transport level. `_send_socket_command` returns
+        the body verbatim, so callers that only catch transport-level
+        exceptions (e.g. mutating commands like `add server` / `del server`)
+        can mistake a rejection for a success.
+
+        This wrapper inspects the response for the well-known error markers
+        HAProxy emits and raises RuntimeError when present, so the caller's
+        `try/except` reliably catches both transport failures and
+        application-level rejections.
+        """
+        result = await self._send_socket_command(command)
+        if not result:
+            return result
+        # HAProxy prefixes alert/warning/notice levels into the admin-socket
+        # response when a command is rejected (e.g.,
+        #   "[ALERT] (XYZ) : 'add server' : Backend X not found.")
+        # Plain string error messages without a prefix also occur — check
+        # for a small set of common error tokens. Any false-positive here
+        # is fine: the worst case is we trigger a fallback reload.
+        normalized = result.lower()
+        error_markers = (
+            "[alert]",
+            "[warning]",
+            "[notice]",
+            "no such server",
+            "no such backend",
+            "doesn't exist",
+            "does not exist",
+            "not found",
+            "not allowed",
+            "syntax error",
+            "invalid argument",
+            "unknown command",
+            "must be disabled",
+        )
+        for marker in error_markers:
+            if marker in normalized:
+                raise RuntimeError(
+                    f"HAProxy rejected runtime command '{command}': "
+                    f"{result.strip()}"
+                )
+        return result
+
     @staticmethod
     def _parse_haproxy_csv_stats(
         stats_output: str,
@@ -1125,18 +1178,21 @@ class HAProxyApi(ProxyApi):
             self.set_backend_configs(new_backend_configs)
             return True
 
-        # Apply the diff via the admin socket. If any single command fails,
-        # bail out and let the caller reload — this avoids leaving HAProxy in
-        # a partially-updated state.
+        # Apply the diff via the admin socket. Commands are sent
+        # sequentially — if one fails partway through, the live HAProxy
+        # state is partially updated. The fallback reload that the caller
+        # performs after we return False rebuilds full state from
+        # self.backend_configs (which we update here) and converges
+        # everything back to the new desired state.
         try:
             for backend_name, server_names in diff.servers_to_remove.items():
                 for sname in server_names:
                     # Disable before delete: required when the server has
                     # in-flight connections; safe even when it doesn't.
-                    await self._send_socket_command(
+                    await self._send_runtime_command(
                         f"disable server {backend_name}/{sname}"
                     )
-                    await self._send_socket_command(
+                    await self._send_runtime_command(
                         f"del server {backend_name}/{sname}"
                     )
 
@@ -1145,12 +1201,12 @@ class HAProxyApi(ProxyApi):
                     # Newly-added runtime servers inherit `default-server`
                     # directives (inter/fall/rise/etc.) from the backend
                     # block, so we only need address + the `check` flag.
-                    await self._send_socket_command(
+                    await self._send_runtime_command(
                         f"add server {backend_name}/{server.name} "
                         f"{server.host}:{server.port} check"
                     )
                     # Runtime-added servers start in MAINT state by default.
-                    await self._send_socket_command(
+                    await self._send_runtime_command(
                         f"enable server {backend_name}/{server.name}"
                     )
         except Exception as e:

@@ -303,10 +303,11 @@ class TestTryApplyServersDynamically:
 
     @pytest.mark.asyncio
     async def test_socket_failure_falls_back_to_reload(self):
-        """If any runtime command fails, bail and let the caller reload.
+        """If any runtime command raises, bail and let the caller reload.
 
-        This avoids leaving HAProxy in a half-applied state where some servers
-        were added but others weren't.
+        HAProxy can fail at the transport level (socket closed, connection
+        refused, timeout). The caller's reload converges live state back
+        to self.backend_configs.
         """
         api = self._make_api(backend_configs={"b1": _backend("b1", [_server("s1")])})
         new_configs = {"b1": _backend("b1", [_server("s1"), _server("s2")])}
@@ -322,6 +323,55 @@ class TestTryApplyServersDynamically:
         assert applied is False
         # Internal state still updated so the fallback reload reflects truth.
         assert api.backend_configs == new_configs
+
+    @pytest.mark.asyncio
+    async def test_socket_returns_error_string_falls_back_to_reload(self):
+        """HAProxy can reject commands by returning an error string (not raising).
+
+        The runtime API conveys most command-level failures as response
+        text (e.g. ``[ALERT] (123) : 'add server' : Backend X not found.``)
+        rather than transport-level exceptions. We must treat those
+        responses as failures or we'd silently skip a needed reload while
+        live HAProxy state diverges from our internal config.
+        """
+        api = self._make_api(backend_configs={"b1": _backend("b1", [_server("s1")])})
+        new_configs = {"b1": _backend("b1", [_server("s1"), _server("s2")])}
+
+        async def fake_send(cmd):
+            if cmd.startswith("add server"):
+                return "[ALERT] (123) : 'add server' : Backend b1 not found.\n"
+            return ""
+
+        with patch.object(
+            api, "is_running", AsyncMock(return_value=True)
+        ), patch.object(api, "_send_socket_command", side_effect=fake_send):
+            applied = await api.try_apply_servers_dynamically(new_configs)
+        assert applied is False
+        assert api.backend_configs == new_configs
+
+    @pytest.mark.asyncio
+    async def test_send_runtime_command_raises_on_error_string(self):
+        """Direct test of the response validator that backs the apply path."""
+        api = self._make_api()
+
+        async def fake_send(cmd):
+            return "[ALERT] command rejected\n"
+
+        with patch.object(api, "_send_socket_command", side_effect=fake_send):
+            with pytest.raises(RuntimeError, match="HAProxy rejected"):
+                await api._send_runtime_command("add server foo/bar 1.2.3.4:80")
+
+    @pytest.mark.asyncio
+    async def test_send_runtime_command_passes_empty_response(self):
+        """Successful HAProxy runtime commands return empty/whitespace."""
+        api = self._make_api()
+
+        async def fake_send(cmd):
+            return ""
+
+        with patch.object(api, "_send_socket_command", side_effect=fake_send):
+            result = await api._send_runtime_command("disable server foo/bar")
+        assert result == ""
 
 
 if __name__ == "__main__":
