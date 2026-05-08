@@ -841,22 +841,51 @@ class HAProxyApi(ProxyApi):
             logger.error(f"HAProxy graceful reload failed: {e}")
             raise
 
+    async def _is_listener_bound(self) -> bool:
+        """Quick TCP-only check: is HAProxy accepting connections on its port?
+
+        Used for readiness detection inside `_wait_for_hap_availability`.
+        We deliberately don't send an HTTP request here -- under startup
+        load (large config, many backends, server-state file replay)
+        HAProxy can be bound but momentarily slow to dispatch the first
+        HTTP requests to its worker threads, which would burn our entire
+        5s startup budget on a single read timeout. TCP-bound is the
+        right signal for "the listener is up"; HTTP-level responsiveness
+        follows within milliseconds and is verified separately by the
+        controller's health check via `probe_http_listener`.
+        """
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", self.cfg.frontend_port),
+                timeout=0.5,
+            )
+        except Exception:
+            return False
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return True
+
     async def probe_http_listener(self) -> bool:
         """Probe the HAProxy HTTP listener via /-/healthz.
 
-        Returns True if HAProxy is serving 200 responses on its frontend
-        port, False otherwise. Used as a readiness signal that does NOT
-        depend on the admin socket -- the admin socket is shared with our
-        runtime-API commands and the `-x` reload FD transfer, and saturates
-        under autoscaling churn. The HTTP listener is served by HAProxy
-        worker threads independent of the CLI mux, so it stays responsive
-        when the admin socket is busy.
+        Returns True if HAProxy is parsing HTTP on its frontend port,
+        False otherwise. Used by the controller's health check, which
+        runs on a stable proxy and needs to differentiate "alive and
+        serving" from "bound but stuck". Does NOT depend on the admin
+        socket -- the admin socket is shared with our runtime-API
+        commands and the `-x` reload FD transfer, and saturates under
+        autoscaling churn. The HTTP listener is served by HAProxy worker
+        threads independent of the CLI mux, so it stays responsive when
+        the admin socket is busy.
 
-        During graceful reload (where the old process is still bound to the
-        same port) this probe may be answered by either the old or the new
-        process; that's acceptable for readiness purposes because either
-        way the port is serving traffic. Crash detection is handled
-        separately by polling `proc.returncode`.
+        During graceful reload (where the old process is still bound to
+        the same port) this probe may be answered by either the old or
+        the new process; that's acceptable for readiness purposes because
+        either way the port is serving traffic. Crash detection is
+        handled separately by polling `proc.returncode`.
         """
         try:
             reader, writer = await asyncio.wait_for(
@@ -909,12 +938,12 @@ class HAProxyApi(ProxyApi):
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
                 )
 
-            # Probe the HTTP listener instead of the admin socket. The admin
-            # socket gets saturated under runtime-API load and a benign
-            # `show info` can take >5s to return, falsely flagging a healthy
-            # HAProxy as not-yet-running. The HTTP listener is independent
-            # of the CLI mux and stays responsive.
-            if await self.probe_http_listener():
+            # TCP-only check: is the listener accepting connections? We
+            # don't send an HTTP request here because the per-iteration
+            # cost would burn our startup budget. TCP-bound is the right
+            # signal for "HAProxy is up"; the controller's check_health
+            # uses the HTTP probe to verify ongoing serving capability.
+            if await self._is_listener_bound():
                 return
 
             await asyncio.sleep(0.5)
