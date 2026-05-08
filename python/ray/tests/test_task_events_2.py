@@ -1111,7 +1111,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
 
                 return pid
 
@@ -1139,7 +1139,7 @@ class TestIsActorTaskRunning:
                     )
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
 
                 return pid
 
@@ -1164,7 +1164,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
 
                 return pid
 
@@ -1190,7 +1190,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
 
                 return pid
 
@@ -1215,7 +1215,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
 
                 return pid
 
@@ -1249,7 +1249,7 @@ class TestIsActorTaskRunning:
                     )
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
 
                 return pid
 
@@ -1275,7 +1275,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
                 return pid
 
         a = A.remote()
@@ -1296,7 +1296,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
                 return pid
 
         a = Actor.remote()
@@ -1324,7 +1324,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
 
-                wait_for_condition(_check)
+                wait_for_condition(_check, timeout=30)
                 return pid
 
         a = VeryLongCommActor.remote()
