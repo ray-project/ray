@@ -25,7 +25,8 @@ def _to_json_serializable_value(value: Any, *, max_depth: int = 3) -> Any:
     human-readable string representation.
 
     Args:
-        value: The value to convert.
+        value: Any Python value. Primitives pass through; collections recurse;
+            other types are stringified.
         max_depth: Truncates dicts nested beyond ``max_depth`` to ``"..."``.
             Lists do not consume depth.
 
