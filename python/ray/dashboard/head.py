@@ -153,7 +153,6 @@ class DashboardHead:
             self.gcs_address,
             self.session_name,
             self.metrics,
-            self.proxy_server_url,
         )
         await self.http_server.run(dashboard_head_modules, subprocess_module_handles)
 
@@ -188,7 +187,10 @@ class DashboardHead:
 
         If modules_to_load is not None, only load the modules in the set.
         """
-        dashboard_head_modules = self._load_dashboard_head_modules(modules_to_load)
+        (
+            dashboard_head_modules,
+            skipped_head_modules,
+        ) = self._load_dashboard_head_modules(modules_to_load)
         subprocess_module_handles = self._load_subprocess_module_handles(
             modules_to_load
         )
@@ -201,18 +203,20 @@ class DashboardHead:
         ), "Duplicate module names. A module name can't be a DashboardHeadModule and a SubprocessModule at the same time."
 
         # Verify modules are loaded as expected.
-        if modules_to_load is not None and all_names != modules_to_load:
-            assert False, (
-                f"Actual loaded modules {all_names}, doesn't match the requested modules "
-                f"to load, {modules_to_load}."
-            )
+        if modules_to_load is not None:
+            expected_names = modules_to_load - skipped_head_modules
+            if all_names != expected_names:
+                assert False, (
+                    f"Actual loaded modules {all_names}, doesn't match the requested modules "
+                    f"to load, {expected_names}."
+                )
 
         self._modules_loaded = True
         return dashboard_head_modules, subprocess_module_handles
 
     def _load_dashboard_head_modules(
         self, modules_to_load: Optional[Set[str]] = None
-    ) -> List[DashboardHeadModule]:
+    ) -> Tuple[List[DashboardHeadModule], Set[str]]:
         """Load `DashboardHeadModule`s.
 
         Args:
@@ -220,6 +224,7 @@ class DashboardHead:
                 it loads all modules.
         """
         modules = []
+        skipped_modules = set()
         head_cls_list = dashboard_utils.get_all_modules(DashboardHeadModule)
 
         config = DashboardHeadModuleConfig(
@@ -242,14 +247,23 @@ class DashboardHead:
             ]
 
         logger.info(f"DashboardHeadModules to load: {modules_to_load}.")
-
         for cls in head_cls_list:
+            if cls.__name__ == "PlatformEventsHead":
+                if os.environ.get("RAY_ENABLE_K8S_EVENTS", "False").lower() not in (
+                    "true",
+                    "1",
+                ):
+                    logger.info(
+                        "Skipping PlatformEventsHead because RAY_ENABLE_K8S_EVENTS is not enabled."
+                    )
+                    skipped_modules.add(cls.__name__)
+                    continue
             logger.info(f"Loading {DashboardHeadModule.__name__}: {cls}.")
             c = cls(config)
             modules.append(c)
 
         logger.info(f"Loaded {len(modules)} dashboard head modules: {modules}.")
-        return modules
+        return modules, skipped_modules
 
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None

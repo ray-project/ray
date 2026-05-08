@@ -13,6 +13,7 @@ import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialo
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
+import PlatformEventsPage from "./pages/events/PlatformEventsPage";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
 import {
@@ -397,6 +398,7 @@ const App = () => {
                 <Route element={<MainNavLayout />} path="/">
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
+                  <Route element={<PlatformEventsPage />} path="events" />
                   <Route element={<ClusterMainPageLayout />} path="cluster">
                     <Route element={<ClusterLayout />} path="">
                       <Route

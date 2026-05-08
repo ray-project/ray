@@ -107,6 +107,11 @@ const NAV_ITEMS = [
     path: "/logs",
     id: "logs",
   },
+  {
+    title: "Events",
+    path: "/events",
+    id: "events",
+  },
 ];
 
 const MainNavBar = () => {
