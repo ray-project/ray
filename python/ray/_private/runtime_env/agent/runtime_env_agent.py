@@ -301,6 +301,36 @@ class RuntimeEnvAgent:
             else:
                 delete_runtime_env()
 
+    def _inject_resource_env_vars(
+        self, context: RuntimeEnvContext, request
+    ) -> RuntimeEnvContext:
+        cpu_req = request.resource_requirements.get("CPU", 0)
+        import math
+
+        omp_num_threads = max(math.floor(cpu_req), 1)
+        if "OMP_NUM_THREADS" not in context.env_vars:
+            context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
+
+        from ray._private.accelerators import (
+            get_accelerator_manager_for_resource,
+            get_all_accelerator_resource_names,
+        )
+
+        for resource_name in get_all_accelerator_resource_names():
+            manager = get_accelerator_manager_for_resource(resource_name)
+            env_var = manager.get_visible_accelerator_ids_env_var()
+            context.env_vars.pop(env_var, None)
+
+        for resource_name in get_all_accelerator_resource_names():
+            if resource_name in request.allocated_instances:
+                manager = get_accelerator_manager_for_resource(resource_name)
+                env_var = manager.get_visible_accelerator_ids_env_var()
+                allocated_ids = list(request.allocated_instances[resource_name].ids)
+                allocated_ids_str = [str(i) for i in allocated_ids]
+                context.env_vars[env_var] = ",".join(allocated_ids_str)
+
+        return context
+
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
@@ -327,41 +357,6 @@ class RuntimeEnvAgent:
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-
-            # Add OMP_NUM_THREADS based on CPU resource requirements
-            cpu_req = request.resource_requirements.get("CPU", 0)
-            if cpu_req > 0:
-                import math
-
-                omp_num_threads = max(math.floor(cpu_req), 1)
-                if "OMP_NUM_THREADS" not in context.env_vars:
-                    context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
-
-            # Add visible accelerator env vars based on allocated instances
-            from ray._private.accelerators import (
-                get_accelerator_manager_for_resource,
-                get_all_accelerator_resource_names,
-            )
-
-            for resource_name in get_all_accelerator_resource_names():
-                if resource_name in request.allocated_instances:
-                    manager = get_accelerator_manager_for_resource(resource_name)
-                    env_var = manager.get_visible_accelerator_ids_env_var()
-                    allocated_ids = list(request.allocated_instances[resource_name].ids)
-                    allocated_ids_str = [str(i) for i in allocated_ids]
-
-                    original_env = os.environ.copy()
-                    try:
-                        os.environ.pop(env_var, None)
-                        manager.set_current_process_visible_accelerator_ids(
-                            allocated_ids_str
-                        )
-                        val = os.environ.get(env_var)
-                        if val is not None:
-                            context.env_vars[env_var] = val
-                    finally:
-                        os.environ.clear()
-                        os.environ.update(original_env)
 
             # Warn about unrecognized fields in the runtime env.
             for name, _ in runtime_env.plugins():
@@ -510,7 +505,9 @@ class RuntimeEnvAgent:
                 serialized_context = self._env_cache[serialized_env]
                 result = self._env_cache[serialized_env]
                 if result.success:
-                    context = result.result
+                    context_obj = RuntimeEnvContext.deserialize(result.result)
+                    self._inject_resource_env_vars(context_obj, request)
+                    context = context_obj.serialize()
                     self._logger.info(
                         "Runtime env already created "
                         f"successfully. Env: {serialized_env}, "
@@ -572,6 +569,12 @@ class RuntimeEnvAgent:
                 serialized_context if successful else error_message,
                 creation_time_ms,
             )
+
+            if successful:
+                context_obj = RuntimeEnvContext.deserialize(serialized_context)
+                self._inject_resource_env_vars(context_obj, request)
+                serialized_context = context_obj.serialize()
+
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK

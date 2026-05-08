@@ -863,9 +863,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   worker->SetAssignedPort(port);
 
   worker->SetResourceRequirements(starting_process_info.resource_requirements);
-  if (starting_process_info.allocated_instances) {
-    worker->SetAllocatedInstances(starting_process_info.allocated_instances);
-  }
 
   state.registered_workers.insert(worker);
 

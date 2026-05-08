@@ -110,10 +110,13 @@ static int GetReferenceCount(const std::string &serialized_runtime_env) {
 
 class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  void GetOrCreateRuntimeEnv(const JobID &job_id,
-                             const std::string &serialized_runtime_env,
-                             const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
+  void GetOrCreateRuntimeEnv(
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
+      const ResourceSet &resource_requirements,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+      GetOrCreateRuntimeEnvCallback callback) override {
     if (serialized_runtime_env == kBadRuntimeEnv) {
       callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
     } else {
