@@ -985,8 +985,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(node_id)) {
     ids.insert(id);
   }
-  RAY_UNUSED(
-      FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
+  RAY_UNUSED(FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
@@ -1020,8 +1019,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
     ids.insert(id);
   }
-  RAY_UNUSED(
-      FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
+  RAY_UNUSED(FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
