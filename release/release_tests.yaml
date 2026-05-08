@@ -4524,8 +4524,7 @@
       pytest -sv test_batch_sglang.py
 
 - name: llm_batch_vllm_multi_node
-  # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
-  frequency: manual
+  frequency: nightly
   python: "3.12"
   group: llm-batch
   team: llm
