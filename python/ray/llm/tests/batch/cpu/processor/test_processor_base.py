@@ -386,6 +386,63 @@ class TestProcessorConfig:
         assert conf.get_concurrency() == expected
 
 
+class TestOfflineProcessorConfig:
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            # Explicit field wins.
+            ({"max_tasks_in_flight_per_actor": 10}, 10),
+            # Fallback: default max_concurrent_batches (8) * default factor (2).
+            ({}, 16),
+            # Fallback tracks max_concurrent_batches.
+            ({"max_concurrent_batches": 4}, 8),
+            # Explicit field beats the formula.
+            ({"max_concurrent_batches": 4, "max_tasks_in_flight_per_actor": 99}, 99),
+        ],
+    )
+    def test_max_tasks_in_flight_per_actor_resolution(self, kwargs, expected):
+        """Resolution happens at config construction; verify the field holds
+        the resolved value and `max_concurrent_batches` is intact."""
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+            **kwargs,
+        )
+        assert config.max_tasks_in_flight_per_actor == expected
+        assert config.max_concurrent_batches == kwargs.get("max_concurrent_batches", 8)
+
+    def test_experimental_max_tasks_in_flight_per_actor_deprecated(self, caplog):
+        """Setting via `experimental` is honored with a deprecation log; the
+        top-level field overrides it but the warning still fires."""
+        import logging
+
+        logger_name = "ray.llm._internal.batch.processor.base"
+
+        def has_deprecation_log():
+            return any(
+                "max_tasks_in_flight_per_actor" in r.message
+                and "deprecated" in r.message
+                for r in caplog.records
+            )
+
+        with caplog.at_level(logging.WARNING, logger=logger_name):
+            cfg = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                experimental={"max_tasks_in_flight_per_actor": 10},
+            )
+        assert cfg.max_tasks_in_flight_per_actor == 10
+        assert has_deprecation_log()
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=logger_name):
+            cfg = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                max_tasks_in_flight_per_actor=20,
+                experimental={"max_tasks_in_flight_per_actor": 10},
+            )
+        assert cfg.max_tasks_in_flight_per_actor == 20
+        assert has_deprecation_log()
+
+
 class TestMapKwargs:
     """Tests for preprocess_map_kwargs and postprocess_map_kwargs."""
 
