@@ -1404,5 +1404,52 @@ def test_serve_instance_details_is_json_serializable():
     assert "_serialized_policy_def" not in autoscaling_config
 
 
+def test_deployment_info_to_schema_includes_max_replicas_per_node():
+    """_deployment_info_to_schema should propagate max_replicas_per_node
+    from ReplicaConfig into the resulting DeploymentSchema."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+        max_replicas_per_node=3,
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.max_replicas_per_node == 3
+
+
+def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
+    """When max_replicas_per_node is None (default), the schema field should
+    remain at its default (DEFAULT.VALUE), i.e. unset."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.max_replicas_per_node is DEFAULT.VALUE
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

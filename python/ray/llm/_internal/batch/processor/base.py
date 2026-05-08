@@ -17,11 +17,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
-# Higher values here are better for prefetching and locality. It's ok for this to be
-# fairly high since streaming backpressure prevents us from overloading actors.
-DEFAULT_MAX_TASKS_IN_FLIGHT = 16
-
-
 class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
@@ -55,9 +50,12 @@ class ProcessorConfig(BaseModelExtended):
 
     experimental: Dict[str, Any] = Field(
         default_factory=dict,
-        description="[Experimental] Experimental configurations."
+        description="[Experimental] Experimental configurations. "
         "Supported keys:\n"
-        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 16.",
+        "`max_tasks_in_flight_per_actor`: [DEPRECATED] Prefer the top-level "
+        "`max_tasks_in_flight_per_actor` field on `OfflineProcessorConfig`. "
+        "Setting it here is still respected (and overridden by the top-level "
+        "field if both are set), but logs a deprecation warning.",
     )
 
     @field_validator("concurrency")
@@ -156,7 +154,21 @@ class OfflineProcessorConfig(ProcessorConfig):
         "This is to overlap the batch processing to avoid the tail latency of "
         "each batch. The default value may not be optimal when the batch size "
         "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 32.",
+        "enough for batch size >= 32. Sets the engine actor's Ray Core "
+        "`max_concurrency`.",
+    )
+    max_tasks_in_flight_per_actor: Optional[int] = Field(
+        default=None,
+        description="Max tasks Ray Data submits concurrently to each engine "
+        "actor. Passed through to `ray.data.ActorPoolStrategy`. If unset, Ray "
+        "Data uses `ray.data.DataContext.max_tasks_in_flight_per_actor` if set "
+        "globally. Otherwise, it defaults to `2 * max_concurrent_batches`; the "
+        "factor can be overridden via the "
+        "`RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR` "
+        "env var. "
+        "Setting this lower than `max_concurrent_batches` can underutilize the "
+        "engine actor because Ray Data submits fewer tasks than the actor can "
+        "process concurrently.",
     )
     should_continue_on_error: bool = Field(
         default=False,
@@ -259,6 +271,44 @@ class OfflineProcessorConfig(ProcessorConfig):
                 values[stage_field] = {"enabled": enabled}
 
         return values
+
+    @model_validator(mode="before")
+    def _migrate_experimental_max_tasks_in_flight_per_actor(
+        cls, values: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Migrate deprecated `experimental[max_tasks_in_flight_per_actor]` to
+        the top-level field; top-level wins if both are set."""
+        experimental = values.get("experimental") or {}
+        if "max_tasks_in_flight_per_actor" in experimental:
+            logger.warning(
+                "Setting `max_tasks_in_flight_per_actor` via `experimental` is "
+                "deprecated; use the top-level `max_tasks_in_flight_per_actor` "
+                "field on `OfflineProcessorConfig` instead. The value in "
+                "`experimental` is still respected for now (and overridden by "
+                "the top-level field if both are set), but will be removed in "
+                "a future version."
+            )
+            if values.get("max_tasks_in_flight_per_actor") is None:
+                values["max_tasks_in_flight_per_actor"] = experimental[
+                    "max_tasks_in_flight_per_actor"
+                ]
+        return values
+
+    @model_validator(mode="after")
+    def _warn_if_max_tasks_in_flight_underutilizes_actor(self):
+        if (
+            self.max_tasks_in_flight_per_actor is not None
+            and self.max_tasks_in_flight_per_actor < self.max_concurrent_batches
+        ):
+            logger.warning(
+                "Setting `max_tasks_in_flight_per_actor` (%s) lower than "
+                "`max_concurrent_batches` (%s) can underutilize each engine "
+                "actor because Ray Data will submit fewer tasks than the actor "
+                "can process concurrently.",
+                self.max_tasks_in_flight_per_actor,
+                self.max_concurrent_batches,
+            )
+        return self
 
     @model_validator(mode="before")
     def _warn_prepare_image_stage_deprecation(

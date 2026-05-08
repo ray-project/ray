@@ -15,7 +15,6 @@ from urllib.request import urlopen
 import sphinx
 from docutils import nodes
 from jinja2.filters import FILTERS
-from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
 
@@ -110,6 +109,19 @@ llms_txt_exclude = [
     "serve/api/doc/*",
     "rllib/package_ref/*",
 ]
+
+# Exclude Jupyter notebooks from llms-full.txt. sphinx-llms-txt reads each
+# docname's source verbatim from `_sources/`, so for `.ipynb` pages it
+# appends raw notebook JSON (cells, outputs, embedded base64 images) into
+# the corpus. `llms_txt_exclude` matches docnames (extension stripped) via
+# fnmatch, so a `**/*.ipynb` pattern can't work — we enumerate each
+# notebook's docname instead. Notebooks remain fully rendered in the HTML
+# build; only the agent corpus drops them.
+_conf_dir = pathlib.Path(__file__).parent
+llms_txt_exclude += sorted(
+    p.relative_to(_conf_dir).with_suffix("").as_posix()
+    for p in _conf_dir.rglob("*.ipynb")
+)
 
 # -- sphinx-collections: pull external template files at build time -----------
 
@@ -844,17 +856,6 @@ for mock_target in autodoc_mock_imports:
             "been loaded into sys.modules when the sphinx build starts."
         )
 
-
-class MockedClassDocumenter(autodoc.ClassDocumenter):
-    """Remove note about base class when a class is derived from object."""
-
-    def add_line(self, line: str, source: str, *lineno: int) -> None:
-        if line == "   Bases: :py:class:`object`":
-            return
-        super().add_line(line, source, *lineno)
-
-
-autodoc.ClassDocumenter = MockedClassDocumenter
 
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations
