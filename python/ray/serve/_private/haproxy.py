@@ -1520,9 +1520,55 @@ class HAProxyManager(ProxyActorInterface):
         # If haproxy is already shutdown, return False.
         if not self._haproxy or not self._haproxy._proc:
             return False
+        if self._haproxy._proc.returncode is not None:
+            return False
 
         logger.debug("Received health check.", extra={"log_to_stderr": False})
-        return await self._haproxy.is_running()
+        return await self._probe_http_listener()
+
+    async def _probe_http_listener(self) -> bool:
+        """Probe the HAProxy HTTP listener via /-/healthz.
+
+        The controller's `check_health` previously called `is_running()`,
+        which sends `show info` over the HAProxy admin socket. Under load
+        that socket also carries our runtime-API commands and HAProxy's
+        `-x` reload FD transfer, and saturates: a benign `show info` can
+        take >5s to return, which falsely flags the proxy as unhealthy
+        and triggers the controller to kill+recreate it. The kill orphans
+        the HAProxy child (Ray actor death doesn't cascade to subprocesses),
+        whose listener ports then block the new actor's HAProxy from
+        binding -- compounding the original cascade.
+
+        Probing the HTTP listener directly bypasses the admin socket. The
+        listener is served by HAProxy's worker threads, which are
+        independent of the CLI mux that handles socket commands, so it
+        stays responsive even when admin socket is saturated. This matches
+        what the AWS ALB target group health check sees, so the proxy's
+        self-reported health aligns with what the upstream load balancer
+        will route to.
+        """
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", self._http_options.port),
+                timeout=2.0,
+            )
+        except Exception:
+            return False
+        try:
+            writer.write(
+                b"GET /-/healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+            )
+            await writer.drain()
+            response = await asyncio.wait_for(reader.read(256), timeout=2.0)
+            return b"HTTP/1.0 200" in response or b"HTTP/1.1 200" in response
+        except Exception:
+            return False
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
 
     def pong(self) -> str:
         pass
