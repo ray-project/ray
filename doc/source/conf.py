@@ -111,6 +111,19 @@ llms_txt_exclude = [
     "rllib/package_ref/*",
 ]
 
+# Exclude Jupyter notebooks from llms-full.txt. sphinx-llms-txt reads each
+# docname's source verbatim from `_sources/`, so for `.ipynb` pages it
+# appends raw notebook JSON (cells, outputs, embedded base64 images) into
+# the corpus. `llms_txt_exclude` matches docnames (extension stripped) via
+# fnmatch, so a `**/*.ipynb` pattern can't work — we enumerate each
+# notebook's docname instead. Notebooks remain fully rendered in the HTML
+# build; only the agent corpus drops them.
+_conf_dir = pathlib.Path(__file__).parent
+llms_txt_exclude += sorted(
+    p.relative_to(_conf_dir).with_suffix("").as_posix()
+    for p in _conf_dir.rglob("*.ipynb")
+)
+
 # -- sphinx-collections: pull external template files at build time -----------
 
 _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
