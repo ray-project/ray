@@ -241,8 +241,13 @@ compute node. The line that fixes the zombie problem is ``init: true``:
        init: true            # PID 1 becomes tini, which reaps zombies
        command: ["slurmd"]
 
-After this change, ``ray stop`` sees each Ray process exit with status
-``terminated`` (not ``zombie``) and reports ``Stopped N out of N``.
+After this change, the Ray processes are properly reaped on teardown,
+so ``psutil.wait_procs`` no longer classifies them as alive and
+``ray stop`` prints its success message instead of the warning above:
+
+.. code-block:: text
+
+   SUCCESS scripts.py:1488 -- Stopped all 6 Ray processes.
 
 References
 ^^^^^^^^^^
