@@ -76,6 +76,16 @@ local function truncated_full_length(txn, body)
     end
 end
 
+-- Failure semantics: every path that reaches a router decision but cannot pin
+-- a replica must arm txn.ingress_request_router_failed so the frontend's 503
+-- rule fires instead of letting the request silently fall through to the
+-- primary backend. The product invariant is: requests to a router-bearing app
+-- are served via the router or fail; there is no quiet alternative path.
+-- Two silent returns are correct: (1) the request didn't target a
+-- router-bearing app (no txn var set, no app entry in our maps), and
+-- (2) the controller hasn't pushed router/replica state for this app yet.
+-- Failure-mode bucketing belongs in observability (response header label,
+-- metric label), not in the data plane.
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
     local app = txn:get_var("txn.ingress_request_router_app")
     if not app then
@@ -89,6 +99,7 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
 
     local body = txn.sf:req_body()
     if not body or body == "" then
+        txn:set_var("txn.ingress_request_router_failed", "empty_body")
         return
     end
 
@@ -100,17 +111,24 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
     end
 
     local response = call_router(router, body, truncated)
-    if not response or not is_http_200(response) then
+    if not response then
+        txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
+        return
+    end
+    if not is_http_200(response) then
+        txn:set_var("txn.ingress_request_router_failed", "router_non_200")
         return
     end
 
     local replica_id = extract_replica_id(http_response_body(response))
     if not replica_id then
+        txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
     end
 
     local server_name = replica_map[replica_id]
     if not server_name then
+        txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
 
