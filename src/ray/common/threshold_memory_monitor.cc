@@ -127,7 +127,7 @@ bool ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
   if (!user_slice_memory_snapshot_or.has_value()) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "Failed to take user slice memory snapshot due to: %s. "
-        "The threshold monitor will not be able to provide resource isolation "
+        "The threshold memory monitor will not be able to provide resource isolation "
         "protection.",
         user_slice_memory_snapshot_or.message());
     return false;

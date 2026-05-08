@@ -47,9 +47,9 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
     const std::string &user_cgroup_path,
     const std::string &system_cgroup_path,
     const std::string &proc_dir) {
-  CgroupMemorySnapshotStatusOr user_cgroup_memory_snapshot_or =
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> user_cgroup_memory_snapshot_or =
       TakeCgroupMemorySnapshot(user_cgroup_path);
-  CgroupMemorySnapshotStatusOr system_cgroup_memory_snapshot_or =
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> system_cgroup_memory_snapshot_or =
       TakeCgroupMemorySnapshot(system_cgroup_path);
   if (!user_cgroup_memory_snapshot_or.has_value() ||
       !system_cgroup_memory_snapshot_or.has_value()) {
@@ -81,7 +81,7 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
       user_cgroup_memory_snapshot_or.value();
   CgroupMemorySnapshot system_cgroup_memory_snapshot =
       system_cgroup_memory_snapshot_or.value();
-  // We appoximate actual user application memory usage with user slice anon bytes
+  // We appoximate total user application memory usage with user slice anon bytes
   // for approximating heap usage and the sum of user and system cgroup shmem bytes
   // for approximating object store usage since shared memory accounting between
   // the system and user slice is in-determinant per:
@@ -92,7 +92,7 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
   return MemoryUsageSnapshot{total_used_bytes, host_level_total_bytes};
 }
 
-MemoryMonitorUtils::CgroupMemorySnapshotStatusOr
+const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
 MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path) {
   std::string v2_stat_path = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
   std::ifstream v2_stat_f(v2_stat_path, std::ios::in | std::ios::binary);
@@ -408,7 +408,7 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
 
   if (resource_isolation_enabled) {
     StatusOr<std::string> user_slice_upper_bound_bytes_or =
-        cgroup_manager.GetUserCgroupConstraintValue("memory.high");
+        cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemoryHighPath);
     RAY_CHECK(user_slice_upper_bound_bytes_or.ok()) << absl::StrFormat(
         "Failed to get user cgroup memory limit from user cgroup %s "
         "when setting up memory monitor: %s. "

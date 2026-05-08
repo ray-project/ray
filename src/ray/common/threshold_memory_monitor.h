@@ -46,9 +46,11 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    * @param root_cgroup_path the path to the root cgroup that the threshold monitor will
    *        use to calculate the system memory usage.
    * @param user_cgroup_path the path to the user cgroup that the threshold monitor will
-   *        use to calculate the user application memory usage.
+   *        use to calculate the user application memory usage. Not used if
+   *        resource isolation is disabled.
    * @param system_cgroup_path the path to the system cgroup that the threshold monitor
-   *        will use to calculate the aggregate object store memory usage.
+   *        will use to calculate the aggregate object store memory usage. Not used if
+   *        resource isolation is disabled.
    */
   ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                          int64_t memory_usage_threshold_bytes,
@@ -84,9 +86,9 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   bool IsHostMemoryThresholdExceeded();
 
   /**
-   * @brief Checks if the memory usage across all user defined tasks and actors,
-   *        including their object store usage, exceeds their allowed threshold
-   *        under resource isolation mode on this node.
+   * @brief Checks if the memory usage across all user slice processes,
+   *        including their object store usage, exceeds their allowed
+   *        threshold under resource isolation mode on this node.
    *
    * @return True if the user process memory usage is above the threshold.
    */

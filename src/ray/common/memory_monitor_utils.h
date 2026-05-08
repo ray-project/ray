@@ -30,9 +30,6 @@ namespace ray {
 
 class MemoryMonitorUtils {
  public:
-  using CgroupMemorySnapshotStatusOr =
-      StatusSetOr<CgroupMemorySnapshot, StatusT::IOError, StatusT::NotFound>;
-
   static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
   static constexpr char kCgroupsV1MemoryHighPath[] = "memory/memory.soft_limit_in_bytes";
   static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
@@ -107,8 +104,8 @@ class MemoryMonitorUtils {
    *         Returns StatusT::NotFound if the memory values could not be found,
    *         or if the path is a cgroupv1 path.
    */
-  static CgroupMemorySnapshotStatusOr TakeCgroupMemorySnapshot(
-      const std::string &root_cgroup_path);
+  static const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
+  TakeCgroupMemorySnapshot(const std::string &root_cgroup_path);
 
   /**
    * @brief Takes a snapshot of per-process memory usage.
