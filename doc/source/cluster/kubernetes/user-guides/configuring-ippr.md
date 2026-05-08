@@ -39,7 +39,7 @@ The Autoscaler's high-level behavior with IPPR enabled is:
 ## Prerequisites
 
 * **Kubernetes 1.35 or later.** In-Place Pod Resize graduated to GA in Kubernetes 1.35. See the Kubernetes blog post [In-Place Pod Resize Graduates to Stable](https://kubernetes.io/blog/2025/12/19/kubernetes-v1-35-in-place-pod-resize-ga/).
-* **KubeRay** with support for the `ray.io/ippr` annotation (TODO: will be v1.7.0).
+* **KubeRay v1.5.0 or later.**
 * **Ray Autoscaler V2** enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
 
 ## Configuration
