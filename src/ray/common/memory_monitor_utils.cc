@@ -100,11 +100,9 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
     CgroupMemorySnapshot snapshot;
     bool anon_found = false;
     bool shmem_found = false;
-    std::string line;
     std::string key;
     int64_t stat_value;
-    while (std::getline(v2_stat_f, line) &&
-           (std::istringstream(line) >> key >> stat_value)) {
+    while (v2_stat_f >> key >> stat_value) {
       if (key == kCgroupsV2MemoryAnonKey) {
         snapshot.anon_memory_bytes = stat_value;
         anon_found = true;
