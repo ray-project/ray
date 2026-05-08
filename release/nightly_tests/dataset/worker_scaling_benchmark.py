@@ -51,32 +51,32 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
-        num_workers = [1, 10, 100, 500, 1000, 2000, 5000, 10000]
-        for num_worker in reversed(num_workers):
-            num_blocks = BLOCKS_PER_WORKER * num_worker
-            num_rows = num_blocks * ROWS_PER_BLOCK
-            ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
+        num_worker = args.num_workers
+        num_blocks = BLOCKS_PER_WORKER * num_worker
+        num_rows = num_blocks * ROWS_PER_BLOCK
+        ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
-            if args.worker_type == "actors":
-                ds = ds.map_batches(
-                    NoOpUDF,
-                    num_cpus=1,
-                    compute=ray.data.ActorPoolStrategy(size=num_worker),
-                )
-            else:
-                ds = ds.map_batches(
-                    no_op_udf,
-                    num_cpus=1,
-                )
+        if args.worker_type == "actors":
+            ds = ds.map_batches(
+                NoOpUDF,
+                num_cpus=1,
+                compute=ray.data.ActorPoolStrategy(size=num_worker),
+            )
+        else:
+            ds = ds.map_batches(
+                no_op_udf,
+                num_cpus=1,
+            )
 
-            for _ in ds.iter_internal_ref_bundles():
-                pass
-            metrics = collect_dataset_stats(ds)
-            metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-            metrics["num_blocks"] = num_blocks
-            metrics["num_rows"] = num_rows
-            import pprint
-            pprint.pprint(metrics)
+        for _ in ds.iter_internal_ref_bundles():
+            pass
+        metrics = collect_dataset_stats(ds)
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        metrics["num_blocks"] = num_blocks
+        metrics["num_rows"] = num_rows
+        import pprint
+
+        pprint.pprint(metrics)
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
