@@ -553,6 +553,100 @@ class ProxyApi(ABC):
         pass
 
 
+@dataclass
+class _BackendDiff:
+    """Diff between old and new BackendConfigs for incremental update path.
+
+    When `is_structural` is True, a full reload is required (backends added/
+    removed, ACLs/timeouts/health-check parameters changed, fallback changed).
+
+    When `is_structural` is False, only the `servers` list within one or more
+    backends differs, and the change can be applied via HAProxy's runtime API
+    (`add server` / `del server` over the admin socket) without a reload.
+    """
+
+    is_structural: bool
+    servers_to_add: Dict[str, List[ServerConfig]] = field(default_factory=dict)
+    servers_to_remove: Dict[str, List[str]] = field(default_factory=dict)
+
+
+def _compute_backend_diff(
+    old_configs: Dict[str, BackendConfig],
+    new_configs: Dict[str, BackendConfig],
+) -> _BackendDiff:
+    """Determine whether a config change can be applied incrementally.
+
+    Anything other than pure server list differences within an existing
+    backend is treated as a structural change requiring a reload. This keeps
+    the incremental path conservative: when in doubt, reload.
+    """
+    # Different set of backends (added/removed) → reload
+    if set(old_configs.keys()) != set(new_configs.keys()):
+        return _BackendDiff(is_structural=True)
+
+    servers_to_add: Dict[str, List[ServerConfig]] = {}
+    servers_to_remove: Dict[str, List[str]] = {}
+
+    for name in new_configs:
+        old_be = old_configs[name]
+        new_be = new_configs[name]
+
+        # Any backend-level config change → reload. Compare the fields that
+        # affect the rendered backend block (excluding the servers list).
+        backend_level_fields = (
+            "path_prefix",
+            "fallback_server",
+            "app_name",
+            "timeout_connect_s",
+            "timeout_server_s",
+            "timeout_client_s",
+            "timeout_http_request_s",
+            "timeout_queue_s",
+            "timeout_http_keep_alive_s",
+            "timeout_tunnel_s",
+            "health_check_fall",
+            "health_check_rise",
+            "health_check_inter",
+            "health_check_fastinter",
+            "health_check_downinter",
+            "health_check_path",
+        )
+        for f in backend_level_fields:
+            if getattr(old_be, f) != getattr(new_be, f):
+                return _BackendDiff(is_structural=True)
+
+        # Compare server lists by name. A name present in both with different
+        # host/port is treated as remove + add (HAProxy's runtime API can't
+        # update a server's address in-place across all versions).
+        old_servers = {s.name: s for s in old_be.servers}
+        new_servers = {s.name: s for s in new_be.servers}
+
+        added: List[ServerConfig] = []
+        removed: List[str] = []
+
+        for sname, server in new_servers.items():
+            if sname not in old_servers:
+                added.append(server)
+            elif old_servers[sname] != server:
+                added.append(server)
+                removed.append(sname)
+
+        for sname in old_servers:
+            if sname not in new_servers:
+                removed.append(sname)
+
+        if added:
+            servers_to_add[name] = added
+        if removed:
+            servers_to_remove[name] = removed
+
+    return _BackendDiff(
+        is_structural=False,
+        servers_to_add=servers_to_add,
+        servers_to_remove=servers_to_remove,
+    )
+
+
 class HAProxyApi(ProxyApi):
     """ProxyApi implementation for HAProxy."""
 
@@ -984,6 +1078,113 @@ class HAProxyApi(ProxyApi):
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
 
+    async def try_apply_servers_dynamically(
+        self,
+        new_backend_configs: Dict[str, BackendConfig],
+    ) -> bool:
+        """Try to apply server-list changes via HAProxy's runtime API.
+
+        Compares ``new_backend_configs`` to the current ``self.backend_configs``.
+        If the change is purely server adds/removes within existing backends,
+        applies them over the admin socket (`add server` / `del server`) without
+        regenerating the config or restarting HAProxy. Otherwise falls back
+        and returns False so the caller can perform a full reload.
+
+        At Ray Serve scales with many replicas under autoscaling churn,
+        regenerating and reloading on every replica change blocks the proxy
+        actor's event loop long enough to fail controller health checks
+        (causing the proxy to be killed and recreated, cascading into the
+        ALB seeing all targets as unhealthy). The runtime API is ~1ms per
+        change vs. ~1-2s for a reload, so this incremental path keeps the
+        actor responsive under churn.
+
+        Returns True if applied incrementally (no reload needed). Returns
+        False if a reload is required (caller is responsible for calling
+        ``reload()``).
+        """
+        # First-time setup or no current state to diff against → reload.
+        if not self.backend_configs:
+            self.set_backend_configs(new_backend_configs)
+            return False
+
+        # If HAProxy isn't running yet (initial startup), the runtime API
+        # isn't available. Fall back to reload, which will start HAProxy.
+        if not await self.is_running():
+            self.set_backend_configs(new_backend_configs)
+            return False
+
+        diff = _compute_backend_diff(self.backend_configs, new_backend_configs)
+        if diff.is_structural:
+            self.set_backend_configs(new_backend_configs)
+            return False
+
+        if not diff.servers_to_add and not diff.servers_to_remove:
+            # No-op: server lists are identical. Update internal state
+            # defensively (in case other fields on ServerConfig change in the
+            # future) and skip the reload.
+            self.set_backend_configs(new_backend_configs)
+            return True
+
+        # Apply the diff via the admin socket. If any single command fails,
+        # bail out and let the caller reload — this avoids leaving HAProxy in
+        # a partially-updated state.
+        try:
+            for backend_name, server_names in diff.servers_to_remove.items():
+                for sname in server_names:
+                    # Disable before delete: required when the server has
+                    # in-flight connections; safe even when it doesn't.
+                    await self._send_socket_command(
+                        f"disable server {backend_name}/{sname}"
+                    )
+                    await self._send_socket_command(
+                        f"del server {backend_name}/{sname}"
+                    )
+
+            for backend_name, servers in diff.servers_to_add.items():
+                for server in servers:
+                    # Newly-added runtime servers inherit `default-server`
+                    # directives (inter/fall/rise/etc.) from the backend
+                    # block, so we only need address + the `check` flag.
+                    await self._send_socket_command(
+                        f"add server {backend_name}/{server.name} "
+                        f"{server.host}:{server.port} check"
+                    )
+                    # Runtime-added servers start in MAINT state by default.
+                    await self._send_socket_command(
+                        f"enable server {backend_name}/{server.name}"
+                    )
+        except Exception as e:
+            logger.warning(
+                f"Failed to apply backend update incrementally via runtime "
+                f"API: {e}. Falling back to a full reload.",
+                extra={"log_to_stderr": False},
+            )
+            self.set_backend_configs(new_backend_configs)
+            return False
+
+        # Update internal state and regenerate the config file so any
+        # subsequent reload (e.g. for a structural change) starts from the
+        # current set of servers.
+        self.set_backend_configs(new_backend_configs)
+        try:
+            self._generate_config_file_internal()
+        except Exception as e:
+            # The runtime change is already applied. A failure to write the
+            # config file is non-fatal here: the next reload will rebuild it.
+            logger.warning(
+                f"Applied backend update via runtime API but failed to "
+                f"refresh the config file: {e}",
+                extra={"log_to_stderr": False},
+            )
+
+        logger.info(
+            f"Applied backend update via runtime API: "
+            f"{sum(len(v) for v in diff.servers_to_add.values())} server(s) added, "
+            f"{sum(len(v) for v in diff.servers_to_remove.values())} server(s) removed.",
+            extra={"log_to_stderr": False},
+        )
+        return True
+
     async def is_running(self) -> bool:
         try:
             await self._send_socket_command("show info")
@@ -1268,6 +1469,29 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy_start_task
             await self._haproxy.reload()
 
+    async def _apply_backend_update(
+        self, name_to_backend_configs: Dict[str, BackendConfig]
+    ) -> None:
+        """Apply a backend config update incrementally if possible, else reload.
+
+        At scale, each controller broadcast triggers a config update. Doing a
+        full HAProxy reload for every update blocks the actor's event loop
+        long enough to miss the controller's health-check window, which causes
+        the controller to kill and recreate the proxy actor — leading to a
+        cascading failure where every proxy in the cluster cycles continuously.
+
+        The runtime API path applies pure server adds/removes in milliseconds
+        without a reload. For structural changes (new backend, ACL change,
+        timeout change, etc.) we still fall back to a full reload.
+        """
+        async with self._reload_lock:
+            await self._haproxy_start_task
+            applied_incrementally = await self._haproxy.try_apply_servers_dynamically(
+                name_to_backend_configs
+            )
+            if not applied_incrementally:
+                await self._haproxy.reload()
+
     def _update_haproxy_backends(self) -> None:
         backend_configs = []
         for target_group in self._target_groups:
@@ -1289,8 +1513,7 @@ class HAProxyManager(ProxyActorInterface):
             backend_config.name: backend_config for backend_config in backend_configs
         }
 
-        self._haproxy.set_backend_configs(name_to_backend_configs)
-        self.event_loop.create_task(self._reload_haproxy())
+        self.event_loop.create_task(self._apply_backend_update(name_to_backend_configs))
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups
