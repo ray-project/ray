@@ -7,7 +7,6 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     MixStoppingCondition,
     estimate_num_mix_outputs,
 )
-from ray.data.dataset import Dataset
 
 
 def _make_ds(source_id, num_rows, rows_per_block):
@@ -26,8 +25,8 @@ def test_mix_equal_weights(ray_start_10_cpus_shared, weights):
     rows_per_block = 10
     ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=rows_per_block)
     ds2 = _make_ds(source_id=1, num_rows=500, rows_per_block=rows_per_block)
-    mixed = Dataset.mix(
-        [ds1, ds2],
+    mixed = ds1.mix(
+        ds2,
         weights=weights,
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
@@ -43,8 +42,8 @@ def test_mix_uneven_weights(ray_start_10_cpus_shared):
     rows_per_block = 10
     ds1 = _make_ds(source_id=0, num_rows=750, rows_per_block=rows_per_block)
     ds2 = _make_ds(source_id=1, num_rows=250, rows_per_block=rows_per_block)
-    mixed = Dataset.mix(
-        [ds1, ds2],
+    mixed = ds1.mix(
+        ds2,
         weights=[0.75, 0.25],
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
@@ -55,7 +54,7 @@ def test_mix_uneven_weights(ray_start_10_cpus_shared):
 
 def test_mix_single_dataset(ray_start_10_cpus_shared):
     ds1 = _make_ds(source_id=0, num_rows=100, rows_per_block=10)
-    mixed = Dataset.mix([ds1], weights=[1.0])
+    mixed = ds1.mix(weights=[1.0])
     result = mixed.take_all()
     assert len(result) == 100
 
@@ -66,8 +65,9 @@ def test_mix_three_datasets(ray_start_10_cpus_shared):
     ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=rows_per_block)
     ds2 = _make_ds(source_id=1, num_rows=300, rows_per_block=rows_per_block)
     ds3 = _make_ds(source_id=2, num_rows=200, rows_per_block=rows_per_block)
-    mixed = Dataset.mix(
-        [ds1, ds2, ds3],
+    mixed = ds1.mix(
+        ds2,
+        ds3,
         weights=[0.5, 0.3, 0.2],
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
@@ -85,8 +85,8 @@ def test_mix_stop_on_shortest(ray_start_10_cpus_shared):
     dataset is exhausted. The ratio should hold up to the stop point."""
     ds1 = _make_ds(source_id=0, num_rows=20, rows_per_block=10)
     ds2 = _make_ds(source_id=1, num_rows=50, rows_per_block=10)
-    mixed = Dataset.mix(
-        [ds1, ds2],
+    mixed = ds1.mix(
+        ds2,
         weights=[0.5, 0.5],
         stopping_condition=MixStoppingCondition.STOP_ON_SHORTEST,
     )
@@ -107,8 +107,8 @@ def test_mix_stop_on_longest_drop(ray_start_10_cpus_shared):
     rows_per_block = 10
     ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=rows_per_block)
     ds2 = _make_ds(source_id=1, num_rows=200, rows_per_block=rows_per_block)
-    mixed = Dataset.mix(
-        [ds1, ds2],
+    mixed = ds1.mix(
+        ds2,
         weights=[0.5, 0.5],
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
@@ -131,8 +131,8 @@ def test_mix_non_uniform_block_sizes(ray_start_10_cpus_shared):
     the target ratio, just with wider oscillations."""
     ds1 = _make_ds(source_id=0, num_rows=480, rows_per_block=120)  # 120-row blocks
     ds2 = _make_ds(source_id=1, num_rows=160, rows_per_block=10)  # 10-row blocks
-    mixed = Dataset.mix(
-        [ds1, ds2],
+    mixed = ds1.mix(
+        ds2,
         weights=[0.75, 0.25],
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )

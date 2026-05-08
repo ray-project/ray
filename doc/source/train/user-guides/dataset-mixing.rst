@@ -15,7 +15,6 @@ Quickstart
 .. code-block:: python
 
     import ray
-    from ray.data import Dataset
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
@@ -24,7 +23,7 @@ Quickstart
     ds2 = ray.data.read_parquet("s3://bucket/web-text").map(preprocess)
 
     # 75% rows from ds1, 25% from ds2 (in expectation).
-    mixed = Dataset.mix([ds1, ds2], weights=[0.75, 0.25])
+    mixed = ds1.mix(ds2, weights=[0.75, 0.25])
 
     def train_fn_per_worker(config):
         shard = ray.train.get_dataset_shard("train")
@@ -77,7 +76,7 @@ To tighten the per-batch window, standardize input block sizes upstream with :me
     ds1 = ds1.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
     ds2 = ds2.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
 
-    mixed = Dataset.mix([ds1, ds2], weights=[0.75, 0.25])
+    mixed = ds1.mix(ds2, weights=[0.75, 0.25])
 
 .. note::
 
@@ -105,16 +104,25 @@ Two streaming-friendly shuffle options in Ray Data:
     import numpy as np
     import pyarrow as pa
 
-    def random_shuffle(batch: pa.Table) -> pa.Table:
-        indices = np.random.permutation(len(batch))
-        return batch.take(indices)
+    LOCAL_BATCH_SIZE = 128
 
     ds1 = ray.data.read_parquet("s3://bucket/code-data").map(preprocess)
     ds2 = ray.data.read_parquet("s3://bucket/web-text").map(preprocess)
 
-    # mix() + shuffle  ~=  random mixing
-    mixed = Dataset.mix([ds1, ds2], weights=[0.75, 0.25])
-    mixed = mixed.map_batches(random_shuffle, batch_size=512, batch_format="pyarrow")
+    ds1 = ds1.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
+    ds2 = ds2.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
+
+    mixed = ds1.mix(ds2, weights=[0.75, 0.25])
+
+    # Add a shuffle after mix() to get random mixing.
+    def random_shuffle(batch: pa.Table) -> pa.Table:
+        indices = np.random.permutation(len(batch))
+        return batch.take(indices)
+
+    # Set the shuffle buffer size to be large enough for good mixing quality across datasets.
+    SHUFFLE_BUFFER_SIZE = 64 * LOCAL_BATCH_SIZE
+    mixed = mixed.map_batches(random_shuffle, batch_size=SHUFFLE_BUFFER_SIZE, batch_format="pyarrow")
+
 
 Stopping conditions
 -------------------
