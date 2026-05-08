@@ -206,29 +206,36 @@ class PandasJSONDatasource(FileBasedDatasource):
 
         if not f.seekable():
             return self._DEFAULT_CHUNK_SIZE
-        assert f.tell() == 0, "File pointer must be at the beginning"
+
+        # ``_read_stream`` can be recreated on the same file handle when
+        # ``FileBasedDatasource`` retries a transient read error.
+        f.seek(0)
 
         if self._target_output_size_bytes is None:
             return None
 
-        stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
-        with pd.read_json(stream, chunksize=1, lines=True) as reader:
-            try:
-                df = _cast_range_index_to_string(next(reader))
-            except StopIteration:
-                return 1
+        try:
+            stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
+            with pd.read_json(stream, chunksize=1, lines=True) as reader:
+                try:
+                    df = _cast_range_index_to_string(next(reader))
+                except StopIteration:
+                    return 1
 
-        block_accessor = PandasBlockAccessor.for_block(df)
-        if block_accessor.num_rows() == 0:
-            chunksize = 1
-        else:
-            bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
-            chunksize = max(round(self._target_output_size_bytes / bytes_per_row), 1)
+            block_accessor = PandasBlockAccessor.for_block(df)
+            if block_accessor.num_rows() == 0:
+                chunksize = 1
+            else:
+                bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
+                chunksize = max(
+                    round(self._target_output_size_bytes / bytes_per_row), 1
+                )
 
-        # Reset file pointer to the beginning.
-        f.seek(0)
-
-        return chunksize
+            return chunksize
+        finally:
+            # Reset file pointer to the beginning for the actual read and for any
+            # subsequent retry that reuses the same file handle.
+            f.seek(0)
 
     def _open_input_source(
         self,
