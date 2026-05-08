@@ -2,17 +2,19 @@
 
 # KubeRay In-Place Pod Resizing (IPPR)
 
-This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.35+.
+This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.33+.
 IPPR allows the Ray Autoscaler to vertically resize running worker Pods (CPU and memory) without needing to restart them or launch new Pods, avoiding application disruption.
 
 ```{admonition} Alpha feature
 :class: warning
 
-IPPR is still an alpha feature — the initial integration of Kubernetes [In-Place Pod Resize](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/) with the Ray Autoscaler.
+Ray Autoscaler integration with Kubernetes [In-Place Pod Resize](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/) is still an alpha feature.
 APIs and behavior may change in future releases.
 ```
 
 ## Overview
+
+For background on the underlying Kubernetes feature, see [Resize CPU and Memory Resources assigned to Containers](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/) in the Kubernetes documentation.
 
 Without IPPR, the Ray Autoscaler scales horizontally only: when pending tasks, actors, or placement groups can't fit on existing Ray worker nodes, the Autoscaler launches new worker Pods. If the underlying Kubernetes cluster doesn't have capacity for those Pods, the [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) (which you configure separately) can in turn provision new Kubernetes nodes. See {ref}`the 3 levels of autoscaling in KubeRay for more details <kuberay-autoscaling>`.
 
@@ -38,7 +40,7 @@ The Autoscaler's high-level behavior with IPPR enabled is:
 
 ## Prerequisites
 
-* **Kubernetes 1.35 or later.** In-Place Pod Resize graduated to GA in Kubernetes 1.35. See the Kubernetes blog post [In-Place Pod Resize Graduates to Stable](https://kubernetes.io/blog/2025/12/19/kubernetes-v1-35-in-place-pod-resize-ga/).
+* **Kubernetes 1.33 or later.** In-Place Pod Resize is enabled by default starting in Kubernetes 1.33 ([beta](https://kubernetes.io/blog/2025/05/16/kubernetes-v1-33-in-place-pod-resize-beta/)) and graduated to GA in Kubernetes 1.35 ([blog post](https://kubernetes.io/blog/2025/12/19/kubernetes-v1-35-in-place-pod-resize-ga/)).
 * **KubeRay v1.5.0 or later.**
 * **Ray Autoscaler V2** enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
 
@@ -248,3 +250,4 @@ For Autoscaler-level observability such as `ray status -v` and Autoscaler logs, 
 * **CPU and memory only.** Other resources, including GPUs, can't be resized in place.
 * **Per-worker-group configuration.** IPPR is configured per worker `groupName`. Worker groups without an entry in `ray.io/ippr` aren't resized in place.
 * **Autoscaler V2 only.** IPPR is integrated only with Autoscaler V2.
+* **Upstream Kubernetes limitations apply.** Any [limitations of the underlying Kubernetes In-Place Pod Resize feature](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/#limitations) (such as restrictions on QoS-class changes, swap, or specific runtimes) also apply to IPPR-managed Pods.
