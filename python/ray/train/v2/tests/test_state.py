@@ -873,9 +873,9 @@ def test_get_framework_version():
         return module
 
     with patch(
-        "ray.train.v2._internal.callbacks.state_manager.importlib.import_module",
-        side_effect=mock_import,
-    ):
+        "ray.train.v2._internal.callbacks.state_manager.importlib"
+    ) as mock_importlib:
+        mock_importlib.import_module.side_effect = mock_import
         for framework in TrainingFramework:
             versions = _get_framework_version(framework)
             assert versions["ray"] == ray.__version__
