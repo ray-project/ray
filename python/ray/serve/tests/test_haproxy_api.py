@@ -624,11 +624,24 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
         with open(api.config_file_path) as f:
             cfg = f.read()
 
-        sentinel_idx = cfg.find("var(txn.ingress_request_router_failed) -m found")
-        first_use_backend_idx = cfg.find("use_backend")
-        assert sentinel_idx != -1, cfg
-        assert first_use_backend_idx != -1, cfg
-        assert sentinel_idx < first_use_backend_idx, (
+        # Parse line-by-line so we don't accidentally match the substring
+        # "use_backend" inside an explanatory comment block rendered above.
+        lines = cfg.splitlines()
+        sentinel_line = next(
+            (
+                i
+                for i, ln in enumerate(lines)
+                if "var(txn.ingress_request_router_failed) -m found" in ln
+            ),
+            None,
+        )
+        first_use_backend_line = next(
+            (i for i, ln in enumerate(lines) if ln.strip().startswith("use_backend ")),
+            None,
+        )
+        assert sentinel_line is not None, cfg
+        assert first_use_backend_line is not None, cfg
+        assert sentinel_line < first_use_backend_line, (
             "503-on-router-failure rule must precede every use_backend so a "
             "failed dispatch does not silently fall through to the primary "
             "backend.\n" + cfg
@@ -923,18 +936,28 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 timeout=10,
             )
 
-            # Every POST through the router must surface as a 5xx with the
+            # Every dispatch failure mode must surface as a 5xx with a
             # reason label, never as a silent primary-backend fallback.
-            for _ in range(5):
-                resp = requests.post(
-                    f"http://127.0.0.1:{haproxy_port}/predict",
-                    json={"prompt": "hi"},
-                    timeout=5,
-                )
-                assert resp.status_code == 503, resp.text
-                assert (
-                    resp.headers.get("X-Serve-Reason") == "router_non_200"
-                ), resp.headers
+            # ``router_non_200``: router answered with status != 200 (forced
+            # by the broken-router stub).
+            # ``empty_body``: HAProxy's wait-for-body completed but the
+            # request had no body to forward to the router.
+            failure_cases = [
+                (dict(json={"prompt": "hi"}), "router_non_200"),
+                (dict(data=""), "empty_body"),
+            ]
+            for kwargs, expected_reason in failure_cases:
+                for _ in range(3):
+                    resp = requests.post(
+                        f"http://127.0.0.1:{haproxy_port}/predict",
+                        timeout=5,
+                        **kwargs,
+                    )
+                    assert resp.status_code == 503, (expected_reason, resp.text)
+                    assert resp.headers.get("X-Serve-Reason") == expected_reason, (
+                        expected_reason,
+                        resp.headers,
+                    )
 
             stats_csv = requests.get(
                 f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
