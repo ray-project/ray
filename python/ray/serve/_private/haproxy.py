@@ -749,6 +749,26 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
+            # If the previous HAProxy process has already exited (e.g., a prior
+            # reload's `-x admin.sock` socket transfer failed and the new
+            # process exited 1), there's nothing to graceful-reload from: no
+            # listening FDs to inherit and no live PID to signal. Without this
+            # branch every subsequent reload would re-raise "HAProxy crashed
+            # during startup: exit code 1" from `_wait_for_hap_availability`
+            # below and the actor would be stuck with no listener on 8000
+            # until the controller kills it. Start a fresh process instead so
+            # we recover automatically; this drops in-flight connections
+            # briefly but is strictly better than staying down.
+            if old_proc is None or old_proc.returncode is not None:
+                logger.warning(
+                    "Previous HAProxy process is not running "
+                    "(returncode=%s); starting a fresh HAProxy instead of "
+                    "attempting a graceful reload.",
+                    old_proc.returncode if old_proc is not None else None,
+                )
+                self._proc = await self._start_and_wait_for_haproxy()
+                return
+
             await self._wait_for_hap_availability(old_proc)
 
             # Save server state if optimization is enabled
