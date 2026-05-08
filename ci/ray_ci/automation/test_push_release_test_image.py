@@ -73,10 +73,10 @@ class TestWandaImageName:
             ("3.11", "cu12.1.1-cudnn8", "ray", "ray-anyscale-py3.11-cu12.1.1-cudnn8"),
             ("3.10", "cpu", "ray-llm", "ray-llm-anyscale-py3.10-cpu"),
             (
-                "3.11",
-                "cu12.8.1-cudnn",
+                "3.12",
+                "cu13.0.0-cudnn",
                 "ray-llm",
-                "ray-llm-anyscale-py3.11-cu12.8.1-cudnn",
+                "ray-llm-anyscale-py3.12-cu13.0.0-cudnn",
             ),
             ("3.10", "cpu", "ray-ml", "ray-ml-anyscale-py3.10-cpu"),
             (
