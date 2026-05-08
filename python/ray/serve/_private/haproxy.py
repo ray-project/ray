@@ -709,7 +709,9 @@ class HAProxyApi(ProxyApi):
         return self._proc is not None and self._proc.returncode is None
 
     async def _start_and_wait_for_haproxy(
-        self, *extra_args: str, timeout_s: int = 5
+        self,
+        *extra_args: str,
+        timeout_s: int = RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S,
     ) -> asyncio.subprocess.Process:
         # Build command args
         haproxy_bin = get_haproxy_binary()
