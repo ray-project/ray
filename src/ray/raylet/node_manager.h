@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
@@ -768,6 +768,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   KillWorkersCallback CreateKillWorkersCallback();
 
   /**
+   * @brief Marks kill worker in progress and disables all monitors to
+   * prevent more than one in-flight kill worker operation.
+   * @return True if we successfully marked the kill worker in progress.
+   *         False if the kill worker operation is already in progress.
+   */
+  bool MarkKillWorkerInProgress();
+
+  /**
+   * @brief Disables kill worker in progress flag and enables all monitors
+   * to begin accepting new kill worker requests.
+   */
+  void ReleaseKillWorkerInProgress();
+
+  /**
    * @param workers_to_kill The workers to print the kill details for.
    * @param node_id The ID of the node.
    * @param system_memory_snapshot The snapshot of the system memory.
@@ -975,8 +989,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
 
-  /// Monitors and reports node memory usage and whether it is above threshold.
-  std::unique_ptr<MemoryMonitorInterface> memory_monitor_;
+  /// Guards worker_killing_in_progress_ and serializes kill callbacks from monitors.
+  absl::Mutex worker_killing_in_progress_mutex_;
+
+  /// True while a kill-workers operation is inflight; prevents concurrent kills.
+  bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
+      false;
+
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;

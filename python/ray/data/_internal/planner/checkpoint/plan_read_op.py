@@ -26,6 +26,71 @@ from ray.types import ObjectRef
 CHECKPOINT_MEMORY_SAFETY_FACTOR = 1.5
 
 
+def create_checkpoint_filter_op(
+    physical_input_op: PhysicalOperator,
+    data_context: DataContext,
+    data_file_dir: Optional[str],
+    data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> PhysicalOperator:
+    """Wrap ``physical_input_op`` with an actor-pool checkpoint filter operator.
+
+    Args:
+        physical_input_op: The upstream physical operator whose output should
+            be filtered.
+        data_context: The data context carrying the checkpoint config.
+        data_file_dir: Directory where data files are written. Used to clean
+            up orphaned data files from pending (incomplete) checkpoints.
+        data_file_filesystem: Filesystem for data files. Defaults to the
+            checkpoint filesystem if not provided.
+
+    Returns:
+        A ``CheckpointFilter`` ``MapOperator`` downstream of
+        ``physical_input_op``, or ``physical_input_op`` itself if there is no
+        checkpoint data to restore from.
+    """
+    checkpoint_config = data_context.checkpoint_config
+
+    # Return the input op directly if:
+    # 1. the checkpoint directory does not exist.
+    # 2. no valid files under checkpoint_path (for example, it is an empty directory).
+    info = checkpoint_config.filesystem.get_file_info(
+        _unwrap_protocol(checkpoint_config.checkpoint_path)
+    )
+    if info.type == fs.FileType.NotFound:
+        return physical_input_op
+
+    checkpoint_manager = IdColumnCheckpointManager(checkpoint_config=checkpoint_config)
+    # load checkpointed IDs as a numpy ndarray and store it to object store.
+    checkpointed_ids_ref, checkpointed_ids_size = checkpoint_manager.load_checkpoint(
+        data_file_dir, data_file_filesystem
+    )
+    if not checkpointed_ids_ref:
+        return physical_input_op
+
+    map_transformer = _get_checkpoint_map_transformer(
+        data_context, checkpointed_ids_ref
+    )
+
+    checkpoint_op = MapOperator.create(
+        map_transformer=map_transformer,
+        input_op=physical_input_op,
+        data_context=data_context,
+        name="CheckpointFilter",
+        compute_strategy=ActorPoolStrategy(
+            min_size=checkpoint_config.checkpoint_actor_pool_min_size,
+            max_size=checkpoint_config.checkpoint_actor_pool_max_size,
+        ),
+        ray_remote_args={
+            "memory": max(
+                checkpoint_config.checkpoint_actor_memory_bytes,
+                int(checkpointed_ids_size * CHECKPOINT_MEMORY_SAFETY_FACTOR),
+            )
+        },
+        supports_fusion=False,
+    )
+    return checkpoint_op
+
+
 def plan_read_op_with_checkpoint_filter(
     data_file_dir: Optional[str],
     data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
@@ -44,50 +109,9 @@ def plan_read_op_with_checkpoint_filter(
     is in the range [checkpoint_actor_pool_min_size, checkpoint_actor_pool_max_size].
     """
     physical_read_op = plan_read_op(op, physical_children, data_context)
-
-    # Return the read op directly if:
-    # 1. the checkpoint directory does not exist.
-    # 2. no valid files under checkpoint_path(for example, it is an empty directory).
-    checkpoint_config = data_context.checkpoint_config
-    info = checkpoint_config.filesystem.get_file_info(
-        _unwrap_protocol(checkpoint_config.checkpoint_path)
+    return create_checkpoint_filter_op(
+        physical_read_op, data_context, data_file_dir, data_file_filesystem
     )
-    # the directory does not exist
-    if info.type == fs.FileType.NotFound:
-        return physical_read_op
-
-    checkpoint_manager = IdColumnCheckpointManager(checkpoint_config=checkpoint_config)
-    # load checkpointed IDs as a numpy ndarray and store it to object store.
-    checkpointed_ids_ref, checkpointed_ids_size = checkpoint_manager.load_checkpoint(
-        data_file_dir, data_file_filesystem
-    )
-    # no valid files under checkpoint_path
-    if not checkpointed_ids_ref:
-        return physical_read_op
-
-    # generate checkpoint op
-    map_transformer = _get_checkpoint_map_transformer(
-        data_context, checkpointed_ids_ref
-    )
-
-    checkpoint_op = MapOperator.create(
-        map_transformer=map_transformer,
-        input_op=physical_read_op,
-        data_context=data_context,
-        name="CheckpointFilter",
-        compute_strategy=ActorPoolStrategy(
-            min_size=checkpoint_config.checkpoint_actor_pool_min_size,
-            max_size=checkpoint_config.checkpoint_actor_pool_max_size,
-        ),
-        ray_remote_args={
-            "memory": max(
-                checkpoint_config.checkpoint_actor_memory_bytes,
-                int(checkpointed_ids_size * CHECKPOINT_MEMORY_SAFETY_FACTOR),
-            )
-        },
-        supports_fusion=False,
-    )
-    return checkpoint_op
 
 
 class _CheckpointFilterFn:

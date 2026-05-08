@@ -74,8 +74,8 @@ class PredicatePushdown(Rule):
 
         # Create new filter on the input of the lower filter
         return Filter(
-            input_op.input_dependencies[0],
             predicate_expr=combined_predicate,
+            input_dependencies=[input_op.input_dependencies[0]],
         )
 
     @classmethod
@@ -254,8 +254,8 @@ class PredicatePushdown(Rule):
 
                 # Push filter through and recursively try to push further
                 new_filter = Filter(
-                    input_op.input_dependencies[0],
                     predicate_expr=predicate_expr,
+                    input_dependencies=[input_op.input_dependencies[0]],
                 )
                 pushed_filter = cls._try_push_down_predicate(new_filter)
 
@@ -267,7 +267,9 @@ class PredicatePushdown(Rule):
                 # Apply filter to each branch and recursively push down
                 new_inputs = []
                 for branch_op in input_op.input_dependencies:
-                    branch_filter = Filter(branch_op, predicate_expr=predicate_expr)
+                    branch_filter = Filter(
+                        predicate_expr=predicate_expr, input_dependencies=[branch_op]
+                    )
                     pushed_branch = cls._try_push_down_predicate(branch_filter)
                     new_inputs.append(pushed_branch)
 
@@ -307,8 +309,8 @@ class PredicatePushdown(Rule):
         # Push to the appropriate branch
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
-            new_inputs[branch_idx],
             predicate_expr=filter_op.predicate_expr,
+            input_dependencies=[new_inputs[branch_idx]],
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
@@ -330,13 +332,13 @@ class PredicatePushdown(Rule):
         """
         if isinstance(op, Limit):
             assert len(new_inputs) == 1, len(new_inputs)
-            return Limit(new_inputs[0], op.limit)
+            return Limit(op.limit, input_dependencies=[new_inputs[0]])
         if isinstance(op, AbstractMap) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
-            return replace(op, input_op=new_inputs[0])
+            return replace(op, input_dependencies=[new_inputs[0]])
         if isinstance(op, AbstractAllToAll) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
-            kwargs = {"input_op": new_inputs[0]}
+            kwargs = {"input_dependencies": [new_inputs[0]]}
             if isinstance(op, Repartition):
                 kwargs["num_outputs"] = op.num_outputs
             if isinstance(op, RandomShuffle):

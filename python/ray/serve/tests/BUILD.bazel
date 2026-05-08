@@ -203,6 +203,7 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "enormous",
+    data = glob(["test_config_files/**/*"]),
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -753,6 +754,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     files = [
         "test_per_request_headers.py",
     ],
@@ -788,6 +790,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
     files = [
         "test_per_request_headers.py",
