@@ -6,14 +6,9 @@ from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
 import ray.util.accelerators.accelerators as accelerators
-from ray._private.accelerators.tpu import get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
-from ray.util.tpu import (
-    get_num_chips_from_topology,
-    get_tpu_version_from_type,
-    slice_placement_group,
-)
+from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
 
 logger = get_logger(__name__)
 
@@ -30,21 +25,6 @@ TPU_ACCELERATOR_VALUES = {
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
     """Formats the accelerator type into a Ray custom resource string."""
     return f"accelerator_type:{accelerator_type_str}"
-
-
-def get_inferred_tensor_parallel_size(topology: Optional[str]) -> Optional[int]:
-    """Infers the tensor parallel size from the TPU topology."""
-    if not topology:
-        return None
-
-    try:
-        return get_num_chips_from_topology(topology)
-    except ValueError as e:
-        logger.warning(
-            f"Failed to infer tensor_parallel_size from topology '{topology}': {e}. "
-            "Defaulting to None."
-        )
-        return None
 
 
 def infer_hardware_kind_from_bundles(
@@ -200,35 +180,10 @@ class TPUAccelerator(AcceleratorBackend):
     def default_bundles(
         self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
-        if not self._config.topology:
-            # Fallback to per-chip bundles if no topology is specified
-            bundle = {"TPU": 1}
-            if accelerator_type_str:
-                bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
-            return [bundle.copy() for _ in range(num_devices)]
-
-        # Topology is specified, compute per-host bundles
-        if not accelerator_type_str:
-            raise ValueError(
-                "`accelerator_type` must be specified when `topology` is present "
-                "in order to compute TPU resource requirements."
-            )
-        version = get_tpu_version_from_type(accelerator_type_str)
-        chips_per_host = get_chips_per_host(self._config.topology, version)
-
-        if num_devices > chips_per_host and num_devices % chips_per_host != 0:
-            raise ValueError(
-                f"num_devices ({num_devices}) must be a multiple of "
-                f"chips_per_host ({chips_per_host}) for TPU topologies."
-            )
-
-        num_hosts = max(1, num_devices // chips_per_host)
-
-        tpu_resources = min(num_devices, chips_per_host)
-        bundle = {"TPU": tpu_resources}
-        bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
-
-        return [bundle.copy() for _ in range(num_hosts)]
+        bundle = {"TPU": 1}
+        if accelerator_type_str:
+            bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
+        return [bundle.copy() for _ in range(num_devices)]
 
     def create_placement_group(
         self,
@@ -299,15 +254,11 @@ class TPUAccelerator(AcceleratorBackend):
         return True
 
     def get_remote_options(self, accelerator_type_str: str = None):
-        # The PlacementGroupSchedulingStrategy natively handles routing the task to
-        # the correct hardware. We omit TPU resource requests to avoid consuming
-        # chips that the model engine workers must use.
-        options: Dict[str, Any] = {"resources": {}}
+        # TPUs use custom resource strings rather than a native kwarg
+        options: Dict[str, Any] = {"resources": {"TPU": 0.001}}
+
         if accelerator_type_str:
-            # Pin the task to the TPU accelerator to avoid scheduling on a CPU bundle.
-            options["label_selector"] = {
-                "ray.io/accelerator-type": accelerator_type_str
-            }
+            options["accelerator_type"] = accelerator_type_str
         return options
 
     def shutdown(self):
@@ -319,3 +270,7 @@ class TPUAccelerator(AcceleratorBackend):
                 logger.warning(f"Failed to shut down TPU slice PG: {e}")
             finally:
                 self._slice_pg_wrapper = None
+
+    def __del__(self):
+        """Ensure placement groups are cleaned up when this backend is garbage collected."""
+        self.shutdown()

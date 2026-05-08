@@ -1,5 +1,7 @@
 import asyncio
-from typing import Callable, Optional, Tuple
+import logging
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -42,7 +44,11 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
-from ray.util.placement_group import PlacementGroup
+from ray.serve.config import TPUAcceleratorConfig
+from ray.util.placement_group import PlacementGroup, remove_placement_group
+from ray.util.tpu import SlicePlacementGroup, slice_placement_group
+
+logger = logging.getLogger(__name__)
 
 # NOTE: Please read carefully before changing!
 #
@@ -51,11 +57,93 @@ from ray.util.placement_group import PlacementGroup
 # API modified w/o substantial enough justification
 
 
+@dataclass
+class _ReplicaPlacementGroup:
+    """Internal Serve handle for a replica's placement group(s).
+
+    Wraps the worker PG and any accelerator-specific cleanup hooks so the
+    controller doesn't need to know whether the underlying request was a
+    plain CPU/GPU PG or a TPU slice reservation.
+    """
+
+    placement_group: PlacementGroup
+    _slice_pg: Optional[SlicePlacementGroup] = None
+
+    def release_reservation_holders(self) -> None:
+        """Call after ``placement_group.ready()`` resolves successfully.
+
+        Releases any internal reservation-holder PGs (e.g. TPU head PGs)
+        that were only needed to claim resources during scheduling. No-op
+        for non-accelerator deployments.
+        """
+        if self._slice_pg is not None:
+            self._slice_pg.release_head_pgs()
+
+    def shutdown(self) -> None:
+        """Tear down the replica's PG(s). Idempotent."""
+        if self._slice_pg is not None:
+            self._slice_pg.shutdown()
+            self._slice_pg = None
+            self.placement_group = None
+        elif self.placement_group is not None:
+
+            try:
+                remove_placement_group(self.placement_group)
+            except Exception:
+                logger.exception("Failed to remove placement group.")
+            finally:
+                self.placement_group = None
+
+
+def _create_replica_placement_group(
+    request: CreatePlacementGroupRequest,
+) -> _ReplicaPlacementGroup:
+    """Internal entry point that supports accelerator-specific dispatch."""
+    accelerator_config = request.accelerator_config
+
+    if isinstance(accelerator_config, TPUAcceleratorConfig):
+        slice_pg = _default_create_tpu_placement_group(
+            tpu_config=accelerator_config,
+            strategy=request.strategy,
+            name=request.name,
+            lifetime="detached",
+            bundle_label_selector=request.bundle_label_selector,
+        )
+        return _ReplicaPlacementGroup(
+            placement_group=slice_pg.placement_group,
+            _slice_pg=slice_pg,
+        )
+
+    pg = _default_create_placement_group(request)
+    return _ReplicaPlacementGroup(placement_group=pg)
+
+
+def _default_create_tpu_placement_group(
+    tpu_config: TPUAcceleratorConfig,
+    strategy: str,
+    name: str,
+    lifetime: Optional[str],
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+) -> SlicePlacementGroup:
+    return slice_placement_group(
+        topology=tpu_config.topology,
+        accelerator_version=tpu_config.accelerator_version,
+        num_slices=tpu_config.num_slices,
+        chips_per_vm=tpu_config.chips_per_vm,
+        strategy=strategy,
+        name=name,
+        lifetime=lifetime,
+        bundle_label_selector=bundle_label_selector,
+    )
+
+
 def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCache:
     return DefaultClusterNodeInfoCache(gcs_client)
 
 
-CreatePlacementGroupFn = Callable[[CreatePlacementGroupRequest], PlacementGroup]
+CreatePlacementGroupFn = Callable[
+    [CreatePlacementGroupRequest], Union[PlacementGroup, _ReplicaPlacementGroup]
+]
 
 
 def _default_create_placement_group(
@@ -81,7 +169,7 @@ def create_deployment_scheduler(
         cluster_node_info_cache,
         head_node_id,
         create_placement_group_fn=create_placement_group_fn_override
-        or _default_create_placement_group,
+        or _create_replica_placement_group,
     )
 
 

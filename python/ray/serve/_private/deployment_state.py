@@ -10,12 +10,15 @@ from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
 from ray.actor import ActorHandle
+
+if TYPE_CHECKING:
+    from ray.serve._private.default_impl import _ReplicaPlacementGroup
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -724,7 +727,7 @@ class ActorReplicaWrapper:
         # we trigger `initialize_and_get_metadata`.
         self._was_initialized_obj_ref: Optional[ObjectRef] = None
         # Set to True when `check_ready()` determines the actor cannot be
-        # recovered (e.g., the previous controller crashed before the actor
+        # recovered (e.g. the previous controller crashed before the actor
         # finished its initial setup). The reconciler treats this case as a
         # silent drop / replace rather than a deploy failure, since the
         # underlying cause is a controller-side crash, not user code.
@@ -779,6 +782,7 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
         self._ingress: bool = False
+        self._replica_pg = None
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
@@ -1013,7 +1017,9 @@ class ActorReplicaWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
-        gang_placement_group: Optional[PlacementGroup] = None,
+        gang_placement_group: Optional[
+            Union[PlacementGroup, "_ReplicaPlacementGroup"]
+        ] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
@@ -1152,6 +1158,7 @@ class ActorReplicaWrapper:
             placement_group_fallback_strategy=(
                 deployment_info.replica_config.placement_group_fallback_strategy
             ),
+            accelerator_config=deployment_info.deployment_config.accelerator_config,
             max_replicas_per_node=(
                 deployment_info.replica_config.max_replicas_per_node
             ),
@@ -1164,9 +1171,11 @@ class ActorReplicaWrapper:
         self,
         actor_handle: ActorHandle,
         placement_group: Optional[PlacementGroup] = None,
+        placement_group_manager: Optional[Any] = None,
     ):
         self._actor_handle = actor_handle
         self._placement_group = placement_group
+        self._replica_pg = placement_group_manager
 
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
@@ -1465,6 +1474,9 @@ class ActorReplicaWrapper:
                 )
                 return ReplicaStartupStatus.FAILED, repr(e)
 
+        if self._replica_pg is not None:
+            self._replica_pg.release_reservation_holders()
+
         return ReplicaStartupStatus.SUCCEEDED, None
 
     @property
@@ -1512,15 +1524,30 @@ class ActorReplicaWrapper:
         finally:
             # Remove the placement group both if the actor has already been deleted or
             # it was just killed above.
-            if stopped and self._placement_group is not None:
-                try:
-                    ray.util.remove_placement_group(self._placement_group)
-                except ValueError:
-                    # ValueError thrown from ray.util.remove_placement_group means the
-                    # placement group has already been removed.
-                    logger.debug(
-                        f"Placement group for {self._replica_id} was already removed."
-                    )
+            if stopped:
+                # Check for gang placement group first to avoid shutting down
+                # the shared replica_pg before all replicas are done.
+                if self._gang_placement_group is not None:
+                    # Avoid calling shutdown() or remove_placement_group() here
+                    # since replicas in Gang PG might still be draining.
+                    self._gang_placement_group = None
+                    self._placement_group = None
+                    self._replica_pg = None
+                elif self._replica_pg is not None:
+                    self._replica_pg.shutdown()
+                    self._replica_pg = None
+                    self._placement_group = None
+                elif self._placement_group is not None:
+                    try:
+                        ray.util.remove_placement_group(self._placement_group)
+                    except ValueError:
+                        # ValueError thrown from ray.util.remove_placement_group means the
+                        # placement group has already been removed.
+                        logger.debug(
+                            f"Placement group for {self._replica_id} was already removed."
+                        )
+                    finally:
+                        self._placement_group = None
 
         return stopped
 
@@ -1899,7 +1926,9 @@ class DeploymentReplica:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
-        gang_placement_group: Optional[PlacementGroup] = None,
+        gang_placement_group: Optional[
+            Union[PlacementGroup, "_ReplicaPlacementGroup"]
+        ] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
@@ -2852,6 +2881,8 @@ class DeploymentState:
         # Updated on replica creation during upscaling and permanent removal during downscaling.
         self._gang_id_by_replica: Dict[ReplicaID, str] = {}
         self._replicas_by_gang_id: Dict[str, Set[ReplicaID]] = defaultdict(set)
+        # Track the actual PG objects to clean them up when the gang empties
+        self._gang_pg_by_id: Dict[str, Any] = {}
 
         # Deployment-scoped actor lifecycle (per deployment)
         self._deployment_actors = DeploymentActorContainer(self._id)
@@ -3957,6 +3988,9 @@ class DeploymentState:
         )
 
         for gang_pg, gang_id, pg_name in zip(gang_pgs, gang_ids, gang_pg_names):
+            # Track the PG object for later cleanup
+            self._gang_pg_by_id[gang_id] = gang_pg
+
             member_replica_ids = [
                 ReplicaID(get_random_string(), deployment_id=self._id)
                 for _ in range(gang_size)
@@ -4332,8 +4366,9 @@ class DeploymentState:
         self._gang_id_by_replica[replica_id] = gang_id
         self._replicas_by_gang_id[gang_id].add(replica_id)
 
-    def _unregister_gang_replica(self, replica_id: ReplicaID) -> None:
+    def _unregister_gang_replica(self, replica: "DeploymentReplica") -> None:
         """Remove a replica from the gang membership bookkeeping."""
+        replica_id = replica.replica_id
         gang_id = self._gang_id_by_replica.pop(replica_id, None)
         if gang_id is not None:
             members = self._replicas_by_gang_id.get(gang_id)
@@ -4341,6 +4376,42 @@ class DeploymentState:
                 members.discard(replica_id)
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
+
+                    gang_pg = self._gang_pg_by_id.pop(gang_id, None)
+
+                    # Fallback for controller actor recovery, if the in-memory `_gang_pg_by_id` dict
+                    # is empty, fetch the placement group from GCS.
+                    if (
+                        gang_pg is None
+                        and replica.gang_context
+                        and replica.gang_context.pg_name
+                    ):
+                        try:
+                            gang_pg = ray.util.get_placement_group(
+                                replica.gang_context.pg_name
+                            )
+                        except ValueError:
+                            pass  # PG doesn't exist in Ray, nothing to clean up
+
+                    if gang_pg is not None:
+                        try:
+                            if hasattr(gang_pg, "shutdown"):
+                                gang_pg.shutdown()
+                            else:
+                                placement_group = (
+                                    gang_pg.placement_group
+                                    if hasattr(gang_pg, "placement_group")
+                                    else gang_pg
+                                )
+                                ray.util.remove_placement_group(placement_group)
+                        except ValueError:
+                            logger.debug(
+                                f"Gang placement group for {gang_id} was already removed."
+                            )
+                        except Exception:
+                            logger.exception(
+                                f"Failed to remove gang placement group for {gang_id}."
+                            )
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
@@ -4722,7 +4793,7 @@ class DeploymentState:
                         f"Released rank from replica {replica_id} in deployment {self._id}"
                     )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
-                self._unregister_gang_replica(replica.replica_id)
+                self._unregister_gang_replica(replica)
 
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
@@ -5970,6 +6041,7 @@ class DeploymentStateManager:
                 replica_pg_fallback_strategy=(
                     replica_config.placement_group_fallback_strategy
                 ),
+                accelerator_config=deployment_state._target_state.info.deployment_config.accelerator_config,
             )
 
         if not gang_requests:

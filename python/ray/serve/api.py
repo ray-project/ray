@@ -40,12 +40,14 @@ from ray.serve._private.utils import (
     wait_for_interrupt,
 )
 from ray.serve.config import (
+    AcceleratorConfig,
     AutoscalingConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    TPUAcceleratorConfig,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -447,6 +449,25 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
     return decorator
 
 
+def _resolve_accelerator_config(
+    value: Union[Dict, AcceleratorConfig, None],
+) -> Optional[AcceleratorConfig]:
+
+    if value is None or isinstance(value, AcceleratorConfig):
+        return value
+    if isinstance(value, dict):
+        accelerator_type = value.get("accelerator_type")
+        if accelerator_type == "tpu":
+            return TPUAcceleratorConfig(**value)
+        raise ValueError(
+            f"Unknown accelerator_type {accelerator_type!r}. "
+            f"Supported types: 'tpu'."
+        )
+    raise TypeError(
+        f"accelerator_config must be a dict or AcceleratorConfig, got {type(value)}."
+    )
+
+
 @PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -464,6 +485,7 @@ def deployment(
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
+    accelerator_config: Default[Union[Dict, AcceleratorConfig, None]] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -634,11 +656,15 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.model_dump()
 
+    if accelerator_config is not DEFAULT.VALUE:
+        accelerator_config = _resolve_accelerator_config(accelerator_config)
+
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
+        accelerator_config=accelerator_config,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,

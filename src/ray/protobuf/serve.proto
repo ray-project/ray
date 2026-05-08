@@ -249,6 +249,9 @@ message DeploymentConfig {
   // rolling upgrade) is distinguishable from an explicit value. When unset,
   // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
   optional double rolling_update_percentage = 23;
+
+  // Structured accelerator configuration for a Serve deployment.
+  bytes accelerator_config = 24;
 }
 
 // Deployment language.

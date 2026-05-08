@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray._raylet import node_labels_match_selector
@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import AcceleratorConfig
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
@@ -34,6 +35,9 @@ from ray.util.scheduling_strategies import (
     NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+if TYPE_CHECKING:
+    from ray.serve._private.default_impl import _ReplicaPlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -198,6 +202,7 @@ class ReplicaSchedulingRequest:
     placement_group_strategy: Optional[str] = None
     placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    accelerator_config: Optional[AcceleratorConfig] = None
     max_replicas_per_node: Optional[int] = None
     # Gang scheduling fields -- if set, replica should be scheduled on
     # the reserved gang placement group at the specified bundle index.
@@ -636,12 +641,21 @@ class DeploymentScheduler(ABC):
         replica_id = scheduling_request.replica_id
         deployment_id = replica_id.deployment_id
         placement_group = None
+        slice_pg = None
 
         scheduling_strategy = default_scheduling_strategy
 
         if scheduling_request.gang_placement_group is not None:
             # Gang scheduling -- use the reserved gang placement group
-            placement_group = scheduling_request.gang_placement_group
+            pg_wrapper = scheduling_request.gang_placement_group
+            placement_group = (
+                pg_wrapper.placement_group
+                if hasattr(pg_wrapper, "placement_group")
+                else pg_wrapper
+            )
+            # Preserve the wrapper for cleanup of head PGs
+            slice_pg = pg_wrapper if hasattr(pg_wrapper, "placement_group") else None
+
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=placement_group,
                 placement_group_bundle_index=scheduling_request.gang_pg_index,
@@ -651,21 +665,32 @@ class DeploymentScheduler(ABC):
             target_labels = None
             target_node_id = None
         elif scheduling_request.placement_group_bundles is not None:
+            slice_pg = None
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
                 if scheduling_request.placement_group_strategy
                 else "PACK"
             )
             try:
-                pg = self._create_placement_group_fn(
+                pg_result = self._create_placement_group_fn(
                     CreatePlacementGroupRequest(
                         bundles=scheduling_request.placement_group_bundles,
                         strategy=placement_group_strategy,
                         target_node_id=target_node_id,
                         name=scheduling_request.actor_options["name"],
                         bundle_label_selector=scheduling_request.placement_group_bundle_label_selector,
-                    )
+                        accelerator_config=scheduling_request.accelerator_config,
+                    ),
                 )
+
+                from ray.serve._private.default_impl import _ReplicaPlacementGroup
+
+                if isinstance(pg_result, _ReplicaPlacementGroup):
+                    pg = pg_result.placement_group
+                    slice_pg = pg_result
+                else:
+                    pg = pg_result
+                    slice_pg = None
             except Exception:
                 # We add a defensive exception here, so the controller can
                 # make progress even if the placement group isn't created.
@@ -720,6 +745,17 @@ class DeploymentScheduler(ABC):
             scheduling_request.status = (
                 ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
             )
+
+            # Only clean up single-replica PGs. Gang PGs are managed elsewhere.
+            if scheduling_request.gang_placement_group is None:
+                if slice_pg is not None:
+                    slice_pg.shutdown()
+                elif (
+                    placement_group is not None
+                    and scheduling_request.placement_group_bundles is not None
+                ):
+                    ray.util.remove_placement_group(placement_group)
+
             return False
 
         del self._pending_replicas[deployment_id][replica_id]
@@ -731,7 +767,11 @@ class DeploymentScheduler(ABC):
             placement_group = scheduling_strategy.placement_group
 
         scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
-        scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
+        scheduling_request.on_scheduled(
+            actor_handle,
+            placement_group=placement_group,
+            placement_group_manager=slice_pg,
+        )
         return True
 
     @abstractmethod
@@ -816,7 +856,7 @@ class DeploymentScheduler(ABC):
 
         # Flatten per-replica bundles to form a placement group to atomically reserve resources
         # required for each gang
-        gang_pgs: List[PlacementGroup] = []
+        gang_pgs: List[Union[PlacementGroup, "_ReplicaPlacementGroup"]] = []
         gang_ids: List[str] = []
         gang_pg_names: List[str] = []
         for gang_index in range(num_gangs):
@@ -867,6 +907,7 @@ class DeploymentScheduler(ABC):
                         name=pg_name,
                         bundle_label_selector=label_selector,
                         fallback_strategy=fallback_strategy,
+                        accelerator_config=request.accelerator_config,
                     )
                 )
                 gang_pgs.append(pg)

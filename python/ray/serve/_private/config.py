@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
+    AcceleratorConfig,
     AggregationFunction,
     AutoscalingConfig,
     DeploymentActorConfig,
@@ -191,6 +192,10 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
+    accelerator_config: Optional[AcceleratorConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.HeavyWeight
+    )
+
     # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
@@ -323,6 +328,8 @@ class DeploymentConfig(BaseModel):
 
     def to_proto(self):
         data = self.model_dump()
+        if data.get("accelerator_config") is not None:
+            data["accelerator_config"] = cloudpickle.dumps(self.accelerator_config)
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -430,6 +437,11 @@ class DeploymentConfig(BaseModel):
             data["is_cross_language"] if "is_cross_language" in data else False
         )
         needs_pickle = _needs_pickle(deployment_language, is_cross_language)
+        if "accelerator_config" in data:
+            if data["accelerator_config"] != b"":
+                data["accelerator_config"] = cloudpickle.loads(proto.accelerator_config)
+            else:
+                data["accelerator_config"] = None
         if "user_config" in data:
             if data["user_config"] != b"":
                 if needs_pickle:

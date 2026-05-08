@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Union
 
 from starlette.types import Scope
 
@@ -17,6 +17,10 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
+
+if TYPE_CHECKING:
+    from ray.serve._private.default_impl import _ReplicaPlacementGroup
+    from ray.serve.config import AcceleratorConfig
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 GANG_PG_NAME_PREFIX = "SERVE_GANG::"
@@ -897,6 +901,7 @@ class CreatePlacementGroupRequest:
     runtime_env: Optional[str] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    accelerator_config: Optional["AcceleratorConfig"] = None
 
 
 @dataclass
@@ -924,6 +929,9 @@ class GangPlacementGroupRequest:
     replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     """Fallback strategy for per-replica placement group bundles."""
 
+    accelerator_config: Optional["AcceleratorConfig"] = None
+    """Optional accelerator configuration for TPU/GPU provisioning."""
+
 
 @dataclass
 class GangReservationResult:
@@ -932,7 +940,7 @@ class GangReservationResult:
     success: bool
     """True when all gang PGs were created successfully."""
     error_message: Optional[str] = None
-    gang_pgs: Optional[List[PlacementGroup]] = None
+    gang_pgs: Optional[List[Union[PlacementGroup, "_ReplicaPlacementGroup"]]] = None
     gang_ids: Optional[List[str]] = None
     gang_pg_names: Optional[List[str]] = None
 

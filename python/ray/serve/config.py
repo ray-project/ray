@@ -4,7 +4,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -42,7 +42,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -707,6 +707,53 @@ class AutoscalingConfig(BaseModel):
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
+
+
+@DeveloperAPI(stability="alpha")
+class AcceleratorConfig(BaseModel):
+    """Base class for structured accelerator configurations.
+
+    Use a concrete subclass — e.g. :class:`TPUAcceleratorConfig` — when
+    declaring a deployment's accelerator requirements via
+    ``serve.deployment(accelerator_config=...)``.
+    """
+
+    accelerator_type: str = Field(
+        ..., description="Discriminator identifying the accelerator config type."
+    )
+
+    model_config = {"frozen": True, "extra": "forbid"}
+
+
+@DeveloperAPI(stability="alpha")
+class TPUAcceleratorConfig(AcceleratorConfig):
+    """TPU slice specification for a Serve deployment.
+
+    Mirrors the parameters of :func:`ray.util.tpu.slice_placement_group`.
+    Ray Serve uses this config to provision a TPU slice placement group
+    per replica and to manage its lifecycle through the controller.
+
+    Example:
+        >>> from ray.serve.config import TPUAcceleratorConfig
+        >>> config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
+    """
+
+    accelerator_type: Literal["tpu"] = "tpu"
+
+    topology: str = Field(
+        ..., description="TPU pod topology, e.g. '2x2', '4x4', '2x2x2'."
+    )
+    accelerator_version: str = Field(
+        ..., description="TPU accelerator version, e.g. 'v4', 'v5p', 'v6e'."
+    )
+    num_slices: int = Field(default=1, ge=1, description="Number of slices to reserve.")
+    chips_per_vm: Optional[int] = Field(
+        default=None,
+        description=(
+            "Override for chips per host. Defaults to the canonical value "
+            "for the given accelerator_version."
+        ),
+    )
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts

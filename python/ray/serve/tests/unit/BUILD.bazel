@@ -41,6 +41,7 @@ py_test_module_list(
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
+        "test_accelerator_config.py",
         "test_deployment_scheduler.py",
         "test_deployment_state.py",
     ],

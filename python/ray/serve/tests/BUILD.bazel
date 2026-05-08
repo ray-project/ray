@@ -101,6 +101,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_accelerator_config.py",
         "test_actor_replica_wrapper.py",
         "test_backpressure.py",
         "test_backpressure_grpc.py",
