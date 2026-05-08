@@ -2982,7 +2982,7 @@ class Dataset:
 
         start_time = time.perf_counter()
 
-        logical_plans = [ds._plan._logical_plan for ds in datasets]
+        logical_plans = [ds._logical_plan for ds in datasets]
         op = MixLogicalOperator(
             *[plan.dag for plan in logical_plans],
             weights=weights,
