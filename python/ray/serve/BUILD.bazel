@@ -1,3 +1,6 @@
+load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS")
+
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:python.bzl", "doctest")
 
@@ -32,4 +35,30 @@ py_library(
         "//python/ray/serve:__subpackages__",
         "//release:__pkg__",
     ],
+)
+
+pyx_library(
+    name = "_timeseries_utils",
+    srcs = ["_private/_timeseries_utils.pyx"],
+    cc_kwargs = dict(
+        copts = COPTS + PYX_COPTS,
+        features = ["compiler_param_file"],
+        linkopts = select({
+            "@platforms//os:osx": [
+                "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+                "-Wl,-undefined,dynamic_lookup",
+            ],
+            "@platforms//os:windows": [],
+            "//conditions:default": [
+                "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+            ],
+        }),
+        linkstatic = 1,
+    ),
+    deps = [
+        "//python/ray/includes:cython_includes",
+        "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
+    ],
+    visibility = ["//visibility:public"],
 )
