@@ -23,7 +23,18 @@ HAPROXY_CONFIG_TEMPLATE = """global
     # Log to the standard system log socket with debug level.
     log /dev/log local0 debug
     log 127.0.0.1:{{ config.syslog_port }} local0 debug
-    stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
+    # Dedicated socket for the `-x admin.sock` FD-transfer during graceful
+    # reload. Carries `expose-fd listeners` so the new HAProxy can fetch
+    # listener FDs from it, but is NOT used for runtime-API commands.
+    # Keeping FD transfer on its own socket prevents the `_getsocks`
+    # exchange from queueing behind add/del/disable/enable server commands
+    # during a reload.
+    stats socket {{ config.transfer_socket_path }} mode 666 level admin expose-fd listeners
+    # Runtime-API + stats socket. Used by the proxy actor for
+    # `add server`, `del server`, `show stat`, etc. No `expose-fd
+    # listeners` here — FD transfer is reserved for the dedicated socket
+    # above so the two streams don't contend on the same connection slot.
+    stats socket {{ config.socket_path }} mode 666 level admin
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
@@ -37,6 +48,15 @@ HAPROXY_CONFIG_TEMPLATE = """global
 defaults
     mode http
     option log-health-checks
+    # Avoid blocking on libc DNS resolution at HAProxy startup. With many
+    # backends, the cumulative resolver wait can be seconds even when
+    # every server address is already an IP literal -- HAProxy still
+    # consults libc as part of `init-addr`'s default order. The order
+    # below tries the previous process's resolved address first (instant
+    # via the server-state file), falls back to libc only if needed, and
+    # accepts "no IP yet" rather than failing startup. Servers come up
+    # immediately and DNS resolution happens lazily in the background.
+    default-server init-addr last,libc,none
     retries {{ config.retries }}
     {% if config.timeout_connect_s is not none %}timeout connect {{ config.timeout_connect_s }}s{% endif %}
     {% if config.timeout_client_s is not none %}timeout client {{ config.timeout_client_s }}s{% endif %}

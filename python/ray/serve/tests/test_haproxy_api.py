@@ -268,7 +268,18 @@ global
     # Log to the standard system log socket with debug level.
     log /dev/log local0 debug
     log 127.0.0.1:514 local0 debug
-    stats socket {socket_path} mode 666 level admin expose-fd listeners
+    # Dedicated socket for the `-x admin.sock` FD-transfer during graceful
+    # reload. Carries `expose-fd listeners` so the new HAProxy can fetch
+    # listener FDs from it, but is NOT used for runtime-API commands.
+    # Keeping FD transfer on its own socket prevents the `_getsocks`
+    # exchange from queueing behind add/del/disable/enable server commands
+    # during a reload.
+    stats socket {socket_path}.fd mode 666 level admin expose-fd listeners
+    # Runtime-API + stats socket. Used by the proxy actor for
+    # `add server`, `del server`, `show stat`, etc. No `expose-fd
+    # listeners` here — FD transfer is reserved for the dedicated socket
+    # above so the two streams don't contend on the same connection slot.
+    stats socket {socket_path} mode 666 level admin
     stats timeout 30s
     maxconn 1000
     nbthread 2
@@ -278,6 +289,15 @@ global
 defaults
     mode http
     option log-health-checks
+    # Avoid blocking on libc DNS resolution at HAProxy startup. With many
+    # backends, the cumulative resolver wait can be seconds even when
+    # every server address is already an IP literal -- HAProxy still
+    # consults libc as part of `init-addr`'s default order. The order
+    # below tries the previous process's resolved address first (instant
+    # via the server-state file), falls back to libc only if needed, and
+    # accepts "no IP yet" rather than failing startup. Servers come up
+    # immediately and DNS resolution happens lazily in the background.
+    default-server init-addr last,libc,none
     retries 3
     timeout connect 5s
     timeout client 30s

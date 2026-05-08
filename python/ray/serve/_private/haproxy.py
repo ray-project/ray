@@ -460,6 +460,18 @@ class HAProxyConfig:
     is_head: bool = False
 
     @property
+    def transfer_socket_path(self) -> str:
+        """Path of the dedicated FD-transfer admin socket.
+
+        Separate from `socket_path` so that the `-x` socket transfer during
+        reload (which goes through HAProxy's CLI mux) doesn't have to
+        compete with our runtime-API command stream (`add server`,
+        `del server`, etc.). Derived deterministically from `socket_path`
+        so existing per-node path scoping carries over automatically.
+        """
+        return self.socket_path + ".fd"
+
+    @property
     def frontend_host(self) -> str:
         if self.http_options.host is None or self.http_options.host == "0.0.0.0":
             return "*"
@@ -865,7 +877,10 @@ class HAProxyApi(ProxyApi):
             # Use -x socket transfer for seamless reloads if optimization is enabled
             reload_args = ["-sf", str(old_proc.pid)]
             if self.cfg.enable_hap_optimization:
-                reload_args.extend(["-x", self.cfg.socket_path])
+                # Use the dedicated FD-transfer socket so `_getsocks` doesn't
+                # queue behind in-flight runtime-API commands on the main
+                # admin socket.
+                reload_args.extend(["-x", self.cfg.transfer_socket_path])
 
             t0 = time.monotonic()
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
