@@ -1,4 +1,5 @@
 import importlib
+import json
 import time
 from collections import OrderedDict
 from unittest.mock import MagicMock, patch
@@ -54,6 +55,7 @@ from ray.train.v2._internal.state.schema import (
     TrainResources,
     TrainRun,
     TrainRunAttempt,
+    _to_json_serializable_value,
 )
 from ray.train.v2._internal.state.state_actor import (
     TrainStateActor,
@@ -1024,6 +1026,243 @@ def test_construct_data_config_partial_per_dataset_execution_options():
     overrides = result.data_execution_options.per_dataset_execution_options
     assert set(overrides.keys()) == {"train"}
     assert overrides["train"] == execution_options_to_model(custom)
+
+
+# =============================================================================
+# Schema sanitization tests
+# =============================================================================
+
+
+def test_to_json_serializable_value_standalone_inputs():
+    """The sanitizer accepts any value, not just dicts.
+
+    Covers JSON-native primitives (passthrough), edge floats (stringified),
+    bytes (str fallback), modules (str fallback), and a custom object
+    (uses __str__).
+    """
+
+    class Obj:
+        def __str__(self):
+            return "Obj()"
+
+    # JSON-native primitives pass through unchanged.
+    assert _to_json_serializable_value(None) is None
+    assert _to_json_serializable_value(True) is True
+    assert _to_json_serializable_value(42) == 42
+    assert _to_json_serializable_value("hello") == "hello"
+    assert _to_json_serializable_value(3.14) == 3.14
+    assert _to_json_serializable_value([1, "a", None]) == [1, "a", None]
+
+    # Non-finite floats get stringified (not valid JSON otherwise).
+    assert _to_json_serializable_value(float("inf")) == "inf"
+    assert _to_json_serializable_value(float("-inf")) == "-inf"
+    assert _to_json_serializable_value(float("nan")) == "nan"
+
+    # Bytes fall through to str() (no special handling).
+    assert _to_json_serializable_value(b"hello") == "b'hello'"
+
+    # A module uses its repr (modules define one, so we don't fall back to type name).
+    assert _to_json_serializable_value(json).startswith("<module 'json'")
+
+    # A custom object with __str__ uses that.
+    assert _to_json_serializable_value(Obj()) == "Obj()"
+
+    # A module uses default python string representation.
+    import ray
+
+    assert _to_json_serializable_value(ray).startswith("<module 'ray'")
+
+
+def test_to_json_serializable_value_collection_coercion():
+    """tuple, set, and frozenset are all coerced to lists."""
+    # tuple → list
+    assert _to_json_serializable_value({"t": (1, 2, 3)}) == {"t": [1, 2, 3]}
+
+    # set → list (use sorted comparison since set iteration order isn't guaranteed)
+    result = _to_json_serializable_value({"s": {3, 1, 2}})
+    assert sorted(result["s"]) == [1, 2, 3]
+
+    # frozenset → list
+    result = _to_json_serializable_value({"f": frozenset({3, 1, 2})})
+    assert sorted(result["f"]) == [1, 2, 3]
+
+    # Empty containers preserved.
+    assert _to_json_serializable_value({"d": {}, "l": [], "s": set()}) == {
+        "d": {},
+        "l": [],
+        "s": [],
+    }
+
+
+def test_to_json_serializable_value_non_string_keys():
+    """All dict keys are coerced via str(), regardless of original type."""
+
+    class KeyObj:
+        def __str__(self):
+            return "key_obj"
+
+    obj = {
+        1: "int",
+        2.5: "float",
+        None: "none",
+        (1, 2): "tuple",
+        KeyObj(): "custom",
+    }
+    assert _to_json_serializable_value(obj) == {
+        "1": "int",
+        "2.5": "float",
+        "None": "none",
+        "(1, 2)": "tuple",
+        "key_obj": "custom",
+    }
+
+
+def test_to_json_serializable_value_max_depth():
+    """Test that _to_json_serializable_value respects the max_depth argument."""
+
+    class CustomObj:
+        def __str__(self) -> str:
+            return "CustomObj"
+
+    obj = {
+        "native": 42,
+        "sequence": [1, CustomObj()],
+        "nested": {"inner": {"deep": 99}},
+        "obj": CustomObj(),
+        "inf_float": float("inf"),
+    }
+
+    with pytest.raises(ValueError, match="max_depth must be greater than 0"):
+        _to_json_serializable_value(obj, max_depth=0)
+
+    assert _to_json_serializable_value(obj, max_depth=2) == {
+        "native": 42,
+        "nested": {"inner": "..."},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
+    }
+
+    assert _to_json_serializable_value(obj, max_depth=3) == {
+        "native": 42,
+        "nested": {"inner": {"deep": 99}},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
+    }
+
+
+def test_to_json_serializable_value_falls_back_to_type_name():
+    """Objects without custom string representation are rendered as their class name."""
+
+    class NoCustomStr:
+        pass
+
+    class HasRepr:
+        def __repr__(self):
+            return "HasRepr(meaningful)"
+
+    obj = {"plain": NoCustomStr(), "with_repr": HasRepr()}
+    assert _to_json_serializable_value(obj) == {
+        "plain": "NoCustomStr",
+        "with_repr": "HasRepr(meaningful)",
+    }
+
+
+def test_train_run_schema_sanitizes_all_validated_fields():
+    """End-to-end: every dict field with a sanitizer validator coerces
+    non-JSON values at construction time, and the resulting TrainRun
+    serializes via pydantic's JSON dump without raising.
+
+    Covers:
+        - RunSettings.train_loop_config
+        - RunConfig.worker_runtime_env
+        - RunConfig.storage_filesystem
+        - BackendConfig.config
+        - ExecutionOptions.resource_limits / exclude_resources
+    """
+    import pyarrow.fs
+
+    class CustomCfg:
+        def __str__(self):
+            return "CustomCfg()"
+
+    run = TrainRun(
+        id="r1",
+        name="test_run",
+        job_id="job_1",
+        controller_actor_id="controller_1",
+        status=RunStatus.RUNNING,
+        status_detail=None,
+        start_time_ns=1,
+        end_time_ns=None,
+        controller_log_file_path=None,
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config={"epochs": 3, "obj": CustomCfg(), "fn": lambda x: x},
+            backend_config=BackendConfigSchema(
+                framework=None,
+                config={"hook": lambda: None, "module": json},
+            ),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                placement_strategy="PACK",
+                use_tpu=False,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                data_execution_options=DataExecutionOptions(
+                    default=ExecutionOptionsSchema(
+                        resource_limits={"CPU": float("inf"), "obj": CustomCfg()},
+                        exclude_resources={"GPU": float("nan")},
+                        preserve_order=False,
+                        actor_locality_enabled=True,
+                        verbose_progress=True,
+                    ),
+                ),
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test_run",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"setup_hook": lambda: None, "type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(checkpoint_score_order="max"),
+                storage_path="s3://bucket/path",
+                storage_filesystem=pyarrow.fs.LocalFileSystem(),
+            ),
+        ),
+    )
+
+    # Pydantic JSON dump must not raise, since every field was sanitized.
+    payload = json.loads(run.model_dump_json())
+    rs = payload["run_settings"]
+
+    # train_loop_config
+    assert rs["train_loop_config"]["epochs"] == 3
+    assert rs["train_loop_config"]["obj"] == "CustomCfg()"
+    assert rs["train_loop_config"]["fn"].startswith("<function ")
+
+    # backend_config.config
+    assert rs["backend_config"]["config"]["hook"].startswith("<function ")
+    assert rs["backend_config"]["config"]["module"].startswith("<module 'json'")
+
+    # data_config.data_execution_options.default.resource_limits / exclude_resources
+    default_opts = rs["data_config"]["data_execution_options"]["default"]
+    assert default_opts["resource_limits"]["CPU"] == "inf"
+    assert default_opts["resource_limits"]["obj"] == "CustomCfg()"
+    assert default_opts["exclude_resources"]["GPU"] == "nan"
+
+    # run_config.worker_runtime_env
+    assert rs["run_config"]["worker_runtime_env"]["setup_hook"].startswith("<function ")
+    assert rs["run_config"]["worker_runtime_env"]["type"] == "conda"
+
+    # run_config.storage_filesystem (pyarrow filesystems use default object repr,
+    # so they fall back to the type name)
+    assert rs["run_config"]["storage_filesystem"] == "LocalFileSystem"
 
 
 if __name__ == "__main__":
