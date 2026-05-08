@@ -211,7 +211,7 @@ cdef int prepare_resources(
             if (value >= 1 and isinstance(value, float)
                     and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    f"{key} resource quantities >1 must "
+                    f"{key} resource quantities >1 must ",
                     f"be whole numbers. The specified quantity {value} is invalid.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
