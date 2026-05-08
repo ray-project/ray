@@ -12,23 +12,27 @@ Ray Data allows you to combine multiple datasets into a single streaming dataset
 Quickstart
 ----------
 
-.. code-block:: python
+.. testcode::
 
-    import ray
+    import ray.data
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
     # Read and preprocess each source independently.
-    ds1 = ray.data.read_parquet("s3://bucket/code-data").map(preprocess)
-    ds2 = ray.data.read_parquet("s3://bucket/web-text").map(preprocess)
+    # NOTE: These are mocked datasets for demonstration purposes.
+    def preprocess(row):
+        return row
 
-    # 75% rows from ds1, 25% from ds2 (in expectation).
+    ds1 = ray.data.from_items([{"x": 1} for _ in range(750)]).map(preprocess)
+    ds2 = ray.data.from_items([{"x": 2} for _ in range(250)]).map(preprocess)
+
+    # Output batches will contain 75% rows from ds1, 25% from ds2 (in expectation).
     mixed = ds1.mix(ds2, weights=[0.75, 0.25])
 
     def train_fn_per_worker(config):
         shard = ray.train.get_dataset_shard("train")
         for batch in shard.iter_torch_batches(batch_size=128):
-            train_step(batch)
+            print(batch)
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
@@ -65,18 +69,19 @@ If your input datasets produce blocks of very different sizes, a single large bl
 
 To tighten the per-batch window, standardize input block sizes upstream with :meth:`ds.repartition(target_num_rows_per_block) <ray.data.Dataset.repartition>`:
 
-.. code-block:: python
+.. testcode::
 
     LOCAL_BATCH_SIZE = 128
 
-    ds1 = ray.data.read_parquet("s3://bucket/code-data").map(preprocess)
-    ds2 = ray.data.read_parquet("s3://bucket/web-text").map(preprocess)
+    ds1 = ray.data.from_items([{"x": 1} for _ in range(750)]).map(preprocess)
+    ds2 = ray.data.from_items([{"x": 2} for _ in range(250)]).map(preprocess)
 
     # Standardize block sizes so the ratio holds within tighter windows.
     ds1 = ds1.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
     ds2 = ds2.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
 
     mixed = ds1.mix(ds2, weights=[0.75, 0.25])
+
 
 .. note::
 
@@ -99,15 +104,15 @@ Two streaming-friendly shuffle options in Ray Data:
 - :ref:`Local buffer shuffle <local_shuffle_buffer>` (:meth:`~ray.data.DataIterator.iter_batches` with ``local_shuffle_buffer_size``)
 - :ref:`map_batches shuffle <map_batches_shuffle>`
 
-.. code-block:: python
+.. testcode::
 
     import numpy as np
     import pyarrow as pa
 
     LOCAL_BATCH_SIZE = 128
 
-    ds1 = ray.data.read_parquet("s3://bucket/code-data").map(preprocess)
-    ds2 = ray.data.read_parquet("s3://bucket/web-text").map(preprocess)
+    ds1 = ray.data.from_items([{"x": 1} for _ in range(750)]).map(preprocess)
+    ds2 = ray.data.from_items([{"x": 2} for _ in range(250)]).map(preprocess)
 
     ds1 = ds1.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
     ds2 = ds2.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)

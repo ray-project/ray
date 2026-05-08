@@ -2996,8 +2996,9 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(stats, self.context.copy()),
             logical_plan,
+            self.context.copy(),
+            stats,
         )
 
     @AllToAllAPI
