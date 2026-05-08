@@ -79,26 +79,6 @@ from ray.serve.schema import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def _get_safe_name(name: str) -> str:
-    """Sanitize an actor name for use as a HAProxy server/backend label."""
-    name = name.replace("#", "-").replace("/", ".")
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
-
-
-def target_to_server(target: "Target", node_ip_address: str) -> "ServerConfig":
-    """Convert a Target to a ServerConfig.
-
-    `replica_id` is the unsanitized actor name (matches what `/internal/route`
-    returns); `name` is the sanitized form used in the HAProxy config.
-    """
-    return ServerConfig(
-        name=_get_safe_name(target.name),
-        host="127.0.0.1" if target.ip == node_ip_address else target.ip,
-        port=target.port,
-        replica_id=target.name,
-    )
-
-
 @functools.cache
 def _load_lua_template() -> string.Template:
     path = Path(__file__).parent / "ingress_request_router.lua.tmpl"

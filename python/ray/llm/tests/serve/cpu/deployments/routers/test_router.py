@@ -56,40 +56,6 @@ def _new_direct_router(request_router=None):
     return router
 
 
-class _DirectRouterReplicaId:
-    def __init__(self, unique_id: str, full_id: Optional[str] = None):
-        self.unique_id = unique_id
-        self._full_id = full_id or unique_id
-
-    def to_full_id_str(self) -> str:
-        return self._full_id
-
-
-class _FakeRequest:
-    def __init__(self, body: bytes, headers: Optional[dict] = None):
-        self._body = body
-        self.headers = Headers(headers or {})
-
-    async def body(self) -> bytes:
-        return self._body
-
-
-class _DirectRouterReplica:
-    def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
-        self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
-        self.backend_http_endpoint = ("127.0.0.1", port)
-
-
-def _new_direct_router(request_router=None):
-    router = LLMRouter.__new__(LLMRouter)
-    router._round_robin_counter = 0
-    router._cached_dict_id = None
-    router._cached_replica_signature = None
-    router._cached_endpoints = []
-    router._request_router = request_router or MagicMock(curr_replicas={})
-    return router
-
-
 @pytest.fixture(name="llm_config")
 def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
 
