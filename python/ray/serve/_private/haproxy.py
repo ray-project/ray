@@ -31,6 +31,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
+    RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -1311,6 +1312,20 @@ class HAProxyManager(ProxyActorInterface):
         # which can cause race conditions with SO_REUSEPORT
         self._reload_lock = asyncio.Lock()
 
+        # Coalesce controller broadcasts: when a broadcast arrives we schedule
+        # a single sleeping flush task. Subsequent broadcasts during the sleep
+        # are absorbed implicitly because they overwrite `self._target_groups`
+        # / fallback fields in place; the flush picks up the latest snapshot
+        # when it wakes. This collapses bursts of replica-add/remove events
+        # (common during autoscaling churn) into one runtime-API command pile,
+        # which keeps the HAProxy admin socket from saturating.
+        # `_coalesce_pending` lets the flush task notice broadcasts that
+        # arrive during a long-running apply and trigger another iteration
+        # so the trailing broadcast in a flurry isn't dropped.
+        self._coalesce_window_s = RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S
+        self._coalesce_task: Optional[asyncio.Task] = None
+        self._coalesce_pending = False
+
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
@@ -1568,7 +1583,8 @@ class HAProxyManager(ProxyActorInterface):
             if not applied_incrementally:
                 await self._haproxy.reload()
 
-    def _update_haproxy_backends(self) -> None:
+    def _build_name_to_backend_configs(self) -> Dict[str, BackendConfig]:
+        """Snapshot the current target groups + fallbacks into backend configs."""
         backend_configs = []
         for target_group in self._target_groups:
             fallback_target = None
@@ -1580,16 +1596,56 @@ class HAProxyManager(ProxyActorInterface):
             backend_config = self._create_backend_config(target_group, fallback_target)
             backend_configs.append(backend_config)
 
-        logger.info(
-            f"Got updated backend configs: {backend_configs}.",
-            extra={"log_to_stderr": True},
-        )
+        return {bc.name: bc for bc in backend_configs}
 
-        name_to_backend_configs = {
-            backend_config.name: backend_config for backend_config in backend_configs
-        }
+    def _update_haproxy_backends(self) -> None:
+        # Schedule a coalesced flush. If a flush is already pending (sleeping
+        # or applying), set `_coalesce_pending` so the running task picks up
+        # our broadcast on the next loop iteration. With coalescing disabled
+        # (window=0), apply synchronously to preserve legacy behaviour.
+        if self._coalesce_window_s <= 0:
+            name_to_backend_configs = self._build_name_to_backend_configs()
+            logger.info(
+                f"Got updated backend configs: {list(name_to_backend_configs.values())}.",
+                extra={"log_to_stderr": True},
+            )
+            self.event_loop.create_task(
+                self._apply_backend_update(name_to_backend_configs)
+            )
+            return
 
-        self.event_loop.create_task(self._apply_backend_update(name_to_backend_configs))
+        self._coalesce_pending = True
+        if self._coalesce_task is None or self._coalesce_task.done():
+            self._coalesce_task = self.event_loop.create_task(
+                self._coalesce_and_apply()
+            )
+
+    async def _coalesce_and_apply(self) -> None:
+        """Drain pending broadcasts, applying each batch after a short sleep.
+
+        Broadcasts arriving during the sleep are absorbed because the
+        long-poll callbacks overwrite `self._target_groups` / fallback fields
+        in place — by the time we wake up, the snapshot already reflects them.
+        Broadcasts arriving during the apply are handled by the outer loop:
+        they re-set `_coalesce_pending`, and we iterate again.
+        """
+        try:
+            while self._coalesce_pending:
+                # Clear before sleep so any broadcast during sleep+apply
+                # re-arms the flag and triggers another iteration.
+                self._coalesce_pending = False
+                await asyncio.sleep(self._coalesce_window_s)
+                name_to_backend_configs = self._build_name_to_backend_configs()
+                logger.info(
+                    f"Got updated backend configs: {list(name_to_backend_configs.values())}.",
+                    extra={"log_to_stderr": True},
+                )
+                await self._apply_backend_update(name_to_backend_configs)
+        except Exception as e:
+            # Don't let an apply failure kill the coalescer. The next broadcast
+            # will schedule a fresh flush task; the underlying error is already
+            # logged by `_apply_backend_update` / `try_apply_servers_dynamically`.
+            logger.error(f"Coalesced backend apply failed: {e}")
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups

@@ -773,6 +773,18 @@ RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S = int(
 # unreachable and a sibling can serve the request instead.
 RAY_SERVE_HAPROXY_RETRIES = int(os.environ.get("RAY_SERVE_HAPROXY_RETRIES", "3"))
 
+# Window during which incoming controller broadcasts (target_groups,
+# fallback_targets) are coalesced into a single backend update before being
+# applied to HAProxy. Under autoscaling churn the controller can fire
+# broadcasts tens of ms apart; without coalescing each one issues its own
+# runtime-API command burst on the admin socket, which saturates HAProxy's
+# CLI mux and causes timeouts (and `-x` socket-transfer failures during the
+# fallback reload). 0.2s collapses typical burst clusters into one diff.
+# Set to 0 to disable coalescing entirely (legacy behaviour).
+RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = float(
+    os.environ.get("RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", "0.5")
+)
+
 # Number of consecutive failed server health checks that must occur
 # before haproxy marks the server as down.
 RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(
