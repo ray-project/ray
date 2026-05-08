@@ -1,8 +1,6 @@
 import logging
 import os
 import uuid
-import hashlib
-import json
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
@@ -13,9 +11,7 @@ from pyarrow.fs import FileType
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
-
-from ray.data._internal.util import call_with_retry
+from ray._common.retry import call_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.context import DataContext
@@ -40,67 +36,6 @@ class PendingCheckpoint:
     committed_path: str
 
 
-def _get_iceberg_checkpoint_committer_name(
-    table_identifier: str, catalog_kwargs: dict
-) -> str:
-    catalog_key = json.dumps(catalog_kwargs or {}, sort_keys=True, default=str)
-    digest = hashlib.sha1(f"{table_identifier}|{catalog_key}".encode("utf-8")).hexdigest()
-    return f"ray_data_iceberg_ckpt_committer_{digest}"
-
-
-@ray.remote
-class _IcebergCheckpointCommitter:
-    def __init__(self, table_identifier: str, catalog_kwargs: dict):
-        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
-
-        self._table_identifier = table_identifier
-        self._datasink = IcebergDatasink(
-            table_identifier=table_identifier, catalog_kwargs=catalog_kwargs
-        )
-        self._initialized = False
-
-    def ensure_table(self, schema):
-        if self._initialized:
-            return
-
-        from pyiceberg.exceptions import TableAlreadyExistsError
-        from pyiceberg.io import pyarrow as pyi_pa_io
-
-        cat = self._datasink._get_catalog()
-        exists = self._datasink._with_retry(
-            lambda: cat.table_exists(self._table_identifier),
-            description=f"check existence of Iceberg table '{self._table_identifier}'",
-        )
-        if not exists:
-            iceberg_schema = pyi_pa_io.visit_pyarrow(
-                schema, pyi_pa_io._ConvertToIcebergWithoutIDs()
-            )
-            try:
-                self._datasink._with_retry(
-                    lambda: cat.create_table(
-                        self._table_identifier, schema=iceberg_schema
-                    ),
-                    description=f"create Iceberg table '{self._table_identifier}'",
-                )
-            except TableAlreadyExistsError:
-                pass
-
-        self._datasink.on_write_start(schema)
-        self._initialized = True
-
-    def commit(self, write_return, num_rows: int, size_bytes: int) -> None:
-        from ray.data.datasource.datasink import WriteResult
-
-        self._datasink._reload_table()
-        self._datasink.on_write_complete(
-            WriteResult(
-                num_rows=num_rows,
-                size_bytes=size_bytes,
-                write_returns=[write_return],
-            )
-        )
-
-
 class CheckpointWriter:
     """Abstract class which defines the interface for writing row-level
     checkpoints based on varying backends.
@@ -122,7 +57,7 @@ class CheckpointWriter:
         self.write_num_threads = self.ckpt_config.write_num_threads
 
     @abstractmethod
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(self, block: BlockAccessor, checkpoint_file_id: str = None, **kwargs):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
@@ -186,71 +121,7 @@ class CheckpointWriter:
             CheckpointBackend.FILE_STORAGE,
         ]:
             return BatchBasedCheckpointWriter(config)
-        if backend == CheckpointBackend.ICEBERG:
-            return IcebergCheckpointWriter(config)
         raise NotImplementedError(f"Backend {backend} not implemented")
-
-
-class IcebergCheckpointWriter(CheckpointWriter):
-    """CheckpointWriter that writes to an Iceberg table."""
-
-    def __init__(self, config: CheckpointConfig):
-        super().__init__(config)
-        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
-
-        table_identifier = self.ckpt_config.checkpoint_path
-
-        self.datasink = IcebergDatasink(
-            table_identifier=table_identifier,
-            catalog_kwargs=self.ckpt_config.catalog_kwargs,
-        )
-        self._table_identifier = table_identifier
-        self._committer_name = _get_iceberg_checkpoint_committer_name(
-            table_identifier, self.ckpt_config.catalog_kwargs
-        )
-        self._committer = None
-        self._worker_initialized = False
-
-    def _get_committer(self):
-        if self._committer is not None:
-            return self._committer
-
-        try:
-            self._committer = ray.get_actor(self._committer_name)
-        except ValueError:
-            try:
-                self._committer = _IcebergCheckpointCommitter.options(
-                    name=self._committer_name
-                ).remote(self._table_identifier, self.ckpt_config.catalog_kwargs)
-            except Exception:
-                self._committer = ray.get_actor(self._committer_name)
-
-        return self._committer
-
-    def write_block_checkpoint(self, block: BlockAccessor):
-        if block.num_rows() == 0:
-            return
-
-        checkpoint_ids_block = block.select(columns=[self.id_col])
-        if not self._worker_initialized:
-            schema = BlockAccessor.for_block(checkpoint_ids_block).to_arrow().schema
-            committer = self._get_committer()
-            ray.get(committer.ensure_table.remote(schema))
-            self.datasink._reload_table()
-            self._worker_initialized = True
-
-        from ray.data._internal.execution.interfaces.task_context import TaskContext
-
-        ctx = TaskContext(task_idx=0, op_name="checkpoint_write")
-        write_result = self.datasink.write([checkpoint_ids_block], ctx)
-
-        committer = self._get_committer()
-        ckpt_accessor = BlockAccessor.for_block(checkpoint_ids_block)
-        ray.get(
-            committer.commit.remote(
-                write_result, ckpt_accessor.num_rows(), ckpt_accessor.size_bytes()
-            )
-        )
 
 
 class BatchBasedCheckpointWriter(CheckpointWriter):
@@ -287,34 +158,44 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
 
         return pa.table({self.id_col: id_column_data})
 
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(
+        self, block: BlockAccessor, checkpoint_file_id: str = None, **kwargs
+    ):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
         This is used for non-file datasinks (SQL, MongoDB, etc.) where there's
         no predictable file path to store in checkpoint metadata.
 
+        Iceberg-specific metadata files (e.g., .meta.pkl for Iceberg WriteResult recovery)
+        are handled separately by the planner layer, not by this writer.
+
         Args:
             block: The block accessor containing the data to checkpoint.
+            checkpoint_file_id: Optional deterministic file ID for the checkpoint.
+                If provided, the parquet file will be named {checkpoint_file_id}.parquet.
+                This allows external callers (e.g., planner layer) to pair the parquet
+                file with other metadata files using the same ID.
         """
         if block.num_rows() == 0:
             return
 
-        file_name = f"{uuid.uuid4()}.parquet"
+        file_id = checkpoint_file_id or str(uuid.uuid4())
+        file_name = f"{file_id}.parquet"
         ckpt_file_path = os.path.join(self.checkpoint_path_unwrapped, file_name)
 
         checkpoint_ids_table = self._prepare_checkpoint_table_from_block(block)
 
-        def _write():
-            pq.write_table(
-                checkpoint_ids_table,
-                ckpt_file_path,
-                filesystem=self.filesystem,
-            )
-
         try:
-            call_with_retry(
-                _write,
+            def _write_parquet():
+                pq.write_table(
+                    checkpoint_ids_table,
+                    ckpt_file_path,
+                    filesystem=self.filesystem,
+                )
+
+            return call_with_retry(
+                _write_parquet,
                 description=f"Write checkpoint file: {file_name}",
                 match=DataContext.get_current().retried_io_errors,
             )

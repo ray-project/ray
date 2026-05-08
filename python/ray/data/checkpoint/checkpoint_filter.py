@@ -442,3 +442,111 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
             return filtered_block.to_pandas()
 
         return filtered_block
+
+
+class BatchBasedCheckpointFilter(CheckpointFilter):
+    """Compatibility wrapper that combines CheckpointManager (load) and
+    the binary-search filter logic behind the single-class API expected by
+    LoadCheckpointCallback and util.filter_checkpointed_rows_for_blocks/batches.
+
+    The ``checkpointed_ids`` argument to the filter methods is the
+    ``np.ndarray`` that Ray auto-resolves from the ObjectRef returned by
+    ``load_checkpoint()`` when it is passed as a remote-task kwarg, or ``None``
+    when no checkpoint was found.
+    """
+
+    def __init__(self, config: CheckpointConfig):
+        super().__init__(config)
+        self._manager = IdColumnCheckpointManager(config)
+        self._checkpoint_path_unwrapped = _unwrap_protocol(config.checkpoint_path)
+        self._filesystem = config.filesystem
+
+    def load_checkpoint(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ):
+        """Load checkpointed IDs via CheckpointManager.
+
+        Returns:
+            ObjectRef[np.ndarray] or None if no checkpoint exists.
+        """
+        checkpoint_ref, _size = self._manager.load_checkpoint(
+            data_file_dir=data_file_dir,
+            data_file_filesystem=data_file_filesystem,
+        )
+        return checkpoint_ref
+
+    def delete_checkpoint(self) -> None:
+        """Delete the checkpoint, delegating to parent for backend-specific logic."""
+        super().delete_checkpoint()
+
+    def filter_rows_for_block(
+        self,
+        block: Block,
+        checkpointed_ids: Optional[np.ndarray] = None,
+    ) -> Block:
+        """Filter already-checkpointed rows from *block*.
+
+        Args:
+            block: The input block to filter.
+            checkpointed_ids: A np.ndarray of checkpointed IDs (Ray auto-resolves
+                the ObjectRef returned by load_checkpoint() before passing it into
+                a remote task), or None if no checkpoint exists.
+
+        Returns:
+            Filtered block with checkpointed rows removed.
+        """
+        if checkpointed_ids is None or len(checkpointed_ids) == 0:
+            return block
+
+        assert isinstance(checkpointed_ids, np.ndarray), (
+            f"Expected np.ndarray for checkpointed_ids, got {type(checkpointed_ids)}"
+        )
+
+        is_pandas_block = isinstance(block, pd.DataFrame)
+        if is_pandas_block:
+            block = pyarrow.Table.from_pandas(block)
+
+        assert isinstance(block, pyarrow.Table)
+
+        if len(block) == 0:
+            return block
+
+        # Binary-search filter: same algorithm as NumpyArrayBasedCheckpointFilter
+        # but operates directly on the resolved ndarray — no object store round-trip.
+        block_ids = transform_pyarrow.to_numpy(
+            block[self.id_column], zero_copy_only=False
+        )
+        mask = np.ones(len(block_ids), dtype=bool)
+        sorted_indices = np.searchsorted(checkpointed_ids, block_ids)
+        valid_indices = sorted_indices < len(checkpointed_ids)
+        potential_matches = sorted_indices[valid_indices]
+        matched = checkpointed_ids[potential_matches] == block_ids[valid_indices]
+        mask[valid_indices] = ~matched
+
+        filtered_block = block.filter(pyarrow.array(mask))
+
+        if is_pandas_block:
+            return filtered_block.to_pandas()
+        return filtered_block
+
+    def filter_rows_for_batch(
+        self,
+        batch: "DataBatch",
+        checkpointed_ids: Optional[np.ndarray] = None,
+    ) -> "DataBatch":
+        """Filter already-checkpointed rows from *batch*.
+
+        Args:
+            batch: The input batch to filter.
+            checkpointed_ids: np.ndarray of checkpointed IDs, or None.
+
+        Returns:
+            Filtered batch with checkpointed rows removed.
+        """
+        from ray.data.block import BlockAccessor
+
+        arrow_block = BlockAccessor.batch_to_block(batch)
+        filtered_block = self.filter_rows_for_block(arrow_block, checkpointed_ids)
+        return BlockAccessor.for_block(filtered_block).to_batch_format(None)
