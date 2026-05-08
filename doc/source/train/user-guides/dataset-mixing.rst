@@ -124,9 +124,9 @@ Stopping conditions
 
    * - Condition
      - Behavior
-   * - ``StopOnLongestDrop`` (default)
+   * - ``STOP_ON_LONGEST_DROP`` (default)
      - Pipeline ends when the longest dataset is exhausted. Shorter datasets drop out once exhausted; remaining batches come from the still-active datasets.
-   * - ``StopOnShortest``
+   * - ``STOP_ON_SHORTEST``
      - Pipeline ends when the shortest dataset is exhausted. Other datasets are truncated.
 
 See :class:`~ray.data.MixStoppingCondition` for more details.
