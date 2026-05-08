@@ -65,7 +65,7 @@ With uniform block sizes, the ratio is exact within any window of ``1 / min(weig
 Advanced: Standardize input block sizes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If your input datasets produce blocks of very different sizes, a single large block can temporarily push that source ahead of its target ratio. :meth:`~ray.data.Dataset.mix` self-corrects on subsequent pulls, so the ratio is still correct in expectation -- but a global batch built from a small number of those blocks can look skewed.
+If your input datasets produce blocks of very different sizes, a single large block can temporarily push that source ahead of its target ratio. :meth:`~ray.data.Dataset.mix` self-corrects on subsequent pulls, so the ratio is still correct in expectation---but a global batch built from a small number of those blocks can look skewed.
 
 To tighten the per-batch window, standardize input block sizes upstream with :meth:`ds.repartition(target_num_rows_per_block) <ray.data.Dataset.repartition>`:
 
@@ -85,14 +85,14 @@ To tighten the per-batch window, standardize input block sizes upstream with :me
 
 .. note::
 
-    You may want to repartition to some multiple of batch size (e.g. ``N * LOCAL_BATCH_SIZE``) if your rows are small in terms of bytes. This prevents splitting blocks into extremely small pieces that increase overhead.
+    You may want to repartition to some multiple of batch size (for example, ``N * LOCAL_BATCH_SIZE``) if your rows are small in terms of bytes. This prevents splitting blocks into extremely small pieces that increase overhead.
 
 Random mixing
 ~~~~~~~~~~~~~
 
-The per-batch ratio quality of per-block mixing depends on two things: the sizes of the input blocks (covered above) and the number of training workers contributing to each global batch. A global batch aggregates ``num_workers * grad_accum_steps`` local batches, each drawn from a single dataset, so the more local batches you have per global batch, the closer the ratio holds to the target.
+The per-batch ratio quality of per-block mixing depends on two things: the sizes of the input blocks (covered in the preceding section) and the number of training workers contributing to each global batch. A global batch aggregates ``num_workers * grad_accum_steps`` local batches, each drawn from a single dataset, so the more local batches you have per global batch, the closer the ratio holds to the target.
 
-The extreme case: training on a single worker with no gradient accumulation means every global batch is a local batch, so every batch comes from a single dataset -- clearly not what you want for tight per-batch mixing.
+The extreme case: training on a single worker with no gradient accumulation means every global batch is a local batch, so every batch comes from a single dataset.
 
 Adding a streaming shuffle after :meth:`~ray.data.Dataset.mix` switches you to **random mixing**: the shuffle redistributes rows across block boundaries so each batch directly contains rows from multiple datasets in roughly the requested proportion, regardless of how many workers you're training on. :meth:`~ray.data.Dataset.mix` still governs the ratio; the shuffle just spreads it within each batch.
 
@@ -149,7 +149,7 @@ Limitations
 
 - **Avoid** :meth:`~ray.data.Dataset.map` / :meth:`~ray.data.Dataset.filter` **after** :meth:`~ray.data.Dataset.mix`. Downstream transformations can combine or split blocks before they reach the trainer, which breaks the row-ratio guarantees :meth:`~ray.data.Dataset.mix` provides. Apply per-dataset transforms upstream of :meth:`~ray.data.Dataset.mix`.
 - **Schemas must match.** :meth:`~ray.data.Dataset.mix` does not unify schemas for you. Apply :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.select_columns` upstream to make all inputs structurally identical.
-- **Heavily skewed weights (current limitation).** All input datasets currently execute concurrently with some portion of cluster resources equally divided between them. With heavily skewed weights (e.g., ``[0.95, 0.05]``), the high-weight dataset may bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other (e.g., ``[0.4, 0.3, 0.2, 0.1]``).
+- **Heavily skewed weights (current limitation).** All input datasets currently execute concurrently with some portion of cluster resources equally divided between them. With heavily skewed weights (for example,, ``[0.95, 0.05]``), the high-weight dataset may bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other (for example,, ``[0.4, 0.3, 0.2, 0.1]``).
 
 See also
 --------
