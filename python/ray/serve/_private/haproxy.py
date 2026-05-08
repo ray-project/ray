@@ -746,6 +746,30 @@ class HAProxyApi(ProxyApi):
         with open(self.cfg.server_state_file, "w") as f:
             f.write(server_state)
 
+    async def _terminate_old_procs(self) -> None:
+        """SIGKILL any old HAProxy procs we're still tracking.
+
+        Used during fresh-start recovery (when -sf/-x graceful reload isn't
+        possible) to free listener ports the orphans may still be holding.
+        Idempotent — already-dead procs are a no-op.
+        """
+        for old_proc in self._old_procs:
+            if old_proc.returncode is not None:
+                continue
+            try:
+                old_proc.kill()
+                await old_proc.wait()
+                logger.info(
+                    f"Killed orphaned HAProxy process (PID: {old_proc.pid}) "
+                    "to free listener ports for fresh start."
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to kill orphaned HAProxy process "
+                    f"(PID: {old_proc.pid}): {e}"
+                )
+        self._old_procs.clear()
+
     async def _graceful_reload(self) -> None:
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
@@ -767,6 +791,16 @@ class HAProxyApi(ProxyApi):
                     "attempting a graceful reload.",
                     old_proc.returncode if old_proc is not None else None,
                 )
+                # Kill any tracked old procs that may still be holding the
+                # listener ports. Under -x failures the prior reload never
+                # delivered SIGUSR1 to its predecessor, so processes appended
+                # to `_old_procs` can stay fully bound to ports 8000 / 9101 /
+                # 8404 indefinitely. A fresh-start without -sf/-x doesn't
+                # inherit anything, so it would otherwise hit EADDRINUSE on
+                # those ports until the orphans finish their natural drain
+                # (tens of seconds at minimum). SIGKILL them up front so the
+                # fresh process can bind immediately.
+                await self._terminate_old_procs()
                 self._proc = await self._start_and_wait_for_haproxy()
                 return
 
