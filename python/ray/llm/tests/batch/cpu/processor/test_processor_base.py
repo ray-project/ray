@@ -1,3 +1,4 @@
+import logging
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
 
@@ -390,19 +391,14 @@ class TestOfflineProcessorConfig:
     @pytest.mark.parametrize(
         "kwargs, expected",
         [
-            # Explicit field wins.
             ({"max_tasks_in_flight_per_actor": 10}, 10),
-            # Fallback: default max_concurrent_batches (8) * default factor (2).
-            ({}, 16),
-            # Fallback tracks max_concurrent_batches.
-            ({"max_concurrent_batches": 4}, 8),
-            # Explicit field beats the formula.
-            ({"max_concurrent_batches": 4, "max_tasks_in_flight_per_actor": 99}, 99),
+            ({}, None),
+            # Field stays None; the formula runs in Ray Data, not here.
+            ({"max_concurrent_batches": 4}, None),
         ],
     )
-    def test_max_tasks_in_flight_per_actor_resolution(self, kwargs, expected):
-        """Resolution happens at config construction; verify the field holds
-        the resolved value and `max_concurrent_batches` is intact."""
+    def test_max_tasks_in_flight_per_actor_passthrough(self, kwargs, expected):
+        """Field passes through to ActorPoolStrategy; None defers resolution."""
         config = vLLMEngineProcessorConfig(
             model_source="unsloth/Llama-3.2-1B-Instruct",
             **kwargs,
@@ -411,10 +407,9 @@ class TestOfflineProcessorConfig:
         assert config.max_concurrent_batches == kwargs.get("max_concurrent_batches", 8)
 
     def test_experimental_max_tasks_in_flight_per_actor_deprecated(self, caplog):
-        """Setting via `experimental` is honored with a deprecation log; the
-        top-level field overrides it but the warning still fires."""
-        import logging
-
+        """Setting `experimental['max_tasks_in_flight_per_actor']` migrates to
+        the top-level field with a deprecation log; the explicit top-level
+        field overrides it but the warning still fires."""
         logger_name = "ray.llm._internal.batch.processor.base"
 
         def has_deprecation_log():
@@ -424,6 +419,7 @@ class TestOfflineProcessorConfig:
                 for r in caplog.records
             )
 
+        # Migration: experimental → top-level field.
         with caplog.at_level(logging.WARNING, logger=logger_name):
             cfg = vLLMEngineProcessorConfig(
                 model_source="unsloth/Llama-3.2-1B-Instruct",
@@ -432,6 +428,7 @@ class TestOfflineProcessorConfig:
         assert cfg.max_tasks_in_flight_per_actor == 10
         assert has_deprecation_log()
 
+        # Explicit top-level beats experimental, but warning still fires.
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger=logger_name):
             cfg = vLLMEngineProcessorConfig(

@@ -6,7 +6,6 @@ from pydantic import Field, field_validator, model_validator
 
 from ray.data import Dataset
 from ray.data.block import UserDefinedFunction
-from ray.data.context import DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
 from ray.llm._internal.batch.stages import (
     StatefulStage,
     wrap_postprocess,
@@ -161,11 +160,12 @@ class OfflineProcessorConfig(ProcessorConfig):
     max_tasks_in_flight_per_actor: Optional[int] = Field(
         default=None,
         description="Max tasks Ray Data submits concurrently to each engine "
-        "actor. Defaults to `max_concurrent_batches * "
-        "DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR`; the "
-        "factor can be overridden via the "
-        "`RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR` "
-        "env var. An explicit value here takes precedence.",
+        "actor. Passed through to `ActorPoolStrategy`; if unset, Ray Data's "
+        "actor pool resolves it via `DataContext.max_tasks_in_flight_per_actor` "
+        "(if set globally), else `max_concurrent_batches * "
+        "DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR` (factor "
+        "env-overridable via "
+        "`RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR`).",
     )
     should_continue_on_error: bool = Field(
         default=False,
@@ -270,11 +270,11 @@ class OfflineProcessorConfig(ProcessorConfig):
         return values
 
     @model_validator(mode="before")
-    def _warn_experimental_max_tasks_in_flight_per_actor_deprecation(
+    def _migrate_experimental_max_tasks_in_flight_per_actor(
         cls, values: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Warn if `max_tasks_in_flight_per_actor` is set via the deprecated
-        `experimental` dict instead of the top-level field."""
+        """Migrate deprecated `experimental[max_tasks_in_flight_per_actor]` to
+        the top-level field; top-level wins if both are set."""
         experimental = values.get("experimental") or {}
         if "max_tasks_in_flight_per_actor" in experimental:
             logger.warning(
@@ -285,22 +285,11 @@ class OfflineProcessorConfig(ProcessorConfig):
                 "the top-level field if both are set), but will be removed in "
                 "a future version."
             )
+            if values.get("max_tasks_in_flight_per_actor") is None:
+                values["max_tasks_in_flight_per_actor"] = experimental[
+                    "max_tasks_in_flight_per_actor"
+                ]
         return values
-
-    @model_validator(mode="after")
-    def _resolve_max_tasks_in_flight_per_actor(self):
-        """If the field wasn't set explicitly, fall back to the deprecated `experimental` key, then
-        to `max_concurrent_batches * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR`.
-        """
-        if self.max_tasks_in_flight_per_actor is None:
-            resolved = self.experimental.get(
-                "max_tasks_in_flight_per_actor",
-                self.max_concurrent_batches
-                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
-            )
-            # Bypass `validate_assignment=True` so we don't re-fire the deprecation warning
-            object.__setattr__(self, "max_tasks_in_flight_per_actor", resolved)
-        return self
 
     @model_validator(mode="before")
     def _warn_prepare_image_stage_deprecation(
