@@ -99,18 +99,31 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
                 .. #body .. "/" .. truncated .. " bytes)")
     end
 
+    -- Past this point, every error path arms txn.ingress_request_router_failed
+    -- so the frontend can return 5xx instead of letting the request silently
+    -- fall through to the primary backend. The product invariant is: requests
+    -- to a router-bearing app are served via the router or fail; there is no
+    -- quiet alternative path. Failure-mode bucketing belongs in observability
+    -- (response header label, metric label), not in the data plane.
     local response = call_router(router, body, truncated)
-    if not response or not is_http_200(response) then
+    if not response then
+        txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
+        return
+    end
+    if not is_http_200(response) then
+        txn:set_var("txn.ingress_request_router_failed", "router_non_200")
         return
     end
 
     local replica_id = extract_replica_id(http_response_body(response))
     if not replica_id then
+        txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
     end
 
     local server_name = replica_map[replica_id]
     if not server_name then
+        txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
 
