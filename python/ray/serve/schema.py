@@ -521,11 +521,11 @@ class DeploymentSchema(BaseModel):
                     raise ValueError(
                         "Scale to zero isn't supported for gang scheduling."
                     )
-                for field in ["min_replicas", "max_replicas", "initial_replicas"]:
-                    val = autoscaling_config.get(field)
+                for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    val = autoscaling_config.get(field_name)
                     if val is not None and val % gang_config.gang_size != 0:
                         raise ValueError(
-                            f"autoscaling_config.{field} ({val}) must be a "
+                            f"autoscaling_config.{field_name} ({val}) must be a "
                             f"multiple of gang_size ({gang_config.gang_size})."
                         )
             return values
@@ -631,9 +631,9 @@ class DeploymentSchema(BaseModel):
         """
 
         return {
-            field
-            for field in self.model_fields_set
-            if getattr(self, field) is not DEFAULT.VALUE
+            field_name
+            for field_name in self.model_fields_set
+            if getattr(self, field_name) is not DEFAULT.VALUE
         }
 
     def is_autoscaling_configured(self) -> bool:
