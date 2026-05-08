@@ -315,13 +315,20 @@ class vLLMEngineWrapper:
         # `max_num_seqs` is GPU-dependent (e.g. 256 on A10G/A100, 1024 on H100),
         # so reading from `scheduler_config` avoids silently capping the
         # semaphore below vLLM's actual capacity.
+        scheduler_config = self._vllm_config.scheduler_config
+        parallel_config = self._vllm_config.parallel_config
+        engine_capacity = (
+            scheduler_config.max_num_seqs * parallel_config.pipeline_parallel_size
+        )
         if max_pending_requests is None:
-            scheduler_config = self._vllm_config.scheduler_config
-            parallel_config = self._vllm_config.parallel_config
-            max_pending_requests = math.ceil(
-                scheduler_config.max_num_seqs
-                * parallel_config.pipeline_parallel_size
-                * 1.1
+            max_pending_requests = math.ceil(engine_capacity * 1.1)
+        elif 0 < max_pending_requests < engine_capacity:
+            logger.warning(
+                "max_pending_requests (%d) < max_num_seqs * pipeline_parallel_size "
+                "(%d); may underutilize vLLM. Consider >=%d, or <=0 to disable.",
+                max_pending_requests,
+                engine_capacity,
+                math.ceil(engine_capacity * 1.1),
             )
         self.max_pending_requests = max_pending_requests
         if self.max_pending_requests > 0:
