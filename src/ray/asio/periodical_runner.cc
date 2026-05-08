@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 
 #include <memory>
 #include <string>
