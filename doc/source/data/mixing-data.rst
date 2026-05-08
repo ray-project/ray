@@ -1,4 +1,4 @@
-.. _train-dataset-mixing:
+.. _mixing_data:
 
 Weighted Dataset Mixing
 =======================
@@ -53,7 +53,7 @@ By default, each output block comes from exactly one input dataset. :meth:`~ray.
 
 Suppose you mix two datasets ``ds1`` and ``ds2`` with ``weights=[0.75, 0.25]``, and both sources produce blocks of equal size. This data pipeline then splits across 4 training workers, and data parallel training constructs a global batch across all workers.
 
-.. image:: /train/images/dataset_mixing/per_block_mix.png
+.. image:: /data/images/dataset_mixing/per_block_mix.png
     :alt: Per-block mixing: blocks from ds1 and ds2 are interleaved in a 3:1 pattern, then split across 4 training workers to form a global batch.
 
 With uniform block sizes, the ratio is exact within any window of ``1 / min(weights)`` blocks. With ``weights=[0.9, 0.1]``, you're guaranteed a block from the second dataset at least once in every 10-block window.
@@ -96,7 +96,7 @@ The extreme case: training on a single worker with no gradient accumulation mean
 
 Adding a streaming shuffle after :meth:`~ray.data.Dataset.mix` switches you to **random mixing**: the shuffle redistributes rows across block boundaries so each batch directly contains rows from multiple datasets in roughly the requested proportion, regardless of how many workers you're training on. :meth:`~ray.data.Dataset.mix` still governs the ratio; the shuffle just spreads it within each batch.
 
-.. image:: /train/images/dataset_mixing/random_mix.png
+.. image:: /data/images/dataset_mixing/random_mix.png
     :alt: Random mixing: after mix(), a shuffle redistributes rows so that each worker batch contains rows from multiple datasets in the target proportion.
 
 Two streaming-friendly shuffle options in Ray Data:

@@ -1,4 +1,4 @@
-.. _train-scaling-collation-functions:
+.. _scaling_collation_functions:
 
 Advanced: Scaling out expensive collate functions
 =================================================
