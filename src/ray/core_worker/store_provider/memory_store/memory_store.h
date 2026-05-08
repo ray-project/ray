@@ -22,7 +22,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/metrics.h"
 #include "ray/common/status.h"

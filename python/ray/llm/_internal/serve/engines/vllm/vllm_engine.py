@@ -67,8 +67,8 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.speech_to_text.serving import (
         OpenAIServingTranscription,
     )
-    from vllm.entrypoints.pooling.embed.serving import OpenAIServingEmbedding
-    from vllm.entrypoints.pooling.score.serving import ServingScores
+    from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
+    from vllm.entrypoints.pooling.scoring.serving import ServingScores
     from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
 
 vllm = try_import("vllm")
@@ -87,13 +87,15 @@ def _convert_config_dicts(merged: dict) -> dict:
     which lack the default field values, causing AttributeError when vLLM code
     tries to access those fields.
     """
-    type_hints = typing.get_type_hints(AsyncEngineArgs)
+    fields_by_name = {f.name: f for f in dataclasses.fields(AsyncEngineArgs)}
 
     for key, value in list(merged.items()):
-        if not isinstance(value, dict) or key not in type_hints:
+        if not isinstance(value, dict) or key not in fields_by_name:
             continue
 
-        hint = type_hints[key]
+        hint = fields_by_name[key].type
+        if isinstance(hint, str):
+            continue
 
         # Handle Optional[X] (Union[X, None]) -> X
         origin = typing.get_origin(hint)
@@ -260,10 +262,26 @@ class VLLMEngine(LLMEngine):
         self._oai_models: Optional["OpenAIServingModels"] = None
         self._oai_serving_chat: Optional["OpenAIServingChat"] = None
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
-        self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
+        self._oai_serving_embedding: Optional["ServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
         self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
+
+    async def build_asgi_app(self):
+        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+
+        supported_tasks = ("generate",)
+        if hasattr(self._engine_client, "get_supported_tasks"):
+            supported_tasks = await self._engine_client.get_supported_tasks()
+
+        app = build_app(self._vllm_args, supported_tasks=supported_tasks)
+        await init_app_state(
+            self._engine_client,
+            app.state,
+            self._vllm_args,
+            supported_tasks=supported_tasks,
+        )
+        return app
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -314,6 +332,7 @@ class VLLMEngine(LLMEngine):
         merged = _convert_config_dicts(merged)
 
         args = _dict_to_namespace(merged)
+        self._vllm_args = args
 
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
         # Without this, vLLM falls back to 'generate' only.
@@ -676,7 +695,8 @@ class VLLMEngine(LLMEngine):
             raw_request_info
         )
         try:
-            score_response = await self._oai_serving_scores.create_score(
+            assert self._oai_serving_scores is not None
+            score_response = await self._oai_serving_scores(
                 request,
                 raw_request=raw_request,
             )
@@ -684,10 +704,8 @@ class VLLMEngine(LLMEngine):
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
-        if isinstance(score_response, VLLMErrorResponse):
-            yield ErrorResponse(**score_response.model_dump())
-        else:
-            yield ScoreResponse(**score_response.model_dump())
+        content = json.loads(score_response.body)
+        yield ScoreResponse(**content)
 
     async def tokenize(
         self,

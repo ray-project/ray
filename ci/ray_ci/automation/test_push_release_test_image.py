@@ -6,7 +6,10 @@ from ci.ray_ci.automation.image_tags_lib import (
     format_platform_tag,
     format_python_tag,
 )
-from ci.ray_ci.automation.push_release_test_image import ReleaseTestImagePushContext
+from ci.ray_ci.automation.push_release_test_image import (
+    ReleaseTestImagePushContext,
+    _annotate_pushed_image,
+)
 from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import GPU_PLATFORM
 
@@ -261,6 +264,51 @@ class TestDestinationTags:
         # Should have both -cpu and empty platform suffix
         assert "abc123-extra-py311-cpu" in tags
         assert "abc123-extra-py311" in tags
+
+
+class TestAnnotatePushedImage:
+    def test_skips_when_not_buildkite(self, monkeypatch):
+        monkeypatch.delenv("BUILDKITE", raising=False)
+
+        calls = []
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image.subprocess.run",
+            lambda args: calls.append(args),
+        )
+
+        _annotate_pushed_image("example/image:tag", "ray")
+
+        assert calls == []
+
+    def test_runs_when_exact_step_key_selected(self, monkeypatch):
+        monkeypatch.setenv("BUILDKITE", "true")
+        monkeypatch.setenv("BUILDKITE_STEP_KEY", "release-ray")
+        monkeypatch.setenv("RAYCI_SELECT", "release-ray,release-ray-ml")
+
+        calls = []
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image.subprocess.run",
+            lambda args: calls.append(args),
+        )
+
+        _annotate_pushed_image("example/image:tag", "ray")
+
+        assert len(calls) == 1
+
+    def test_skips_when_step_key_is_only_substring_of_selected_key(self, monkeypatch):
+        monkeypatch.setenv("BUILDKITE", "true")
+        monkeypatch.setenv("BUILDKITE_STEP_KEY", "ray")
+        monkeypatch.setenv("RAYCI_SELECT", "ray-ml,ray-data")
+
+        calls = []
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image.subprocess.run",
+            lambda args: calls.append(args),
+        )
+
+        _annotate_pushed_image("example/image:tag", "ray")
+
+        assert calls == []
 
 
 if __name__ == "__main__":
