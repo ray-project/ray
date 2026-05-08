@@ -111,8 +111,7 @@ class ObjectManagerInterface {
   virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
   virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
       const WorkerID &worker_id) const = 0;
-  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
-      const NodeID &node_id) const = 0;
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const = 0;
   virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
   virtual int64_t GetUsedMemory() const = 0;
   virtual bool PullManagerHasPullsQueued() const = 0;
@@ -255,10 +254,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Return IDs of local plasma-resident objects whose owner matches the given
   /// worker or node. Includes both primary copies (also tracked by
   /// LocalObjectManager) and secondary copies pulled from other nodes.
-  std::vector<ObjectID> GetLocalObjectsOwnedBy(
-      const WorkerID &worker_id) const override;
-  std::vector<ObjectID> GetLocalObjectsOwnedBy(
-      const NodeID &node_id) const override;
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const override;
 
   /// Returns debug string for class.
   ///
