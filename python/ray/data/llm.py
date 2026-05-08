@@ -128,13 +128,13 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             enough for batch size >= 64. Sets the engine actor's Ray Core
             ``max_concurrency``.
         max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
-            each engine actor. Passed through to ``ActorPoolStrategy``; if unset,
-            Ray Data's actor pool resolves it via
-            ``DataContext.max_tasks_in_flight_per_actor`` (if set globally), else
-            ``max_concurrent_batches *
-            DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR`` (factor
-            env-overridable via
-            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``).
+            each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
+            If unset, Ray Data uses
+            ``ray.data.DataContext.max_tasks_in_flight_per_actor`` if set globally.
+            Otherwise, it defaults to ``2 * max_concurrent_batches``; the factor
+            can be overridden via the
+            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
+            env var.
         should_continue_on_error: If True, continue processing when inference fails for a row
             instead of raising an exception. Failed rows will have a non-empty
             ``__inference_error__`` column containing the error message, and other
@@ -245,13 +245,13 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             enough for batch size >= 64. Sets the engine actor's Ray Core
             ``max_concurrency``.
         max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
-            each engine actor. Passed through to ``ActorPoolStrategy``; if unset,
-            Ray Data's actor pool resolves it via
-            ``DataContext.max_tasks_in_flight_per_actor`` (if set globally), else
-            ``max_concurrent_batches *
-            DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR`` (factor
-            env-overridable via
-            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``).
+            each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
+            If unset, Ray Data uses
+            ``ray.data.DataContext.max_tasks_in_flight_per_actor`` if set globally.
+            Otherwise, it defaults to ``2 * max_concurrent_batches``; the factor
+            can be overridden via the
+            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
+            env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``

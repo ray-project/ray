@@ -160,12 +160,15 @@ class OfflineProcessorConfig(ProcessorConfig):
     max_tasks_in_flight_per_actor: Optional[int] = Field(
         default=None,
         description="Max tasks Ray Data submits concurrently to each engine "
-        "actor. Passed through to `ActorPoolStrategy`; if unset, Ray Data's "
-        "actor pool resolves it via `DataContext.max_tasks_in_flight_per_actor` "
-        "(if set globally), else `max_concurrent_batches * "
-        "DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR` (factor "
-        "env-overridable via "
-        "`RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR`).",
+        "actor. Passed through to `ray.data.ActorPoolStrategy`. If unset, Ray "
+        "Data uses `ray.data.DataContext.max_tasks_in_flight_per_actor` if set "
+        "globally. Otherwise, it defaults to `2 * max_concurrent_batches`; the "
+        "factor can be overridden via the "
+        "`RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR` "
+        "env var. "
+        "Setting this lower than `max_concurrent_batches` can underutilize the "
+        "engine actor because Ray Data submits fewer tasks than the actor can "
+        "process concurrently.",
     )
     should_continue_on_error: bool = Field(
         default=False,
@@ -290,6 +293,22 @@ class OfflineProcessorConfig(ProcessorConfig):
                     "max_tasks_in_flight_per_actor"
                 ]
         return values
+
+    @model_validator(mode="after")
+    def _warn_if_max_tasks_in_flight_underutilizes_actor(self):
+        if (
+            self.max_tasks_in_flight_per_actor is not None
+            and self.max_tasks_in_flight_per_actor < self.max_concurrent_batches
+        ):
+            logger.warning(
+                "Setting `max_tasks_in_flight_per_actor` (%s) lower than "
+                "`max_concurrent_batches` (%s) can underutilize each engine "
+                "actor because Ray Data will submit fewer tasks than the actor "
+                "can process concurrently.",
+                self.max_tasks_in_flight_per_actor,
+                self.max_concurrent_batches,
+            )
+        return self
 
     @model_validator(mode="before")
     def _warn_prepare_image_stage_deprecation(
