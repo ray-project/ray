@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <functional>
 #include <ostream>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/compat.h"
@@ -49,8 +50,10 @@ using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
 /**
  * @brief Callback to trigger worker oom killing when under memory pressure.
+ * @param trigger_reason A human-readable description of why the monitor triggered
+ *        the kill (e.g. threshold exceeded, cgroup event, PSI pressure).
  */
-using KillWorkersCallback = std::function<void()>;
+using KillWorkersCallback = std::function<void(const std::string &trigger_reason)>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node

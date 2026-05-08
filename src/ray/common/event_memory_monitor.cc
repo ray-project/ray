@@ -192,7 +192,8 @@ void EventMemoryMonitor::MonitoringThreadMain() {
 
       if (high_modified && IsEnabled()) {
         Disable();
-        kill_workers_callback_();
+        kill_workers_callback_(
+            "cgroup memory.events 'high' counter increased (event-driven)");
       }
     } else {
       RAY_LOG(ERROR) << absl::StrFormat(
