@@ -8,11 +8,12 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
     Coroutine,
     DefaultDict,
@@ -58,7 +59,10 @@ from ray.serve._private.request_router import PendingRequest, RequestRouter
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
-from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.replica_wrapper import (
+    ReplicaSelection,
+    RunningReplica,
+)
 from ray.serve._private.tracing_utils import (
     create_propagated_context,
     is_span_recording,
@@ -81,6 +85,7 @@ from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
+    ReplicaUnavailableError,
 )
 from ray.types import ObjectRef
 from ray.util import metrics
@@ -154,6 +159,25 @@ class RouterMetricsManager:
         # so non-atomic read and write operations need to be guarded by
         # this thread-safe lock.
         self._queries_lock = threading.Lock()
+
+        # Track reserved slots for choose_replica operations
+        self._num_reserved_slots = 0
+        self._reserved_slots_gauge = metrics.Gauge(
+            "serve_reserved_slots_active",
+            description=(
+                "The current number of reserved slots for choose_replica operations."
+            ),
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        )
+        self._reserved_slots_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+        self._reserved_slots_gauge.set(0)
         # Regularly aggregate and push autoscaling metrics to controller
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
@@ -355,6 +379,14 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         if not self._cached_metrics_enabled:
             self.num_queued_requests_gauge.set(self.num_queued_requests)
+
+    def inc_reserved_slots(self):
+        self._num_reserved_slots += 1
+        self._reserved_slots_gauge.set(self._num_reserved_slots)
+
+    def dec_reserved_slots(self):
+        self._num_reserved_slots -= 1
+        self._reserved_slots_gauge.set(self._num_reserved_slots)
 
     def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
@@ -961,6 +993,7 @@ class AsyncioRouter:
         result: Optional[ReplicaResult] = None
         replica: Optional[RunningReplica] = None
         callback_registered = False
+        queue_len_incremented = False
         try:
             # Resolve request arguments BEFORE incrementing queued requests.
             # This ensures that queue metrics reflect actual pending work,
@@ -988,6 +1021,7 @@ class AsyncioRouter:
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
+                queue_len_incremented = True
 
             # Keep track of requests that have been sent out to replicas
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -1082,6 +1116,11 @@ class AsyncioRouter:
                 self.request_router.on_request_completed(
                     replica.replica_id, pr.metadata.internal_request_id
                 )
+                # Only decrement if on_send_request was called (i.e., try_send_request
+                # succeeded and incremented the cache). If try_send_request raised error,
+                # on_send_request was never called so there is no +1 to undo.
+                if queue_len_incremented:
+                    self.request_router.on_replica_result_finished(replica.replica_id)
 
         return None
 
@@ -1201,6 +1240,216 @@ class AsyncioRouter:
                         )
                     if exc:
                         set_span_exception(exc, escaped=True)
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Execute routing and reserve a slot, with automatic cleanup.
+
+        This method:
+        1. Checks deployment availability
+        2. Checks backpressure (max_queued_requests)
+        3. Increments serve_num_router_requests metric
+        4. Selects a replica and reserves a slot
+        5. Increments serve_reserved_slots_active metric
+        6. Yields the ReplicaSelection
+        7. On exit, releases the slot if not dispatched
+        """
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        # Wait for the router to be initialized before sending the request.
+        await self._request_router_initialized.wait()
+
+        with self._metrics_manager.wrap_request_assignment(request_meta):
+            pr = PendingRequest(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+
+            # Resolve request arguments BEFORE incrementing queued requests.
+            # This ensures that queue metrics reflect actual pending work,
+            # not time spent waiting for upstream DeploymentResponse arguments.
+            # See: https://github.com/ray-project/ray/issues/60624
+            if not pr.resolved:
+                await self._resolve_request_arguments(pr)
+
+            is_retry = False
+            while True:
+                num_curr_replicas = len(self.request_router.curr_replicas)
+                with self._metrics_manager.wrap_queued_request(
+                    is_retry=is_retry, num_curr_replicas=num_curr_replicas
+                ):
+                    replica = await self.request_router._choose_replica_for_request(
+                        pr, is_retry=is_retry
+                    )
+
+                    # Reserve capacity on the replica actor. This must happen on
+                    # the replica, not just in the router cache, so dispatch can
+                    # send without the rejection protocol.
+                    try:
+                        slot_token, queue_info = await replica.reserve_slot(
+                            request_meta
+                        )
+                    except ActorDiedError as e:
+                        self._handle_actor_died_error(
+                            replica.replica_id, replica.actor_id, e
+                        )
+                        is_retry = True
+                        continue
+                    except ActorUnavailableError:
+                        self.request_router.on_replica_actor_unavailable(
+                            replica.replica_id
+                        )
+                        logger.warning(
+                            f"{replica.replica_id} is temporarily unavailable."
+                        )
+                        is_retry = True
+                        continue
+
+                    self.request_router.on_new_queue_len_info(
+                        replica.replica_id, queue_info
+                    )
+                    if queue_info.accepted:
+                        break
+
+                is_retry = True
+
+            # Increment reserved slots metric (after queue metric is decremented)
+            self._metrics_manager.inc_reserved_slots()
+
+            selection = ReplicaSelection(
+                replica_id=replica.replica_id.unique_id,
+                node_ip=replica._replica_info.node_ip,
+                port=replica._replica_info.port,
+                node_id=replica.node_id,
+                availability_zone=replica.availability_zone,
+                _replica=replica,
+                _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
+                _request_metadata=request_meta,
+                _method_name=request_meta.call_method,
+                _slot_token=slot_token,
+            )
+
+        try:
+            yield selection
+        finally:
+            queue_info = await selection._release_slot()
+            if queue_info is not None:
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info
+                )
+
+            # Decrement reserved slots metric
+            self._metrics_manager.dec_reserved_slots()
+
+    async def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> ReplicaResult:
+        """Dispatch to a specific replica, consuming the reserved slot.
+
+        Args:
+            selection: The replica selection from choose_replica().
+            request_meta: Request metadata.
+            *request_args: Request positional arguments.
+            **request_kwargs: Request keyword arguments.
+
+        Returns:
+            ReplicaResult for the dispatched request.
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+            ReplicaUnavailableError: If the replica is no longer available.
+        """
+        selection._mark_dispatched()
+        return await self._dispatch_to_marked_selection(
+            selection, request_meta, *request_args, **request_kwargs
+        )
+
+    async def _dispatch_to_marked_selection(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> ReplicaResult:
+        """Dispatch a selection that has already been consumed by dispatch()."""
+        # Verify replica is still available
+        replica = selection._replica
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=replace(request_meta, _reserved_slot_token=selection._slot_token),
+        )
+
+        # Send the request without rejection since we already reserved a slot
+        # The slot reservation guarantees that the replica will accept this request
+        try:
+            if replica.replica_id not in self.request_router.curr_replicas:
+                raise ReplicaUnavailableError(
+                    f"Replica {selection.replica_id} is no longer available"
+                )
+            if not pr.resolved:
+                await self._resolve_request_arguments(pr)
+            result = replica.try_send_request(pr, with_rejection=False)
+        except BaseException:
+            queue_info = await selection._release_slot(force=True)
+            if queue_info is not None:
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info
+                )
+            raise
+
+        # Keep track of requests that have been sent out to replicas
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            self._metrics_manager.inc_num_running_requests_for_replica(
+                replica.replica_id
+            )
+
+        # Always register callback to notify router when request completes
+        # (needed for token release in queue-based routing, metrics tracking, etc.)
+        callback = partial(
+            self._process_finished_request,
+            replica.replica_id,
+            pr.metadata.internal_request_id,
+            replica.actor_id,
+        )
+        result.add_done_callback(
+            lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+        )
+        result.add_done_callback(
+            lambda _: self._event_loop.call_soon_threadsafe(
+                self.request_router.decrement_queue_len_cache,
+                replica.replica_id,
+            )
+        )
+        result.add_done_callback(
+            lambda _: self._event_loop.call_soon_threadsafe(
+                lambda: self._event_loop.create_task(
+                    self._release_slot_if_still_reserved(selection)
+                )
+            )
+        )
+
+        return result
+
+    async def _release_slot_if_still_reserved(
+        self, selection: ReplicaSelection
+    ) -> None:
+        """Best-effort cleanup if a dispatched request was cancelled before starting."""
+        try:
+            await selection._release_slot(force=True)
+        except Exception:
+            logger.debug("Failed to release reserved replica slot.", exc_info=True)
 
     async def broadcast(
         self,
