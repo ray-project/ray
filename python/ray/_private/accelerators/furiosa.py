@@ -107,8 +107,9 @@ class FuriosaAcceleratorManager(AcceleratorManager):
         non-alphanumeric characters are stripped.
         """
         try:
-            from furiosa_smi_py import list_devices
+            from furiosa_smi_py import init, list_devices
 
+            init()
             devices = list_devices()
             if not devices:
                 return None
