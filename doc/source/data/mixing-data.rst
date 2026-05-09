@@ -39,7 +39,6 @@ Quickstart
         scaling_config=ScalingConfig(num_workers=4),
         datasets={"train": mixed},
     )
-    trainer.fit()
 
 Mixing strategies
 -----------------
