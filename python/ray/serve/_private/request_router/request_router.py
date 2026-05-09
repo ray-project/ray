@@ -844,16 +844,12 @@ class RequestRouter(ABC):
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
     def on_replica_result_finished(self, replica_id: ReplicaID):
-        """Decrement queue length cache when a request finishes or is cancelled.
+        """Undo a prior on_send_request() increment.
 
-        This is used when a reserved slot is released without being dispatched
-        (e.g., in choose_replica context manager cleanup).
-
-        We cannot rely on on_new_queue_len_info() to correct the cache in this
-        path. The queue length cache is incremented optimistically when a slot is
-        reserved, before dispatch happens. If dispatch is never called or fails
-        before the request reaches the replica, no queue_len_info response is
-        produced, so the cache would otherwise remain inflated.
+        Called from assign_request's cleanup when try_send_request raised
+        after the cache was optimistically incremented by on_send_request
+        but before the result's done callback was registered — there's no
+        other path to reverse that increment.
         """
         if self._use_replica_queue_len_cache:
             num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
