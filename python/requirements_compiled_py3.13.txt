@@ -1114,7 +1114,7 @@ memray==1.19.3 ; platform_system != "Windows" and sys_platform != "darwin" and p
     #   -r python/requirements/py313/test-requirements.txt
 minigrid==2.3.1
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
-mistune==3.2.0
+mistune==3.2.1
     # via nbconvert
 ml-collections==1.1.0
     # via open-spiel
