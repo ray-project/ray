@@ -80,7 +80,9 @@ class FuriosaAcceleratorManager(AcceleratorManager):
     def get_current_node_num_accelerators() -> int:
         """Detects the number of Furiosa NPU devices on the current machine."""
         try:
-            from furiosa_smi_py import list_devices
+            from furiosa_smi_py import init, list_devices
+            
+            init()
 
             return len(list_devices())
         except Exception as e:
