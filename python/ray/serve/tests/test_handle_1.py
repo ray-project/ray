@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import sys
 import threading
+from contextlib import AsyncExitStack
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve.api import get_replica_context
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
@@ -337,6 +339,239 @@ def test_response_used_in_multiple_calls(serve_instance):
 
     h = serve.run(Ingress.bind(F.bind()))
     assert h.remote().result(timeout_s=10) == ("((r1))", "((r1))")
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_and_dispatch_single(serve_instance):
+    """Test choose_replica + dispatch for simple single selection pattern."""
+
+    @serve.deployment(num_replicas=2)
+    class Backend:
+        def process(self, msg: str):
+            replica_id = get_replica_context().replica_id.unique_id
+            return {"actual_replica_id": replica_id, "response": msg}
+
+    @serve.deployment
+    class SimpleProxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend = backend
+
+        async def handle_request(self, request: str):
+            # Context manager ensures slot is released if dispatch fails or is skipped
+            async with self.backend.process.choose_replica(request) as selection:
+                assert selection.replica_id is not None
+                assert selection.node_ip is not None
+
+                # Dispatch to the selected replica
+                response = await self.backend.process.dispatch(selection, request)
+
+                # Return both the selection and the response for verification
+                return {"selected_replica_id": selection.replica_id, **response}
+
+    h = serve.run(SimpleProxy.bind(Backend.bind()))
+    result = await h.handle_request.remote("test_message")
+
+    # Verify the result contains the message
+    assert result["response"] == "test_message"
+
+    # Verify that dispatch sent the request to the replica we selected
+    assert result["actual_replica_id"] == result["selected_replica_id"], (
+        f"dispatch sent request to wrong replica: "
+        f"selected {result['selected_replica_id']}, but got response from {result['actual_replica_id']}"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_early_return_releases_slot(serve_instance):
+    """Early return from choose_replica should release the reserved slot."""
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=1)
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    @serve.deployment
+    class Proxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend = backend
+
+        async def handle_request(self, request: str):
+            async with self.backend.process.choose_replica(request):
+                pass
+
+            # Ensure the second choose_replica request work
+            async with self.backend.process.choose_replica(request) as selection:
+                response = await asyncio.wait_for(
+                    self.backend.process.dispatch(selection, request), timeout=2
+                )
+                return response
+
+    h = serve.run(Proxy.bind(Backend.bind()))
+    assert await h.handle_request.remote("test_message") == "test_message"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_exception_releases_slot(serve_instance):
+    """Exception in choose_replica context should release the reserved slot."""
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=1)
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    @serve.deployment
+    class Proxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend = backend
+
+        async def handle_request(self, request: str):
+            try:
+                async with self.backend.process.choose_replica(request):
+                    raise RuntimeError("test exception")
+            except RuntimeError:
+                pass
+
+            # Ensure the second choose_replica request work
+            async with self.backend.process.choose_replica(request) as selection:
+                response = await asyncio.wait_for(
+                    self.backend.process.dispatch(selection, request), timeout=2
+                )
+                return response
+
+    h = serve.run(Proxy.bind(Backend.bind()))
+    assert await h.handle_request.remote("test_message") == "test_message"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_and_dispatch_streaming(serve_instance):
+    """Test choose_replica + dispatch with handle.options(stream=True)."""
+
+    @serve.deployment(num_replicas=2)
+    class Backend:
+        async def stream(self, msg: str):
+            replica_id = get_replica_context().replica_id.unique_id
+            for i in range(3):
+                yield {"actual_replica_id": replica_id, "chunk": f"{msg}-{i}"}
+
+    @serve.deployment
+    class StreamingProxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend_stream = backend.stream.options(stream=True)
+
+        async def handle_request(self, request: str):
+            async with self.backend_stream.choose_replica(request) as selection:
+                gen = self.backend_stream.dispatch(selection, request)
+                chunks = [item async for item in gen]
+                return {"selected_replica_id": selection.replica_id, "chunks": chunks}
+
+    h = serve.run(StreamingProxy.bind(Backend.bind()))
+    result = await h.handle_request.remote("stream_test")
+
+    assert [item["chunk"] for item in result["chunks"]] == [
+        "stream_test-0",
+        "stream_test-1",
+        "stream_test-2",
+    ]
+    assert all(
+        item["actual_replica_id"] == result["selected_replica_id"]
+        for item in result["chunks"]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_and_dispatch_parallel(serve_instance):
+    """Test parallel selection pattern (e.g., PD proxy) using AsyncExitStack."""
+
+    @serve.deployment(num_replicas=2)
+    class PrefillServer:
+        def chat(self, msg: str):
+            replica_id = get_replica_context().replica_id.unique_id
+            return {"actual_replica_id": replica_id, "response": msg}
+
+    @serve.deployment(num_replicas=2)
+    class DecodeServer:
+        def chat(self, msg: str):
+            replica_id = get_replica_context().replica_id.unique_id
+            return {"actual_replica_id": replica_id, "response": msg}
+
+    @serve.deployment
+    class PDProxy:
+        def __init__(
+            self,
+            prefill_server: DeploymentHandle,
+            decode_server: DeploymentHandle,
+        ):
+            self.prefill = prefill_server
+            self.decode = decode_server
+
+        async def handle_request(self, request: str):
+            # Use AsyncExitStack to manage multiple context managers in parallel
+            async with AsyncExitStack() as stack:
+                #  Select and RESERVE replicas from BOTH deployments in parallel
+                p_selection, d_selection = await asyncio.gather(
+                    stack.enter_async_context(self.prefill.chat.choose_replica()),
+                    stack.enter_async_context(self.decode.chat.choose_replica()),
+                )
+
+                p_msg = f"prefill:{request}"
+                d_msg = f"decode:{request}"
+
+                # Dispatch to both selected replicas
+                p_result, d_result = await asyncio.gather(
+                    self.prefill.chat.dispatch(p_selection, p_msg),
+                    self.decode.chat.dispatch(d_selection, d_msg),
+                )
+                return {
+                    "prefill": {
+                        "selected_replica_id": p_selection.replica_id,
+                        **p_result,
+                    },
+                    "decode": {
+                        "selected_replica_id": d_selection.replica_id,
+                        **d_result,
+                    },
+                }
+
+    h = serve.run(PDProxy.bind(PrefillServer.bind(), DecodeServer.bind()))
+    result = await h.handle_request.remote("test_parallel")
+
+    assert result["prefill"]["response"] == "prefill:test_parallel"
+    assert result["decode"]["response"] == "decode:test_parallel"
+
+    # Verify that dispatch sent the request to the replica we selected
+    assert (
+        result["prefill"]["actual_replica_id"]
+        == result["prefill"]["selected_replica_id"]
+    ), (
+        f"dispatch sent request to wrong replica for prefill: "
+        f"selected {result['prefill']['selected_replica_id']}, but got response from {result['prefill']['actual_replica_id']}"
+    )
+    assert (
+        result["decode"]["actual_replica_id"] == result["decode"]["selected_replica_id"]
+    ), (
+        f"dispatch sent request to wrong replica for decode: "
+        f"selected {result['decode']['selected_replica_id']}, but got response from {result['decode']['actual_replica_id']}"
+    )
 
 
 if __name__ == "__main__":
