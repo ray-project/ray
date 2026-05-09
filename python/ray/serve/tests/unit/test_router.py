@@ -4,6 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
+from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -40,7 +42,11 @@ from ray.serve._private.router import (
     SingletonThreadRouter,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import decompress_metric_report, get_random_string
+from ray.serve._private.utils import (
+    Semaphore,
+    decompress_metric_report,
+    get_random_string,
+)
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
@@ -303,6 +309,52 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
         internal_request_id="test-internal-request-1",
         is_streaming=is_streaming,
     )
+
+
+class FakeReplicaMetricsManager:
+    def __init__(self):
+        self.num_ongoing_requests = 0
+
+    def get_num_ongoing_requests(self) -> int:
+        return self.num_ongoing_requests
+
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata):
+        self.num_ongoing_requests += 1
+
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata):
+        self.num_ongoing_requests -= 1
+
+
+@pytest.mark.asyncio
+class TestReplicaSlotReservation:
+    async def test_reserved_slot_counts_against_replica_capacity(self):
+        replica = ServeReplica.__new__(ServeReplica)
+        replica._deployment_config = Mock(max_ongoing_requests=1)
+        replica._metrics_manager = FakeReplicaMetricsManager()
+        replica._reserved_slots = set()
+        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+
+        request_metadata = dummy_request_metadata()
+
+        slot_token = "slot-token-1"
+        accepted, queue_len = await replica.reserve_slot(request_metadata, slot_token)
+        assert accepted
+        assert slot_token in replica._reserved_slots
+        assert queue_len == 1
+        assert replica.get_num_ongoing_requests() == 1
+
+        accepted, queue_len = await replica.reserve_slot(
+            request_metadata, "slot-token-2"
+        )
+        assert not accepted
+        assert queue_len == 1
+
+        dispatch_metadata = replace(request_metadata, _reserved_slot_token=slot_token)
+        async with replica._start_request(dispatch_metadata):
+            assert slot_token not in replica._reserved_slots
+            assert replica.get_num_ongoing_requests() == 1
+
+        assert replica.get_num_ongoing_requests() == 0
 
 
 @pytest.mark.asyncio
