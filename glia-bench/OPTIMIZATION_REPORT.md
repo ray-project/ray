@@ -312,9 +312,12 @@ NIGHTLY_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0
 /opt/venv-master/bin/pip install pyarrow==24.0.0 pandas==3.0.2 numpy==2.4.4 psutil
 /opt/venv-master/bin/pip install torch freezegun rich pytest-timeout pytest-lazy-fixtures datasketches polars
 
-# 2. Clone the rebased fork.
+# 2. Clone the rebased fork. Subsequent steps assume `$REPO=$PWD` after
+#    `cd`ing into the clone — substitute your own path if you cloned
+#    elsewhere.
 git clone https://github.com/Glia-AI-External/ray.git ray-fork
 cd ray-fork
+REPO="$PWD"
 git checkout glia/scheduler-perf-v5-rebase
 
 # 3. Branch venv: editable install of the fork. Bazel builds the Cython
@@ -367,7 +370,7 @@ cd glia-bench
 # Phase 2: run the same tests against the branch and diff against baseline.
 # Writes results/optimization_gate_{baseline,m6}.json.
 PRISTINE_TREE=/tmp/ray-master-tree/python/ray \
-M6_TREE=/workspace/ray/glia-ray-fork/python/ray \
+M6_TREE="$REPO/python/ray" \
 ./run_optimization_gate.sh
 ```
 

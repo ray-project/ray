@@ -1,43 +1,69 @@
 # glia-bench
 
-Reproducible benchmark + correctness harness for evaluating the scheduler
-optimizations on this branch against stock Ray 2.55.0.
+Reproducible benchmark + correctness harness for evaluating the
+scheduler optimizations on this branch
+([`glia/scheduler-perf-v5-rebase`](https://github.com/Glia-AI-External/ray/tree/glia/scheduler-perf-v5-rebase))
+against upstream Ray master at the rebase target (`a1ce262eff`,
+2026-05-07).
 
-**See [`OPTIMIZATION_REPORT.md`](OPTIMIZATION_REPORT.md)** for:
+**Start at [`OPTIMIZATION_REPORT.md`](OPTIMIZATION_REPORT.md)**:
 
-- What was changed and why (§2)
-- Methodology (§3)
-- Results on two hardware profiles (§4)
-- Install + run instructions (§5)
+- §1 Introduction — what the scheduler thread does and why we touched it
+- §2 Optimizations — six commits (M1–M6), each with Observation / Change / Correctness
+- §3 Methodology — hardware, workloads, perf measurement, correctness gate
+- §4 Results — perf table, correctness gate, output-hash equality
+- §5 Reproducibility — install + run from a fresh devpod
+
+## Current state (2026-05-09)
+
+- Branch is rebased onto `upstream/master @ a1ce262eff` (six M cherry-picks + one pandas-3 read-only-array compat fix).
+- §4.1 perf sweep: 5 workloads × 2 configs × 3 reps = 30 runs, all output hashes match. Headline: −38% to −48% wall on scheduler-bound workloads, −7% on the worker-bound control, −45% on the actor-pool plasma-pressure workload.
+- §4.2 correctness gate: 470 tests across 26 files. **0 regressions, 10 fixes** (9 new M-series unit tests + 1 pandas-3 compat fix).
+- All raw artifacts in `results/`; report numbers reproducible from `optimization_perf_master_vs_rebased.jsonl` via `summarize_master_vs_rebased.py`.
 
 ## Directory map
 
-- **`OPTIMIZATION_REPORT.md`** — the canonical report. Start here.
-- `benchmark_scheduler.py` — runs one of four Ray Data workloads and emits
-  wall time, throughput, driver CPU per wall-second, scheduler efficiency,
-  and a SHA-256 of sorted output rows.
+- **[`OPTIMIZATION_REPORT.md`](OPTIMIZATION_REPORT.md)** — the canonical report. Start here.
+- [`REGRESSION_REPRO_RESULTS.md`](REGRESSION_REPRO_RESULTS.md) — devpod numbers for the five regression-repro benches in `regression_repro/`. Validates that the rebase closes the regressions a friend's sf100 cluster comparison flagged between v4 (= 2.55.0 + M-series) and master.
+
+### Perf harness (canonical v5 path)
+
+- `run_master_vs_rebased.sh` — perf driver. Runs `benchmark_scheduler.py` against `/opt/venv-master` (master nightly) and `/opt/venv` (rebased branch), writes 30 runs to `results/optimization_perf_master_vs_rebased.jsonl`.
+- `summarize_master_vs_rebased.py` — reads the JSONL and prints the §4.1 mean±stdev / Δ% / output-hash table.
+- `benchmark_scheduler.py` — runs one of five Ray Data workloads (synthetic / mixed_pipeline / medium_tasks / long_tasks / actor_backpressure) and emits wall time, throughput, driver CPU per wall-second, scheduler efficiency, and a SHA-256 of sorted output rows.
 - `workload_config.json` — parameters for each workload.
-- `run_optimization_bench.sh` — perf driver. Walks the pristine and M6
-  trees, writes 40 runs (2 configs × 4 workloads × 5 reps) to
-  `results/optimization_perf.jsonl`.
-- `run_optimization_gate.sh` — correctness driver. Records a pristine
-  baseline, runs the curated test gate against M6, writes the diff to
-  `results/optimization_gate_{baseline,m6}.json`.
-- `aggregate_perf.py` — aggregates a perf JSONL into the §4.1 table
-  (mean/stdev/Δ%/Welch's-t + output-hash check).
-- `run_gated_tests.py` — gate harness called by `run_optimization_gate.sh`.
-  Tests in `test_list.KNOWN_FLAKY_TESTS` are always retried 10× on both
-  sides so flaky-test comparisons are symmetric.
-- `test_list.py` — curated test file list + `KNOWN_FLAKY_TESTS` set.
-- `stage_ray_artifacts.sh` — symlinks ray-2.55.0's compiled artifacts
-  (`_raylet.so`, protobuf-generated code, dashboard build, etc.) into a
-  source tree so `SKIP_BAZEL_BUILD=1 pip install -e python/` succeeds.
-- `_tree_switch.sh` — sourced helper. Swaps the editable-install MAPPING
-  between the pristine and M6 `python/ray` trees so the same venv can run
-  either side without reinstall.
-- `generate_parquet.py` — generates the small parquet fixtures that some
-  workloads reference.
-- `run_bench.sh` — lightweight single-tree wrapper for dev-loop iteration
-  (not used by the report).
-- `results/` — raw per-run JSONL + gate JSON artifacts for both hardware
-  profiles.
+
+### Correctness gate
+
+- `run_optimization_gate.sh` — correctness driver. Records a master-tree baseline (`PRISTINE_TREE`), runs the curated test gate against the branch, writes the diff to `results/optimization_gate_{baseline,m6}.json`.
+- `run_gated_tests.py` — gate harness called by `run_optimization_gate.sh`. Tests in `test_list.KNOWN_FLAKY_TESTS` are always retried 10× on both sides so flaky-test comparisons are symmetric. Pass-rate tolerance is ±10% (`RATE_TOLERANCE = 0.1`).
+- `test_list.py` — curated 26-file test list + `KNOWN_FLAKY_TESTS` set (5 entries).
+
+### Tree management
+
+- `_tree_switch.sh` — sourced helper. Swaps the editable-install MAPPING between two `python/ray` trees so the same venv can run either side without reinstall.
+- `stage_ray_artifacts.sh` — symlinks compiled artifacts (`_raylet.so`, protobuf-generated code, dashboard build) into a source tree.
+
+### Regression repro suite
+
+- `regression_repro/` — five micro-benches reproducing the friend's sf100 regressions on a 24-vCPU devpod. Each `b*/` has `run.py`, a per-bench `RESULTS.md`, and uses `_common.py` for harness shared code.
+- `regression_repro/run_compare.sh` — runs all five benches against `/opt/venv` and `/opt/venv-master`.
+
+### Derived-test benchmarks (separate methodology)
+
+- `derived_bench/` — per-test benchmark portfolios derived from upstream Ray Data nightly tests using the [`test_to_benchmark` skill](https://github.com/Glia-AI/claude-plugins/tree/add-test-to-benchmark-skill/experimental/skills/test_to_benchmark). Independent of the §4 sweep — read `derived_bench/README.md` if you're working there.
+
+### Earlier (v4) artifacts
+
+The branch retains a few v4-era scripts that the v5 path does not invoke. They still work for ad-hoc one-tree runs but are not the canonical path:
+
+- `run_optimization_bench.sh` — v4 perf driver (pristine 2.55.0 vs M6 tree, 5 reps).
+- `aggregate_perf.py` — aggregates v4-style JSONL.
+- `run_bench.sh` — single-tree dev-loop wrapper.
+- `generate_parquet.py` — generates small parquet fixtures used by some workloads.
+
+### Output artifacts
+
+- `results/optimization_perf_master_vs_rebased.jsonl` — v5 perf sweep raw data (30 runs).
+- `results/optimization_gate_{baseline,m6}.json` — v5 correctness-gate baseline + diff.
+- `results/optimization_perf.jsonl` — historical v4 perf JSONL (50 runs against 2.55.0). Kept for reference; not regenerated by the v5 path.
