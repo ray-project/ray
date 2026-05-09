@@ -435,6 +435,9 @@ KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
 KV_NAMESPACE_JOB = b"job"
 KV_NAMESPACE_CLUSTER = b"cluster"
 KV_HEAD_NODE_ID_KEY = b"head_node_id"
+KV_HEAD_NODE_TEMP_DIR_KEY = b"head_node_temp_dir"
+KV_HEAD_NODE_SESSION_DIR_KEY = b"head_node_session_dir"
+KV_HEAD_NO_RAYLET_KEY = b"head_no_raylet"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.

@@ -77,6 +77,7 @@ class Reconciler:
         ray_stop_errors: Optional[List[RayStopError]] = None,
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
+        head_no_raylet: bool = False,
     ) -> AutoscalingState:
         """
         The reconcile method computes InstanceUpdateEvents for the instance manager
@@ -136,6 +137,7 @@ class Reconciler:
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
             _logger=_logger,
+            head_no_raylet=head_no_raylet,
         )
 
         Reconciler._report_metrics(
@@ -246,6 +248,7 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
         _logger: Optional[logging.Logger] = None,
+        head_no_raylet: bool = False,
     ):
         """
         Step the reconciler to the next state by computing instance status transitions
@@ -280,6 +283,7 @@ class Reconciler:
                 the cloud provider.
             autoscaling_config: The autoscaling config.
             _logger: The logger (for testing).
+            head_no_raylet: True when the head node runs without a raylet.
 
         """
 
@@ -287,6 +291,7 @@ class Reconciler:
             instance_manager=instance_manager,
             reconcile_config=autoscaling_config.get_instance_reconcile_config(),
             _logger=_logger or logger,
+            head_no_raylet=head_no_raylet,
         )
 
         Reconciler._scale_cluster(
@@ -297,13 +302,17 @@ class Reconciler:
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
             cloud_provider=cloud_provider,
+            head_no_raylet=head_no_raylet,
         )
 
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
         )
 
-        Reconciler._terminate_instances(instance_manager=instance_manager)
+        Reconciler._terminate_instances(
+            instance_manager=instance_manager,
+            head_no_raylet=head_no_raylet,
+        )
         if not autoscaling_config.disable_node_updaters():
             Reconciler._install_ray(
                 instance_manager=instance_manager,
@@ -896,6 +905,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         reconcile_config: InstanceReconcileConfig,
         _logger: logging.Logger,
+        head_no_raylet: bool = False,
     ):
         """
         Handle stuck instances with timeouts.
@@ -949,6 +959,8 @@ class Reconciler:
         # This usually happens when ray fails to be started on the instance, so
         # it's unable to be RAY_RUNNING after a long time.
         for instance in instances_by_status[IMInstance.ALLOCATED]:
+            if head_no_raylet and instance.node_kind == NodeKind.HEAD:
+                continue
             assert (
                 instance.cloud_instance_id
             ), "cloud instance id should be set on ALLOCATED instance"
@@ -1052,7 +1064,10 @@ class Reconciler:
                 )
 
     @staticmethod
-    def _is_head_node_running(instance_manager: InstanceManager) -> bool:
+    def _is_head_node_running(
+        instance_manager: InstanceManager,
+        head_no_raylet: bool = False,
+    ) -> bool:
         """
         Check if the head node is running and ready.
 
@@ -1065,8 +1080,12 @@ class Reconciler:
         when the head node is still starting up, or the raylet is not running
         due to some issues, and this would yield false.
 
+        When head_no_raylet is True the head intentionally has no raylet,
+        so we consider it ready as long as a HEAD instance exists.
+
         Args:
             instance_manager: The instance manager to reconcile.
+            head_no_raylet: True when the head runs without a raylet.
 
         Returns:
             True if the head node is running and ready, False otherwise.
@@ -1077,6 +1096,8 @@ class Reconciler:
         for instance in im_instances:
             if instance.node_kind == NodeKind.HEAD:
                 if instance.status == IMInstance.RAY_RUNNING:
+                    return True
+                if head_no_raylet and instance.status != IMInstance.TERMINATED:
                     return True
         return False
 
@@ -1089,6 +1110,7 @@ class Reconciler:
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
         cloud_provider: ICloudInstanceProvider,
+        head_no_raylet: bool = False,
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1170,7 +1192,9 @@ class Reconciler:
             reply.infeasible_cluster_resource_constraints
         )
 
-        if not Reconciler._is_head_node_running(instance_manager):
+        if not Reconciler._is_head_node_running(
+            instance_manager, head_no_raylet=head_no_raylet
+        ):
             # We shouldn't be scaling the cluster until the head node is ready.
             # This could happen when the head node (i.e. the raylet) is still
             # pending registration even though GCS is up.
@@ -1241,7 +1265,10 @@ class Reconciler:
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
-    def _terminate_instances(instance_manager: InstanceManager):
+    def _terminate_instances(
+        instance_manager: InstanceManager,
+        head_no_raylet: bool = False,
+    ):
         """
         Terminate instances with the below statuses:
             - RAY_STOPPED: ray was stopped on the cloud instance.
@@ -1253,6 +1280,7 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
+            head_no_raylet: True when the head runs without a raylet.
         """
 
         im_instances, version = Reconciler._get_im_instances(instance_manager)
@@ -1264,6 +1292,9 @@ class Reconciler:
                 IMInstance.RAY_INSTALL_FAILED,
                 IMInstance.TERMINATION_FAILED,
             ]:
+                continue
+
+            if head_no_raylet and instance.node_kind == NodeKind.HEAD:
                 continue
 
             # Terminate the instance.

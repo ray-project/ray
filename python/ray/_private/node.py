@@ -101,6 +101,8 @@ class Node:
             self._register_shutdown_hooks()
         self._default_worker = default_worker
         self.head = head
+        if ray_params.no_raylet and not head:
+            raise ValueError("`no_raylet` can only be set on a head node (head=True).")
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
         )
@@ -260,36 +262,69 @@ class Node:
 
         # Resolve head node directories for defaults
         if not self.head and not connect_only:
-            try:
-                head_node_selector = GetAllNodeInfoRequest.NodeSelector()
-                head_node_selector.is_head_node = True
+            # Check if head is in no-raylet mode (fast KV lookup).
+            # In no-raylet mode the head has no raylet process, so it never
+            # registers NodeInfo with GCS. Directories are stored in internal
+            # KV instead.
+            head_no_raylet = self.get_gcs_client().internal_kv_get(
+                ray_constants.KV_HEAD_NO_RAYLET_KEY,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+            if head_no_raylet:
+                # Fast path: read directories directly from KV.
+                kv_temp_dir = self.get_gcs_client().internal_kv_get(
+                    ray_constants.KV_HEAD_NODE_TEMP_DIR_KEY,
+                    ray_constants.KV_NAMESPACE_SESSION,
+                )
+                kv_session_dir = self.get_gcs_client().internal_kv_get(
+                    ray_constants.KV_HEAD_NODE_SESSION_DIR_KEY,
+                    ray_constants.KV_NAMESPACE_SESSION,
+                )
+                if kv_temp_dir is None or kv_session_dir is None:
+                    raise Exception(
+                        "Head is in no-raylet mode but temp_dir/session_dir "
+                        "not found in GCS KV. Head node may not have "
+                        "initialized successfully."
+                    )
+                self._head_temp_dir = kv_temp_dir.decode()
+                self._head_session_dir = kv_session_dir.decode()
+                logger.info(
+                    "Resolved head node directories from GCS KV "
+                    "(head is in no-raylet mode)."
+                )
+            else:
+                try:
+                    head_node_selector = GetAllNodeInfoRequest.NodeSelector()
+                    head_node_selector.is_head_node = True
 
-                node_infos = get_all_node_info_until_retrieved(
-                    self.get_gcs_client(),
-                    timeout_per_retry=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-                    node_selectors=[head_node_selector],
-                )
-            except Exception as e:
-                logger.exception(f"Failed to get head node info: {repr(e)}")
-                raise e
+                    node_infos = get_all_node_info_until_retrieved(
+                        self.get_gcs_client(),
+                        timeout_per_retry=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                        node_selectors=[head_node_selector],
+                    )
+                except Exception as e:
+                    logger.exception(f"Failed to get head node info: {repr(e)}")
+                    raise e
 
-            node_info = None
-            for info in node_infos:
-                node_info = info
-                if info.state == GcsNodeInfo.GcsNodeState.ALIVE:
-                    break
-            self._head_temp_dir = getattr(node_info, "temp_dir", None)
-            if self._head_temp_dir is None:
-                raise Exception(
-                    "Head node temp_dir not found in NodeInfo, "
-                    "either GCS or head node's raylet may not have started successfully."
-                )
-            self._head_session_dir = getattr(node_info, "session_dir", None)
-            if self._head_session_dir is None:
-                raise Exception(
-                    "Head node session dir not found in NodeInfo, "
-                    "either GCS or head node's raylet may not have started successfully."
-                )
+                node_info = None
+                for info in node_infos:
+                    node_info = info
+                    if info.state == GcsNodeInfo.GcsNodeState.ALIVE:
+                        break
+                self._head_temp_dir = getattr(node_info, "temp_dir", None)
+                if self._head_temp_dir is None:
+                    raise Exception(
+                        "Head node temp_dir not found in NodeInfo, "
+                        "either GCS or head node's raylet may not have "
+                        "started successfully."
+                    )
+                self._head_session_dir = getattr(node_info, "session_dir", None)
+                if self._head_session_dir is None:
+                    raise Exception(
+                        "Head node session dir not found in NodeInfo, "
+                        "either GCS or head node's raylet may not have "
+                        "started successfully."
+                    )
 
         # It creates a session_dir.
         self._init_temp(node_to_connect_info)
@@ -401,30 +436,41 @@ class Node:
         node_info = None
         if not connect_only:
             self.start_ray_processes()
-            # Wait for the node info to be available in the GCS so that
-            # we know it's started up.
 
-            # Grace period to let the Raylet register with the GCS.
-            # We retry in a loop in case it takes longer than expected.
-            time.sleep(0.1)
-            start_time = time.monotonic()
-            raylet_start_wait_time_s = 30
-            while True:
-                try:
-                    # Will raise a RuntimeError if the node info is not available.
-                    node_info = ray._private.services.get_node(
-                        self.gcs_address,
-                        self._node_id,
-                    )
-                    break
-                except RuntimeError as e:
-                    logger.info(f"Failed to get node info {e}")
-                if time.monotonic() - start_time > raylet_start_wait_time_s:
-                    raise Exception(
-                        "The current node timed out during startup. This "
-                        "could happen because some of the raylet failed to "
-                        "startup or the GCS has become overloaded."
-                    )
+            if head and self._ray_params.no_raylet:
+                # When --no-raylet is set, the head node does not start a raylet
+                # process, so there is no node registration with GCS.
+                # We skip waiting for node info since this head node operates
+                # purely as a management node.
+                logger.info(
+                    "Head node started in no-raylet mode. "
+                    "Skipping node registration wait."
+                )
+            else:
+                # Wait for the node info to be available in the GCS so that
+                # we know it's started up.
+
+                # Grace period to let the Raylet register with the GCS.
+                # We retry in a loop in case it takes longer than expected.
+                time.sleep(0.1)
+                start_time = time.monotonic()
+                raylet_start_wait_time_s = 30
+                while True:
+                    try:
+                        # Will raise a RuntimeError if the node info is not available.
+                        node_info = ray._private.services.get_node(
+                            self.gcs_address,
+                            self._node_id,
+                        )
+                        break
+                    except RuntimeError as e:
+                        logger.info(f"Failed to get node info {e}")
+                    if time.monotonic() - start_time > raylet_start_wait_time_s:
+                        raise Exception(
+                            "The current node timed out during startup. This "
+                            "could happen because some of the raylet failed to "
+                            "startup or the GCS has become overloaded."
+                        )
 
         if connect_only:
             # Fetch node info to get labels.
@@ -439,13 +485,24 @@ class Node:
         # 1. user is starting a new ray cluster and does not specify the port, components self-bind.
         # 2. user is connecting to an existing ray cluster, no port info is provided.
         # We always update port info from GCS to ensure consistency.
-        self._ray_params.node_manager_port = node_info["node_manager_port"]
-        self._ray_params.runtime_env_agent_port = node_info["runtime_env_agent_port"]
-        self._ray_params.metrics_agent_port = node_info["metrics_agent_port"]
-        self._ray_params.metrics_export_port = node_info["metrics_export_port"]
-        self._ray_params.dashboard_agent_listen_port = node_info[
-            "dashboard_agent_listen_port"
-        ]
+        if head and self._ray_params.no_raylet:
+            # In no-raylet mode, port info is not available from GCS since
+            # no raylet registered. Set ports to 0 to indicate they are not used.
+            self._ray_params.node_manager_port = 0
+            self._ray_params.runtime_env_agent_port = 0
+            self._ray_params.metrics_agent_port = 0
+            self._ray_params.metrics_export_port = 0
+            self._ray_params.dashboard_agent_listen_port = 0
+        else:
+            self._ray_params.node_manager_port = node_info["node_manager_port"]
+            self._ray_params.runtime_env_agent_port = node_info[
+                "runtime_env_agent_port"
+            ]
+            self._ray_params.metrics_agent_port = node_info["metrics_agent_port"]
+            self._ray_params.metrics_export_port = node_info["metrics_export_port"]
+            self._ray_params.dashboard_agent_listen_port = node_info[
+                "dashboard_agent_listen_port"
+            ]
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -1331,6 +1388,62 @@ class Node:
                 f"error connecting to Redis."
             )
 
+        self.get_gcs_client().internal_kv_put(
+            b"session_dir",
+            self._session_dir.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        self.get_gcs_client().internal_kv_put(
+            b"temp_dir",
+            self.temp_dir.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        # When running in no-raylet mode, the head has no raylet to register
+        # NodeInfo (which normally carries temp_dir/session_dir). Persist them
+        # in GCS internal KV so worker nodes can fetch them. This write happens
+        # in `_write_cluster_info_to_kv`, which is only called from the head
+        # path (`start_head_processes`); guard with an assert to make that
+        # invariant explicit.
+        if self._ray_params.no_raylet:
+            assert self.head, "no_raylet KV write must only run on the head node"
+            self.get_gcs_client().internal_kv_put(
+                ray_constants.KV_HEAD_NODE_TEMP_DIR_KEY,
+                self.temp_dir.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+            self.get_gcs_client().internal_kv_put(
+                ray_constants.KV_HEAD_NODE_SESSION_DIR_KEY,
+                self._session_dir.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+            # Remove stale head_node_id from a previous run (when head had
+            # raylet). Without this, the job manager would try to schedule
+            # drivers on the head node which has no raylet.
+            self.get_gcs_client().internal_kv_del(
+                ray_constants.KV_HEAD_NODE_ID_KEY,
+                False,
+                ray_constants.KV_NAMESPACE_JOB,
+            )
+            # Signal to the autoscaler that the head is running without
+            # a raylet so it can skip the head-raylet-ready gate.
+            self.get_gcs_client().internal_kv_put(
+                ray_constants.KV_HEAD_NO_RAYLET_KEY,
+                b"1",
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+        elif self.head:
+            # Clean up stale no-raylet flag from a previous run so the
+            # autoscaler does not mistakenly skip the head-ready gate.
+            self.get_gcs_client().internal_kv_del(
+                ray_constants.KV_HEAD_NO_RAYLET_KEY,
+                False,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:
@@ -1437,6 +1550,17 @@ class Node:
                     "Expected valid object_spilling_config to be received from head node "
                     f"but got: {repr(e)}"
                 )
+
+        if self.head and self._ray_params.no_raylet:
+            # Pure-management head: skip plasma + raylet, but the log monitor
+            # still tails GCS/dashboard logs on this node.
+            if self._ray_params.include_log_monitor:
+                self.start_log_monitor()
+            logger.info(
+                "Skipping raylet startup on head node because --no-raylet is set. "
+                "This head node will serve as a pure management node."
+            )
+            return
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.

@@ -557,6 +557,7 @@ py_test_module_list(
         "test_microbenchmarks.py",
         "test_mini.py",
         "test_multinode_failures_2.py",
+        "test_no_raylet.py",
         "test_node_death.py",
         "test_numba.py",
         "test_object_spilling_no_asan.py",

@@ -3,6 +3,7 @@ from queue import Queue
 from typing import List, Optional
 from urllib.parse import urlsplit
 
+from ray._private import ray_constants
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
@@ -210,6 +211,14 @@ class Autoscaler:
             self._config_reader.refresh_cached_autoscaling_config()
             autoscaling_config = self._config_reader.get_cached_autoscaling_config()
 
+            head_no_raylet = (
+                self._gcs_client.internal_kv_get(
+                    ray_constants.KV_HEAD_NO_RAYLET_KEY,
+                    namespace=ray_constants.KV_NAMESPACE_SESSION,
+                )
+                == b"1"
+            )
+
             return Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
@@ -224,6 +233,7 @@ class Autoscaler:
                 ray_stop_errors=ray_stop_errors,
                 autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
+                head_no_raylet=head_no_raylet,
             )
         except AuthenticationError as e:
             logger.warning(f"AuthenticationError detected, restarting autoscaler: {e}")

@@ -30,18 +30,43 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
 
-    # We need to wait until head node's raylet is registered in GCS.
-    node_infos = get_all_node_info_until_retrieved(
-        gcs_client,
-        node_selectors=[head_node_selector],
-    )
-
-    node_info = next(iter(node_infos))
-    temp_dir = getattr(node_info, "temp_dir", None)
-    if temp_dir is None:
-        raise Exception(
-            "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+    # Try to get temp_dir from the head node's NodeInfo (normal mode).
+    # In --no-raylet mode the head never registers a raylet, so fall back
+    # to the temp_dir persisted in GCS internal KV.
+    temp_dir = None
+    try:
+        node_infos = get_all_node_info_until_retrieved(
+            gcs_client,
+            node_selectors=[head_node_selector],
         )
+        node_info = next(iter(node_infos))
+        temp_dir = getattr(node_info, "temp_dir", None)
+    except Exception:
+        logger.debug(
+            "Failed to get temp_dir from head node info, " "will try GCS KV fallback.",
+            exc_info=True,
+        )
+
+    if temp_dir is None:
+        raw = gcs_client.internal_kv_get(
+            ray_constants.KV_HEAD_NODE_TEMP_DIR_KEY,
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        if raw is not None:
+            temp_dir = raw.decode()
+            logger.info(
+                "Head node raylet not registered; "
+                "retrieved temp_dir from GCS KV: %s",
+                temp_dir,
+            )
+        else:
+            raise Exception(
+                "Could not determine head node temp_dir. "
+                "Neither the head node's raylet registered in GCS "
+                "nor was temp_dir found in the GCS KV store. "
+                "Did the head node start successfully?"
+            )
+
     return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 
