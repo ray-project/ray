@@ -574,5 +574,49 @@ async def test_choose_replica_and_dispatch_parallel(serve_instance):
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_cancel_releases_slot_across_loop_boundary(
+    serve_instance,
+):
+    """Cancelling a task holding a selection must release the slot, even when
+    the router lives on a different thread (SingletonThreadRouter)."""
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=1)
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    handle = serve.run(Backend.bind())
+    # Warm up so the cancellation isn't racing initialization.
+    assert await handle.process.remote("warmup") == "warmup"
+
+    ready = asyncio.Event()
+    never_set = asyncio.Event()
+
+    async def hold():
+        async with handle.process.choose_replica("first"):
+            ready.set()
+            await never_set.wait()
+
+    task = asyncio.create_task(hold())
+    await asyncio.wait_for(ready.wait(), timeout=5)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Hangs if the cancelled task leaked the only slot.
+    async with handle.process.choose_replica("second") as selection:
+        result = await asyncio.wait_for(
+            handle.process.dispatch(selection, "second"),
+            timeout=5,
+        )
+    assert result == "second"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
