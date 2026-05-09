@@ -1687,6 +1687,52 @@ class TestChooseReplica:
         # After all exit without dispatch, cache should be 0
         assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
 
+    async def test_reserved_slots_gauge_increments_and_decrements(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Gauge goes 0 → 1 → 0 across choose+dispatch and choose-without-dispatch.
+
+        Asserts the underlying `.set()` calls too, so bumping the counter
+        without pushing to the gauge is caught.
+        """
+        router, fake_request_router = setup_router
+
+        gauge_mock = Mock()
+        router._metrics_manager._reserved_slots_gauge = gauge_mock
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        # Choose + dispatch path.
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+        assert router._metrics_manager._num_reserved_slots == 0
+        async with router.choose_replica(request_metadata) as selection:
+            assert router._metrics_manager._num_reserved_slots == 1
+            gauge_mock.set.assert_called_with(1)
+            await router.dispatch(selection, request_metadata)
+
+        assert router._metrics_manager._num_reserved_slots == 0
+        gauge_mock.set.assert_called_with(0)
+
+        # Choose without dispatch: same gauge transition must hold.
+        gauge_mock.reset_mock()
+        request_metadata = RequestMetadata(
+            request_id="test-request-2",
+            internal_request_id="test-internal-request-2",
+        )
+        async with router.choose_replica(request_metadata):
+            assert router._metrics_manager._num_reserved_slots == 1
+            gauge_mock.set.assert_called_with(1)
+
+        assert router._metrics_manager._num_reserved_slots == 0
+        gauge_mock.set.assert_called_with(0)
+
     async def test_release_failure_does_not_leak_reserved_slots_metric(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
