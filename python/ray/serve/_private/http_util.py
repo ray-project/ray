@@ -42,6 +42,7 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
@@ -545,11 +546,21 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+    def __init__(self, app_or_func: Optional[Union[ASGIApp, Callable]]):
+        if app_or_func is None:
+            # Late-bound: `__serve_build_asgi_app__` will supply the app at
+            # replica init time. `__del__` tolerates the missing
+            # `_serve_asgi_lifespan` attribute.
+            return
         if inspect.isfunction(app_or_func):
-            self._asgi_app = app_or_func()
+            app = app_or_func()
         else:
-            self._asgi_app = app_or_func
+            app = app_or_func
+
+        self._set_asgi_app(app)
+
+    def _set_asgi_app(self, app: ASGIApp) -> None:
+        self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -800,6 +811,22 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
         ).decode("utf-8")
         == "?1"
     )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the SERVE_SESSION_ID header value, or '' if absent.
+
+    Accepts both the underscored constant form (``x_session_id``) and the
+    canonical hyphenated form (``x-session-id``) because intermediate proxies
+    (HAProxy, nginx, AWS API Gateway) canonicalize underscored header names
+    to the hyphenated form. ASGI lowercases header names per spec, so
+    case-folding is not needed here.
+    """
+    for form in (SERVE_SESSION_ID, SERVE_SESSION_ID.replace("_", "-")):
+        value = headers.get(form.encode("utf-8"))
+        if value is not None:
+            return value.decode("utf-8")
+    return ""
 
 
 def get_http_response_status(

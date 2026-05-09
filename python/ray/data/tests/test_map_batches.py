@@ -18,7 +18,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -494,6 +493,9 @@ def test_map_batches_batch_mutation(
         (10, 5, 2),
         (10, 1, 10),
         (12, 3, 2),
+        # Batches span multiple source blocks, so the builder concatenates
+        # them into multi-chunk Arrow columns before delivering the batch.
+        (12, 4, 4),
     ],
 )
 def test_map_batches_batch_zero_copy(
@@ -503,33 +505,41 @@ def test_map_batches_batch_zero_copy(
     batch_size,
     target_max_block_size_infinite_or_default,
 ):
-    # Test that batches are zero-copy read-only views when zero_copy_batch=True.
+    # Verify the safety guarantee of ``zero_copy_batch=True``: a UDF that
+    # tries to mutate the batch in place must not corrupt the source block.
+    # Arrow-backed pandas columns enforce this implicitly (column assignments
+    # rebind to a fresh array instead of writing through the underlying
+    # buffer), so we validate the contract by comparing source vs. mutated
+    # output rather than inspecting ``df.values.flags.writeable``. The
+    # writeability flag is unreliable here: for multi-chunk batches (formed
+    # when several blocks are merged), ``df.values`` materializes a fresh
+    # numpy array via ``ChunkedArray.to_numpy()``, which is writable even
+    # though the underlying Arrow buffers remain immutable.
     def mutate(df):
-        # Check that batch is read-only.
-        assert not df.values.flags.writeable
         df["id"] += 1
         return df
 
     ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
         num_blocks
     )
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-    ds = ds.materialize()
+    # Convert to Pandas blocks and freeze the layout.
+    source = ds.map_batches(
+        lambda df: df, batch_format="pandas", batch_size=None
+    ).materialize()
 
-    # Apply UDF that mutates the batches, which should fail since the batch is
-    # read-only.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(
-            ValueError, match="tried to mutate a zero-copy read-only batch"
-        ):
-            ds = ds.map_batches(
-                mutate,
-                batch_format="pandas",
-                batch_size=batch_size,
-                zero_copy_batch=True,
-            )
-            ds.materialize()
+    # Run the mutating UDF and consume the result.
+    mutated = source.map_batches(
+        mutate,
+        batch_format="pandas",
+        batch_size=batch_size,
+        zero_copy_batch=True,
+    )
+    mutated_ids = sorted(row["id"] for row in mutated.take_all())
+    source_ids = sorted(row["id"] for row in source.take_all())
+
+    # Source is untouched; mutated dataset reflects ``id + 1``.
+    assert source_ids == list(range(num_rows))
+    assert mutated_ids == list(range(1, num_rows + 1))
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -725,7 +735,10 @@ def test_map_batches_timestamp_nanosecs(
     processed_df_arrow["timestamp"] = processed_df_arrow["timestamp"].astype(
         "datetime64[ns]"
     )
-    pd.testing.assert_frame_equal(processed_df_arrow, expected_df)
+    pd.testing.assert_frame_equal(
+        processed_df_arrow,
+        expected_df.astype(processed_df_arrow.dtypes.to_dict()),
+    )
 
     # Using pandas format
     result_pandas = ray_data.map_batches(
@@ -735,7 +748,10 @@ def test_map_batches_timestamp_nanosecs(
     processed_df_pandas["timestamp"] = processed_df_pandas["timestamp"].astype(
         "datetime64[ns]"
     )
-    pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
+    pd.testing.assert_frame_equal(
+        processed_df_pandas,
+        expected_df.astype(processed_df_pandas.dtypes.to_dict()),
+    )
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):

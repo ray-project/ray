@@ -129,6 +129,10 @@ class ArrowFileScanner(
         return replace(self, columns=tuple(columns))
 
     @override
+    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
+        return self.columns
+
+    @override
     def push_limit(self, limit: int) -> "ArrowFileScanner":
         """Push row limit down to the scanner.
 
