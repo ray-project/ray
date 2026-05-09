@@ -1371,40 +1371,6 @@ class TestChooseReplica:
             async with router.choose_replica(request_metadata):
                 pass
 
-    async def test_basic_choose_and_dispatch(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
-    ):
-        """Test basic choose_replica() and dispatch() workflow."""
-        router, fake_request_router = setup_router
-
-        r1_id = ReplicaID(
-            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
-        )
-        replica = FakeReplica(r1_id)
-        fake_request_router.set_replica_to_return(replica)
-
-        request_metadata = RequestMetadata(
-            request_id="test-request-1",
-            internal_request_id="test-internal-request-1",
-            call_method="test_method",
-        )
-
-        # Choose replica
-        async with router.choose_replica(request_metadata) as selection:
-            # Verify selection contains correct information
-            assert selection.replica_id == r1_id.unique_id
-            assert selection._replica == replica
-            assert selection._method_name == "test_method"
-            assert selection._slot_token in replica._reserved_slots
-
-            # Dispatch request
-            replica_result = await router.dispatch(selection, request_metadata)
-            assert replica_result._replica_id == r1_id
-            assert not replica_result._is_generator_object
-
-        # After context exit, slot should be released
-        assert selection._slot_token not in replica._reserved_slots
-
     async def test_choose_without_dispatch_releases_slot(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
@@ -1459,12 +1425,14 @@ class TestChooseReplica:
         assert slot_token not in replica._reserved_slots
 
     @pytest.mark.parametrize("is_streaming", [False, True])
-    async def test_choose_and_dispatch_streaming(
+    async def test_choose_and_dispatch(
         self,
         setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
         is_streaming: bool,
     ):
-        """Test choose_replica() and dispatch() with streaming requests."""
+        """Happy path: selection fields are populated, dispatch sends with
+        with_rejection=False (slot reservation replaces the rejection
+        round-trip), and the slot is released on exit."""
         router, fake_request_router = setup_router
 
         r1_id = ReplicaID(
@@ -1476,45 +1444,23 @@ class TestChooseReplica:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
+            call_method="test_method",
             is_streaming=is_streaming,
         )
 
         async with router.choose_replica(request_metadata) as selection:
+            assert selection.replica_id == r1_id.unique_id
+            assert selection._replica == replica
+            assert selection._method_name == "test_method"
+            assert selection._slot_token in replica._reserved_slots
+
             replica_result = await router.dispatch(selection, request_metadata)
             assert replica_result._replica_id == r1_id
-            if is_streaming:
-                assert replica_result._is_generator_object
-            else:
-                assert not replica_result._is_generator_object
+            assert replica_result._is_generator_object == is_streaming
 
-    async def test_slot_reservation_mock_interaction(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
-    ):
-        """Test that reserve_slot and send_request_with_slot are called correctly."""
-        router, fake_request_router = setup_router
-
-        r1_id = ReplicaID(
-            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
-        )
-        replica = FakeReplica(r1_id)
-        fake_request_router.set_replica_to_return(replica)
-
-        request_metadata = RequestMetadata(
-            request_id="test-request-1",
-            internal_request_id="test-internal-request-1",
-        )
-
-        # Track initial state
-        initial_slot_count = replica._slot_counter
-
-        async with router.choose_replica(request_metadata) as selection:
-            # Verify reserve_slot was called
-            assert replica._slot_counter == initial_slot_count + 1
-            assert len(replica._reserved_slots) == 1
-
-            # Dispatch and verify send_request_with_slot works
-            replica_result = await router.dispatch(selection, request_metadata)
-            assert replica_result._replica_id == r1_id
+        assert selection._slot_token not in replica._reserved_slots
+        assert len(replica._requests_sent) == 1
+        assert replica._requests_sent[0]["with_rejection"] is False
 
     async def test_multiple_sequential_selections(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
@@ -1809,36 +1755,6 @@ class TestChooseReplica:
             # dispatch should raise ReplicaUnavailableError
             with pytest.raises(ReplicaUnavailableError):
                 await router.dispatch(selection, request_metadata)
-
-    async def test_dispatch_uses_reserved_slot(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
-    ):
-        """Test that dispatch() sends request using reserved slot without rejection."""
-        router, fake_request_router = setup_router
-
-        r1_id = ReplicaID(
-            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
-        )
-        replica = FakeReplica(r1_id)
-        fake_request_router.set_replica_to_return(replica)
-
-        request_metadata = RequestMetadata(
-            request_id="test-request-1",
-            internal_request_id="test-internal-request-1",
-        )
-
-        async with router.choose_replica(request_metadata) as selection:
-            # Verify no requests sent yet
-            assert len(replica._requests_sent) == 0
-
-            # Dispatch the request
-            replica_result = await router.dispatch(selection, request_metadata)
-            assert replica_result._replica_id == r1_id
-
-        # Verify request was sent with with_rejection=False
-        assert len(replica._requests_sent) == 1
-        assert replica._requests_sent[0]["request_id"] == "test-request-1"
-        assert replica._requests_sent[0]["with_rejection"] is False
 
     async def test_multiple_dispatch_calls_fail(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
