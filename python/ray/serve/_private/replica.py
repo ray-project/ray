@@ -1919,7 +1919,7 @@ class Replica:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            num_ongoing_requests = self.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "

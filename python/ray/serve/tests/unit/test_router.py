@@ -356,6 +356,37 @@ class TestReplicaSlotReservation:
 
         assert replica.get_num_ongoing_requests() == 0
 
+    async def test_drain_waits_for_reserved_slots(self):
+        # A reserved-but-not-yet-dispatched slot is holding capacity, so a
+        # graceful shutdown must wait for it just like an in-flight request.
+        # Otherwise the replica can finish draining between reserve_slot and
+        # the dispatch, leaving the router to send the request to a dead replica.
+        replica = ServeReplica.__new__(ServeReplica)
+        replica._deployment_config = Mock(
+            max_ongoing_requests=1,
+            graceful_shutdown_wait_loop_s=0.01,
+        )
+        replica._metrics_manager = FakeReplicaMetricsManager()
+        replica._reserved_slots = set()
+        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+
+        request_metadata = dummy_request_metadata()
+        accepted, _ = await replica.reserve_slot(request_metadata, "slot-token-1")
+        assert accepted
+
+        drain_task = asyncio.create_task(replica._drain_ongoing_requests())
+        try:
+            await asyncio.sleep(0.1)
+            assert not drain_task.done(), (
+                "drain should still be running while a slot is reserved"
+            )
+
+            replica.release_slot("slot-token-1")
+            await asyncio.wait_for(drain_task, timeout=1.0)
+        finally:
+            if not drain_task.done():
+                drain_task.cancel()
+
 
 @pytest.mark.asyncio
 class TestBroadcast:
