@@ -1250,16 +1250,27 @@ class AsyncioRouter:
         *request_args,
         **request_kwargs,
     ) -> AsyncIterator[ReplicaSelection]:
-        """Execute routing and reserve a slot, with automatic cleanup.
+        """Pick a replica, hold capacity on it, and yield a selection.
 
-        This method:
-        1. Checks deployment availability
-        2. Checks backpressure (max_queued_requests)
-        3. Increments serve_num_router_requests metric
-        4. Selects a replica and reserves a slot
-        5. Increments serve_reserved_slots_active metric
-        6. Yields the ReplicaSelection
-        7. On exit, releases the slot if not dispatched
+        The yielded selection can be dispatched (consuming the held
+        capacity) or allowed to drop, in which case the capacity is
+        released automatically when the context exits.
+
+        Behavior:
+          1. Refuses immediately if the deployment is unavailable.
+          2. Waits for the router to finish initial setup before routing.
+          3. Refuses with backpressure if the queue limit is already
+             reached; otherwise the request counts against router-level
+             request and queue metrics for the duration of routing.
+          4. Resolves the request arguments (which may block on
+             upstream responses).
+          5. Picks a replica and asks it to hold capacity. Retries on
+             actor failure, transient unavailability, or replica-side
+             capacity rejection until a replica accepts.
+          6. Yields the selection while the reservation is held; on exit,
+             releases the capacity if dispatch never consumed it.
+             Reservation metrics stay accurate even if the release call
+             itself fails.
         """
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
