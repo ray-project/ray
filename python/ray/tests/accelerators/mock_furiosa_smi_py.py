@@ -33,5 +33,10 @@ class _MockDevice:
         return _MockDeviceInfo(arch_name=self._arch_name, index=self._idx)
 
 
+def init():
+    """Mock for ``furiosa_smi_py.init``. Real SMI library requires init() before use."""
+    return None
+
+
 def list_devices():
     return [_MockDevice(i) for i in range(8)]

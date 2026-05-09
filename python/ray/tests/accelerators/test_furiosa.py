@@ -91,18 +91,10 @@ class TestFuriosaAcceleratorManager:
         "arch_name,expected",
         [
             # Real Furiosa SMI arch enum values (from furiosa-smi-go types.go).
+            # In-development SKUs (RngdMax / RngdS / RngdPlus and their
+            # Arch::ToString variants) are intentionally omitted until the
+            # product names are finalized upstream.
             ("Rngd", "FURIOSA_RNGD"),
-            ("RngdMax", "FURIOSA_RNGDMAX"),
-            ("RngdS", "FURIOSA_RNGDS"),
-            ("RngdPlus", "FURIOSA_RNGDPLUS"),
-            # The SDK's Arch::ToString form is also accepted. Both forms
-            # must resolve to the same label so that PyO3-enum and
-            # to_string() outputs are interchangeable.
-            ("rngd-max", "FURIOSA_RNGDMAX"),
-            # "+" must NOT be silently stripped: that would collapse
-            # "rngd+" into "rngd" and collide with the base RNGD SKU.
-            # It is mapped to "plus" so the label matches RngdPlus.
-            ("rngd+", "FURIOSA_RNGDPLUS"),
         ],
     )
     def test_get_current_node_accelerator_type_dynamic(
