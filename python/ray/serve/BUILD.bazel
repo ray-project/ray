@@ -1,8 +1,7 @@
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS")
-
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:python.bzl", "doctest")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS")
 
 doctest(
     size = "small",
@@ -55,10 +54,15 @@ pyx_library(
         }),
         linkstatic = 1,
     ),
+    visibility = ["//visibility:public"],
     deps = [
-        "//python/ray/includes:cython_includes",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
     ],
+)
+
+filegroup(
+    name = "serve_so_output",
+    srcs = ["_private/_timeseries_utils.so"],
     visibility = ["//visibility:public"],
 )
