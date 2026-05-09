@@ -325,14 +325,28 @@ class FakeReplicaMetricsManager:
         self.num_ongoing_requests -= 1
 
 
+class FakeServeReplicaForSlotReservation(ServeReplica):
+    def __init__(
+        self,
+        *,
+        max_ongoing_requests: int = 1,
+        graceful_shutdown_wait_loop_s: float = 0.01,
+    ):
+        self._deployment_config = Mock(
+            max_ongoing_requests=max_ongoing_requests,
+            graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+        )
+        self._metrics_manager = FakeReplicaMetricsManager()
+        self._reserved_slots = set()
+        self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
+
+
 @pytest.mark.asyncio
 class TestReplicaSlotReservation:
     async def test_reserved_slot_counts_against_replica_capacity(self):
-        replica = ServeReplica.__new__(ServeReplica)
-        replica._deployment_config = Mock(max_ongoing_requests=1)
-        replica._metrics_manager = FakeReplicaMetricsManager()
-        replica._reserved_slots = set()
-        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+        # A reserved slot consumes capacity, so another reservation should be
+        # rejected once the replica reaches max_ongoing_requests.
+        replica = FakeServeReplicaForSlotReservation()
 
         request_metadata = dummy_request_metadata()
 
@@ -359,11 +373,7 @@ class TestReplicaSlotReservation:
     async def test_release_slot_returns_status_and_recovers_capacity(self):
         # Releasing a known token reports True and frees a slot; releasing an
         # unknown or already-released token reports False and is a no-op.
-        replica = ServeReplica.__new__(ServeReplica)
-        replica._deployment_config = Mock(max_ongoing_requests=1)
-        replica._metrics_manager = FakeReplicaMetricsManager()
-        replica._reserved_slots = set()
-        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+        replica = FakeServeReplicaForSlotReservation()
 
         request_metadata = dummy_request_metadata()
         accepted, _ = await replica.reserve_slot(request_metadata, "tok-a")
@@ -393,11 +403,7 @@ class TestReplicaSlotReservation:
         # A request that arrives with a slot token nobody reserved (or that
         # was already released) must be rejected loudly and must not
         # consume capacity.
-        replica = ServeReplica.__new__(ServeReplica)
-        replica._deployment_config = Mock(max_ongoing_requests=1)
-        replica._metrics_manager = FakeReplicaMetricsManager()
-        replica._reserved_slots = set()
-        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+        replica = FakeServeReplicaForSlotReservation()
 
         bogus = replace(dummy_request_metadata(), _reserved_slot_token="never-reserved")
         with pytest.raises(RuntimeError, match="unknown reserved slot"):
@@ -416,14 +422,7 @@ class TestReplicaSlotReservation:
         # graceful shutdown must wait for it just like an in-flight request.
         # Otherwise the replica can finish draining between reserve_slot and
         # the dispatch, leaving the router to send the request to a dead replica.
-        replica = ServeReplica.__new__(ServeReplica)
-        replica._deployment_config = Mock(
-            max_ongoing_requests=1,
-            graceful_shutdown_wait_loop_s=0.01,
-        )
-        replica._metrics_manager = FakeReplicaMetricsManager()
-        replica._reserved_slots = set()
-        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+        replica = FakeServeReplicaForSlotReservation(graceful_shutdown_wait_loop_s=0.01)
 
         request_metadata = dummy_request_metadata()
         accepted, _ = await replica.reserve_slot(request_metadata, "slot-token-1")
