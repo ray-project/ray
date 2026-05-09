@@ -1294,19 +1294,46 @@ class AsyncioRouter:
             if not pr.resolved:
                 await self._resolve_request_arguments(pr)
 
-            # Increment queued requests while choosing replica and reserving slot
-            num_curr_replicas = len(self.request_router.curr_replicas)
-            with self._metrics_manager.wrap_queued_request(
-                is_retry=False, num_curr_replicas=num_curr_replicas
-            ):
-                replica = await self.request_router._choose_replica_for_request(pr)
+            is_retry = False
+            while True:
+                num_curr_replicas = len(self.request_router.curr_replicas)
+                with self._metrics_manager.wrap_queued_request(
+                    is_retry=is_retry, num_curr_replicas=num_curr_replicas
+                ):
+                    replica = await self.request_router._choose_replica_for_request(
+                        pr, is_retry=is_retry
+                    )
 
-                # Reserve a slot on the replica
-                slot_token = replica.reserve_slot()
+                    # Reserve capacity on the replica actor. This must happen on
+                    # the replica, not just in the router cache, so dispatch can
+                    # send without the rejection protocol.
+                    try:
+                        slot_token, queue_info = await replica.reserve_slot(
+                            request_meta
+                        )
+                    except ActorDiedError as e:
+                        self._handle_actor_died_error(
+                            replica.replica_id, replica.actor_id, e
+                        )
+                        is_retry = True
+                        continue
+                    except ActorUnavailableError:
+                        self.request_router.on_replica_actor_unavailable(
+                            replica.replica_id
+                        )
+                        logger.warning(
+                            f"{replica.replica_id} is temporarily unavailable."
+                        )
+                        is_retry = True
+                        continue
 
-                # Update queue length cache to reflect the reservation
-                # This ensures concurrent choose_replica calls see the correct load
-                self.request_router.on_send_request(replica.replica_id)
+                    self.request_router.on_new_queue_len_info(
+                        replica.replica_id, queue_info
+                    )
+                    if queue_info.accepted:
+                        break
+
+                is_retry = True
 
             # Increment reserved slots metric (after queue metric is decremented)
             self._metrics_manager.inc_reserved_slots()
@@ -1327,15 +1354,11 @@ class AsyncioRouter:
         try:
             yield selection
         finally:
-            # Always release the slot token (for tracking cleanup)
-            selection._release_slot()
-
-            # Decrement cache only if this selection was never dispatched.
-            # Once dispatch is called, the request remains in-flight and should be
-            # accounted for until request completion is reflected via queue length
-            # callbacks/probes.
-            if not selection._dispatched:
-                self.request_router.on_replica_result_finished(replica.replica_id)
+            queue_info = await selection._release_slot()
+            if queue_info is not None:
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info
+                )
 
             # Decrement reserved slots metric
             self._metrics_manager.dec_reserved_slots()
@@ -1362,31 +1385,43 @@ class AsyncioRouter:
             RuntimeError: If the selection has already been dispatched.
             ReplicaUnavailableError: If the replica is no longer available.
         """
+        selection._mark_dispatched()
+        return await self._dispatch_to_marked_selection(
+            selection, request_meta, *request_args, **request_kwargs
+        )
+
+    async def _dispatch_to_marked_selection(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> ReplicaResult:
+        """Dispatch a selection that has already been consumed by dispatch()."""
         # Verify replica is still available
         replica = selection._replica
-        if replica.replica_id not in self.request_router.curr_replicas:
-            raise ReplicaUnavailableError(
-                f"Replica {selection.replica_id} is no longer available"
-            )
-
-        # Mark as dispatched (this will raise if already dispatched)
-        selection._mark_dispatched()
-
         pr = PendingRequest(
             args=list(request_args),
             kwargs=request_kwargs,
-            metadata=request_meta,
+            metadata=replace(request_meta, _reserved_slot_token=selection._slot_token),
         )
 
         # Send the request without rejection since we already reserved a slot
         # The slot reservation guarantees that the replica will accept this request
         try:
+            if replica.replica_id not in self.request_router.curr_replicas:
+                raise ReplicaUnavailableError(
+                    f"Replica {selection.replica_id} is no longer available"
+                )
             if not pr.resolved:
                 await self._resolve_request_arguments(pr)
             result = replica.try_send_request(pr, with_rejection=False)
-        except Exception:
-            # Release the queue-length increment performed during choose_replica when dispatch fails.
-            self.request_router.on_replica_result_finished(replica.replica_id)
+        except BaseException:
+            queue_info = await selection._release_slot(force=True)
+            if queue_info is not None:
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info
+                )
             raise
 
         # Keep track of requests that have been sent out to replicas
@@ -1412,8 +1447,24 @@ class AsyncioRouter:
                 replica.replica_id,
             )
         )
+        result.add_done_callback(
+            lambda _: self._event_loop.call_soon_threadsafe(
+                lambda: self._event_loop.create_task(
+                    self._release_slot_if_still_reserved(selection)
+                )
+            )
+        )
 
         return result
+
+    async def _release_slot_if_still_reserved(
+        self, selection: ReplicaSelection
+    ) -> None:
+        """Best-effort cleanup if a dispatched request was cancelled before starting."""
+        try:
+            await selection._release_slot(force=True)
+        except Exception:
+            logger.debug("Failed to release reserved replica slot.", exc_info=True)
 
     async def broadcast(
         self,
@@ -1668,8 +1719,15 @@ class SingletonThreadRouter(Router):
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Dispatch request to a previously selected replica."""
+        try:
+            selection._mark_dispatched()
+        except Exception as exc:
+            future = concurrent.futures.Future()
+            future.set_exception(exc)
+            return future
+
         return self._wrap_asyncio_call_in_future(
-            self._asyncio_router.dispatch(
+            self._asyncio_router._dispatch_to_marked_selection(
                 selection, request_meta, *request_args, **request_kwargs
             )
         )
@@ -1890,8 +1948,15 @@ class CurrentLoopRouter(Router):
 
         Returns an asyncio.Future wrapping the async dispatch call.
         """
+        try:
+            selection._mark_dispatched()
+        except Exception as exc:
+            future = self._asyncio_loop.create_future()
+            future.set_exception(exc)
+            return future
+
         return self._asyncio_loop.create_task(
-            self._asyncio_router.dispatch(
+            self._asyncio_router._dispatch_to_marked_selection(
                 selection, request_meta, *request_args, **request_kwargs
             )
         )

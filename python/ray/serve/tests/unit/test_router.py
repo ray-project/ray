@@ -4,6 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
+from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -36,11 +38,16 @@ from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
+    CurrentLoopRouter,
     RouterMetricsManager,
     SingletonThreadRouter,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import decompress_metric_report, get_random_string
+from ray.serve._private.utils import (
+    Semaphore,
+    decompress_metric_report,
+    get_random_string,
+)
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.exceptions import (
     BackPressureError,
@@ -120,6 +127,8 @@ class FakeReplica(RunningReplica):
         self._reserved_slots: Set[str] = set()
         self._slot_counter = 0
         self._requests_sent = []  # Track all requests sent to this replica
+        self._reject_reservation = False
+        self._reservation_queue_len = 1
 
         # Create a minimal _replica_info object to satisfy router.py requirements
         self._replica_info = Mock()
@@ -153,16 +162,31 @@ class FakeReplica(RunningReplica):
     def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
 
-    def reserve_slot(self) -> str:
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata
+    ) -> Tuple[str, ReplicaQueueLengthInfo]:
         """Reserve a slot and return a token."""
+        if self._reject_reservation:
+            return "", ReplicaQueueLengthInfo(
+                accepted=False,
+                num_ongoing_requests=self._reservation_queue_len,
+            )
+
         self._slot_counter += 1
         token = f"slot-token-{self._slot_counter}"
         self._reserved_slots.add(token)
-        return token
+        return token, ReplicaQueueLengthInfo(
+            accepted=True,
+            num_ongoing_requests=len(self._reserved_slots),
+        )
 
-    def release_slot(self, slot_token: str) -> None:
+    async def release_slot(self, slot_token: str) -> ReplicaQueueLengthInfo:
         """Release a reserved slot."""
         self._reserved_slots.discard(slot_token)
+        return ReplicaQueueLengthInfo(
+            accepted=True,
+            num_ongoing_requests=len(self._reserved_slots),
+        )
 
     def send_request_with_slot(
         self, pr: PendingRequest, slot_token: str
@@ -185,6 +209,9 @@ class FakeReplica(RunningReplica):
             raise self._error
 
         # Track the request
+        if pr.metadata._reserved_slot_token:
+            self._reserved_slots.discard(pr.metadata._reserved_slot_token)
+
         self._requests_sent.append(
             {
                 "request_id": pr.metadata.request_id,
@@ -370,6 +397,52 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
         internal_request_id="test-internal-request-1",
         is_streaming=is_streaming,
     )
+
+
+class FakeReplicaMetricsManager:
+    def __init__(self):
+        self.num_ongoing_requests = 0
+
+    def get_num_ongoing_requests(self) -> int:
+        return self.num_ongoing_requests
+
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata):
+        self.num_ongoing_requests += 1
+
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata):
+        self.num_ongoing_requests -= 1
+
+
+@pytest.mark.asyncio
+class TestReplicaSlotReservation:
+    async def test_reserved_slot_counts_against_replica_capacity(self):
+        replica = ServeReplica.__new__(ServeReplica)
+        replica._deployment_config = Mock(max_ongoing_requests=1)
+        replica._metrics_manager = FakeReplicaMetricsManager()
+        replica._reserved_slots = set()
+        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+
+        request_metadata = dummy_request_metadata()
+
+        slot_token = "slot-token-1"
+        accepted, queue_len = await replica.reserve_slot(request_metadata, slot_token)
+        assert accepted
+        assert slot_token in replica._reserved_slots
+        assert queue_len == 1
+        assert replica.get_num_ongoing_requests() == 1
+
+        accepted, queue_len = await replica.reserve_slot(
+            request_metadata, "slot-token-2"
+        )
+        assert not accepted
+        assert queue_len == 1
+
+        dispatch_metadata = replace(request_metadata, _reserved_slot_token=slot_token)
+        async with replica._start_request(dispatch_metadata):
+            assert slot_token not in replica._reserved_slots
+            assert replica.get_num_ongoing_requests() == 1
+
+        assert replica.get_num_ongoing_requests() == 0
 
 
 @pytest.mark.asyncio
@@ -1390,6 +1463,84 @@ class TestChooseReplica:
         [{"enable_queue_len_cache": True}],
         indirect=True,
     )
+    async def test_current_loop_dispatch_marks_selection_before_task_runs(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Wrapper dispatch should consume the selection before its task runs."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        current_loop_router = CurrentLoopRouter.__new__(CurrentLoopRouter)
+        current_loop_router._asyncio_loop = asyncio.get_running_loop()
+        current_loop_router._asyncio_router = router
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            dispatch_task = current_loop_router.dispatch(selection, request_metadata)
+            assert selection._dispatched
+            assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+        assert len(replica._requests_sent) == 0
+
+        replica_result = await dispatch_task
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+
+        replica_result.fire_done_callbacks()
+        await asyncio.sleep(0)
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_current_loop_dispatch_failure_releases_cache(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """If wrapper dispatch fails after consuming a selection, it owns cleanup."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        current_loop_router = CurrentLoopRouter.__new__(CurrentLoopRouter)
+        current_loop_router._asyncio_loop = asyncio.get_running_loop()
+        current_loop_router._asyncio_router = router
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            fake_request_router._replica_to_return = None
+            dispatch_task = current_loop_router.dispatch(selection, request_metadata)
+            assert selection._dispatched
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+
+        with pytest.raises(ReplicaUnavailableError):
+            await dispatch_task
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
     async def test_cache_decremented_on_choose_without_dispatch(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
@@ -1415,6 +1566,41 @@ class TestChooseReplica:
 
         # After context exit without dispatch, cache should be decremented to 0
         assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_choose_replica_retries_when_reservation_rejected(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """choose_replica should only yield after replica-side capacity is reserved."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        r2_id = ReplicaID(
+            unique_id="test-replica-2", deployment_id=DeploymentID(name="test")
+        )
+        r1 = FakeReplica(r1_id)
+        r2 = FakeReplica(r2_id)
+        r1._reject_reservation = True
+        fake_request_router.set_replica_to_return(r1)
+        fake_request_router.set_replica_to_return_on_retry(r2)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            assert selection._replica == r2
+            assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+            assert fake_request_router.replica_queue_len_cache.get(r2_id) == 1
+
+        assert fake_request_router.replica_queue_len_cache.get(r2_id) == 0
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -1950,6 +2136,52 @@ class TestSingletonThreadRouter:
         future = thread_router.assign_request(request_metadata)
         assert isinstance(future, concurrent.futures.Future)
         assert future.result()._replica_id == r1_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_dispatch_marks_selection_before_scheduled_coroutine_runs(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        _, fake_request_router = setup_router
+        thread_router = setup_singleton_thread_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        pending_coros = []
+
+        def delay_asyncio_call(coro):
+            pending_coros.append(coro)
+            return concurrent.futures.Future()
+
+        monkeypatch.setattr(
+            thread_router, "_wrap_asyncio_call_in_future", delay_asyncio_call
+        )
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with thread_router.choose_replica(request_metadata) as selection:
+            dispatch_future = thread_router.dispatch(selection, request_metadata)
+            assert selection._dispatched
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+        assert len(pending_coros) == 1
+
+        dispatch_future.cancel()
+        pending_coros[0].close()
 
     @pytest.mark.asyncio
     async def test_cancellation_propagation(

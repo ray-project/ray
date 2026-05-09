@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import pickle
 import uuid
 from abc import ABC, abstractmethod
@@ -13,13 +12,11 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
+    ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.constants import (
-    RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH
 from ray.serve._private.replica_result import (
     ActorReplicaResult,
     ReplicaResult,
@@ -38,8 +35,6 @@ from ray.util.tracing.tracing_helper import (
     _DictPropagator,
     _is_tracing_enabled,
 )
-
-logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaWrapper(ABC):
@@ -205,7 +200,8 @@ class RunningReplica:
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
 
-        # Active slot reservation tokens for the choose_replica/dispatch pattern.
+        # Active local slot reservation tokens for Java replicas. Python replicas
+        # reserve capacity on the actor-side semaphore.
         self._reserved_slots: Set[str] = set()
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
@@ -332,33 +328,57 @@ class RunningReplica:
 
         return wrapper.send_request_python(pr, with_rejection=with_rejection)
 
-    def reserve_slot(self) -> str:
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata
+    ) -> Tuple[str, ReplicaQueueLengthInfo]:
         """Reserve a slot on this replica for an upcoming request.
 
         Returns a unique token that can be used to release the slot later.
         This is used in the choose_replica/dispatch pattern to track
         reservations that haven't been dispatched yet.
-
-        Note: This only tracks the reservation locally. The actual queue
-        length management is handled by the replica actor itself.
         """
-        slot_token = str(uuid.uuid4())
-        self._reserved_slots.add(slot_token)
-        return slot_token
+        if self._replica_info.is_cross_language:
+            slot_token = str(uuid.uuid4())
+            self._reserved_slots.add(slot_token)
+            return slot_token, ReplicaQueueLengthInfo(
+                accepted=True,
+                num_ongoing_requests=len(self._reserved_slots),
+            )
 
-    def release_slot(self, slot_token: str) -> None:
+        slot_token = str(uuid.uuid4())
+        obj_ref = self._actor_handle.reserve_slot.remote(request_metadata, slot_token)
+        try:
+            accepted, num_ongoing_requests = await obj_ref
+        except asyncio.CancelledError:
+            ray.cancel(obj_ref)
+            self._actor_handle.release_slot.remote(slot_token)
+            raise
+
+        return slot_token, ReplicaQueueLengthInfo(
+            accepted=accepted,
+            num_ongoing_requests=num_ongoing_requests,
+        )
+
+    async def release_slot(self, slot_token: str) -> ReplicaQueueLengthInfo:
         """Release a previously reserved slot.
 
         This should be called if a request is not dispatched after
         reserving a slot (e.g., due to an error or cancellation).
         """
-        if slot_token in self._reserved_slots:
+        if self._replica_info.is_cross_language:
             self._reserved_slots.discard(slot_token)
-        else:
-            logger.warning(
-                f"Attempted to release unknown slot token {slot_token} "
-                f"on replica {self.replica_id}"
+            return ReplicaQueueLengthInfo(
+                accepted=True,
+                num_ongoing_requests=len(self._reserved_slots),
             )
+
+        _, num_ongoing_requests = await self._actor_handle.release_slot.remote(
+            slot_token
+        )
+        return ReplicaQueueLengthInfo(
+            accepted=True,
+            num_ongoing_requests=num_ongoing_requests,
+        )
 
 
 @dataclass
@@ -425,6 +445,11 @@ class ReplicaSelection:
             )
         self._dispatched = True
 
-    def _release_slot(self) -> None:
+    async def _release_slot(
+        self, *, force: bool = False
+    ) -> Optional[ReplicaQueueLengthInfo]:
         """Internal: Release the reserved slot."""
-        self._replica.release_slot(self._slot_token)
+        if self._dispatched and not force:
+            return None
+
+        return await self._replica.release_slot(self._slot_token)
