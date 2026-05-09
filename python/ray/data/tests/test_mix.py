@@ -9,7 +9,6 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     MixStoppingCondition,
     estimate_num_mix_outputs,
 )
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.dataset import Dataset
 
@@ -37,10 +36,7 @@ def _mix_datasets(datasets, weights=None, stopping_condition=None):
         metadata={"Mix": []},
         parent=[d._raw_stats() for d in datasets],
     )
-    return Dataset(
-        ExecutionPlan(stats, datasets[0].context.copy()),
-        logical_plan,
-    )
+    return Dataset(logical_plan, datasets[0].context.copy(), stats)
 
 
 def _make_ds(source_id, num_rows, rows_per_block):
