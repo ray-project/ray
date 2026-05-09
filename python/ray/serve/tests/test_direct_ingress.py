@@ -2224,10 +2224,7 @@ def test_http_routes_endpoint(_skip_if_ff_not_enabled, serve_instance):
     assert routes == {"/D1": "app1", "/hello/world": "app2"}, routes
 
 
-# TODO: haproxy doesn't support gRPC ListApplications yet so skipping this test
-def test_grpc_list_applications_endpoint(
-    _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
-):
+def test_grpc_list_applications_endpoint(_skip_if_ff_not_enabled, serve_instance):
     """Each replica's gRPC `ListApplications` method should only report the
     single application that replica is serving.
     """
