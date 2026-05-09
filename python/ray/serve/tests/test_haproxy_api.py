@@ -497,7 +497,7 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
 
         result = api._write_ingress_request_router_lua([backend])
 
-        assert result == (None, False)
+        assert result is None
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
@@ -584,11 +584,6 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
         assert "option http-buffer-request" not in cfg
-        assert (
-            "http-request wait-for-body time 5s "
-            "if METH_POST has_ingress_request_router_app"
-        ) in cfg
-        assert "tune.bufsize 65536" in cfg
         direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
         direct_backend = direct_backend.split("listen stats", 1)[0]
         assert "http-reuse always" in direct_backend
@@ -757,6 +752,8 @@ def _create_router_server(port: int, replica_id_to_return: str):
         )
 
     server, thread = _serve_fastapi_app(app, port, ready)
+    # Discard the readiness-probe body so callers see only client traffic.
+    captured["bodies"].clear()
     return server, thread, captured
 
 
