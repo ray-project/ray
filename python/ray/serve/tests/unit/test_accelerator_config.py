@@ -14,7 +14,7 @@ from ray.serve.config import TPUAcceleratorConfig
 
 def test_tpu_accelerator_config_construction():
     config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
-    assert config.accelerator_type == "tpu"
+    assert config.kind == "tpu"
     assert config.topology == "4x4"
     assert config.num_slices == 1  # default
 
@@ -43,7 +43,7 @@ def test_deployment_options_accept_tpu_config_instance():
 def test_deployment_options_accept_dict_form():
     @deployment(
         accelerator_config={
-            "accelerator_type": "tpu",
+            "kind": "tpu",
             "topology": "4x4",
             "accelerator_version": "v6e",
         }
@@ -57,9 +57,9 @@ def test_deployment_options_accept_dict_form():
 
 
 def test_deployment_options_dict_unknown_accelerator_type_raises():
-    with pytest.raises(ValueError, match="Unknown accelerator_type"):
+    with pytest.raises(ValueError, match="Unknown accelerator kind"):
 
-        @deployment(accelerator_config={"accelerator_type": "xpu"})
+        @deployment(accelerator_config={"kind": "xpu"})
         class D:
             pass
 
@@ -117,3 +117,7 @@ def test_replica_pg_shutdown_idempotent():
     # Call again, should not raise or call shutdown again
     adapter_with_accel.shutdown()
     assert mock_slice_pg.shutdown.call_count == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

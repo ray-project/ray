@@ -456,11 +456,11 @@ def _resolve_accelerator_config(
     if value is None or isinstance(value, AcceleratorConfig):
         return value
     if isinstance(value, dict):
-        accelerator_type = value.get("accelerator_type")
-        if accelerator_type == "tpu":
+        kind = value.get("kind")
+        if kind == "tpu":
             return TPUAcceleratorConfig(**value)
         raise ValueError(
-            f"Unknown accelerator_type {accelerator_type!r}. "
+            f"Unknown accelerator kind {kind!r}. "
             f"Supported types: 'tpu'."
         )
     raise TypeError(
@@ -556,6 +556,9 @@ def deployment(
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
             requests). Defaults to -1 (no limit).
+        accelerator_config: Configuration for hardware accelerators, such as TPUs.
+            Can be passed as an unstructured dictionary or a structured `AcceleratorConfig`
+            subclass (e.g. `TPUAcceleratorConfig`). See `AcceleratorConfig` for options.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is

@@ -86,7 +86,6 @@ class _ReplicaPlacementGroup:
             self._slice_pg = None
             self.placement_group = None
         elif self.placement_group is not None:
-
             try:
                 remove_placement_group(self.placement_group)
             except Exception:

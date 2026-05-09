@@ -727,7 +727,7 @@ class ActorReplicaWrapper:
         # we trigger `initialize_and_get_metadata`.
         self._was_initialized_obj_ref: Optional[ObjectRef] = None
         # Set to True when `check_ready()` determines the actor cannot be
-        # recovered (e.g. the previous controller crashed before the actor
+        # recovered (e.g., the previous controller crashed before the actor
         # finished its initial setup). The reconciler treats this case as a
         # silent drop / replace rather than a deploy failure, since the
         # underlying cause is a controller-side crash, not user code.
@@ -783,6 +783,8 @@ class ActorReplicaWrapper:
         self._has_user_routing_stats_method: bool = False
         self._ingress: bool = False
         self._replica_pg = None
+        self._gang_placement_group = None
+        self._gang_pg_index = None
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
@@ -1525,29 +1527,29 @@ class ActorReplicaWrapper:
             # Remove the placement group both if the actor has already been deleted or
             # it was just killed above.
             if stopped:
-                # Check for gang placement group first to avoid shutting down
-                # the shared replica_pg before all replicas are done.
-                if self._gang_placement_group is not None:
-                    # Avoid calling shutdown() or remove_placement_group() here
-                    # since replicas in Gang PG might still be draining.
+                try:
+                    # Gang PGs are shared and managed by the DeploymentStateManager.
+                    # We do nothing here to avoid shutting them down prematurely.
+                    if self._gang_placement_group is not None:
+                        pass
+                    # Replicas with accelerator/wrapper PGs handle their own shutdown.
+                    elif self._replica_pg is not None:
+                        self._replica_pg.shutdown()
+                    # Standard single-replica placement groups.
+                    elif self._placement_group is not None:
+                        try:
+                            ray.util.remove_placement_group(self._placement_group)
+                        except ValueError:
+                            # ValueError thrown from ray.util.remove_placement_group means the
+                            # placement group has already been removed.
+                            logger.debug(
+                                f"Placement group for {self._replica_id} was already removed."
+                            )
+                finally:
+                    # Clear references to prevent dangling state.
                     self._gang_placement_group = None
-                    self._placement_group = None
-                    self._replica_pg = None
-                elif self._replica_pg is not None:
-                    self._replica_pg.shutdown()
                     self._replica_pg = None
                     self._placement_group = None
-                elif self._placement_group is not None:
-                    try:
-                        ray.util.remove_placement_group(self._placement_group)
-                    except ValueError:
-                        # ValueError thrown from ray.util.remove_placement_group means the
-                        # placement group has already been removed.
-                        logger.debug(
-                            f"Placement group for {self._replica_id} was already removed."
-                        )
-                    finally:
-                        self._placement_group = None
 
         return stopped
 

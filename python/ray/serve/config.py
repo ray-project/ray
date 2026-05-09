@@ -718,7 +718,7 @@ class AcceleratorConfig(BaseModel):
     ``serve.deployment(accelerator_config=...)``.
     """
 
-    accelerator_type: str = Field(
+    kind: str = Field(
         ..., description="Discriminator identifying the accelerator config type."
     )
 
@@ -738,7 +738,7 @@ class TPUAcceleratorConfig(AcceleratorConfig):
         >>> config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
     """
 
-    accelerator_type: Literal["tpu"] = "tpu"
+    kind: Literal["tpu"] = "tpu"
 
     topology: str = Field(
         ..., description="TPU pod topology, e.g. '2x2', '4x4', '2x2x2'."

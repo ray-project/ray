@@ -683,6 +683,7 @@ class DeploymentScheduler(ABC):
                     ),
                 )
 
+                # Inline import to avoid circular dependency with default_impl
                 from ray.serve._private.default_impl import _ReplicaPlacementGroup
 
                 if isinstance(pg_result, _ReplicaPlacementGroup):

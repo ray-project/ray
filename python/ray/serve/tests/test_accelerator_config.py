@@ -105,3 +105,7 @@ def test_tpu_accelerator_config_timeout_cleanup(mock_tpu_cluster):
                 _create_replica_placement_group(request)
 
         assert mock_remove.called
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

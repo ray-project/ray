@@ -578,7 +578,7 @@ def test_schedule_replica():
 
     scheduling_strategy = None
 
-    def set_scheduling_strategy(actor_handle, placement_group):
+    def set_scheduling_strategy(actor_handle, placement_group=None, placement_group_manager=None):
         nonlocal scheduling_strategy
         scheduling_strategy = actor_handle._options["scheduling_strategy"]
 
@@ -921,7 +921,7 @@ def test_downscale_single_deployment():
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle, placement_group: actor_handle,
+                    on_scheduled=lambda actor_handle, *args, **kwargs: actor_handle,
                 ),
             ]
         },
@@ -1445,7 +1445,7 @@ class TestPackScheduling:
 
         state = defaultdict(int)
 
-        def on_scheduled(actor_handle, placement_group):
+        def on_scheduled(actor_handle, placement_group=None, placement_group_manager=None):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
                 state[scheduling_strategy.node_id] += 1
@@ -1603,7 +1603,7 @@ class TestPackScheduling:
 
         # Despite trying to schedule on node that minimizes fragmentation,
         # should respect custom resources and schedule onto node2
-        def on_scheduled(actor_handle, placement_group):
+        def on_scheduled(actor_handle, placement_group=None, placement_group_manager=None):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == node_id_2
