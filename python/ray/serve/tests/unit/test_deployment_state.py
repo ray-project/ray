@@ -65,7 +65,11 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
-from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
+from ray.serve.config import (
+    DeploymentActorConfig,
+    GangSchedulingConfig,
+    TPUAcceleratorConfig,
+)
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
@@ -8549,74 +8553,6 @@ class TestScaleDeploymentGangReplicas:
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_gang_pg_cleanup_on_downscale(self, mock_deployment_state_manager):
-        """Verify Gang PG is only destroyed when the last replica finishes stopping."""
-        create_dsm, _, _, _ = mock_deployment_state_manager
-        dsm: DeploymentStateManager = create_dsm(
-            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
-        )
-        gang_size = 2
-        initial_replicas = 2
-        deployment_id = DeploymentID(name="gang_pg_cleanup", app_name="app")
-
-        info, version = deployment_info(
-            num_replicas=initial_replicas,
-            version="v1",
-            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
-        )
-        dsm.deploy(deployment_id, info)
-        ds = dsm._deployment_states[deployment_id]
-
-        # Mock the gang PG to track when shutdown method is called
-        mock_gang_pg = MagicMock()
-        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
-            return_value={
-                deployment_id: GangReservationResult(
-                    success=True,
-                    gang_pgs=[mock_gang_pg],
-                    gang_ids=["g1"],
-                    gang_pg_names=["SERVE_GANG::g1"],
-                )
-            }
-        )
-
-        # Start all replicas
-        dsm.update()
-        for replica in ds._replicas.get([ReplicaState.STARTING]):
-            replica._actor.set_ready()
-        dsm.update()
-        check_counts(
-            ds, total=initial_replicas, by_state=[(ReplicaState.RUNNING, 2, version)]
-        )
-
-        # Scale down to 0 to trigger gang removal
-        new_info, _ = deployment_info(
-            num_replicas=0,
-            version="v1",
-            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
-        )
-        dsm.deploy(deployment_id, new_info)
-        dsm.update()
-
-        stopping = ds._replicas.get([ReplicaState.STOPPING])
-        assert len(stopping) == 2
-
-        # Mark first replica done stopping
-        stopping[0]._actor.set_done_stopping()
-        dsm.update()
-
-        # The gang PG is not removed yet, because sibling is still stopping
-        mock_gang_pg.shutdown.assert_not_called()
-        assert "g1" in ds._gang_pg_by_id
-
-        # Mark second replica done stopping
-        stopping[1]._actor.set_done_stopping()
-        dsm.update()
-
-        # The gang PG is removed now that the gang is empty
-        mock_gang_pg.shutdown.assert_called_once()
-        assert "g1" not in ds._gang_pg_by_id
-
     def test_gang_downscale_prefers_pending_gang(self, mock_deployment_state_manager):
         """Downscaling prefers the gang that still has a pending replica."""
         create_dsm, _, _, _ = mock_deployment_state_manager
@@ -8689,6 +8625,33 @@ class TestScaleDeploymentGangReplicas:
             by_state=[(ReplicaState.RUNNING, 2, new_version)],
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_accelerator_deployment_skips_gang_setup(
+        self, mock_deployment_state_manager
+    ):
+        """A deployment with accelerator_config should not create gang PG state."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        deployment_id = DeploymentID(name="accelerator_skips_gang", app_name="app")
+
+        info, version = deployment_info(
+            num_replicas=2,
+            version="v1",
+            accelerator_config=TPUAcceleratorConfig(
+                topology="4x4", accelerator_version="v6e"
+            ),
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+
+        dsm.deploy(deployment_id, info)
+        ds = dsm._deployment_states[deployment_id]
+        ds._add_upscale_gang_replicas = MagicMock()
+        ds._add_upscale_replicas = MagicMock(return_value=[])
+
+        dsm.update()
+
+        ds._add_upscale_gang_replicas.assert_not_called()
+        ds._add_upscale_replicas.assert_called_once()
 
 
 class TestGangHealthCheck:

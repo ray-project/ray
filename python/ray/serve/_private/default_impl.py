@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class _ReplicaPlacementGroup:
+class ReplicaPlacementGroup:
     """Internal Serve handle for a replica's placement group(s).
 
     Wraps the worker PG and any accelerator-specific cleanup hooks so the
@@ -96,7 +96,7 @@ class _ReplicaPlacementGroup:
 
 def _create_replica_placement_group(
     request: CreatePlacementGroupRequest,
-) -> _ReplicaPlacementGroup:
+) -> ReplicaPlacementGroup:
     """Internal entry point that supports accelerator-specific dispatch."""
     accelerator_config = request.accelerator_config
 
@@ -105,16 +105,16 @@ def _create_replica_placement_group(
             tpu_config=accelerator_config,
             strategy=request.strategy,
             name=request.name,
-            lifetime="detached",
+            lifetime=request.lifetime,
             bundle_label_selector=request.bundle_label_selector,
         )
-        return _ReplicaPlacementGroup(
+        return ReplicaPlacementGroup(
             placement_group=slice_pg.placement_group,
             _slice_pg=slice_pg,
         )
 
     pg = _default_create_placement_group(request)
-    return _ReplicaPlacementGroup(placement_group=pg)
+    return ReplicaPlacementGroup(placement_group=pg)
 
 
 def _default_create_tpu_placement_group(
@@ -140,8 +140,9 @@ def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCach
     return DefaultClusterNodeInfoCache(gcs_client)
 
 
-CreatePlacementGroupFn = Callable[
-    [CreatePlacementGroupRequest], Union[PlacementGroup, _ReplicaPlacementGroup]
+CreatePlacementGroupFn = Callable[[CreatePlacementGroupRequest], PlacementGroup]
+CreateReplicaPlacementGroupFn = Callable[
+    [CreatePlacementGroupRequest], ReplicaPlacementGroup
 ]
 
 
@@ -153,7 +154,7 @@ def _default_create_placement_group(
         request.strategy,
         _soft_target_node_id=request.target_node_id,
         name=request.name,
-        lifetime="detached",
+        lifetime=request.lifetime,
         bundle_label_selector=request.bundle_label_selector,
     )
 

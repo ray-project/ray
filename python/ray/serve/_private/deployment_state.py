@@ -18,7 +18,7 @@ from ray._common import ray_constants
 from ray.actor import ActorHandle
 
 if TYPE_CHECKING:
-    from ray.serve._private.default_impl import _ReplicaPlacementGroup
+    from ray.serve._private.default_impl import ReplicaPlacementGroup
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -1020,7 +1020,7 @@ class ActorReplicaWrapper:
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[
-            Union[PlacementGroup, "_ReplicaPlacementGroup"]
+            Union[PlacementGroup, "ReplicaPlacementGroup"]
         ] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
@@ -1528,14 +1528,16 @@ class ActorReplicaWrapper:
             # it was just killed above.
             if stopped:
                 try:
-                    # Gang PGs are shared and managed by the DeploymentStateManager.
-                    # We do nothing here to avoid shutting them down prematurely.
+                    # 1. Gang PGs are shared and managed by the DeploymentStateManager.
+                    # We do nothing active here to avoid shutting them down prematurely.
                     if self._gang_placement_group is not None:
                         pass
-                    # Replicas with accelerator/wrapper PGs handle their own shutdown.
+
+                    # 2. Replicas with accelerator/wrapper PGs handle their own shutdown.
                     elif self._replica_pg is not None:
                         self._replica_pg.shutdown()
-                    # Standard single-replica placement groups.
+
+                    # 3. Standard single-replica placement groups.
                     elif self._placement_group is not None:
                         try:
                             ray.util.remove_placement_group(self._placement_group)
@@ -1546,7 +1548,7 @@ class ActorReplicaWrapper:
                                 f"Placement group for {self._replica_id} was already removed."
                             )
                 finally:
-                    # Clear references to prevent dangling state.
+                    # Always clear references to prevent memory leaks and dangling state.
                     self._gang_placement_group = None
                     self._replica_pg = None
                     self._placement_group = None
@@ -1929,7 +1931,7 @@ class DeploymentReplica:
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[
-            Union[PlacementGroup, "_ReplicaPlacementGroup"]
+            Union[PlacementGroup, "ReplicaPlacementGroup"]
         ] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
@@ -2883,8 +2885,6 @@ class DeploymentState:
         # Updated on replica creation during upscaling and permanent removal during downscaling.
         self._gang_id_by_replica: Dict[ReplicaID, str] = {}
         self._replicas_by_gang_id: Dict[str, Set[ReplicaID]] = defaultdict(set)
-        # Track the actual PG objects to clean them up when the gang empties
-        self._gang_pg_by_id: Dict[str, Any] = {}
 
         # Deployment-scoped actor lifecycle (per deployment)
         self._deployment_actors = DeploymentActorContainer(self._id)
@@ -3266,6 +3266,11 @@ class DeploymentState:
     @property
     def _is_gang_deployment(self) -> bool:
         """Returns True if this deployment uses gang scheduling."""
+        if (
+            self._target_state is not None
+            and self._target_state.info.deployment_config.accelerator_config is not None
+        ):
+            return False
         return self.get_gang_config() is not None
 
     def _get_target_replica_delta(self) -> int:
@@ -3990,8 +3995,6 @@ class DeploymentState:
         )
 
         for gang_pg, gang_id, pg_name in zip(gang_pgs, gang_ids, gang_pg_names):
-            # Track the PG object for later cleanup
-            self._gang_pg_by_id[gang_id] = gang_pg
 
             member_replica_ids = [
                 ReplicaID(get_random_string(), deployment_id=self._id)
@@ -4368,9 +4371,8 @@ class DeploymentState:
         self._gang_id_by_replica[replica_id] = gang_id
         self._replicas_by_gang_id[gang_id].add(replica_id)
 
-    def _unregister_gang_replica(self, replica: "DeploymentReplica") -> None:
+    def _unregister_gang_replica(self, replica_id: ReplicaID) -> None:
         """Remove a replica from the gang membership bookkeeping."""
-        replica_id = replica.replica_id
         gang_id = self._gang_id_by_replica.pop(replica_id, None)
         if gang_id is not None:
             members = self._replicas_by_gang_id.get(gang_id)
@@ -4378,42 +4380,6 @@ class DeploymentState:
                 members.discard(replica_id)
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
-
-                    gang_pg = self._gang_pg_by_id.pop(gang_id, None)
-
-                    # Fallback for controller actor recovery, if the in-memory `_gang_pg_by_id` dict
-                    # is empty, fetch the placement group from GCS.
-                    if (
-                        gang_pg is None
-                        and replica.gang_context
-                        and replica.gang_context.pg_name
-                    ):
-                        try:
-                            gang_pg = ray.util.get_placement_group(
-                                replica.gang_context.pg_name
-                            )
-                        except ValueError:
-                            pass  # PG doesn't exist in Ray, nothing to clean up
-
-                    if gang_pg is not None:
-                        try:
-                            if hasattr(gang_pg, "shutdown"):
-                                gang_pg.shutdown()
-                            else:
-                                placement_group = (
-                                    gang_pg.placement_group
-                                    if hasattr(gang_pg, "placement_group")
-                                    else gang_pg
-                                )
-                                ray.util.remove_placement_group(placement_group)
-                        except ValueError:
-                            logger.debug(
-                                f"Gang placement group for {gang_id} was already removed."
-                            )
-                        except Exception:
-                            logger.exception(
-                                f"Failed to remove gang placement group for {gang_id}."
-                            )
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
@@ -4795,7 +4761,7 @@ class DeploymentState:
                         f"Released rank from replica {replica_id} in deployment {self._id}"
                     )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
-                self._unregister_gang_replica(replica)
+                self._unregister_gang_replica(replica.replica_id)
 
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
@@ -6043,7 +6009,6 @@ class DeploymentStateManager:
                 replica_pg_fallback_strategy=(
                     replica_config.placement_group_fallback_strategy
                 ),
-                accelerator_config=deployment_state._target_state.info.deployment_config.accelerator_config,
             )
 
         if not gang_requests:

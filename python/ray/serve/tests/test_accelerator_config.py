@@ -1,5 +1,5 @@
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -8,13 +8,13 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import CreatePlacementGroupRequest
 from ray.serve._private.default_impl import (
+    ReplicaPlacementGroup,
     _create_replica_placement_group,
-    _ReplicaPlacementGroup,
 )
 from ray.serve.config import TPUAcceleratorConfig
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def mock_tpu_cluster():
     # Simulates a Ray cluster with a multi-host TPU v6e-16 slice (4x4 topology).
     pod_type = "v6e-16"
@@ -64,17 +64,18 @@ def test_tpu_accelerator_config_integration(mock_tpu_cluster):
     tpu_config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
 
     request = CreatePlacementGroupRequest(
-        bundles=[{"CPU": 1}],  # Ignored since accel_config will override it
+        bundles=[{"CPU": 1}],
         strategy="SPREAD",
         target_node_id=None,
         name="test-tpu-pg",
         accelerator_config=tpu_config,
+        lifetime="detached",
     )
 
     # This should call _create_tpu_placement_group and return a wrapper
     replica_pg = _create_replica_placement_group(request)
 
-    assert isinstance(replica_pg, _ReplicaPlacementGroup)
+    assert isinstance(replica_pg, ReplicaPlacementGroup)
     assert replica_pg._slice_pg is not None
 
     # Verify the placement group is ready
@@ -84,12 +85,16 @@ def test_tpu_accelerator_config_integration(mock_tpu_cluster):
     replica_pg.shutdown()
     assert replica_pg._slice_pg is None
 
+    # Verify idempotency of shutdown logic
+    replica_pg.shutdown()
+    assert replica_pg._slice_pg is None
 
-def test_tpu_accelerator_config_timeout_cleanup(mock_tpu_cluster):
-    """Test that SlicePlacementGroup cleans up head PGs on timeout."""
 
-    # Request a topology that requires 8 hosts (v6e-32) when cluster only has 4.
-    tpu_config = TPUAcceleratorConfig(topology="4x8", accelerator_version="v6e")
+def test_tpu_accelerator_config_partial_failure_cleanup(mock_tpu_cluster):
+    """Test that SlicePlacementGroup cleans up head PGs if a multi-slice reservation fails."""
+
+    # Request 2 slices to test partial failure cleanup
+    tpu_config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e", num_slices=2)
 
     request = CreatePlacementGroupRequest(
         bundles=[{"CPU": 1}],
@@ -97,15 +102,24 @@ def test_tpu_accelerator_config_timeout_cleanup(mock_tpu_cluster):
         target_node_id=None,
         name="test-tpu-timeout-pg",
         accelerator_config=tpu_config,
+        lifetime="detached",
     )
 
-    # Patch timeout to be short, and mock remove_placement_group to verify cleanup
-    with patch("ray._private.accelerators.tpu.remove_placement_group") as mock_remove:
-        with patch("ray.util.tpu.DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S", 2.0):
+    # Patch remove_placement_group where it is USED (ray.util.tpu)
+    with patch("ray.util.tpu.remove_placement_group") as mock_remove:
+        with patch("ray.util.tpu.reserve_tpu_slice") as mock_reserve:
+            # Succeed for first slice, fail for second
+            mock_head_pg = MagicMock()
+            mock_reserve.side_effect = [
+                ("slice-1", mock_head_pg),
+                TimeoutError("Failed to reserve TPU head"),
+            ]
+
             with pytest.raises(TimeoutError, match="Failed to reserve TPU head"):
                 _create_replica_placement_group(request)
 
-        assert mock_remove.called
+        # Verify that the first slice's head PG was cleanly rolled back
+        mock_remove.assert_called_once_with(mock_head_pg)
 
 
 if __name__ == "__main__":

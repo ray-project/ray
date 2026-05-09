@@ -570,7 +570,9 @@ def test_schedule_replica():
     scheduler = default_impl.create_deployment_scheduler(
         cluster_node_info_cache,
         head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=lambda request: MockPlacementGroup(request),
+        create_placement_group_fn_override=lambda request: default_impl.ReplicaPlacementGroup(
+            placement_group=MockPlacementGroup(request)
+        ),
     )
 
     scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
@@ -578,7 +580,9 @@ def test_schedule_replica():
 
     scheduling_strategy = None
 
-    def set_scheduling_strategy(actor_handle, placement_group=None, placement_group_manager=None):
+    def set_scheduling_strategy(
+        actor_handle, placement_group=None, placement_group_manager=None
+    ):
         nonlocal scheduling_strategy
         scheduling_strategy = actor_handle._options["scheduling_strategy"]
 
@@ -1246,7 +1250,10 @@ class TestPackScheduling:
 
         assert len(on_scheduled_mock.call_args_list) == 2
         for call in on_scheduled_mock.call_args_list:
-            assert call.kwargs == {"placement_group": None}
+            assert call.kwargs == {
+                "placement_group": None,
+                "placement_group_manager": None,
+            }
             assert len(call.args) == 1
             scheduling_strategy = call.args[0]._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
@@ -1254,7 +1261,7 @@ class TestPackScheduling:
 
         assert len(on_scheduled_mock2.call_args_list) == 1
         call = on_scheduled_mock2.call_args_list[0]
-        assert call.kwargs == {"placement_group": None}
+        assert call.kwargs == {"placement_group": None, "placement_group_manager": None}
         assert len(call.args) == 1
         scheduling_strategy = call.args[0]._options["scheduling_strategy"]
         assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
@@ -1270,9 +1277,9 @@ class TestPackScheduling:
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override="fake-head-node-id",
-            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(  # noqa
-                *args, **kwargs
-            ),
+            create_placement_group_fn_override=lambda *args, **kwargs: default_impl.ReplicaPlacementGroup(
+                placement_group=MockPlacementGroup(*args, **kwargs)
+            ),  # noqa
         )
 
         _ = ray.util.placement_group
@@ -1413,7 +1420,10 @@ class TestPackScheduling:
             scheduling_strategy = call.args[0]._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == node_id_1
-            assert call.kwargs == {"placement_group": None}
+            assert call.kwargs == {
+                "placement_group": None,
+                "placement_group_manager": None,
+            }
 
     def test_max_replicas_per_node(self):
         """Test that at most `max_replicas_per_node` number of replicas
@@ -1431,9 +1441,9 @@ class TestPackScheduling:
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override="fake-head-node-id",
-            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(  # noqa
-                *args, **kwargs
-            ),
+            create_placement_group_fn_override=lambda *args, **kwargs: default_impl.ReplicaPlacementGroup(
+                placement_group=MockPlacementGroup(*args, **kwargs)
+            ),  # noqa
         )
         scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_deployed(
@@ -1445,7 +1455,9 @@ class TestPackScheduling:
 
         state = defaultdict(int)
 
-        def on_scheduled(actor_handle, placement_group=None, placement_group_manager=None):
+        def on_scheduled(
+            actor_handle, placement_group=None, placement_group_manager=None
+        ):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
                 state[scheduling_strategy.node_id] += 1
@@ -1589,9 +1601,9 @@ class TestPackScheduling:
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override="fake-head-node-id",
-            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(  # noqa
-                *args, **kwargs
-            ),
+            create_placement_group_fn_override=lambda *args, **kwargs: default_impl.ReplicaPlacementGroup(
+                placement_group=MockPlacementGroup(*args, **kwargs)
+            ),  # noqa
         )
         scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_deployed(
@@ -1603,7 +1615,9 @@ class TestPackScheduling:
 
         # Despite trying to schedule on node that minimizes fragmentation,
         # should respect custom resources and schedule onto node2
-        def on_scheduled(actor_handle, placement_group=None, placement_group_manager=None):
+        def on_scheduled(
+            actor_handle, placement_group=None, placement_group_manager=None
+        ):
             scheduling_strategy = actor_handle._options["scheduling_strategy"]
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == node_id_2
@@ -1718,7 +1732,9 @@ class TestPackScheduling:
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("Simulated PG creation failure")
-            return MockPlacementGroup(request)
+            return default_impl.ReplicaPlacementGroup(
+                placement_group=MockPlacementGroup(request)
+            )
 
         scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
@@ -1858,7 +1874,10 @@ class TestPackScheduling:
         strategy1 = call1.args[0]._options["scheduling_strategy"]
         assert isinstance(strategy1, NodeAffinitySchedulingStrategy)
         assert strategy1.node_id == node_id_1
-        assert call1.kwargs == {"placement_group": None}
+        assert call1.kwargs == {
+            "placement_group": None,
+            "placement_group_manager": None,
+        }
 
         # The CPU replica should also go to node 1 (now non-idle) rather
         # than node 2 (idle but tighter fit). The PACK scheduler prefers
@@ -1868,7 +1887,10 @@ class TestPackScheduling:
         strategy2 = call2.args[0]._options["scheduling_strategy"]
         assert isinstance(strategy2, NodeAffinitySchedulingStrategy)
         assert strategy2.node_id == node_id_1
-        assert call2.kwargs == {"placement_group": None}
+        assert call2.kwargs == {
+            "placement_group": None,
+            "placement_group_manager": None,
+        }
 
 
 class TestScheduleGangPlacementGroups:

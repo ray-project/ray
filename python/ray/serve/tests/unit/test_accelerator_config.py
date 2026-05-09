@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,11 +6,13 @@ from pydantic import ValidationError
 
 from ray.serve._private.common import CreatePlacementGroupRequest
 from ray.serve._private.default_impl import (
+    ReplicaPlacementGroup,
     _create_replica_placement_group,
-    _ReplicaPlacementGroup,
+    _default_create_placement_group,
 )
 from ray.serve.api import deployment
 from ray.serve.config import TPUAcceleratorConfig
+from ray.util.placement_group import PlacementGroup
 
 
 def test_tpu_accelerator_config_construction():
@@ -64,59 +67,85 @@ def test_deployment_options_dict_unknown_accelerator_type_raises():
             pass
 
 
-def test_create_replica_placement_group_tpu_dispatch():
-    config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
+@pytest.mark.parametrize(
+    "invalid_kwargs",
+    [
+        {"topology": "4x4"},  # missing accelerator_version
+        {"accelerator_version": "v6e"},  # missing topology
+        {"topology": 123, "accelerator_version": "v6e"},  # topology should be str
+        {
+            "topology": "4x4",
+            "accelerator_version": "v6e",
+            "num_slices": "two",
+        },  # num_slices should be int
+        {
+            "topology": "4x4",
+            "accelerator_version": "v6e",
+            "num_slices": 0,
+        },  # num_slices must be >= 1
+    ],
+)
+def test_tpu_accelerator_config_validation(invalid_kwargs):
+    with pytest.raises(ValidationError):
+        TPUAcceleratorConfig(**invalid_kwargs)
+
+
+@pytest.mark.parametrize(
+    "creation_fn, expects_wrapper",
+    [
+        (_default_create_placement_group, False),
+        (_create_replica_placement_group, True),
+    ],
+)
+def test_placement_group_creation_types(creation_fn, expects_wrapper):
+    """Verify that external overrides return bare PGs while internal ones return wrappers."""
     request = CreatePlacementGroupRequest(
-        bundles=[],
+        bundles=[{"CPU": 1.0}],
         strategy="SPREAD",
         target_node_id="",
         name="test",
-        accelerator_config=config,
     )
 
-    fake_slice_pg = MagicMock()
-    fake_slice_pg.placement_group = MagicMock()
+    mock_pg = MagicMock(spec=PlacementGroup)
+    with patch("ray.util.placement_group", return_value=mock_pg):
+        result = creation_fn(request)
 
-    with patch(
-        "ray.serve._private.default_impl.slice_placement_group"
-    ) as mock_slice_pg:
-        mock_slice_pg.return_value = fake_slice_pg
-
-        result = _create_replica_placement_group(request)
-
-        assert mock_slice_pg.called
-        assert result._slice_pg is not None
-        assert result.placement_group == fake_slice_pg.placement_group
-        mock_slice_pg.assert_called_once()
+    if expects_wrapper:
+        assert isinstance(result, ReplicaPlacementGroup)
+        assert result.placement_group == mock_pg
+    else:
+        assert result == mock_pg
+        assert not isinstance(result, ReplicaPlacementGroup)
 
 
-def test_replica_pg_shutdown_idempotent():
-    """Test that _ReplicaPlacementGroup shutdown is idempotent."""
-    # Path 1: No accelerator
+@pytest.mark.parametrize("with_accelerator", [False, True])
+def test_replica_pg_shutdown_idempotent(with_accelerator):
+    """Test that ReplicaPlacementGroup shutdown is idempotent."""
     mock_pg = MagicMock()
-    adapter = _ReplicaPlacementGroup(placement_group=mock_pg)
 
-    with patch("ray.serve._private.default_impl.remove_placement_group") as mock_remove:
+    if with_accelerator:
+        mock_slice_pg = MagicMock()
+        adapter = ReplicaPlacementGroup(
+            placement_group=mock_pg, _slice_pg=mock_slice_pg
+        )
+
         adapter.shutdown()
-        mock_remove.assert_called_once_with(mock_pg)
+        mock_slice_pg.shutdown.assert_called_once()
+        assert adapter._slice_pg is None
 
-        # Call again, should not raise or call remove again
         adapter.shutdown()
-        assert mock_remove.call_count == 1
+        assert mock_slice_pg.shutdown.call_count == 1
+    else:
+        adapter = ReplicaPlacementGroup(placement_group=mock_pg)
 
-    # Path 2: With accelerator
-    mock_slice_pg = MagicMock()
-    adapter_with_accel = _ReplicaPlacementGroup(
-        placement_group=mock_pg, _slice_pg=mock_slice_pg
-    )
+        with patch(
+            "ray.serve._private.default_impl.remove_placement_group"
+        ) as mock_remove:
+            adapter.shutdown()
+            mock_remove.assert_called_once_with(mock_pg)
 
-    adapter_with_accel.shutdown()
-    mock_slice_pg.shutdown.assert_called_once()
-    assert adapter_with_accel._slice_pg is None
-
-    # Call again, should not raise or call shutdown again
-    adapter_with_accel.shutdown()
-    assert mock_slice_pg.shutdown.call_count == 1
+            adapter.shutdown()
+            assert mock_remove.call_count == 1
 
 
 if __name__ == "__main__":
