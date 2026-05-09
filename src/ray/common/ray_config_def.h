@@ -1134,3 +1134,11 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+/// This is a temporary config for fixing GPU fractional scheduling by tracking
+/// per-instance availability. If true, use per-instance resource view (NewNodeResources)
+/// for cluster scheduling instead of the scalar NodeResources. This enables accurate GPU
+/// fragmentation detection in the scheduler so that tasks are not scheduled to nodes
+/// where aggregate GPU capacity is sufficient but no single GPU instance has enough
+/// remaining capacity. Defaults to false.
+RAY_CONFIG(bool, enable_per_instance_resource_scheduling, false)
