@@ -356,6 +356,61 @@ class TestReplicaSlotReservation:
 
         assert replica.get_num_ongoing_requests() == 0
 
+    async def test_release_slot_returns_status_and_recovers_capacity(self):
+        # Releasing a known token reports True and frees a slot; releasing an
+        # unknown or already-released token reports False and is a no-op.
+        replica = ServeReplica.__new__(ServeReplica)
+        replica._deployment_config = Mock(max_ongoing_requests=1)
+        replica._metrics_manager = FakeReplicaMetricsManager()
+        replica._reserved_slots = set()
+        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+
+        request_metadata = dummy_request_metadata()
+        accepted, _ = await replica.reserve_slot(request_metadata, "tok-a")
+        assert accepted
+        assert replica.get_num_ongoing_requests() == 1
+
+        accepted, count = replica.release_slot("tok-a")
+        assert accepted
+        assert count == 0
+        assert replica.get_num_ongoing_requests() == 0
+
+        # Releasing the same token a second time is a no-op.
+        accepted, count = replica.release_slot("tok-a")
+        assert not accepted
+        assert count == 0
+
+        # Releasing a token that was never reserved is also a no-op.
+        accepted, count = replica.release_slot("never-reserved")
+        assert not accepted
+        assert count == 0
+
+        # Capacity is fully recovered: a fresh reservation succeeds.
+        accepted, _ = await replica.reserve_slot(request_metadata, "tok-b")
+        assert accepted
+
+    async def test_dispatch_with_unknown_slot_token_is_rejected(self):
+        # A request that arrives with a slot token nobody reserved (or that
+        # was already released) must be rejected loudly and must not
+        # consume capacity.
+        replica = ServeReplica.__new__(ServeReplica)
+        replica._deployment_config = Mock(max_ongoing_requests=1)
+        replica._metrics_manager = FakeReplicaMetricsManager()
+        replica._reserved_slots = set()
+        replica._semaphore = Semaphore(lambda: replica.max_ongoing_requests)
+
+        bogus = replace(dummy_request_metadata(), _reserved_slot_token="never-reserved")
+        with pytest.raises(RuntimeError, match="unknown reserved slot"):
+            async with replica._start_request(bogus):
+                pass
+
+        assert replica.get_num_ongoing_requests() == 0
+
+        # The replica is still healthy: a normal request can still run.
+        async with replica._start_request(dummy_request_metadata()):
+            assert replica.get_num_ongoing_requests() == 1
+        assert replica.get_num_ongoing_requests() == 0
+
     async def test_drain_waits_for_reserved_slots(self):
         # A reserved-but-not-yet-dispatched slot is holding capacity, so a
         # graceful shutdown must wait for it just like an in-flight request.
@@ -377,9 +432,9 @@ class TestReplicaSlotReservation:
         drain_task = asyncio.create_task(replica._drain_ongoing_requests())
         try:
             await asyncio.sleep(0.1)
-            assert not drain_task.done(), (
-                "drain should still be running while a slot is reserved"
-            )
+            assert (
+                not drain_task.done()
+            ), "drain should still be running while a slot is reserved"
 
             replica.release_slot("slot-token-1")
             await asyncio.wait_for(drain_task, timeout=1.0)
