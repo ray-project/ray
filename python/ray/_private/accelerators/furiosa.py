@@ -81,7 +81,7 @@ class FuriosaAcceleratorManager(AcceleratorManager):
         """Detects the number of Furiosa NPU devices on the current machine."""
         try:
             from furiosa_smi_py import init, list_devices
-            
+
             init()
 
             return len(list_devices())
