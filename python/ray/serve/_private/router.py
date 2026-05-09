@@ -1341,14 +1341,20 @@ class AsyncioRouter:
         try:
             yield selection
         finally:
-            num_ongoing_requests = await selection._release_slot()
-            if num_ongoing_requests is not None:
-                self.request_router.on_new_queue_len_info(
-                    replica.replica_id, num_ongoing_requests
+            try:
+                num_ongoing_requests = await selection._release_slot()
+                if num_ongoing_requests is not None:
+                    self.request_router.on_new_queue_len_info(
+                        replica.replica_id, num_ongoing_requests
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to release reserved slot on choose_replica exit."
                 )
-
-            # Decrement reserved slots metric
-            self._metrics_manager.dec_reserved_slots()
+            finally:
+                # Decrement reserved slots metric even if release failed,
+                # otherwise the gauge leaks for the lifetime of the process.
+                self._metrics_manager.dec_reserved_slots()
 
     async def dispatch(
         self,
@@ -1404,11 +1410,16 @@ class AsyncioRouter:
                 await self._resolve_request_arguments(pr)
             result = replica.try_send_request(pr, with_rejection=False)
         except BaseException:
-            num_ongoing_requests = await selection._release_slot(force=True)
-            if num_ongoing_requests is not None:
-                self.request_router.on_new_queue_len_info(
-                    replica.replica_id, num_ongoing_requests
-                )
+            # Release the slot but never let a release-time error replace the
+            # original dispatch failure — the caller needs to see the real cause.
+            try:
+                num_ongoing_requests = await selection._release_slot(force=True)
+                if num_ongoing_requests is not None:
+                    self.request_router.on_new_queue_len_info(
+                        replica.replica_id, num_ongoing_requests
+                    )
+            except Exception:
+                logger.exception("Failed to release reserved slot during dispatch.")
             raise
 
         # Keep track of requests that have been sent out to replicas

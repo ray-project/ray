@@ -128,6 +128,7 @@ class FakeReplica(RunningReplica):
         self._requests_sent = []  # Track all requests sent to this replica
         self._reject_reservation = False
         self._reservation_queue_len = 1
+        self._release_slot_error: Optional[Exception] = None
 
         # Create a minimal _replica_info object to satisfy router.py requirements
         self._replica_info = Mock()
@@ -181,8 +182,14 @@ class FakeReplica(RunningReplica):
 
     async def release_slot(self, slot_token: str) -> int:
         """Release a reserved slot."""
+        if self._release_slot_error is not None:
+            raise self._release_slot_error
         self._reserved_slots.discard(slot_token)
         return len(self._reserved_slots)
+
+    def set_release_slot_error(self, error: Optional[Exception]) -> None:
+        """Configure release_slot to raise the given error (or clear with None)."""
+        self._release_slot_error = error
 
     def send_request_with_slot(
         self, pr: PendingRequest, slot_token: str
@@ -1688,6 +1695,58 @@ class TestChooseReplica:
 
         # After all exit without dispatch, cache should be 0
         assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    async def test_release_failure_does_not_leak_reserved_slots_metric(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """If the release call raises during choose_replica cleanup, the
+        reserved-slots gauge must still decrement — otherwise it leaks for the
+        process lifetime — and the exception must not propagate to the caller.
+        """
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        replica.set_release_slot_error(RuntimeError("simulated release failure"))
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        before = router._metrics_manager._num_reserved_slots
+        async with router.choose_replica(request_metadata):
+            assert router._metrics_manager._num_reserved_slots == before + 1
+        # Exit ran cleanly even though release raised.
+        assert router._metrics_manager._num_reserved_slots == before
+
+    async def test_dispatch_failure_is_not_masked_by_release_failure(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """If both `try_send_request` and the cleanup `release_slot` raise, the
+        caller must see the original dispatch error, not the release error.
+        """
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        dispatch_error = RuntimeError("dispatch boom")
+        replica = FakeReplica(r1_id, error=dispatch_error)
+        replica.set_release_slot_error(RuntimeError("release boom"))
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            with pytest.raises(RuntimeError, match="dispatch boom"):
+                await router.dispatch(selection, request_metadata)
 
     async def test_dispatch_replica_unavailable(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
