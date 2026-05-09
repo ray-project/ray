@@ -293,12 +293,12 @@ pkg_files(
 
 pkg_files(
     name = "serve_so_files",
-    srcs = ["//python/ray/serve:_timeseries_utils.so"],
+    srcs = ["//python/ray/serve:serve_so_output"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/serve/_private/",
     renames = select({
         "@platforms//os:windows": {
-            "//python/ray/serve:_timeseries_utils.so": "_timeseries_utils.pyd",
+            "//python/ray/serve:serve_so_output": "_timeseries_utils.pyd",
         },
         "//conditions:default": {},
     }),
@@ -374,6 +374,7 @@ pkg_zip(
         ":gcs_server_files",
         ":raylet_files",
         ":raylet_so_files",
+        ":serve_so_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
         "//conditions:default": [],
