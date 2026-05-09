@@ -20,7 +20,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
-from ray.data.checkpoint.interfaces import CheckpointBackend
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
 from ray.data.datasource import PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -220,28 +219,12 @@ class CheckpointManager(abc.ABC):
         if data_file_dir is not None:
             self._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
 
-        if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
-            from ray.data._internal.datasource.iceberg_datasource import (
-                _get_iceberg_catalog,
-            )
-
-            catalog = _get_iceberg_catalog(self.ckpt_config.catalog_kwargs)
-            if catalog.table_exists(self.checkpoint_path):
-                checkpoint_ds = ray.data.read_iceberg(
-                    table_identifier=self.checkpoint_path,
-                    selected_fields=(self.id_column,),
-                    catalog_kwargs=self.ckpt_config.catalog_kwargs,
-                )
-            else:
-                arrow_tbl = pyarrow.Table.from_pydict({self.id_column: []})
-                checkpoint_ds = ray.data.from_arrow(arrow_tbl)
-        else:
-            # Load the checkpoint data
-            checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-                self.checkpoint_path,
-                filesystem=self.filesystem,
-                partition_filter=self.checkpoint_path_partition_filter,
-            )
+        # Load the checkpoint data
+        checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
+            self.checkpoint_path,
+            filesystem=self.filesystem,
+            partition_filter=self.checkpoint_path_partition_filter,
+        )
         checkpoint_ds.set_name("checkpoint_dataset")
 
         # Manually disable checkpointing for loading the checkpoint metadata
@@ -360,15 +343,9 @@ class CheckpointFilter(abc.ABC):
         self.id_column = self.ckpt_config.id_column
 
     def delete_checkpoint(self) -> None:
-        if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
-            from ray.data._internal.datasource.iceberg_datasource import (
-                _get_iceberg_catalog,
-            )
-
-            catalog = _get_iceberg_catalog(self.ckpt_config.catalog_kwargs)
-            catalog.drop_table(self.checkpoint_path)
-        else:
-            self.filesystem.delete_dir(self.checkpoint_path_unwrapped)
+        self.ckpt_config.filesystem.delete_dir(
+            _unwrap_protocol(self.ckpt_config.checkpoint_path)
+        )
 
     @abstractmethod
     def filter_rows_for_block(self, block: Block) -> Block:

@@ -872,33 +872,17 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
 
     # so it fate-shares with the driver.
-    # Use label_selector if RAY_NODE_ID_KEY is available (newer Ray builds),
-    # otherwise fall back to NodeAffinitySchedulingStrategy for compatibility.
-    if hasattr(ray._raylet, "RAY_NODE_ID_KEY"):
-        label_selector = {
-            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-        }
-        return _StatsActor.options(
-            name=STATS_ACTOR_NAME,
-            namespace=STATS_ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            label_selector=label_selector,
-        ).remote()
-    else:
-        from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
 
-        scheduling_strategy = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-        return _StatsActor.options(
-            name=STATS_ACTOR_NAME,
-            namespace=STATS_ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            scheduling_strategy=scheduling_strategy,
-        ).remote()
+    return _StatsActor.options(
+        name=STATS_ACTOR_NAME,
+        namespace=STATS_ACTOR_NAMESPACE,
+        get_if_exists=True,
+        lifetime="detached",
+        label_selector=label_selector,
+    ).remote()
 
 
 class _StatsManager:
