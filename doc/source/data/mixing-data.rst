@@ -153,6 +153,6 @@ Limitations
 See also
 --------
 
-- :meth:`ray.data.Dataset.repartition`
-- :ref:`Ray Data for training data ingest <data-ingest-torch>`
+- :ref:`Using Ray Data with Ray Train for distributed training and data ingest <data-ingest-torch>`
 - :ref:`Ray Data shuffling solutions <shuffling_data>`
+- :meth:`ray.data.Dataset.repartition`
