@@ -843,21 +843,6 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(replica_id, new_queue_len)
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
-    def on_replica_result_finished(self, replica_id: ReplicaID):
-        """Undo a prior on_send_request() increment.
-
-        Called from assign_request's cleanup when try_send_request raised
-        after the cache was optimistically incremented by on_send_request
-        but before the result's done callback was registered — there's no
-        other path to reverse that increment.
-        """
-        if self._use_replica_queue_len_cache:
-            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
-            if num_ongoing_requests > 0:
-                new_queue_len = num_ongoing_requests - 1
-                self._replica_queue_len_cache.update(replica_id, new_queue_len)
-                self._update_router_queue_len_gauge(replica_id, new_queue_len)
-
     def decrement_queue_len_cache(self, replica_id: ReplicaID):
         """Decrement the queue length cache for a replica.
 
