@@ -356,11 +356,13 @@ class RunningReplica:
             num_ongoing_requests=num_ongoing_requests,
         )
 
-    async def release_slot(self, slot_token: str) -> ReplicaQueueLengthInfo:
+    async def release_slot(self, slot_token: str) -> int:
         """Release a previously reserved slot.
 
         This should be called if a request is not dispatched after
         reserving a slot (e.g., due to an error or cancellation).
+
+        Returns the replica's reported num_ongoing_requests after the release.
         """
         if self._replica_info.is_cross_language:
             raise RuntimeError("Slot reservation not supported for Java.")
@@ -368,10 +370,7 @@ class RunningReplica:
         _, num_ongoing_requests = await self._actor_handle.release_slot.remote(
             slot_token
         )
-        return ReplicaQueueLengthInfo(
-            accepted=True,
-            num_ongoing_requests=num_ongoing_requests,
-        )
+        return num_ongoing_requests
 
 
 @dataclass
@@ -438,10 +437,12 @@ class ReplicaSelection:
             )
         self._dispatched = True
 
-    async def _release_slot(
-        self, *, force: bool = False
-    ) -> Optional[ReplicaQueueLengthInfo]:
-        """Internal: Release the reserved slot."""
+    async def _release_slot(self, *, force: bool = False) -> Optional[int]:
+        """Internal: Release the reserved slot.
+
+        Returns the replica's reported num_ongoing_requests after the release,
+        or None if dispatch already consumed the slot (and ``force`` is False).
+        """
         if self._dispatched and not force:
             return None
 
