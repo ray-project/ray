@@ -148,7 +148,7 @@ Limitations
 
 - **Avoid** :meth:`~ray.data.Dataset.map` / :meth:`~ray.data.Dataset.filter` **after** :meth:`~ray.data.Dataset.mix`. Downstream transformations can combine or split blocks before they reach the trainer, which breaks the row-ratio guarantees :meth:`~ray.data.Dataset.mix` provides. Apply per-dataset transforms upstream of :meth:`~ray.data.Dataset.mix`.
 - **Schemas must match.** :meth:`~ray.data.Dataset.mix` does not unify schemas for you. Apply :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.select_columns` upstream to make all inputs structurally identical.
-- **Heavily skewed weights (current limitation).** All input datasets currently execute concurrently with some portion of cluster resources equally divided between them. With heavily skewed weights (for example,, ``[0.95, 0.05]``), the high-weight dataset may bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other (for example,, ``[0.4, 0.3, 0.2, 0.1]``).
+- **Heavily skewed weights (current limitation).** All input datasets currently execute concurrently with some portion of cluster resources equally divided between them. With heavily skewed weights (for example, ``[0.95, 0.05]``), the high-weight dataset may bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other (for example, ``[0.4, 0.3, 0.2, 0.1]``).
 
 See also
 --------
