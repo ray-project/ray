@@ -687,10 +687,10 @@ class DeploymentScheduler(ABC):
                 from ray.serve._private.default_impl import _ReplicaPlacementGroup
 
                 if isinstance(pg_result, _ReplicaPlacementGroup):
-                    pg = pg_result.placement_group
+                    placement_group = pg_result.placement_group
                     slice_pg = pg_result
                 else:
-                    pg = pg_result
+                    placement_group = pg_result
                     slice_pg = None
             except Exception:
                 # We add a defensive exception here, so the controller can
@@ -704,7 +704,7 @@ class DeploymentScheduler(ABC):
                 )
                 return False
             scheduling_strategy = PlacementGroupSchedulingStrategy(
-                placement_group=pg,
+                placement_group=placement_group,
                 placement_group_capture_child_tasks=True,
             )
             target_labels = None
