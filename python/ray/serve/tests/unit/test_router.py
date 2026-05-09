@@ -179,13 +179,10 @@ class FakeReplica(RunningReplica):
             num_ongoing_requests=len(self._reserved_slots),
         )
 
-    async def release_slot(self, slot_token: str) -> ReplicaQueueLengthInfo:
+    async def release_slot(self, slot_token: str) -> int:
         """Release a reserved slot."""
         self._reserved_slots.discard(slot_token)
-        return ReplicaQueueLengthInfo(
-            accepted=True,
-            num_ongoing_requests=len(self._reserved_slots),
-        )
+        return len(self._reserved_slots)
 
     def send_request_with_slot(
         self, pr: PendingRequest, slot_token: str
@@ -280,13 +277,9 @@ class FakeRequestRouter(RequestRouter):
     def on_replica_actor_died(self, replica_id: ReplicaID):
         self._dropped_replicas.add(replica_id)
 
-    def on_new_queue_len_info(
-        self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
-    ):
+    def on_new_queue_len_info(self, replica_id: ReplicaID, num_ongoing_requests: int):
         if self._use_queue_len_cache:
-            self._replica_queue_len_cache.update(
-                replica_id, queue_len_info.num_ongoing_requests
-            )
+            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests)
 
     def on_send_request(self, replica_id: ReplicaID):
         if self._use_queue_len_cache:

@@ -1056,7 +1056,9 @@ class AsyncioRouter:
                 return result
 
             queue_info = await result.get_rejection_response()
-            self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
+            self.request_router.on_new_queue_len_info(
+                replica.replica_id, queue_info.num_ongoing_requests
+            )
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
                 result.add_done_callback(
@@ -1313,7 +1315,7 @@ class AsyncioRouter:
                         continue
 
                     self.request_router.on_new_queue_len_info(
-                        replica.replica_id, queue_info
+                        replica.replica_id, queue_info.num_ongoing_requests
                     )
                     if queue_info.accepted:
                         break
@@ -1339,10 +1341,10 @@ class AsyncioRouter:
         try:
             yield selection
         finally:
-            queue_info = await selection._release_slot()
-            if queue_info is not None:
+            num_ongoing_requests = await selection._release_slot()
+            if num_ongoing_requests is not None:
                 self.request_router.on_new_queue_len_info(
-                    replica.replica_id, queue_info
+                    replica.replica_id, num_ongoing_requests
                 )
 
             # Decrement reserved slots metric
@@ -1402,10 +1404,10 @@ class AsyncioRouter:
                 await self._resolve_request_arguments(pr)
             result = replica.try_send_request(pr, with_rejection=False)
         except BaseException:
-            queue_info = await selection._release_slot(force=True)
-            if queue_info is not None:
+            num_ongoing_requests = await selection._release_slot(force=True)
+            if num_ongoing_requests is not None:
                 self.request_router.on_new_queue_len_info(
-                    replica.replica_id, queue_info
+                    replica.replica_id, num_ongoing_requests
                 )
             raise
 
