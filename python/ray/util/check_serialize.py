@@ -47,8 +47,9 @@ class FailureTuple:
         self.parent = parent
 
     def __repr__(self):
-        path_str = " -> ".join(self.path)
-        var_name = self.path[-1] if self.path else "unknown"
+        formatted_path = [str(p) if p is not None else "unknown" for p in self.path]
+        path_str = " -> ".join(formatted_path)
+        var_name = formatted_path[-1] if formatted_path else "unknown"
         return f"FailTuple({var_name} [path={path_str}, obj={self.obj}, parent={self.parent}])"
 
 
@@ -208,7 +209,8 @@ def _inspect_serializability(
         found = True
         try:
             if depth == 0:
-                failure_set.add(FailureTuple(base_obj, path + (name,), parent))
+                failure_path = path + ((name,) if name is not None else ())
+                failure_set.add(FailureTuple(base_obj, failure_path, parent))
         except Exception:
             pass
 
@@ -225,7 +227,7 @@ def _inspect_serializability(
             parent=base_obj,
             failure_set=failure_set,
             printer=printer,
-            path=path + (name,),
+            path=path + ((name,) if name is not None else ()),
         )
     else:
         _inspect_generic_serialization(
@@ -234,11 +236,12 @@ def _inspect_serializability(
             parent=base_obj,
             failure_set=failure_set,
             printer=printer,
-            path=path + (name,),
+            path=path + ((name,) if name is not None else ()),
         )
 
     if not failure_set:
-        failure_set.add(FailureTuple(base_obj, path + (name,), parent))
+        failure_path = path + ((name,) if name is not None else ())
+        failure_set.add(FailureTuple(base_obj, failure_path, parent))
 
     if top_level:
         printer.print("=" * min(len(declaration), 80))
