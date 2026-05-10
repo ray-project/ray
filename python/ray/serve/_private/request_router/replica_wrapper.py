@@ -408,6 +408,11 @@ class ReplicaSelection:
         default=False, init=False
     )  # Tracks if dispatch was called
 
+    # Set by dispatch once the result's done-callback is wired up. Read by
+    # choose_replica's finally to decide whether to fire on_request_completed
+    # manually (only one of the two paths should fire it).
+    _completion_callback_registered: bool = field(default=False, init=False)
+
     @property
     def address(self) -> str:
         """Returns the replica address in host:port format."""
