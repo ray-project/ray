@@ -445,13 +445,13 @@ cdef increase_recursion_limit():
             pycore_ceval.h) compare `__builtin_frame_address(0)` to a per-thread
             `c_stack_soft_limit` on `_PyThreadStateImpl` (Include/internal/
             pycore_tstate.h). Those limits are anchored at PyThreadState bind
-            time using `pthread_getattr_np` — i.e., they describe the OS thread's
+            time using `pthread_getattr_np` -- i.e., they describe the OS thread's
             pthread stack. Ray's FiberState
             (src/ray/core_worker/task_execution/fiber.h:104) runs each async
             actor task on a 256 KiB `boost::fibers::fixedsize_stack` in a
             separate memory region, so the very first Python call on the fiber
             trips the check and CPython aborts with a fatal "Unrecoverable
-            stack overflow (used XXX kB)" — XXX is just the address gap, not
+            stack overflow (used XXX kB)" -- XXX is just the address gap, not
             real usage. Calling `_Py_InitializeRecursionLimits` would re-anchor
             to the *pthread* stack again, which is the same wrong answer; we
             re-anchor by hand to the current frame address with a fixed budget
@@ -495,12 +495,12 @@ cdef increase_recursion_limit():
         // Offset access to _PyThreadStateImpl c_stack_{top,soft_limit,hard_limit}.
         // PyThreadState is the leading sub-struct; Py_ssize_t refcount follows;
         // then three uintptr_t fields. Compatible with cp3.14.x while we're
-        // pinned to 3.14 — re-validate the offset if/when we move to 3.15.
+        // pinned to 3.14 -- re-validate the offset if/when we move to 3.15.
         uintptr_t *c_stack =
             (uintptr_t *)((char *)x + sizeof(PyThreadState) + sizeof(Py_ssize_t));
         uintptr_t here = (uintptr_t)__builtin_frame_address(0);
         // Only re-anchor if the recorded soft limit is at-or-above the current
-        // frame — i.e., we're not on the stack the limits describe. On the
+        // frame -- i.e., we're not on the stack the limits describe. On the
         // worker's main pthread stack this branch is a no-op.
         if (here <= c_stack[1] /* c_stack_soft_limit */) {
             // boost::fibers fixedsize_stack is 256 KiB
