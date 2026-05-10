@@ -63,6 +63,6 @@ pyx_library(
 
 filegroup(
     name = "serve_so_output",
-    srcs = [":_timeseries_utils"],
+    srcs = ["_private/_timeseries_utils.so"],
     visibility = ["//visibility:public"],
 )
