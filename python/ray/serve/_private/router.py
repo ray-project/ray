@@ -1780,7 +1780,7 @@ class SingletonThreadRouter(Router):
             A concurrent.futures.Future that resolves to the ReplicaResult.
         """
         # Extract operation name from coroutine for logging
-        operation_name = coro.__name__ if hasattr(coro, "__name__") else "operation"
+        operation_name = coro.__name__
 
         def asyncio_future_callback(
             asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
