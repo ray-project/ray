@@ -40,6 +40,9 @@ from custom_directives import (  # noqa
 assert not os.path.exists(
     "../../python/ray/_raylet.so"
 ), "_raylet.so should not be imported for the purpose for doc build, please rename the file to _raylet.so.bak and try again."
+assert not os.path.exists(
+    "../../python/ray/serve/_private/_timeseries_utils.so"
+), "_timeseries_utils.so should not be imported for the purpose for doc build, please rename the file to _timeseries_utils.so.bak and try again."
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -846,6 +849,7 @@ autodoc_mock_imports = [
     "ray._raylet",
     "ray.core.generated",
     "ray.serve.generated",
+    "ray.serve._private._timeseries_utils"
 ]
 
 for mock_target in autodoc_mock_imports:
