@@ -29,29 +29,28 @@ class _RoundRobinReplicaRanks(Sequence[List[RunningReplica]]):
         self,
         replicas: List[RunningReplica],
         start_index: int,
-        num_ranks: int,
     ):
         self._replicas = replicas
         self._start_index = start_index
-        self._num_ranks = num_ranks
 
     def __len__(self) -> int:
-        return self._num_ranks
+        return len(self._replicas)
 
     def __getitem__(self, index):
         if isinstance(index, slice):
             return list(self)[index]
 
+        num_replicas = len(self._replicas)
         if index < 0:
-            index += self._num_ranks
-        if index < 0 or index >= self._num_ranks:
+            index += num_replicas
+        if index < 0 or index >= num_replicas:
             raise IndexError(index)
 
-        return [self._replicas[(self._start_index + index) % len(self._replicas)]]
+        return [self._replicas[(self._start_index + index) % num_replicas]]
 
     def __iter__(self):
         num_replicas = len(self._replicas)
-        for offset in range(self._num_ranks):
+        for offset in range(num_replicas):
             yield [self._replicas[(self._start_index + offset) % num_replicas]]
 
 
@@ -79,11 +78,13 @@ class RoundRobinRouter(FIFOMixin, RequestRouter):
         if not candidate_replicas:
             return []
 
+        if pending_request is not None:
+            # Enable exponential-backoff sleep between outer retry iterations.
+            # Without this, the base class tight-loops calling choose_replicas
+            # when every replica is at capacity.
+            pending_request.routing_context.should_backoff = True
+
         index = self._round_robin_counter % len(candidate_replicas)
         self._round_robin_counter += 1
 
-        return _RoundRobinReplicaRanks(
-            candidate_replicas,
-            index,
-            len(candidate_replicas),
-        )
+        return _RoundRobinReplicaRanks(candidate_replicas, index)

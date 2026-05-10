@@ -173,5 +173,19 @@ async def test_choose_replicas_empty_candidates(router):
     assert router._round_robin_counter == counter
 
 
+@pytest.mark.asyncio
+async def test_choose_replicas_sets_should_backoff(router):
+    # Without should_backoff, the base class tight-loops choose_replicas when
+    # every replica is at capacity (see _choose_replicas_with_backoff).
+    replicas = _make_replicas("r0", "r1")
+    router.update_replicas(replicas)
+    await asyncio.sleep(0)
+
+    request = _make_request()
+    assert request.routing_context.should_backoff is False
+    await router.choose_replicas(replicas, request)
+    assert request.routing_context.should_backoff is True
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

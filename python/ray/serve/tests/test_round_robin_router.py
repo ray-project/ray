@@ -90,12 +90,7 @@ def test_handle_options_and_http_round_robin(serve_instance):
 
     def handle_call():
         response = (
-            handle.options(
-                method_name="via_options",
-                session_id="client-session",
-            )
-            .remote()
-            .result(timeout_s=10)
+            handle.options(method_name="via_options").remote().result(timeout_s=10)
         )
         return response
 
