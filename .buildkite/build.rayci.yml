@@ -271,10 +271,6 @@ steps:
         - "3.12"
       cuda:
         - "13.0.0-cudnn"
-      adjustments:
-        - with:
-            python: "3.11"
-            cuda: "12.8.1-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -296,10 +292,6 @@ steps:
         - "3.12"
       cuda:
         - "13.0.0-cudnn"
-      adjustments:
-        - with:
-            python: "3.11"
-            cuda: "12.8.1-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -362,10 +354,6 @@ steps:
         - "3.12"
       platform:
         - cu13.0.0-cudnn
-      adjustments:
-        - with:
-            python: "3.11"
-            platform: "cu12.8.1-cudnn"
     depends_on:
       - ray-llm-image-cuda-build($)
     tags:
@@ -389,10 +377,6 @@ steps:
         - "3.12"
       platform:
         - cu13.0.0-cudnn
-      adjustments:
-        - with:
-            python: "3.11"
-            platform: "cu12.8.1-cudnn"
     depends_on:
       - ray-llm-extra-image-cuda-build($)
     tags:

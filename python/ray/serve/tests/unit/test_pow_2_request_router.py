@@ -30,12 +30,12 @@ from ray.serve._private.request_router import (
     PowerOfTwoChoicesRequestRouter,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
-from ray.serve._private.test_utils import MockTimer
-from ray.serve._private.utils import generate_request_id
-from ray.serve.tests.unit.conftest import (
+from ray.serve._private.test_utils import (
     FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
     FakeRunningReplica,
+    MockTimer,
 )
+from ray.serve._private.utils import generate_request_id
 
 TIMER = MockTimer()
 

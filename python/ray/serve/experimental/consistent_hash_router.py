@@ -86,6 +86,7 @@ class ConsistentHashRouter(RequestRouter):
         self._num_fallback_replicas: int = DEFAULT_NUM_FALLBACK_REPLICAS
 
         # Metrics
+        self._self_actor_id = kwargs.get("self_actor_id") or ""
         default_tags = {
             "application": self._deployment_id.app_name,
             "deployment": self._deployment_id.name,

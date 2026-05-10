@@ -14,9 +14,12 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.request_router import PendingRequest
 from ray.serve._private.test_utils import (
+    FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
+    FAKE_REPLICA_DEPLOYMENT_ID as DEPLOYMENT_ID,
     FakeCounter,
     FakeGauge,
     FakeHistogram,
+    FakeRunningReplica,
     MockTimer,
 )
 from ray.serve._private.utils import generate_request_id
@@ -26,11 +29,6 @@ from ray.serve.experimental.consistent_hash_router import (
     TOP_SESSIONS_MAX,
     ConsistentHashRouter,
     _hash_bytes,
-)
-from ray.serve.tests.unit.conftest import (
-    FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
-    FAKE_REPLICA_DEPLOYMENT_ID as DEPLOYMENT_ID,
-    FakeRunningReplica,
 )
 
 TIMER = MockTimer()
@@ -630,18 +628,22 @@ def _install_fake_metrics(router: ConsistentHashRouter) -> dict:
         "actor_id": router._self_actor_id,
         "handle_source": router._handle_source.value,
     }
-    router.fallback_counter = FakeCounter(tag_keys=common + ("rank",)).set_default_tags(
-        default_tags
-    )
-    router.top_sessions_gauge = FakeGauge(
-        tag_keys=common + ("session_id",)
-    ).set_default_tags(default_tags)
-    router.ring_rebuilds_counter = FakeCounter(tag_keys=common).set_default_tags(
-        default_tags
-    )
-    router.ring_rebuild_duration_ms_histogram = FakeHistogram(
-        tag_keys=common
-    ).set_default_tags(default_tags)
+    fallback_counter = FakeCounter(tag_keys=common + ("rank",))
+    fallback_counter.set_default_tags(default_tags)
+    router.fallback_counter = fallback_counter
+
+    top_sessions_gauge = FakeGauge(tag_keys=common + ("session_id",))
+    top_sessions_gauge.set_default_tags(default_tags)
+    router.top_sessions_gauge = top_sessions_gauge
+
+    ring_rebuilds_counter = FakeCounter(tag_keys=common)
+    ring_rebuilds_counter.set_default_tags(default_tags)
+    router.ring_rebuilds_counter = ring_rebuilds_counter
+
+    ring_rebuild_duration_ms_histogram = FakeHistogram(tag_keys=common)
+    ring_rebuild_duration_ms_histogram.set_default_tags(default_tags)
+    router.ring_rebuild_duration_ms_histogram = ring_rebuild_duration_ms_histogram
+
     return {
         "fallback": router.fallback_counter,
         "top_sessions": router.top_sessions_gauge,

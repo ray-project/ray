@@ -17,7 +17,7 @@
 #include <memory>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
