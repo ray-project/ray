@@ -4,6 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
+from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -40,7 +42,11 @@ from ray.serve._private.router import (
     SingletonThreadRouter,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import decompress_metric_report, get_random_string
+from ray.serve._private.utils import (
+    Semaphore,
+    decompress_metric_report,
+    get_random_string,
+)
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
@@ -303,6 +309,182 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
         internal_request_id="test-internal-request-1",
         is_streaming=is_streaming,
     )
+
+
+class FakeReplicaMetricsManager:
+    def __init__(self):
+        self.num_ongoing_requests = 0
+
+    def get_num_ongoing_requests(self) -> int:
+        return self.num_ongoing_requests
+
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata):
+        self.num_ongoing_requests += 1
+
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata):
+        self.num_ongoing_requests -= 1
+
+
+class FakeServeReplicaForSlotReservation(ServeReplica):
+    def __init__(
+        self,
+        *,
+        max_ongoing_requests: int = 1,
+        graceful_shutdown_wait_loop_s: float = 0.01,
+    ):
+        self._deployment_config = Mock(
+            max_ongoing_requests=max_ongoing_requests,
+            graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+        )
+        self._metrics_manager = FakeReplicaMetricsManager()
+        self._reserved_slots = set()
+        self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
+
+
+@pytest.mark.asyncio
+class TestReplicaSlotReservation:
+    async def test_reserved_slot_counts_against_replica_capacity(self):
+        # A reserved slot consumes capacity, so another reservation should be
+        # rejected once the replica reaches max_ongoing_requests.
+        replica = FakeServeReplicaForSlotReservation()
+
+        request_metadata = dummy_request_metadata()
+
+        slot_token = "slot-token-1"
+        accepted, queue_len = await replica.reserve_slot(request_metadata, slot_token)
+        assert accepted
+        assert slot_token in replica._reserved_slots
+        assert queue_len == 1
+        assert replica.get_num_ongoing_requests() == 1
+
+        accepted, queue_len = await replica.reserve_slot(
+            request_metadata, "slot-token-2"
+        )
+        assert not accepted
+        assert queue_len == 1
+
+        dispatch_metadata = replace(request_metadata, _reserved_slot_token=slot_token)
+        async with replica._start_request(dispatch_metadata):
+            assert slot_token not in replica._reserved_slots
+            assert replica.get_num_ongoing_requests() == 1
+
+        assert replica.get_num_ongoing_requests() == 0
+
+    async def test_release_slot_returns_status_and_recovers_capacity(self):
+        # Releasing a known token reports True and frees a slot; releasing an
+        # unknown or already-released token reports False and is a no-op.
+        replica = FakeServeReplicaForSlotReservation()
+
+        request_metadata = dummy_request_metadata()
+        accepted, _ = await replica.reserve_slot(request_metadata, "tok-a")
+        assert accepted
+        assert replica.get_num_ongoing_requests() == 1
+
+        accepted, count = replica.release_slot("tok-a")
+        assert accepted
+        assert count == 0
+        assert replica.get_num_ongoing_requests() == 0
+
+        # Releasing the same token a second time is a no-op.
+        accepted, count = replica.release_slot("tok-a")
+        assert not accepted
+        assert count == 0
+
+        # Releasing a token that was never reserved is also a no-op.
+        accepted, count = replica.release_slot("never-reserved")
+        assert not accepted
+        assert count == 0
+
+        # Capacity is fully recovered: a fresh reservation succeeds.
+        accepted, _ = await replica.reserve_slot(request_metadata, "tok-b")
+        assert accepted
+
+    async def test_dispatch_with_unknown_slot_token_is_rejected(self):
+        # A request that arrives with a slot token nobody reserved (or that
+        # was already released) must be rejected loudly and must not
+        # consume capacity.
+        replica = FakeServeReplicaForSlotReservation()
+
+        bogus = replace(dummy_request_metadata(), _reserved_slot_token="never-reserved")
+        with pytest.raises(RuntimeError, match="unknown reserved slot"):
+            async with replica._start_request(bogus):
+                pass
+
+        assert replica.get_num_ongoing_requests() == 0
+
+        # The replica is still healthy: a normal request can still run.
+        async with replica._start_request(dummy_request_metadata()):
+            assert replica.get_num_ongoing_requests() == 1
+        assert replica.get_num_ongoing_requests() == 0
+
+    async def test_drain_waits_for_reserved_slots(self):
+        # A reserved-but-not-yet-dispatched slot is holding capacity, so a
+        # graceful shutdown must wait for it just like an in-flight request.
+        # Otherwise the replica can finish draining between reserve_slot and
+        # the dispatch, leaving the router to send the request to a dead replica.
+        replica = FakeServeReplicaForSlotReservation(graceful_shutdown_wait_loop_s=0.01)
+
+        request_metadata = dummy_request_metadata()
+        accepted, _ = await replica.reserve_slot(request_metadata, "slot-token-1")
+        assert accepted
+
+        drain_task = asyncio.create_task(replica._drain_ongoing_requests())
+        try:
+            await asyncio.sleep(0.1)
+            assert (
+                not drain_task.done()
+            ), "drain should still be running while a slot is reserved"
+
+            replica.release_slot("slot-token-1")
+            await asyncio.wait_for(drain_task, timeout=1.0)
+        finally:
+            if not drain_task.done():
+                drain_task.cancel()
+
+    async def test_direct_ingress_request_is_rejected(self):
+        replica = FakeServeReplicaForSlotReservation()
+
+        request_metadata = replace(dummy_request_metadata(), is_direct_ingress=True)
+
+        with pytest.raises(RuntimeError, match="direct-ingress"):
+            await replica.reserve_slot(request_metadata, "slot-token-1")
+
+        assert replica.get_num_ongoing_requests() == 0
+
+
+class FakeRunningReplicaForSlotReservation(RunningReplica):
+    def __init__(self, actor_handle: Mock):
+        self._replica_info = Mock(is_cross_language=False)
+        self._actor_handle = actor_handle
+
+
+@pytest.mark.asyncio
+class TestRunningReplicaSlotReservation:
+    async def test_cancellation_releases_reserved_slot(self):
+        # Cancellation can arrive after the actor has already reserved the slot,
+        # so ray.cancel(obj_ref) is a no-op and release_slot.remote() is the
+        # only one that frees the leaked slot.
+        pending = asyncio.get_running_loop().create_future()
+        actor_handle = Mock()
+        actor_handle.reserve_slot.remote = Mock(return_value=pending)
+        actor_handle.release_slot.remote = Mock()
+        replica = FakeRunningReplicaForSlotReservation(actor_handle)
+
+        with patch("ray.cancel") as mock_ray_cancel:
+            task = asyncio.create_task(replica.reserve_slot(dummy_request_metadata()))
+            # Yield so the task reaches `await obj_ref` before we cancel.
+            await asyncio.sleep(0)
+            task.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        mock_ray_cancel.assert_called_once_with(pending)
+
+        actor_handle.release_slot.remote.assert_called_once()
+        released_token = actor_handle.release_slot.remote.call_args[0][0]
+        reserved_token = actor_handle.reserve_slot.remote.call_args[0][1]
+        assert released_token == reserved_token
 
 
 @pytest.mark.asyncio
