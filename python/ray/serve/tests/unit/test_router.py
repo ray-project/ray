@@ -564,6 +564,33 @@ class TestRunningReplicaSlotReservation:
         reserved_token = actor_handle.reserve_slot.remote.call_args[0][1]
         assert released_token == reserved_token
 
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            ActorUnavailableError(error_message="unavailable", actor_id=None),
+            ActorDiedError(),
+            RuntimeError("boom"),
+        ],
+    )
+    async def test_exception_releases_reserved_slot(self, exc):
+        # If reserve_slot's reply fails (e.g. ActorUnavailableError),
+        # the actor may have already reserved the slot. Best-effort
+        # release_slot.remote() prevents the leak.
+        pending = asyncio.get_running_loop().create_future()
+        pending.set_exception(exc)
+        actor_handle = Mock()
+        actor_handle.reserve_slot.remote = Mock(return_value=pending)
+        actor_handle.release_slot.remote = Mock()
+        replica = FakeRunningReplicaForSlotReservation(actor_handle)
+
+        with pytest.raises(type(exc)):
+            await replica.reserve_slot(dummy_request_metadata())
+
+        actor_handle.release_slot.remote.assert_called_once()
+        released_token = actor_handle.release_slot.remote.call_args[0][0]
+        reserved_token = actor_handle.reserve_slot.remote.call_args[0][1]
+        assert released_token == reserved_token
+
 
 @pytest.mark.asyncio
 class TestBroadcast:
