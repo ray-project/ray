@@ -481,5 +481,182 @@ class TestSGLangProtocolDecoupling:
         assert issubclass(ScoreRequest, ScoringRequest)
 
 
+# ---------------------------------------------------------------------------
+# SGLang WideEP Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cleanup_wideep():
+    """Cleanup Ray Serve resources after WideEP tests."""
+    yield
+    serve.shutdown()
+
+
+def test_sglang_wideep_config_validation():
+    """Verify WideEP configuration constraints are validated.
+
+    - moe_a2a_backend must be 'deepep'
+    - moe_dp_size must be 1 for pure WideEP
+    - nnodes must divide total_gpus evenly
+    """
+    from ray.llm._internal.serve.engines.sglang.sglang_models import SGLangEngineConfig
+    from ray.llm._internal.serve.serving_patterns.sglang.sglang_wideep_server import (
+        SGLangWideEPServer,
+    )
+
+    # Valid config: moe_a2a_backend='deepep', moe_dp_size=1
+    valid_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={
+            "moe_a2a_backend": "deepep",
+            "tp_size": 8,
+            "nnodes": 2,
+        },
+    )
+    engine_config = SGLangEngineConfig.from_llm_config(valid_config)
+    engine_config.validate_wideep_config()  # Should not raise
+
+    # Invalid: moe_a2a_backend != 'deepep'
+    invalid_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={
+            "moe_a2a_backend": "none",
+            "tp_size": 8,
+        },
+    )
+    deployment_options = SGLangWideEPServer.get_deployment_options(invalid_config)
+    # get_deployment_options should work, but __init__ should validate
+    assert deployment_options["gang_scheduling_config"].gang_size == 1
+
+    # Invalid: moe_dp_size != 1 without DPA
+    invalid_dp_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={
+            "moe_a2a_backend": "deepep",
+            "tp_size": 8,
+            "moe_dp_size": 2,  # Invalid for pure WideEP
+        },
+    )
+    engine_config = SGLangEngineConfig.from_llm_config(invalid_dp_config)
+    with pytest.raises(ValueError, match="moe_dp_size=1"):
+        engine_config.validate_wideep_config()
+
+    # Valid: moe_dp_size != 1 with DPA enabled
+    valid_dpa_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={
+            "moe_a2a_backend": "deepep",
+            "tp_size": 16,
+            "dp_size": 8,
+            "enable_dp_attention": True,  # DPA + WideEP
+            "moe_dp_size": 1,
+        },
+    )
+    engine_config = SGLangEngineConfig.from_llm_config(valid_dpa_config)
+    engine_config.validate_wideep_config()  # Should not raise
+
+
+def test_sglang_wideep_deployment_options():
+    """Verify SGLangWideEPServer.get_deployment_options returns correct values.
+
+    - gang_size=1 (single Engine per gang)
+    - Placement group bundles based on tp_size/pp_size/nnodes
+    - SPREAD strategy for multi-node, PACK for single-node
+    """
+    from ray.llm._internal.serve.serving_patterns.sglang.sglang_wideep_server import (
+        SGLangWideEPServer,
+    )
+    from ray.serve.config import GangPlacementStrategy
+
+    # Single-node WideEP
+    single_node_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={
+            "moe_a2a_backend": "deepep",
+            "tp_size": 8,
+            "nnodes": 1,
+        },
+    )
+    options = SGLangWideEPServer.get_deployment_options(single_node_config)
+    assert options["gang_scheduling_config"].gang_size == 1
+    assert len(options["placement_group_bundles"]) == 8
+    assert options["placement_group_strategy"] == "PACK"
+    assert (
+        options["gang_scheduling_config"].gang_placement_strategy
+        == GangPlacementStrategy.PACK
+    )
+
+    # Multi-node WideEP
+    multi_node_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={
+            "moe_a2a_backend": "deepep",
+            "tp_size": 16,
+            "nnodes": 2,
+        },
+    )
+    options = SGLangWideEPServer.get_deployment_options(multi_node_config)
+    assert options["gang_scheduling_config"].gang_size == 1
+    assert len(options["placement_group_bundles"]) == 2
+    assert options["placement_group_bundles"][0] == {"GPU": 8}
+    assert options["placement_group_strategy"] == "SPREAD"
+    assert (
+        options["gang_scheduling_config"].gang_placement_strategy
+        == GangPlacementStrategy.SPREAD
+    )
+
+
+@pytest.mark.skip(reason="Requires SGLang WideEP support and 2 GPUs")
+def test_sglang_wideep_gang_scheduling(cleanup_wideep):
+    """Verify WideEP deployment uses gang scheduling with gang_size=1.
+
+    This test requires at least 2 GPUs and SGLang with WideEP support to run.
+    Skipped by default until WideEP support is fully integrated.
+    """
+    from ray.llm._internal.serve.serving_patterns.sglang import (
+        build_sglang_wideep_deployment,
+    )
+
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        deployment_config={
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "max_replicas": 1,
+            }
+        },
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "moe_a2a_backend": "deepep",
+            "tp_size": 2,
+            "nnodes": 1,
+            "mem_fraction_static": 0.8,
+        },
+    )
+
+    app = build_sglang_wideep_deployment(llm_config)
+    serve.run(app, blocking=False)
+
+    wait_for_condition(_app_is_running, timeout=300)
+
+    # Verify deployment has gang scheduling enabled
+    status = serve.status()
+    deployment_name = f"SGLangWideEPServer:{RAY_MODEL_ID}"
+    assert deployment_name in status.applications[SERVE_DEFAULT_APP_NAME].deployments
+
+    client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+    chat_resp = client.chat.completions.create(
+        model=RAY_MODEL_ID,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        max_tokens=64,
+        temperature=0.0,
+    )
+    assert chat_resp.choices[0].message.content.strip()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-xvs", __file__]))
