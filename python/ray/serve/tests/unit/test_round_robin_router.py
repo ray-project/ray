@@ -36,18 +36,22 @@ def router(request) -> RoundRobinRouter:
     if not hasattr(request, "param"):
         request.param = {}
 
+    params = dict(request.param)
+    use_replica_queue_len_cache = params.pop("use_replica_queue_len_cache", False)
+
     TIMER.reset()
     request_router = RoundRobinRouter(
         deployment_id=DEPLOYMENT_ID,
         handle_source=DeploymentHandleSource.REPLICA,
         self_actor_id="fake-actor-id",
         self_actor_handle=None,
+        use_replica_queue_len_cache=use_replica_queue_len_cache,
         get_curr_time_s=TIMER.time,
         initial_backoff_s=0.001,
         backoff_multiplier=1,
         max_backoff_s=0.001,
     )
-    request_router.initialize_state(**request.param)
+    request_router.initialize_state(**params)
 
     yield request_router
 
@@ -63,7 +67,7 @@ def _make_replicas(*replica_ids: str, **kwargs):
 
 
 def _ranked_replica_unique_ids(ranks):
-    return [rank[0].replica_id.unique_id for rank in ranks]
+    return [[replica.replica_id.unique_id for replica in rank] for rank in ranks]
 
 
 def test_initialize_state_ignores_router_kwargs(router):
@@ -83,16 +87,16 @@ async def test_choose_replicas_round_robin_order(router):
 
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request())
-    ) == ["r2"]
+    ) == [["r2"], ["r0"], ["r1"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request())
-    ) == ["r0"]
+    ) == [["r0"], ["r1"], ["r2"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request())
-    ) == ["r1"]
+    ) == [["r1"], ["r2"], ["r0"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request())
-    ) == ["r2"]
+    ) == [["r2"], ["r0"], ["r1"]]
 
 
 @pytest.mark.asyncio
@@ -110,13 +114,37 @@ async def test_choose_replicas_ignores_request_metadata(router):
 
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == ["r0"]
+    ) == [["r0"], ["r1"], ["r2"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == ["r1"]
+    ) == [["r1"], ["r2"], ["r0"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == ["r2"]
+    ) == [["r2"], ["r0"], ["r1"]]
+
+
+@pytest.mark.parametrize(
+    "router", [{"use_replica_queue_len_cache": True}], indirect=True
+)
+@pytest.mark.asyncio
+async def test_choose_replicas_includes_cached_full_replica_first(router):
+    replicas = [
+        FakeRunningReplica("r0", max_ongoing_requests=1),
+        FakeRunningReplica("r1", max_ongoing_requests=1),
+        FakeRunningReplica("r2", max_ongoing_requests=1),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router.replica_queue_len_cache.update(replicas[0].replica_id, 1)
+    router._round_robin_counter = 0
+    await asyncio.sleep(0)
+
+    # Selection should preserve strict round-robin order even if fulfillment
+    # later rejects the cached-full replica and advances to the next rank.
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request())
+    ) == [["r0"], ["r1"], ["r2"]]
 
 
 @pytest.mark.asyncio
