@@ -42,12 +42,16 @@ class FailureTuple:
     """
 
     def __init__(self, obj: Any, path: tuple[str, ...], parent: Any):
-        """Initialize a FailureTuple.
+        """Initialize FailureTuple.
 
-        Args:
-            obj: The object that fails serialization.
-            path: Tuple of variable names representing the traversal path.
-            parent: The object that references the object.
+        Parameters
+        ----------
+        obj : Any
+            The object that fails serialization.
+        path : tuple[str, ...]
+            Tuple of variable names representing the traversal path.
+        parent : Any
+            The object that references the object.
         """
         self.obj = obj
         self.path = path
