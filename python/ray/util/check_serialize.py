@@ -193,10 +193,6 @@ def _inspect_serializability(
         printer.print("=" * min(len(declaration), 80))
         printer.print(declaration)
         printer.print("=" * min(len(declaration), 80))
-
-        if name is not None:
-            path = (name,)
-        # else path remains ()
     else:
         printer.print(f"Serializing '{name}' {base_obj}...")
     try:
