@@ -1197,6 +1197,11 @@ class Replica:
         self, request_metadata: RequestMetadata, slot_token: str
     ) -> Tuple[bool, int]:
         """Reserve replica capacity for a future dispatch call."""
+        if request_metadata.is_direct_ingress:
+            raise RuntimeError(
+                "Slot reservation is not supported for direct-ingress requests."
+            )
+
         if not self._can_accept_request(request_metadata):
             return False, self.get_num_ongoing_requests()
 

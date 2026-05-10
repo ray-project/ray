@@ -348,6 +348,7 @@ class RunningReplica:
             accepted, num_ongoing_requests = await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
+            # TODO (#63254): Add error handling for actor-unavailable cleanup.
             self._actor_handle.release_slot.remote(slot_token)
             raise
 

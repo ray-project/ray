@@ -441,6 +441,51 @@ class TestReplicaSlotReservation:
             if not drain_task.done():
                 drain_task.cancel()
 
+    async def test_direct_ingress_request_is_rejected(self):
+        replica = FakeServeReplicaForSlotReservation()
+
+        request_metadata = replace(dummy_request_metadata(), is_direct_ingress=True)
+
+        with pytest.raises(RuntimeError, match="direct-ingress"):
+            await replica.reserve_slot(request_metadata, "slot-token-1")
+
+        assert replica.get_num_ongoing_requests() == 0
+
+
+class FakeRunningReplicaForSlotReservation(RunningReplica):
+    def __init__(self, actor_handle: Mock):
+        self._replica_info = Mock(is_cross_language=False)
+        self._actor_handle = actor_handle
+
+
+@pytest.mark.asyncio
+class TestRunningReplicaSlotReservation:
+    async def test_cancellation_releases_reserved_slot(self):
+        # Cancellation can arrive after the actor has already reserved the slot,
+        # so ray.cancel(obj_ref) is a no-op and release_slot.remote() is the
+        # only one that frees the leaked slot.
+        pending = asyncio.get_running_loop().create_future()
+        actor_handle = Mock()
+        actor_handle.reserve_slot.remote = Mock(return_value=pending)
+        actor_handle.release_slot.remote = Mock()
+        replica = FakeRunningReplicaForSlotReservation(actor_handle)
+
+        with patch("ray.cancel") as mock_ray_cancel:
+            task = asyncio.create_task(replica.reserve_slot(dummy_request_metadata()))
+            # Yield so the task reaches `await obj_ref` before we cancel.
+            await asyncio.sleep(0)
+            task.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        mock_ray_cancel.assert_called_once_with(pending)
+
+        actor_handle.release_slot.remote.assert_called_once()
+        released_token = actor_handle.release_slot.remote.call_args[0][0]
+        reserved_token = actor_handle.reserve_slot.remote.call_args[0][1]
+        assert released_token == reserved_token
+
 
 @pytest.mark.asyncio
 class TestBroadcast:
