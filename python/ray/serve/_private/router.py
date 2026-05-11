@@ -1753,7 +1753,9 @@ class SingletonThreadRouter(Router):
             future = asyncio.run_coroutine_threadsafe(
                 exit_context(context_manager, *exc_info), self._asyncio_loop
             )
-            await asyncio.wrap_future(future)
+            # Shielded so a cancel landing during cleanup doesn't propagate
+            # through wrap_future and abort __aexit__ on the router loop.
+            await asyncio.shield(asyncio.wrap_future(future))
 
     def dispatch(
         self,
