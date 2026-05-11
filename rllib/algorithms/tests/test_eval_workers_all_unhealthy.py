@@ -163,7 +163,8 @@ def test_timeout_waits_then_skips_when_no_recovery(parallel_to_training):
     start = time.monotonic()
     algo.evaluate()
     elapsed = time.monotonic() - start
-    assert elapsed >= timeout_s
+    # Use 10 seconds as a loose upper bound to sanity check
+    assert 5 > elapsed >= timeout_s
 
 
 def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
