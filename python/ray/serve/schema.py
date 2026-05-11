@@ -686,6 +686,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
             deployment_actors.append(cfg_dict)
         schema.deployment_actors = deployment_actors
 
+    if info.replica_config.max_replicas_per_node is not None:
+        schema.max_replicas_per_node = info.replica_config.max_replicas_per_node
+
     return schema
 
 
