@@ -489,6 +489,17 @@ class HAProxyConfig:
 
     is_head: bool = False
 
+    def __post_init__(self) -> None:
+        # Thread isolation requires at least 2 threads: thread 1 is
+        # reserved for the admin/stats sockets, threads 2..nbthread serve
+        # data-plane traffic (see haproxy_templates.py). With nbthread<2
+        # the template would emit `thread 2-1` which HAProxy rejects.
+        if self.nbthread < 2:
+            raise ValueError(
+                f"nbthread must be >= 2 for admin/data-plane thread "
+                f"isolation (got {self.nbthread})."
+            )
+
     @property
     def transfer_socket_path(self) -> str:
         """Path of the dedicated FD-transfer admin socket.

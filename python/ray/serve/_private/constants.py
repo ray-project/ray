@@ -716,7 +716,7 @@ RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
 
 # HAProxy hard stop after timeout
 RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
-    os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
+    os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "600")
 )
 
 # HAProxy metrics export port
@@ -801,13 +801,13 @@ RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE = int(
 # Connect/read timeout (seconds) for HAProxy admin-socket commands. The
 # CLI mux serializes admin operations behind HTTP worker dispatch, so a
 # batch of `add server` / `del server` / etc. commands can routinely take
-# more than a few seconds while HAProxy is serving heavy traffic. The
-# previous hardcoded 5s was tight enough that broadcasts during
-# autoscaling churn hit it routinely, falling back to expensive full
-# reloads. 15s lets the slower-but-functional runtime-API path complete
-# in those cases instead of cascading into reloads.
+# more than a few seconds while HAProxy is serving heavy traffic. With
+# the admin socket pinned to its own thread (see haproxy_templates.py)
+# this should usually stay fast, but a generous ceiling keeps the
+# runtime-API path alive across rare slow windows instead of cascading
+# into a fallback reload.
 RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S = float(
-    os.environ.get("RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S", "15")
+    os.environ.get("RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S", "60")
 )
 
 # Total number of server slots to pre-allocate across all backends via
