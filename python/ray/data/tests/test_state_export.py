@@ -455,7 +455,7 @@ def test_logical_op_args(
         Udf,
         **expected_logical_op_args,
     )
-    dag = ds._plan._logical_plan.dag
+    dag = ds._logical_plan.dag
     args = dag._get_args()
     assert len(args) > 0, "Export args should not be empty"
     for k, v in expected_logical_op_args.items():

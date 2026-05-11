@@ -294,7 +294,7 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
         dataset = datasets[dataset_info.name]
         # DataConfig will automatically set the dataset_name to the key of the dataset dict.
         assert dataset_info.dataset_name == dataset_info.name
-        assert dataset_info.dataset_uuid == dataset._plan._dataset_uuid
+        assert dataset_info.dataset_uuid == dataset._uuid
 
 
 @pytest.mark.parametrize("raise_error", [True, False])

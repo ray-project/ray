@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     import pyarrow as pa
     from pyarrow.fs import FileSystem
 
-    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
@@ -224,6 +223,13 @@ class Read(
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
         predicated_datasource = self.datasource.apply_predicate(predicate_expr)
 
+        # A datasource returns its own instance to signal "no pushdown applied"
+        # (e.g. ``ParquetDatasource`` does this when a mixed-column conjunct
+        # leaves a residual). Preserve identity here so ``PredicatePushdown``'s
+        # ``result_op is input_op`` no-op check keeps the ``Filter`` above.
+        if self.datasource is predicated_datasource:
+            return self
+
         return replace(
             self,
             datasource=predicated_datasource,
@@ -249,7 +255,7 @@ class ReadFiles(
     """
 
     input_op: InitVar[LogicalOperator]
-    datasource: "DataSourceV2"
+    datasource_name: str
     scanner: "Scanner"
     schema: "pa.Schema"
     parallelism: int
@@ -275,9 +281,13 @@ class ReadFiles(
             object.__setattr__(self, "compute", TaskPoolStrategy())
         if self.ray_remote_args is None:
             object.__setattr__(self, "ray_remote_args", {})
-        object.__setattr__(self, "_name", f"ReadFiles{self.datasource.name}")
+        object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def input_dependency(self) -> LogicalOperator:
+        return self.input_dependencies[0]
 
     def _apply_transform(
         self, transform: "Callable[[LogicalOperator], LogicalOperator]"
