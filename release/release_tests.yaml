@@ -522,6 +522,7 @@
 #######################
 # Tune tests
 #######################
+
 - name: tune_with_frequent_pausing
   python: "3.10"
   group: Tune tests
@@ -690,6 +691,7 @@
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
+
 
 - name: tune_scalability_long_running_large_checkpoints
   python: "3.10"
