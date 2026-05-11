@@ -193,7 +193,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.metrics import Counter, Histogram
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.timer import _Timer
 
 if TYPE_CHECKING:
@@ -1070,17 +1070,38 @@ class Algorithm(Checkpointable, Trainable):
                 spaces=self.spaces,
                 inference_only=False,
             )
-            # Discover each Learner's node BEFORE creating aggregators, so we can
-            # ask Ray's scheduler to co-locate each aggregator with its assigned
-            # Learner via NodeAffinitySchedulingStrategy.
+            # Discover each Learner's node so we can describe placement in
+            # the post-placement warning below.
             learner_node_ids = [
                 rc.get()
                 for rc in self.learner_group.foreach_learner(
                     func=lambda _learner: ray.get_runtime_context().get_node_id()
                 )
             ]
-            # Wrap the actor class once; per-instance options (including the
-            # node-affinity strategy) go through `.options(...)` below.
+            # Bundle index where learner bundles start in the trial PG --
+            # must mirror the ordering in `default_resource_request`:
+            # [main_process, env_runners, eval_env_runners,
+            #  offline_eval_runners, learner_bundles].
+            n_eval_env_runners = 0
+            if self._should_create_evaluation_env_runners(self.evaluation_config):
+                n_eval_env_runners = (
+                    self.evaluation_config.evaluation_num_env_runners or 0
+                )
+            n_offline_eval_runners = 0
+            if self._should_create_offline_evaluation_runners(self.evaluation_config):
+                n_offline_eval_runners = (
+                    self.evaluation_config.num_offline_eval_runners or 0
+                )
+            learner_bundle_offset = (
+                1
+                + (self.config.num_env_runners or 0)
+                + n_eval_env_runners
+                + n_offline_eval_runners
+            )
+            trial_pg = ray.util.get_current_placement_group()
+
+            # Wrap the actor class once; per-instance options go through
+            # `.options(...)` below.
             agg_cls = ray.remote(AggregatorActor)
             base_options = dict(
                 num_cpus=self.config.num_cpus_per_aggregator_actor,
@@ -1093,15 +1114,38 @@ class Algorithm(Checkpointable, Trainable):
 
             agg_handles = []
             self._aggregator_actor_to_learner = {}
-            for learner_idx, learner_node_id in enumerate(learner_node_ids):
-                for _ in range(self.config.num_aggregator_actors_per_learner):
-                    handle = agg_cls.options(
-                        **base_options,
-                        scheduling_strategy=NodeAffinitySchedulingStrategy(
-                            node_id=learner_node_id,
-                            soft=self.config.aggregator_actor_node_affinity_soft,
-                        ),
-                    ).remote(self.config, rl_module_spec)
+            for learner_idx, _ in enumerate(learner_node_ids):
+                for j in range(self.config.num_aggregator_actors_per_learner):
+                    # Pick the PG bundle this aggregator should claim.
+                    # `num_learners == 0`: aggregators have *their own*
+                    # dedicated bundles (see `_get_learner_bundles`).
+                    # `num_learners >  0`: aggregator's CPU is baked into
+                    # the corresponding learner's bundle; share that
+                    # bundle to land on the learner's node.
+                    if self.config.num_learners == 0:
+                        bundle_idx = learner_bundle_offset + j
+                    else:
+                        bundle_idx = learner_bundle_offset + learner_idx
+
+                    per_instance_options = dict(base_options)
+                    if trial_pg is not None:
+                        # In a Tune trial PG: claim the bundle directly.
+                        # The bundle is already on the learner's node by
+                        # construction, so co-location is implicit.
+                        per_instance_options[
+                            "scheduling_strategy"
+                        ] = PlacementGroupSchedulingStrategy(
+                            placement_group=trial_pg,
+                            placement_group_bundle_index=bundle_idx,
+                        )
+                    # No PG (running Algorithm directly, outside Tune):
+                    # let Ray's default scheduling place the actor on
+                    # any node with capacity. Co-location with the
+                    # learner is best-effort in that case.
+
+                    handle = agg_cls.options(**per_instance_options).remote(
+                        self.config, rl_module_spec
+                    )
                     self._aggregator_actor_to_learner[len(agg_handles)] = learner_idx
                     agg_handles.append(handle)
 
@@ -1112,9 +1156,12 @@ class Algorithm(Checkpointable, Trainable):
                 ),
             )
 
-            # Verify placement: warn (don't fail) if a soft fallback put an
-            # aggregator on a different node than its assigned Learner. Each
-            # MABatch in that case incurs a cross-node transfer.
+            # Verify placement: warn (don't fail) if an aggregator landed
+            # on a different node than its assigned Learner. With the PG
+            # bundle strategy above this shouldn't happen, but the no-PG
+            # path (Algorithm built outside Tune) can land aggregators
+            # anywhere with free CPU; each MABatch then incurs a
+            # cross-node transfer.
             actual_node_ids = [
                 rc.get()
                 for rc in self._aggregator_actor_manager.foreach_actor(
@@ -1130,11 +1177,11 @@ class Algorithm(Checkpointable, Trainable):
                         f"AggregatorActor #{agg_idx} did not co-locate with its "
                         f"assigned Learner (expected node {expected_node_id}, got "
                         f"{actual_node_id}). Each MABatch produced by this actor "
-                        "will be transferred cross-node to the Learner. Set "
-                        "`aggregator_actor_node_affinity_soft=False` in "
-                        "`config.learners(..)` to fail-fast instead, or pass "
+                        "will be transferred cross-node to the Learner. Pass "
                         "`custom_resources_per_aggregator_actor={..}` to reserve "
-                        "dedicated capacity on the Learner's node."
+                        "dedicated capacity on the Learner's node, or run the "
+                        "Algorithm inside a Tune trial (the trial's placement "
+                        "group pins aggregators to learner bundles by default)."
                     )
 
         # Ray metrics

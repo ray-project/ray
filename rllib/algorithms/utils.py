@@ -179,9 +179,18 @@ def _get_offline_eval_runner_bundles(config):
 
 
 def _get_learner_bundles(config):
+    n_agg = config.num_aggregator_actors_per_learner
+    cpus_per_agg = config.num_cpus_per_aggregator_actor
+    custom_per_agg = config.custom_resources_per_aggregator_actor or {}
+
+    # Total custom-resource demand contributed by `n_agg` aggregators that
+    # share this learner's bundle.
+    agg_custom_resources_total = {k: v * n_agg for k, v in custom_per_agg.items()}
+
     if config.num_learners == 0:
-        if config.num_aggregator_actors_per_learner > 0:
-            return [{"CPU": 1} for _ in range(config.num_aggregator_actors_per_learner)]
+        if n_agg > 0:
+            # Aggregators get their own dedicated bundles; learner is local.
+            return [{"CPU": cpus_per_agg, **custom_per_agg} for _ in range(n_agg)]
         else:
             return []
 
@@ -192,14 +201,25 @@ def _get_learner_bundles(config):
     else:
         num_cpus_per_learner = 0
 
-    # aggregator actors are co-located with learners and use 1 CPU each
-    bundles = [
-        {
-            "CPU": num_cpus_per_learner + config.num_aggregator_actors_per_learner,
+    custom_per_learner = config.custom_resources_per_learner or {}
+
+    # Each learner bundle includes the learner's own resources + enough
+    # capacity for `n_agg` co-located aggregator actors (their resources
+    # are claimed against the same bundle via
+    # `PlacementGroupSchedulingStrategy(placement_group_bundle_index=...)`
+    # in `Algorithm.setup()`).
+    bundles = []
+    for _ in range(config.num_learners):
+        bundle = {
+            "CPU": num_cpus_per_learner + n_agg * cpus_per_agg,
             "GPU": config.num_gpus_per_learner,
+            **custom_per_learner,
         }
-        for _ in range(config.num_learners)
-    ]
+        # Sum aggregator custom resources into the bundle (don't overwrite
+        # any learner-side custom resource with the same key).
+        for k, v in agg_custom_resources_total.items():
+            bundle[k] = bundle.get(k, 0) + v
+        bundles.append(bundle)
 
     return bundles
 

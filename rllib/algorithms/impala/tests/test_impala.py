@@ -80,13 +80,15 @@ class TestIMPALA(unittest.TestCase):
             algo.stop()
 
     def test_aggregator_actors_colocate_with_learners(self):
-        """Verifies NodeAffinitySchedulingStrategy-based aggregator placement.
+        """Verifies PG-bundle-based aggregator placement.
 
         With one node, colocation is trivially true, so we spin up a fake
         2-node cluster, force Learners onto distinct nodes by giving each
         node 1 unit of a custom ``learner_slot`` resource and asking each
         Learner for 1 unit, then check that each AggregatorActor lands on
-        the same node as its assigned Learner.
+        the same node as its assigned Learner. Aggregators share their
+        learner's placement-group bundle, so the colocation falls out of
+        the PG bundle's node assignment.
         """
         # Shutdown ray first to make sure we have a clean cluster to work with.
         ray.shutdown()
