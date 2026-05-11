@@ -256,12 +256,6 @@ class _DeploymentHandleBase(Generic[T]):
     ) -> AsyncIterator[ReplicaSelection]:
         """Execute the request router to select a replica without dispatching."""
         router, metadata = self._init_router_and_get_metadata()
-        self.request_counter.inc(
-            tags={
-                "route": metadata.route,
-                "application": metadata.app_name,
-            }
-        )
 
         # Call the router's choose_replica and inject the deployment handle
         async with router.choose_replica(metadata, *args, **kwargs) as selection:
@@ -288,6 +282,12 @@ class _DeploymentHandleBase(Generic[T]):
             )
 
         metadata = selection._request_metadata
+        self.request_counter.inc(
+            tags={
+                "route": metadata.route,
+                "application": metadata.app_name,
+            }
+        )
         router = self._init_router()
         return router.dispatch(selection, metadata, *args, **kwargs), metadata
 
@@ -1266,7 +1266,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             ValueError: If selection was created by a different DeploymentHandle.
         """
         future, request_metadata = self._dispatch(selection, args, kwargs)
-        if self.handle_options.stream:
+        # Use the stream flag captured at choose_replica time
+        if request_metadata.is_streaming:
             return DeploymentResponseGenerator(
                 future,
                 request_metadata,

@@ -16,7 +16,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.api import get_replica_context
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle
+from ray.serve.handle import DeploymentHandle, DeploymentResponseGenerator
 
 
 @pytest.mark.skipif(
@@ -616,6 +616,87 @@ async def test_choose_replica_cancel_releases_slot_across_loop_boundary(
             timeout=5,
         )
     assert result == "second"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_dispatch_wrapper_uses_choose_replica_stream_flag(serve_instance):
+    """Wrapper type follows metadata.is_streaming, not the dispatching handle."""
+
+    @serve.deployment
+    class Backend:
+        async def stream(self, msg: str):
+            yield f"{msg}-0"
+            yield f"{msg}-1"
+
+    @serve.deployment
+    class Proxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.stream_handle = backend.stream.options(stream=True)
+            self.dispatch_handle = backend.stream  # default stream=False
+
+        async def run(self, msg: str) -> bool:
+            async with self.stream_handle.choose_replica(msg) as sel:
+                resp = self.dispatch_handle.dispatch(sel, msg)
+                is_gen = isinstance(resp, DeploymentResponseGenerator)
+                if is_gen:
+                    async for _ in resp:
+                        pass
+                else:
+                    try:
+                        await resp
+                    except Exception:
+                        pass
+            return is_gen
+
+    h = serve.run(Proxy.bind(Backend.bind()))
+    assert await h.run.remote("test") is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_request_counter_only_increments_on_dispatch(serve_instance):
+    """request_counter ticks per dispatched request, not per choose_replica."""
+
+    @serve.deployment
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, backend: DeploymentHandle):
+            self.handle = backend.process
+
+        async def run(self, dispatch_too: bool) -> int:
+            inc_calls: list = []
+            original_inc = self.handle.request_counter.inc
+
+            def tracking_inc(*args, **kwargs):
+                inc_calls.append(1)
+                return original_inc(*args, **kwargs)
+
+            self.handle.request_counter.inc = tracking_inc
+            try:
+                if dispatch_too:
+                    async with self.handle.choose_replica("msg") as sel:
+                        await self.handle.dispatch(sel, "msg")
+                else:
+                    async with self.handle.choose_replica("msg"):
+                        pass
+                return len(inc_calls)
+            finally:
+                self.handle.request_counter.inc = original_inc
+
+    h = serve.run(Caller.bind(Backend.bind()))
+    assert await h.run.remote(False) == 0
+    assert await h.run.remote(True) == 1
 
 
 if __name__ == "__main__":
