@@ -1182,13 +1182,41 @@ class Replica:
         self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
 
         self._num_queued_requests = 0
+        self._reserved_slots: Set[str] = set()
 
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
     def get_num_ongoing_requests(self) -> int:
-        return self._metrics_manager.get_num_ongoing_requests()
+        return self._metrics_manager.get_num_ongoing_requests() + len(
+            self._reserved_slots
+        )
+
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve replica capacity for a future dispatch call."""
+        if request_metadata.is_direct_ingress:
+            raise RuntimeError(
+                "Slot reservation is not supported for direct-ingress requests."
+            )
+
+        if not self._can_accept_request(request_metadata):
+            return False, self.get_num_ongoing_requests()
+
+        await self._semaphore.acquire()
+        self._reserved_slots.add(slot_token)
+        return True, self.get_num_ongoing_requests()
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release replica capacity reserved by choose_replica()."""
+        if slot_token not in self._reserved_slots:
+            return False, self.get_num_ongoing_requests()
+
+        self._reserved_slots.remove(slot_token)
+        self._semaphore.release()
+        return True, self.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -1865,12 +1893,25 @@ class Replica:
 
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
-        async with self._semaphore:
+        reserved_slot_token = request_metadata._reserved_slot_token
+        if reserved_slot_token:
+            if reserved_slot_token not in self._reserved_slots:
+                raise RuntimeError(
+                    "Request tried to consume an unknown reserved slot "
+                    f"{reserved_slot_token}."
+                )
+            self._reserved_slots.remove(reserved_slot_token)
+        else:
+            await self._semaphore.acquire()
+
+        try:
             try:
                 self._metrics_manager.inc_num_ongoing_requests(request_metadata)
                 yield
             finally:
                 self._metrics_manager.dec_num_ongoing_requests(request_metadata)
+        finally:
+            self._semaphore.release()
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
@@ -1883,7 +1924,7 @@ class Replica:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            num_ongoing_requests = self.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
@@ -2758,6 +2799,16 @@ class ReplicaActor:
         not be blocked by user code.
         """
         return self._replica_impl.get_num_ongoing_requests()
+
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve capacity for a future choose_replica/dispatch request."""
+        return await self._replica_impl.reserve_slot(request_metadata, slot_token)
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release capacity reserved by choose_replica()."""
+        return self._replica_impl.release_slot(slot_token)
 
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.

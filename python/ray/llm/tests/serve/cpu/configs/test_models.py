@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
@@ -416,6 +417,29 @@ class TestAcceleratorConfigLogic:
 
         tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         assert tpu_accel_with_topo.requires_deferred_placement_group is True
+
+
+class TestCheckpointInfo:
+    def test_apply_checkpoint_info_uses_autoconfig_and_threads_trust_remote_code(self):
+        """apply_checkpoint_info uses AutoConfig (not PretrainedConfig) and forwards
+        trust_remote_code to every HF config load call."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model")
+        )
+        mock_hf_config = MagicMock(spec=["architectures", "vision_config"])
+        mock_hf_config.architectures = ["LlavaForCausalLM"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ) as mock_auto:
+            llm_config.apply_checkpoint_info("vision/model", trust_remote_code=True)
+
+        assert all(
+            call.kwargs["trust_remote_code"] is True
+            for call in mock_auto.call_args_list
+        )
+        assert llm_config._supports_vision is True
+        assert llm_config._model_architecture == "LlavaForCausalLM"
 
 
 if __name__ == "__main__":
