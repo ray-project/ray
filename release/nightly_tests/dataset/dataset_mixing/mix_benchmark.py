@@ -6,14 +6,18 @@ import time
 
 import numpy as np
 import pyarrow as pa
+import torch
+import torch.distributed as dist
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark import Benchmark, BenchmarkMetric
 
 import ray
 import ray.data
+import ray.train
 from ray.data import MixStoppingCondition
-from ray.train import Checkpoint
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.torch import TorchTrainer
 
 IMAGENET_TRAIN_PATH = (
     "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split/train"
@@ -37,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _create_dataset(ds_index: int, batch_size: int) -> ray.data.Dataset:
+def _create_dataset(ds_index: int) -> ray.data.Dataset:
     ds = ray.data.read_parquet(IMAGENET_TRAIN_PATH, columns=["image", "label"])
 
     def preprocess(row):
@@ -45,7 +49,6 @@ def _create_dataset(ds_index: int, batch_size: int) -> ray.data.Dataset:
         return row
 
     ds = ds.map(preprocess)
-    ds = ds.repartition(4 * batch_size)
     return ds
 
 
@@ -69,25 +72,25 @@ def main(args):
     total_weight = sum(weights)
     normalized_weights = [w / total_weight for w in weights]
 
-    datasets = [_create_dataset(i, args.batch_size) for i in range(args.num_datasets)]
+    local_batch_size = args.batch_size
+    # Hard code some sensible values for the target block size and shuffle buffer size.
+    target_block_size = 4 * local_batch_size
+    shuffle_buffer_size = 64 * local_batch_size
+
+    datasets = [_create_dataset(i) for i in range(args.num_datasets)]
     first, *rest = datasets
     mixed = first.mix(*rest, weights=weights, stopping_condition=stopping)
+    mixed = mixed.repartition(target_num_rows_per_block=target_block_size)
 
     if args.random_mix:
         mixed = mixed.map_batches(
             _random_shuffle_fn,
-            batch_size=64 * args.batch_size,
+            batch_size=shuffle_buffer_size,
             batch_format="pyarrow",
         )
 
     def benchmark_fn():
-        import torch
-        import torch.distributed as dist
-        from ray.train import ScalingConfig
-        from ray.train.torch import TorchTrainer
-
         def train_fn(config):
-            import ray.train
 
             num_ds = config["num_datasets"]
             batch_size = config["batch_size"]
