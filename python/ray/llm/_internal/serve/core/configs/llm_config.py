@@ -256,50 +256,59 @@ class LLMConfig(BaseModelExtended):
     _engine_config: EngineConfigType = PrivateAttr(None)
     _callback_instance: Optional[CallbackBase] = PrivateAttr(None)
 
-    def _infer_supports_vision(self, model_id_or_path: str) -> None:
+    def _load_hf_config(self, model_id_or_path: str, trust_remote_code: bool = False):
+        """Load the HuggingFace config for a model.
+
+        Uses AutoConfig which loads the model-specific config class (e.g.
+        DeepseekV3Config) instead of the generic PretrainedConfig.  The generic
+        base class can fail for models whose config.json contains fields (like
+        ``rope_scaling``) that require model-specific post-init logic.
+        """
+        try:
+            return transformers.AutoConfig.from_pretrained(
+                model_id_or_path, trust_remote_code=trust_remote_code
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for "
+                f"model_id='{model_id_or_path}'. Ensure `model_id` is a valid "
+                f"Hugging Face repo or a local path that contains a valid "
+                f"`config.json` file. Original error: {repr(e)}"
+            ) from e
+
+    def _infer_supports_vision(
+        self, model_id_or_path: str, trust_remote_code: bool = False
+    ) -> None:
         """Called in llm node initializer together with other transformers calls. It
         loads the model config from huggingface and sets the supports_vision
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        try:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            self._supports_vision = hasattr(hf_config, "vision_config")
-        except Exception as e:
-            raise ValueError(
-                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
-                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
-                        contains a valid `config.json` file. "
-                f"Original error: {repr(e)}"
-            ) from e
+        hf_config = self._load_hf_config(
+            model_id_or_path, trust_remote_code=trust_remote_code
+        )
+        self._supports_vision = hasattr(hf_config, "vision_config")
 
     def _set_model_architecture(
         self,
         model_id_or_path: Optional[str] = None,
         model_architecture: Optional[str] = None,
+        trust_remote_code: bool = False,
     ) -> None:
         """Called in llm node initializer together with other transformers calls. It
         loads the model config from huggingface and sets the model_architecture
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            try:
-                hf_config = transformers.PretrainedConfig.from_pretrained(
-                    model_id_or_path
-                )
-                if (
-                    hf_config
-                    and hasattr(hf_config, "architectures")
-                    and hf_config.architectures
-                ):
-                    self._model_architecture = hf_config.architectures[0]
-            except Exception as e:
-                raise ValueError(
-                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
-                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
-                        contains a valid `config.json` file. "
-                    f"Original error: {repr(e)}"
-                ) from e
+            hf_config = self._load_hf_config(
+                model_id_or_path, trust_remote_code=trust_remote_code
+            )
+            if (
+                hf_config
+                and hasattr(hf_config, "architectures")
+                and hf_config.architectures
+            ):
+                self._model_architecture = hf_config.architectures[0]
 
         if model_architecture:
             self._model_architecture = model_architecture
@@ -308,8 +317,12 @@ class LLMConfig(BaseModelExtended):
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
-        self._infer_supports_vision(model_id_or_path)
-        self._set_model_architecture(model_id_or_path)
+        self._infer_supports_vision(
+            model_id_or_path, trust_remote_code=trust_remote_code
+        )
+        self._set_model_architecture(
+            model_id_or_path, trust_remote_code=trust_remote_code
+        )
 
     def get_or_create_callback(self) -> Optional[CallbackBase]:
         """Get or create the callback instance for this process.

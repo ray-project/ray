@@ -214,8 +214,8 @@ def test_json_roundtrip(
     ds2 = ray.data.read_json(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._plan.execute().blocks:
-        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for block, meta in ds2._execute().blocks:
+        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
 
 
 def test_json_read_small_file_unit_block_size(
@@ -428,6 +428,31 @@ class TestPandasJSONDatasource:
         with source._open_input_source(local_filesystem, path) as f:
             for block in source._read_stream(f, path):
                 assert len(block) == 4
+                block_builder.add_block(block)
+        block = block_builder.build()
+
+        # Verify.
+        assert rows_same(block, df)
+
+    def test_read_stream_with_advanced_file_pointer(
+        self, tmp_path, target_max_block_size_infinite_or_default
+    ):
+        # Setup test file.
+        df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        path = os.path.join(tmp_path, "test.json")
+        df.to_json(path, orient="records", lines=True)
+
+        # Setup datasource.
+        local_filesystem = fs.LocalFileSystem()
+        source = PandasJSONDatasource(
+            path, target_output_size_bytes=1, filesystem=local_filesystem
+        )
+
+        # Simulate retrying a stream read on a file handle that was already consumed.
+        block_builder = PandasBlockBuilder()
+        with source._open_input_source(local_filesystem, path) as f:
+            f.read(1)
+            for block in source._read_stream(f, path):
                 block_builder.add_block(block)
         block = block_builder.build()
 

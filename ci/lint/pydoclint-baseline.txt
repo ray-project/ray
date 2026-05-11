@@ -965,7 +965,7 @@ python/ray/data/_internal/datasource/tfrecords_datasource.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `TFRecordDatasource.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `TFRecordDatasource.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**file_based_datasource_kwargs: , paths: Union[str, List[str]], tf_schema: Optional['schema_pb2.Schema'], tfx_read_options: Optional['TFXReadOptions']].
+    DOC103: Method `TFRecordDatasource.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**file_based_datasource_kwargs: , paths: Union[str, List[str]], tf_schema: Optional['schema_pb2.Schema']].
 --------------------
 python/ray/data/_internal/datasource/webdataset_datasource.py
     DOC201: Function `_valid_sample` does not have a return section in docstring
