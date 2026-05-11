@@ -587,17 +587,17 @@ cdef extern from *:
 // auto-created tstate. If we let that happen, the next PyGILState_Ensure
 // (from inside the user-callback path that runs immediately after our hook)
 // allocates a fresh tstate and calls _Py_InitializeRecursionLimits, which
-// re-anchors c_stack_* to the current OS pthread stack — overwriting our
+// re-anchors c_stack_* to the current OS pthread stack -- overwriting our
 // fiber-stack re-anchor and putting us right back into the crash.
 //
 // The fix: leak gilstate_counter by +1 exactly once per fiber-runner OS
 // thread. The tstate stays alive for the lifetime of the process; the
-// callback's PyGILState_Ensure / Release pair just bounces counter 1↔2
+// callback's PyGILState_Ensure / Release pair just bounces counter 1<->2
 // without ever tearing down the tstate (or, importantly, the c_stack_*
 // fields we wrote). The GIL itself is still releasable: Ray's
 // run_async_func_or_coro_in_event_loop wraps YieldCurrentFiber in
 // `with nogil:` (_raylet.pyx:4569 area), which calls PyEval_SaveThread
-// directly — that path bypasses gilstate_counter and releases the GIL
+// directly -- that path bypasses gilstate_counter and releases the GIL
 // regardless. So the AsyncIO Thread can still take the GIL during awaits.
 extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
     static thread_local bool gil_leaked = false;
