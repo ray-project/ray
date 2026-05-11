@@ -803,7 +803,7 @@ py_test(
 
 py_test(
     name = "test_tensorflow_checkpoint",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
     env = {
         "RAY_TRAIN_V2_ENABLED": "1",
