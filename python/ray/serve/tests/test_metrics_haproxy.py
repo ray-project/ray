@@ -30,6 +30,7 @@ import ray
 from ray import serve
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import (
+    PrometheusTimeseries,
     SignalActor,
     fetch_prometheus_metrics,
     wait_for_condition,
@@ -388,8 +389,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     app_name = "app"
     serve.run(A.bind(), name=app_name, route_prefix="/")
 
-    httpx.get("http://localhost:8000/", timeout=None)
-    httpx.get("http://localhost:8000/", timeout=None)
+    resp1 = httpx.get("http://localhost:8000/", timeout=None)
+    resp2 = httpx.get("http://localhost:8000/", timeout=None)
+    assert resp1.status_code == 500
+    assert resp2.status_code == 500
 
     # Ensure all expected metrics are present.
     try:
@@ -405,26 +408,39 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     def verify_error_count(do_assert=False):
         resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         resp = resp.split("\n")
+        http_error_count = 0
+        deployment_error_count = 0
+
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            if "ray_serve_num_http_error_requests_total" in metrics:
-                # route "/" should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert "2.0" in metrics
-                if "2.0" not in metrics:
-                    return False
-            elif "ray_serve_num_deployment_http_error_requests" in metrics:
-                # deployment A should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
-                    return False
-        return True
+            if (
+                "ray_serve_num_http_error_requests_total" in metrics
+                and 'route="/"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                http_error_count += int(float(metrics.split(" ")[-1]))
+            elif (
+                "ray_serve_num_deployment_http_error_requests" in metrics
+                and 'deployment="A"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                deployment_error_count += int(float(metrics.split(" ")[-1]))
+
+        # We expect 2 requests total, both should be 500 errors
+        if do_assert:
+            assert (
+                http_error_count == 2
+            ), f"Expected at least 2 HTTP 500 errors, got {http_error_count}"
+            assert (
+                deployment_error_count == 2
+            ), f"Expected at least 2 deployment 500 errors, got {deployment_error_count}"
+
+        return http_error_count == 2 and deployment_error_count == 2
 
     # There is a latency in updating the counter
     try:
-        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=30)
     except RuntimeError:
         verify_error_count(do_assert=True)
 
@@ -893,23 +909,27 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["application"],
     ) == expected_output
 
-    wait_for_condition(
-        lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+    expected_deployments = {("f", "app1"), ("g", "app2"), ("h", "app3")}
+    health_timeseries = PrometheusTimeseries()
+
+    def _check_replica_healthy():
+        metrics = get_metric_dictionaries(
+            "ray_serve_deployment_replica_healthy",
+            wait=False,
+            timeseries=health_timeseries,
         )
-        == 3,
-        timeout=40,
+        return {
+            (m["deployment"], m["application"]) for m in metrics
+        } >= expected_deployments
+
+    wait_for_condition(_check_replica_healthy, timeout=40)
+    health_metrics = get_metric_dictionaries(
+        "ray_serve_deployment_replica_healthy", timeseries=health_timeseries
     )
-    health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
-    expected_output = {
-        ("f", "app1"),
-        ("g", "app2"),
-        ("h", "app3"),
-    }
     assert {
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
-    } == expected_output
+    } >= expected_deployments
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")

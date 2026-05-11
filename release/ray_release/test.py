@@ -17,6 +17,7 @@ from botocore.exceptions import ClientError
 if TYPE_CHECKING:
     from ray_release.github_client import GitHubRepo
 
+from ray_release.anyscale_util import Anyscale
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -168,6 +169,7 @@ class Test(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_results = None
+        self.anyscale = Anyscale()
 
     @classmethod
     def from_bazel_event(cls, event: dict, team: str):
@@ -402,6 +404,10 @@ class Test(dict):
     def is_azure(self) -> bool:
         """Returns whether this test is running on Azure."""
         return self.get_cloud_env() == "azure"
+
+    def uses_anyscale_sdk_2026(self) -> bool:
+        """Returns whether this test uses the 2026 Anyscale compute config schema."""
+        return self.get("cluster", {}).get("anyscale_sdk_2026", False)
 
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is

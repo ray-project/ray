@@ -35,7 +35,7 @@ def upload_working_dir_if_needed(
     include_gitignore: bool,
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
-    upload_fn: Optional[Callable[[str, Optional[List[str]]], None]] = None,
+    upload_fn: Optional[Callable[[str, Optional[List[str]], bool], None]] = None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
@@ -105,12 +105,15 @@ def upload_working_dir_if_needed(
             )
 
         pkg_uri = get_uri_for_package(package_path)
-        try:
-            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
-        except Exception as e:
-            raise RuntimeEnvSetupError(
-                f"Failed to upload package {package_path} to the Ray cluster: {e}"
-            ) from e
+        if upload_fn is not None:
+            upload_fn(working_dir, excludes=excludes, is_file=True)
+        else:
+            try:
+                upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+            except Exception as e:
+                raise RuntimeEnvSetupError(
+                    f"Failed to upload package {package_path} to the Ray cluster: {e}"
+                ) from e
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:

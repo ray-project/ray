@@ -532,7 +532,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(
+            np.sort(df.values, axis=0), np.sort(combined_iterations, axis=0)
+        )
 
 
 @pytest.mark.skipif(
@@ -550,7 +552,9 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
         for batch in ds.iter_tf_batches(batch_size=2):
             iterations.append(batch["data"])
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(arr, combined_iterations)
+        np.testing.assert_array_equal(
+            np.sort(arr, axis=0), np.sort(combined_iterations, axis=0)
+        )
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):

@@ -26,7 +26,6 @@ __all__ = [
     "ActorAutoscaler",
     "ActorPoolScalingRequest",
     "AutoscalingActorPool",
-    "DefaultResizingPolicy",
     "create_actor_autoscaler",
     "_get_max_scale_up",
 ]

@@ -115,7 +115,7 @@ class MockVLLMEngine(LLMEngine):
         This mimics vLLM's behavior: halts generation while keeping weights in GPU.
 
         Args:
-            **kwargs: Engine-specific options (wait_for_inflight_requests, clear_cache).
+            **kwargs: Engine-specific options (mode, clear_cache).
         """
         if not self.started:
             raise RuntimeError("Engine not started")
@@ -581,3 +581,15 @@ class FakeLoraModelLoader(LoraModelLoader):
             local_path="/fake/local/path",
             lora_assigned_int_id=random.randint(1, 100),
         )
+
+
+class PGCreationMockEngine(MockVLLMEngine):
+    """
+    A wrapper around the mock engine that forces it to create the placement
+    group on startup, simulating the real vLLM initialization sequence.
+    """
+
+    def __init__(self, llm_config, *args, **kwargs):
+        super().__init__(llm_config, *args, **kwargs)
+        self.engine_config = llm_config.get_engine_config()
+        self.engine_config.get_or_create_pg()

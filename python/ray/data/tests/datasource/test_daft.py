@@ -1,4 +1,3 @@
-import os
 from unittest.mock import patch
 
 import pyarrow as pa
@@ -8,26 +7,10 @@ from packaging.version import parse as parse_version
 
 @pytest.fixture(scope="module")
 def ray_start(request):
-    """Initialize Ray with proper serialization format."""
-    # TODO: Remove this once Daft issue is fixed to default to Cloudpickle
-    # serialization format.
-    # Force the serialization format to JSON for this test.
-    # Refer Daft issue https://github.com/Eventual-Inc/Daft/issues/4828
-    # and Ray issue https://github.com/ray-project/ray/issues/54837
-    # for more details.
-
-    # Set environment variable before importing ray
-    os.environ["RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT"] = "1"
-
+    """Initialize Ray for Daft tests."""
     import ray
-    import ray.data._internal.tensor_extensions.arrow as arrow_module
-    from ray.data._internal.tensor_extensions.arrow import _SerializationFormat
-
-    # Force the serialization format to JSON after import
-    arrow_module.ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat.JSON
 
     try:
-        # Set environment variable for Ray workers
         yield ray.init(
             num_cpus=16,
         )

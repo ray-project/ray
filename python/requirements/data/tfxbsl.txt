@@ -1,0 +1,4 @@
+tfx-bsl==1.16.1
+crc32c==2.3
+apache-beam[gcp]==2.53
+tensorflow==2.16.2

@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -20,6 +21,9 @@ from ray.data.dataset import (
     SinkMode,
     ClickHouseTableSettings,
     SaveMode,
+)
+from ray.data._internal.logical.operators.n_ary_operator import (
+    MixStoppingCondition,
 )
 from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
@@ -137,7 +141,9 @@ __all__ = [
     "ExecutionOptions",
     "ExecutionResources",
     "FileShuffleConfig",
+    "MixStoppingCondition",
     "NodeIdStr",
+    "RandomSeedConfig",
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",

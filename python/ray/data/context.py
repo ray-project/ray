@@ -71,7 +71,13 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
     "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
 )
 
+DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
+    "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
+
+DEFAULT_USE_DATASOURCE_V2 = False
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
@@ -200,6 +206,21 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "DEADLINE_EXCEEDED",
 )
 
+DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -319,6 +340,42 @@ class IcebergConfig:
     catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
+    )
+
+
+@DeveloperAPI
+@dataclass
+class LanceConfig:
+    """Configuration for Lance datasource and datasink operations.
+
+    Args:
+        read_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance read operations.
+        read_fragments_max_attempts: Maximum number of retry attempts for Lance
+            read operations.
+        read_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance read retries.
+        write_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance write operations.
+        write_fragments_max_attempts: Maximum number of retry attempts for Lance
+            write operations.
+        write_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance write retries.
+    """
+
+    read_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    read_fragments_max_attempts: int = DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS
+    read_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S
+    )
+    write_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    write_fragments_max_attempts: int = DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS
+    write_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S
     )
 
 
@@ -449,6 +506,11 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
+            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
+            driver-side first-file sampling for schema inference,
+            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
+            remains the production path while V2 bakes.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -529,6 +591,9 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        lance_config: Configuration for Lance datasource and datasink operations
+            including retry settings for read and write operations. See
+            :class:`LanceConfig` for details.
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
@@ -568,6 +633,7 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
         gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
@@ -667,6 +733,7 @@ class DataContext:
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
@@ -718,17 +785,12 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+    lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
-    # This is a temporary workaround to allow actors to perform cleanup
-    # until https://github.com/ray-project/ray/issues/53169 is fixed.
-    # This hook is known to have a race condition bug in fault tolerance.
-    # I.E., after the hook is triggered and the UDF is deleted, another
-    # retry task may still be scheduled to this actor and it will fail.
-    _enable_actor_pool_on_exit_hook: bool = False
 
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
@@ -745,6 +807,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
@@ -935,11 +999,15 @@ class DataContext:
         from ray.data._internal.execution.callbacks.insert_issue_detectors import (
             IssueDetectionExecutionCallback,
         )
+        from ray.data._internal.execution.callbacks.resource_allocator_prometheus_callback import (
+            ResourceAllocatorPrometheusCallback,
+        )
         from ray.data._internal.execution.execution_callback import ExecutionCallback
 
         classes = [
             ExecutionIdxUpdateCallback,
             IssueDetectionExecutionCallback,
+            ResourceAllocatorPrometheusCallback,
         ]
 
         # Parse environment variable for custom callbacks

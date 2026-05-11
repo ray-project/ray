@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
+    vLLMEngineRequest,
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
@@ -134,7 +135,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # This is overriden in the processor, so it remains unchanged when we bypass
+            # This is overridden in the processor, so it remains unchanged when we bypass
             # the processor and pass it directly to the stage via vLLMEngineStageUDF.
             "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
@@ -257,6 +258,61 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "task_type",
+    [
+        vLLMTaskType.GENERATE,
+        vLLMTaskType.EMBED,
+        vLLMTaskType.CLASSIFY,
+        vLLMTaskType.SCORE,
+    ],
+)
+async def test_vllm_wrapper_forwards_lora_request(task_type):
+    """Regression test: lora_request must be forwarded to the vLLM engine.
+
+    A prior bug populated vLLMEngineRequest.lora_request correctly but never
+    passed it to the vLLM engine, causing per-row LoRA adapters to be
+    silently dropped. GENERATE dispatches to engine.generate(); pooling task
+    types (EMBED / CLASSIFY / SCORE) dispatch to engine.encode().
+    """
+
+    async def finished_stream():
+        output = MagicMock()
+        output.finished = True
+        yield output
+
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.engine = MagicMock()
+    wrapper.engine.generate = MagicMock(return_value=finished_stream())
+    wrapper.engine.encode = MagicMock(return_value=finished_stream())
+    wrapper.task_type = task_type
+
+    sentinel_lora = object()
+    request = vLLMEngineRequest(
+        request_id=0,
+        idx_in_batch=0,
+        prompt="hello",
+        prompt_token_ids=None,
+        images=[],
+        multimodal_data=None,
+        mm_processor_kwargs=None,
+        multimodal_uuids=None,
+        params=MagicMock(),
+        tokenization_kwargs=None,
+        lora_request=sentinel_lora,
+    )
+
+    await wrapper._generate_async(request)
+
+    expected = (
+        wrapper.engine.generate
+        if task_type == vLLMTaskType.GENERATE
+        else wrapper.engine.encode
+    )
+    assert expected.call_args.kwargs.get("lora_request") is sentinel_lora
+
+
+@pytest.mark.asyncio
 async def test_vllm_wrapper_generate(model_llama_3_2_216M):
     # TODO: Test v1 engine. The issue is once vLLM is imported with v0,
     # we cannot configure it to use v1, so we need a separate test for v1.
@@ -343,7 +399,6 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pooling_params,tokenization_kwargs,expect_same_output",
     [
@@ -354,6 +409,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         (None, {"truncation": True, "max_length": 3}, False),
     ],
 )
+@pytest.mark.asyncio
 async def test_vllm_wrapper_embed_pooling_params(
     model_opt_125m, pooling_params, tokenization_kwargs, expect_same_output
 ):
@@ -408,7 +464,6 @@ async def test_vllm_wrapper_embed_pooling_params(
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pooling_params,tokenization_kwargs",
     [
@@ -419,6 +474,7 @@ async def test_vllm_wrapper_embed_pooling_params(
     ],
     ids=["truncate_prompt_tokens_compat", "tokenization_kwargs"],
 )
+@pytest.mark.asyncio
 async def test_vllm_wrapper_embed_long_prompt(
     model_opt_125m, pooling_params, tokenization_kwargs
 ):
@@ -507,8 +563,8 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
+@pytest.mark.asyncio
 async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
     """Test the JSON output with xgrammar backend.
 
