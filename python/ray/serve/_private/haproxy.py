@@ -1238,6 +1238,68 @@ class HAProxyApi(ProxyApi):
                 )
         return result
 
+    async def _send_runtime_commands(
+        self, commands: List[str], chunk_size: int = 64
+    ) -> None:
+        """Send multiple admin-socket commands batched onto single connections.
+
+        HAProxy's CLI accepts multiple commands per connection separated by
+        `;`. This lets us collapse what would otherwise be N separate Unix
+        socket round-trips (each contending with HTTP worker threads for
+        accept/dispatch) into a small number of connections, dramatically
+        reducing the wallclock cost of a large apply.
+
+        At Ray Serve scales (autoscaling broadcast = tens to hundreds of
+        server changes across many backends), the previous per-command
+        connection model meant a single broadcast triggered ~200 separate
+        admin-socket round-trips per proxy. Each round-trip competes with
+        live traffic on HAProxy's worker threads; the per-command overhead
+        compounds and pushes individual commands past the 5s timeout under
+        load. With batching, the same 200 commands ride through 4 socket
+        sessions (at the default chunk_size), each session handling its
+        commands in-order without re-acquiring the connection.
+
+        Error detection mirrors `_send_runtime_command`: substring-match the
+        concatenated response for known HAProxy error markers and raise on
+        the first hit. Loses per-command attribution (we don't know which
+        command in the batch failed), but the caller's response to any
+        failure is the same fallback reload regardless.
+
+        chunk_size of 64 stays comfortably under HAProxy's default 16 KB CLI
+        buffer (`tune.bufsize`) for typical command lengths (~80 bytes).
+        """
+        if not commands:
+            return
+        error_markers = (
+            "[alert]",
+            "[warning]",
+            "[notice]",
+            "no such server",
+            "no such backend",
+            "doesn't exist",
+            "does not exist",
+            "not found",
+            "not allowed",
+            "syntax error",
+            "invalid argument",
+            "unknown command",
+            "must be disabled",
+        )
+        for i in range(0, len(commands), chunk_size):
+            chunk = commands[i : i + chunk_size]
+            batched = ";".join(chunk)
+            result = await self._send_socket_command(batched)
+            if not result:
+                continue
+            normalized = result.lower()
+            for marker in error_markers:
+                if marker in normalized:
+                    raise RuntimeError(
+                        f"HAProxy rejected one or more runtime commands in "
+                        f"batch of {len(chunk)} (chunk starts at index {i}): "
+                        f"{result.strip()[:500]}"
+                    )
+
     @staticmethod
     def _parse_haproxy_csv_stats(
         stats_output: str,
@@ -1400,37 +1462,44 @@ class HAProxyApi(ProxyApi):
             self.set_backend_configs(new_backend_configs)
             return True
 
-        # Apply the diff via the admin socket. Commands are sent
-        # sequentially — if one fails partway through, the live HAProxy
-        # state is partially updated. The fallback reload that the caller
-        # performs after we return False rebuilds full state from
-        # self.backend_configs (which we update here) and converges
+        # Apply the diff via the admin socket. We accumulate all commands
+        # into a list and ship them through `_send_runtime_commands`, which
+        # batches them onto a small number of Unix socket connections
+        # (separator: `;`). Previously each command opened its own
+        # connection, so a broadcast with N server changes incurred 2N
+        # admin-socket round-trips per proxy. Under load each round-trip
+        # competes with HTTP worker threads for accept/dispatch, and the
+        # cumulative wallclock easily exceeds the 5s `_send_socket_command`
+        # timeout. Batching collapses the 2N round-trips into ceil(2N/64)
+        # connections -- typically 1-4 for a real broadcast -- so the per-
+        # command overhead is amortized away.
+        #
+        # If any command in the batch fails, the whole apply fails and the
+        # caller falls back to a reload, which rebuilds full state from
+        # self.backend_configs (which we update below) and converges
         # everything back to the new desired state.
         try:
+            commands: List[str] = []
             for backend_name, server_names in diff.servers_to_remove.items():
                 for sname in server_names:
                     # Disable before delete: required when the server has
                     # in-flight connections; safe even when it doesn't.
-                    await self._send_runtime_command(
-                        f"disable server {backend_name}/{sname}"
-                    )
-                    await self._send_runtime_command(
-                        f"del server {backend_name}/{sname}"
-                    )
+                    commands.append(f"disable server {backend_name}/{sname}")
+                    commands.append(f"del server {backend_name}/{sname}")
 
             for backend_name, servers in diff.servers_to_add.items():
                 for server in servers:
                     # Newly-added runtime servers inherit `default-server`
                     # directives (inter/fall/rise/etc.) from the backend
                     # block, so we only need address + the `check` flag.
-                    await self._send_runtime_command(
+                    commands.append(
                         f"add server {backend_name}/{server.name} "
                         f"{server.host}:{server.port} check"
                     )
                     # Runtime-added servers start in MAINT state by default.
-                    await self._send_runtime_command(
-                        f"enable server {backend_name}/{server.name}"
-                    )
+                    commands.append(f"enable server {backend_name}/{server.name}")
+
+            await self._send_runtime_commands(commands)
         except Exception as e:
             logger.warning(
                 f"Failed to apply backend update incrementally via runtime "
