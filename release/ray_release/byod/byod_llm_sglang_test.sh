@@ -5,7 +5,7 @@
 set -exo pipefail
 
 # Install build deps for Rust crates linking against OpenSSL (e.g. openssl-sys via reqwest)
-apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev
+sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libssl-dev
 
 # Install rust via rustup (apt's rustc 1.75 is too old for crates requiring edition2024, e.g. idna_adapter)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
