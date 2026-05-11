@@ -4,8 +4,11 @@ import time
 from dataclasses import replace
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from typing_extensions import override
+
 from ray._common.utils import env_float
 from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
     FIFOBundleQueue,
     HashLinkedQueue,
 )
@@ -100,6 +103,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"OutputSplitter created: {n=}, {equal=}, {locality_hints=}, "
             f"{self._max_buffer_size=}"
         )
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._buffer]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
 
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
@@ -197,30 +210,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # orphaning RefBundle references in _metrics._internal_inqueues
         # that pin ObjectRefs in the object store.
         self.clear_internal_input_queue()
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return self._buffer.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return self._buffer.estimate_size_bytes()
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_queue.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue."""
-        while self._buffer:
-            bundle = self._buffer.get_next()
-            self._metrics.on_input_dequeued(bundle, input_index=0)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_queue.has_next():
-            bundle = self._output_queue.get_next()
-            self._metrics.on_output_dequeued(bundle)
 
     def progress_str(self) -> str:
         if self._locality_hints:

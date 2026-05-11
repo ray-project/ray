@@ -8,6 +8,7 @@ import pytest
 
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import binary_to_hex, hex_to_binary
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
     ReadOnlyProvider,
 )
@@ -17,12 +18,24 @@ from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater impor
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import (  # noqa
     RayStopper,
 )
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import DrainNodeReason
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     InstanceUpdateEvent,
     TerminationRequest,
 )
+
+
+def _get_stopped_nodes_total(metrics_reporter: AutoscalerMetricsReporter) -> float:
+    total_samples = [
+        sample.value
+        for metric in metrics_reporter._prom_metrics.stopped_nodes.collect()
+        for sample in metric.samples
+        if sample.name == "autoscaler_stopped_nodes_total"
+    ]
+    assert len(total_samples) == 1
+    return total_samples[0]
 
 
 class TestRayStopper:
@@ -267,7 +280,10 @@ class TestCloudInstanceUpdater:
 
     def test_terminate_instances(self):
         mock_provider = mock.MagicMock()
-        launcher = CloudInstanceUpdater(mock_provider)
+        metrics_reporter = AutoscalerMetricsReporter(
+            AutoscalerPrometheusMetrics(session_name="test")
+        )
+        launcher = CloudInstanceUpdater(mock_provider, metrics_reporter)
         launcher.notify(
             [
                 InstanceUpdateEvent(
@@ -292,6 +308,39 @@ class TestCloudInstanceUpdater:
             mock_provider.terminate.assert_called_once_with(
                 ids=["c1", "c2", "c3"], request_id=mock.ANY
             )
+            assert _get_stopped_nodes_total(metrics_reporter) == 0
+            return True
+
+        wait_for_condition(verify)
+
+    def test_count_stopped_instances_on_terminated(self):
+        mock_provider = mock.MagicMock()
+        metrics_reporter = AutoscalerMetricsReporter(
+            AutoscalerPrometheusMetrics(session_name="test")
+        )
+        launcher = CloudInstanceUpdater(mock_provider, metrics_reporter)
+        launcher.notify(
+            [
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATED,
+                    instance_id="1",
+                    cloud_instance_id="c1",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATED,
+                    instance_id="2",
+                    cloud_instance_id="c2",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATED,
+                    instance_id="3",
+                ),
+            ]
+        )
+
+        def verify():
+            mock_provider.terminate.assert_not_called()
+            assert _get_stopped_nodes_total(metrics_reporter) == 2
             return True
 
         wait_for_condition(verify)

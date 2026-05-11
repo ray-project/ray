@@ -7,6 +7,7 @@ import pytest
 
 from ray import serve
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
 
@@ -119,6 +120,31 @@ def test_dictionary_logging_config_with_local_mode():
 
     # The logger should be setup with WARNING level.
     assert h.remote().result() == logging.WARNING
+
+
+def test_ingress_request_router_requires_haproxy(monkeypatch):
+    @serve.deployment
+    class LLMServer:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False)
+
+    with pytest.raises(
+        RayServeException,
+        match="Ray controller's environment",
+    ):
+        llm_server = LLMServer.bind()
+        app = llm_server._with_ingress_request_router(
+            IngressRequestRouter.bind(llm_deployment=llm_server)
+        )
+        serve.run(
+            app,
+            _local_testing_mode=True,
+        )
 
 
 def test_deploy_multiple_apps_batched() -> None:

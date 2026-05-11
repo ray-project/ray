@@ -50,8 +50,9 @@ class ParquetScanner(ArrowFileScanner):
             predicate=self.predicate,
             limit=self.limit,
             filesystem=self.filesystem,
-            partitioning=self.partitioning.to_pyarrow() if self.partitioning else None,
+            partitioning=self.partitioning,
             ignore_prefixes=self.ignore_prefixes,
             target_block_size=self.target_block_size,
             include_paths=self.include_paths,
+            schema=self.schema,
         )
