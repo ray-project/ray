@@ -161,11 +161,13 @@ class _StatsAccumulator:
 class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
+    _MAX_SAMPLES = 10_000
+
     def __init__(self):
         self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
-        self._total_count: float = 0
+        self._total_count: int = 0
         self._samples: List[float] = []
 
     @contextmanager
@@ -183,7 +185,16 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
-        self._samples.append(value)
+        # Reservoir sampling: keep a random subset of up to _MAX_SAMPLES entries
+        # so percentile estimates remain unbiased as the count grows.
+        if len(self._samples) < self._MAX_SAMPLES:
+            self._samples.append(value)
+        else:
+            import random
+
+            j = random.randint(0, self._total_count - 1)
+            if j < self._MAX_SAMPLES:
+                self._samples[j] = value
 
     def get(self) -> float:
         return self._total
@@ -201,13 +212,9 @@ class Timer:
         """Linear-interpolated percentile in ``[0, 100]`` over recorded samples."""
         if not self._total_count:
             return float("inf")
-        s = sorted(self._samples)
-        k = (len(s) - 1) * (p / 100.0)
-        f = math.floor(k)
-        c = math.ceil(k)
-        if f == c:
-            return s[int(k)]
-        return s[f] * (c - k) + s[c] * (k - f)
+        import numpy as np
+
+        return float(np.percentile(self._samples, p))
 
     def p50(self) -> float:
         return self._percentile(50.0)
