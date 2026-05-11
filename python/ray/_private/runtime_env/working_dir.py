@@ -33,7 +33,7 @@ _LOG_ONCE_DEFAULT_EXCLUDE_PREFIX = "runtime_env_default_exclude:"
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     include_gitignore: bool,
-    scratch_dir: Optional[str] = os.getcwd(),
+    scratch_dir: Optional[str] = None,
     logger: Optional[logging.Logger] = default_logger,
     upload_fn: Optional[Callable[[str, Optional[List[str]], bool], None]] = None,
 ) -> Dict[str, Any]:
@@ -117,6 +117,8 @@ def upload_working_dir_if_needed(
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
+        if scratch_dir is None:
+            scratch_dir = os.getcwd()
         try:
             upload_package_if_needed(
                 working_dir_uri,
