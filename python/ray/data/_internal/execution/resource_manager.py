@@ -433,9 +433,7 @@ class ResourceManager:
         return self._op_resource_allocator.get_allocation(op)
 
     def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return planned_grant - usage for the given operator, or None if the
-        operator has no designated allocation. Negative values mean the op is
-        consuming more than its planned grant."""
+        """Return planned_grant - usage, or None if the op has no allocation."""
         if self._op_resource_allocator is None:
             return None
         return self._op_resource_allocator.get_signed_headroom(op)
@@ -964,29 +962,20 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._op_planned_grants.get(op)
 
     def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        planned_grant = self._op_planned_grants.get(op)
-        if planned_grant is None:
+        pg = self._op_planned_grants.get(op)
+        if pg is None:
             return None
-        # Signed headroom = planned_grant - usage. Negative means the op is consuming
-        # more than its planned grant (e.g. after a cluster shrink), used by the
-        # autoscaler to decide how many actors to remove.
-        headroom = planned_grant.subtract(self._resource_manager.get_op_usage(op))
-
-        # Clamp dimensions where planned_grant is 0 to 0 rather than returning a
-        # spurious negative value. A zero planned grant means the dimension is not
-        # tracked by the allocator (e.g. limits.memory was not set). Actors can still
-        # have non-zero usage for such dimensions (e.g. ray_remote_args={"memory": X}),
-        # which would otherwise produce a false negative headroom and trigger spurious
-        # autoscaler downscaling.
+        h = pg.subtract(self._resource_manager.get_op_usage(op))
+        # Zero out untracked dimensions (pg.X == 0) — actors can declare resources
+        # (e.g. memory) that the allocator doesn't track, which would otherwise
+        # produce false negative headroom and trigger spurious autoscaler downscaling.
         return ExecutionResources(
-            cpu=headroom.cpu if planned_grant.cpu > 0 else 0,
-            gpu=headroom.gpu if planned_grant.gpu > 0 else 0,
-            object_store_memory=(
-                headroom.object_store_memory
-                if planned_grant.object_store_memory > 0
-                else 0
-            ),
-            memory=headroom.memory if planned_grant.memory > 0 else 0,
+            cpu=h.cpu if pg.cpu > 0 else 0,
+            gpu=h.gpu if pg.gpu > 0 else 0,
+            object_store_memory=h.object_store_memory
+            if pg.object_store_memory > 0
+            else 0,
+            memory=h.memory if pg.memory > 0 else 0,
         )
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
