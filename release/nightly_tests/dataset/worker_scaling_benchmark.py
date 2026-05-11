@@ -74,9 +74,6 @@ def main(args: argparse.Namespace):
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
         metrics["num_blocks"] = num_blocks
         metrics["num_rows"] = num_rows
-        import pprint
-
-        pprint.pprint(metrics)
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
