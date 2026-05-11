@@ -2488,7 +2488,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode_cu130
-  python: "3.14"
+  python: "3.12"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2525,7 +2525,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
-  python: "3.14"
+  python: "3.12"
   group: core-daily-test
   team: core
   frequency: weekly
