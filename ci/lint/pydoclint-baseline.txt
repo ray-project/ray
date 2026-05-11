@@ -2159,7 +2159,6 @@ python/ray/util/client/worker.py
     DOC201: Method `Worker._add_ids_to_metadata` does not have a return section in docstring
 --------------------
 python/ray/util/collective/collective.py
-    DOC107: Function `init_collective_group`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC202: Function `init_collective_group` has a return section in docstring, but there are no return statements or annotations
     DOC107: Function `create_collective_group`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC111: Function `create_collective_group`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list

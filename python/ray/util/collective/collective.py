@@ -772,7 +772,12 @@ def get_group_handle(group_name: str = "default"):
                     rank = int(os.environ["collective_rank"])
                     world_size = int(os.environ["collective_world_size"])
                     backend = os.environ["collective_backend"]
-                    rendezvous_timeout = int(os.getenv("collective_rendezvous_timeout", 30000))
+                    rendezvous_timeout = int(
+                        os.getenv(
+                            "collective_rendezvous_timeout",
+                            os.getenv("collective_gloo_timeout", 30000),
+                        )
+                    )
                     _group_mgr.create_collective_group(
                         backend, world_size, rank, group_name, rendezvous_timeout
                     )
