@@ -76,10 +76,11 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool exceeding max size",
             )
 
-        signed_headroom = self._resource_manager.get_signed_headroom(op)
-        if signed_headroom is not None:
+        allocation = self._resource_manager.get_allocation(op)
+        op_usage = self._resource_manager.get_op_usage(op)
+        if allocation is not None and op_usage is not None:
             over_budget_scale_down = _get_required_scale_down(
-                actor_pool, signed_headroom
+                actor_pool, allocation.subtract(op_usage)
             )
             if over_budget_scale_down > 0:
                 max_can_release = actor_pool.current_size() - actor_pool.min_size()
