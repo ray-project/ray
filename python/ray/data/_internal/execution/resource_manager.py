@@ -986,62 +986,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
-    def _apply_op_grant_caps(
-        self,
-        op: PhysicalOperator,
-        op_proportional: ExecutionResources,
-        op_shared: ExecutionResources,
-        remaining_shared: ExecutionResources,
-        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources],
-        max_resource_usage: ExecutionResources,
-    ) -> Tuple[ExecutionResources, ExecutionResources]:
-        """Cap and borrow-adjust the proportional and shared grants for one op.
-
-        Three steps, in order:
-          1. Cap op_proportional: reserved + proportional <= max_resource_usage.
-          2. Borrow from remaining_shared to reach min_scheduling_resources.
-          3. Cap op_shared: total grant <= max_resource_usage.
-
-        Steps 1 and 3 only apply when max_resource_usage is finite. Step 1 must
-        precede step 2 so the borrow shortfall is measured against the capped
-        proportional (what the op will actually receive).
-        """
-        total_reserved = (
-            self._get_total_reserved(op)
-            if max_resource_usage != ExecutionResources.inf()
-            else None
-        )
-
-        if total_reserved is not None:
-            op_proportional = op_proportional.min(
-                max_resource_usage.subtract(total_reserved).max(
-                    ExecutionResources.zero()
-                )
-            )
-
-        # Borrow from remaining_shared if total grant < min_scheduling_resources.
-        # Applies to all ops regardless of cap.
-        shortfall = (
-            op.min_scheduling_resources()
-            .subtract(op_reserved_remaining[op].add(op_proportional).add(op_shared))
-            .max(ExecutionResources.zero())
-        )
-        if not shortfall.is_zero() and op_shared.add(shortfall).satisfies_limit(
-            remaining_shared
-        ):
-            op_shared = op_shared.add(shortfall)
-
-        if total_reserved is not None:
-            op_usage = self._resource_manager.get_op_usage(op)
-            current_allocation = total_reserved.add(op_proportional).max(op_usage)
-            op_shared = op_shared.min(
-                max_resource_usage.subtract(current_allocation).max(
-                    ExecutionResources.zero()
-                )
-            )
-
-        return op_proportional, op_shared
-
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         budget = self.get_budget(op)
         if budget is None:
@@ -1135,15 +1079,42 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         for i, op in enumerate(reversed(eligible_ops)):
             op_proportional = op_proportional_grants.get(op, ExecutionResources.zero())
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
+            max_resource_usage = op_max_resources[op]
 
-            op_proportional, op_shared = self._apply_op_grant_caps(
-                op,
-                op_proportional,
-                op_shared,
-                remaining_shared,
-                op_reserved_remaining,
-                op_max_resources[op],
+            # Step 1: cap op_proportional so reserved + proportional <= max_resource_usage.
+            total_reserved = (
+                self._get_total_reserved(op)
+                if max_resource_usage != ExecutionResources.inf()
+                else None
             )
+            if total_reserved is not None:
+                op_proportional = op_proportional.min(
+                    max_resource_usage.subtract(total_reserved).max(
+                        ExecutionResources.zero()
+                    )
+                )
+
+            # Step 2: borrow from remaining_shared to reach min_scheduling_resources.
+            # Must come after step 1 so shortfall is measured against capped proportional.
+            shortfall = (
+                op.min_scheduling_resources()
+                .subtract(op_reserved_remaining[op].add(op_proportional).add(op_shared))
+                .max(ExecutionResources.zero())
+            )
+            if not shortfall.is_zero() and op_shared.add(shortfall).satisfies_limit(
+                remaining_shared
+            ):
+                op_shared = op_shared.add(shortfall)
+
+            # Step 3: cap op_shared so total grant <= max_resource_usage.
+            if total_reserved is not None:
+                op_usage = self._resource_manager.get_op_usage(op)
+                current_allocation = total_reserved.add(op_proportional).max(op_usage)
+                op_shared = op_shared.min(
+                    max_resource_usage.subtract(current_allocation).max(
+                        ExecutionResources.zero()
+                    )
+                )
 
             remaining_shared = remaining_shared.subtract(op_shared)
             assert remaining_shared.is_non_negative(), (remaining_shared, op, op_shared)
