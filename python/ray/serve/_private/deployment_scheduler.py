@@ -656,7 +656,15 @@ class DeploymentScheduler(ABC):
             # TODO (jeffreywang): Add support for target labels and node affinity
             target_labels = None
             target_node_id = None
-        elif scheduling_request.placement_group_bundles is not None:
+        elif (
+            scheduling_request.placement_group_bundles is not None
+            or scheduling_request.accelerator_config is not None
+        ):
+            # Per-replica PG path. Entered when either:
+            # - The user provided explicit bundles (CPU/GPU deployments), or
+            # - The user provided an accelerator_config that derives its own
+            #   bundles from structured fields (e.g. TPUAcceleratorConfig
+            #   derives bundles from topology via slice_placement_group).
             replica_pg = None
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy

@@ -896,10 +896,20 @@ class ReplicaQueueLengthInfo:
 
 @dataclass(frozen=True)
 class CreatePlacementGroupRequest:
-    bundles: List[Dict[str, float]]
-    strategy: str
-    target_node_id: str
-    name: str
+    """Internal request for creating a per-replica placement group.
+
+    Either ``bundles`` or ``accelerator_config`` must be provided:
+    - For plain CPU/GPU deployments, the caller provides ``bundles`` and the
+      default path creates a standard PlacementGroup.
+    - For accelerator deployments (e.g. TPU), the caller provides
+      ``accelerator_config`` and the dispatch derives bundles from the
+      structured config (e.g. TPU topology -> per-host bundles).
+    """
+
+    bundles: Optional[List[Dict[str, float]]] = None
+    strategy: str = "PACK"
+    target_node_id: Optional[str] = None
+    name: str = ""
     runtime_env: Optional[str] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     fallback_strategy: Optional[List[Dict[str, Any]]] = None

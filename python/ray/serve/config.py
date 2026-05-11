@@ -733,6 +733,12 @@ class TPUAcceleratorConfig(AcceleratorConfig):
     Ray Serve uses this config to provision a TPU slice placement group
     per replica and to manage its lifecycle through the controller.
 
+    When set on a deployment, this config drives placement-group creation
+    entirely. The deployment's ``placement_group_bundles`` and
+    ``placement_group_strategy`` fields are ignored - the bundles are
+    derived from ``topology`` (or optionally ``resources_per_bundle``),
+    and the strategy is chosen internally to honor slice gang scheduling.
+
     Example:
         >>> from ray.serve.config import TPUAcceleratorConfig
         >>> config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
@@ -752,6 +758,15 @@ class TPUAcceleratorConfig(AcceleratorConfig):
         description=(
             "Override for chips per host. Defaults to the canonical value "
             "for the given accelerator_version."
+        ),
+    )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description=(
+            "Resources to include in every worker bundle. When unspecified, "
+            "SlicePlacementGroup defaults to one bundle per TPU host with "
+            "the bundle resources set to the number of chips on that host. "
+            "See ray.util.tpu.slice_placement_group for details."
         ),
     )
 

@@ -97,7 +97,18 @@ class ReplicaPlacementGroup:
 def _create_replica_placement_group(
     request: CreatePlacementGroupRequest,
 ) -> ReplicaPlacementGroup:
-    """Internal entry point that supports accelerator-specific dispatch."""
+    """Internal entry point that supports accelerator-specific dispatch.
+
+    Dispatches on ``request.accelerator_config``:
+    - TPUAcceleratorConfig: derive bundles from topology via
+      slice_placement_group; ``request.bundles`` is ignored.
+    - None: use ``request.bundles`` to create a standard PlacementGroup.
+
+    Raises ValueError if neither bundles nor a recognized accelerator
+    config is provided - this catches users setting an unrecognized
+    accelerator_config type without explicit bundles, which would
+    otherwise schedule with no PG at all.
+    """
     accelerator_config = request.accelerator_config
 
     if isinstance(accelerator_config, TPUAcceleratorConfig):
@@ -111,6 +122,14 @@ def _create_replica_placement_group(
         return ReplicaPlacementGroup(
             placement_group=slice_pg.placement_group,
             _slice_pg=slice_pg,
+        )
+
+    if request.bundles is None:
+        raise ValueError(
+            "CreatePlacementGroupRequest requires either non-None bundles "
+            "or a recognized accelerator_config. Got accelerator_config="
+            f"{type(accelerator_config).__name__ if accelerator_config else None}, "
+            "bundles=None."
         )
 
     pg = _default_create_placement_group(request)
@@ -129,6 +148,7 @@ def _default_create_tpu_placement_group(
         accelerator_version=tpu_config.accelerator_version,
         num_slices=tpu_config.num_slices,
         chips_per_vm=tpu_config.chips_per_vm,
+        resources_per_bundle=tpu_config.resources_per_bundle,
         strategy=strategy,
         name=name,
         lifetime=lifetime,

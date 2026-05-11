@@ -37,6 +37,7 @@ from ray.serve._private.test_utils import (
     MockClusterNodeInfoCache,
     MockPlacementGroup,
 )
+from ray.serve.config import TPUAcceleratorConfig
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
     In,
@@ -710,6 +711,86 @@ def test_schedule_replica():
         "num_cpus": 1,
         "resources": {"my_rs": 1},
     }
+
+
+@pytest.mark.parametrize(
+    "bundles, acc_config_present, expect_pg_created",
+    [
+        # Accelerator config only -> enters PG path
+        (None, True, True),
+        # Bundles only -> enters PG path
+        ([{"CPU": 1}], False, True),
+        # Both set -> enters PG path
+        ([{"CPU": 1}], True, True),
+        # Neither set -> falls through to default scheduling
+        (None, False, False),
+    ],
+)
+def test_schedule_replica_dispatch(bundles, acc_config_present, expect_pg_created):
+    """Validate that scheduler routes to PG path correctly based on bundles and config."""
+    # Setup deployment IDs and cache.
+    d_id = DeploymentID("deployment_test", "app1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    captured_requests = []
+
+    # Mock create_placement_group_fn to record what it received.
+    def mock_create_pg(request):
+        captured_requests.append(request)
+        return default_impl.ReplicaPlacementGroup(
+            placement_group=MockPlacementGroup(request)
+        )
+
+    # Initialize scheduler with mock PG creator.
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=mock_create_pg,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+
+    acc_config = None
+    if acc_config_present:
+        acc_config = TPUAcceleratorConfig(topology="2x2", accelerator_version="v6e")
+
+    scheduling_strategy = None
+
+    def set_scheduling_strategy(actor_handle, *args, **kwargs):
+        nonlocal scheduling_strategy
+        scheduling_strategy = actor_handle._options["scheduling_strategy"]
+
+    # Construct the scheduling request.
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        placement_group_bundles=bundles,
+        accelerator_config=acc_config,
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+    )
+
+    scheduler._pending_replicas[d_id][r0_id] = scheduling_request
+
+    # Call _schedule_replica.
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels=None,
+    )
+
+    # Verify scheduling params are as expected.
+    if expect_pg_created:
+        assert len(captured_requests) == 1
+        assert captured_requests[0].accelerator_config == acc_config
+        assert captured_requests[0].bundles == bundles
+    else:
+        assert len(captured_requests) == 0
+        assert scheduling_strategy == "some_default"
 
 
 def test_downscale_multiple_deployments():
