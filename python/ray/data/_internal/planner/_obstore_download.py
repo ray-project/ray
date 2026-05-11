@@ -2,9 +2,13 @@ import asyncio
 import inspect
 import logging
 import os
+import threading
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 if TYPE_CHECKING:
+    import s3fs  # noqa: F401
+
     from ray.data.context import DataContext
 
 import pyarrow as pa
@@ -114,68 +118,100 @@ def _is_obstore_supported_url(path: str) -> bool:
 
 
 # Credential extraction & store management
-async def _await(awaitable):
-    """Drive an arbitrary awaitable (coroutine, Task, Future, ...) to a value.
-
-    ``asyncio.run`` only accepts coroutines, but ``inspect.isawaitable``
-    matches a wider set (Task, Future, custom ``__await__`` objects).
-    Wrapping with ``await`` here lets ``asyncio.run`` drive any of them.
-    """
-    return await awaitable
-
-
-def _frozen_s3fs_credentials(fsspec_fs) -> Optional[Dict[str, str]]:
-    """Snapshot credentials from an s3fs-style session.
+class _S3FSSessionCredentialProvider:
+    """Obstore credential provider backed by an fsspec s3fs session.
 
     s3fs with Okta / STS / profile-based auth resolves credentials lazily via
-    ``fs.session.get_credentials()`` — the ``key`` / ``secret`` / ``token``
-    instance attributes are ``None`` in that setup. We call
-    ``get_frozen_credentials()`` to capture the currently-valid set.
+    ``fs.session.get_credentials()`` and rotates them on expiry. A single
+    snapshot becomes stale during long-running jobs, so we install this as
+    obstore's ``credential_provider`` callable instead — obstore will invoke
+    it whenever it needs fresh keys.
 
-    Returns a dict with ``access_key``, ``secret_key``, ``token`` keys, or
-    ``None`` if a session isn't available or credentials can't be retrieved
-    (e.g. expired, retrieval error). The caller must tolerate ``None`` and
-    route to the threaded path so the user's filesystem stays authoritative.
+    Cached in memory until ``expires_at`` so we don't re-enter the session on
+    every request. Thread-safe via an ``RLock`` because obstore may call this
+    concurrently from its async runtime.
     """
-    session = getattr(fsspec_fs, "session", None) or getattr(
-        fsspec_fs, "_session", None
-    )
-    if session is None:
-        return None
 
-    try:
-        get_creds = session.get_credentials
-        creds = get_creds()
-        # Use inspect.isawaitable rather than asyncio.iscoroutine — sessions
-        # backed by aiobotocore / custom wrappers can return Tasks, Futures,
-        # or other awaitables that ``iscoroutine`` does not recognize.
-        if inspect.isawaitable(creds):
-            try:
-                creds = asyncio.run(_await(creds))
-            except RuntimeError:
-                return None
-        if creds is None:
+    _DEFAULT_TTL = timedelta(minutes=30)
+
+    def __init__(
+        self, session: Any, ttl: Optional[timedelta] = None
+    ) -> None:
+        self._session = session
+        self._ttl = ttl if ttl is not None else self._DEFAULT_TTL
+        self._lock = threading.RLock()
+        self._cached: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_fsspec_fs(
+        cls, fsspec_fs: "s3fs.S3FileSystem"
+    ) -> Optional["_S3FSSessionCredentialProvider"]:
+        """Build a provider from an s3fs filesystem, or ``None`` if no session."""
+        session = getattr(fsspec_fs, "session", None) or getattr(
+            fsspec_fs, "_session", None
+        )
+        if session is None or not hasattr(session, "get_credentials"):
             return None
-        frozen = creds.get_frozen_credentials()
-        if inspect.isawaitable(frozen):
-            try:
-                frozen = asyncio.run(_await(frozen))
-            except RuntimeError:
-                return None
-    except Exception as e:
-        logger.debug("Could not snapshot fsspec session credentials: %r", e)
-        return None
+        return cls(session)
 
-    access_key = getattr(frozen, "access_key", None)
-    secret_key = getattr(frozen, "secret_key", None)
-    token = getattr(frozen, "token", None)
-    if not access_key:
-        return None
-    return {
-        "access_key": access_key,
-        "secret_key": secret_key or "",
-        "token": token or "",
-    }
+    async def __call__(self) -> Dict[str, Any]:
+        """Return obstore-compatible S3 credentials, refreshing past expiry."""
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            if self._cached is not None and self._cached["expires_at"] > now:
+                return dict(self._cached)
+
+        session_creds = await self._await_maybe(self._session.get_credentials())
+        if session_creds is None:
+            raise RuntimeError("fsspec S3 session returned no credentials")
+        frozen = await self._await_maybe(session_creds.get_frozen_credentials())
+        access_key = getattr(frozen, "access_key", None)
+        if not access_key:
+            raise RuntimeError("fsspec S3 session returned no access key")
+
+        creds: Dict[str, Any] = {
+            "access_key_id": access_key,
+            "secret_access_key": getattr(frozen, "secret_key", None) or "",
+            "expires_at": self._compute_expires_at(session_creds),
+        }
+        token = getattr(frozen, "token", None)
+        if token:
+            creds["token"] = token
+
+        with self._lock:
+            self._cached = creds
+        return dict(creds)
+
+    @staticmethod
+    async def _await_maybe(value: Any) -> Any:
+        """Await *value* if it's awaitable (coroutine, Task, Future, custom)."""
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
+    def _compute_expires_at(self, session_creds: Any) -> datetime:
+        """Read the session's expiry, falling back to now + TTL."""
+        for attr in ("expiry_time", "_expiry_time"):
+            exp = getattr(session_creds, attr, None)
+            if isinstance(exp, datetime):
+                return exp if exp.tzinfo else exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) + self._ttl
+
+    def can_fetch_credentials(self) -> bool:
+        """Return True if a credential fetch succeeds from sync code right now.
+
+        Used by the planner during routing decisions: if the session can't
+        produce a credential set, fall back to the threaded path rather than
+        installing a provider that would fail on first request. Logs at DEBUG
+        so legitimate failures (expired creds, transient session errors) are
+        diagnosable without spamming the user.
+        """
+        try:
+            asyncio.run(self())
+        except Exception as e:
+            logger.debug("Could not fetch fsspec session credentials: %r", e)
+            return False
+        return True
 
 
 def _extract_credentials_from_filesystem(
@@ -196,11 +232,12 @@ def _extract_credentials_from_filesystem(
 
     **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
     (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
-    ``storage_options`` / common instance attributes first; if no static key is
-    present, we snapshot ``fs.session.get_credentials().get_frozen_credentials()``
-    to handle session-backed (Okta/STS/profile) auth. If both passes come up
-    empty we return ``None`` so the caller routes to the threaded path, keeping
-    the user's fsspec filesystem authoritative.
+    ``storage_options`` / common instance attributes first; if no static key
+    is present, we install a :class:`_S3FSSessionCredentialProvider` callback
+    so obstore can refresh session-backed (Okta/STS/profile) credentials on
+    expiry instead of using a stale snapshot. If both passes come up empty we
+    return ``None`` so the caller routes to the threaded path, keeping the
+    user's fsspec filesystem authoritative.
 
     Other ``PyFileSystem`` handlers (non-fsspec or non-S3 fsspec protocols) are
     not converted here; see :func:`_obstore_filesystem_requires_threaded_download`.
@@ -311,16 +348,14 @@ def _extract_credentials_from_filesystem(
             kwargs["skip_signature"] = True
 
         # Static attrs didn't yield an access key and the user didn't opt into
-        # anonymous — snapshot the session (Okta/STS/profile-based auth).
+        # anonymous — install a credential_provider so obstore refreshes the
+        # session-backed keys (Okta/STS/profile-based) on expiry instead of
+        # using a stale snapshot.
         if "access_key_id" not in kwargs and not anon:
-            frozen = _frozen_s3fs_credentials(fsspec_fs)
-            if frozen is None:
+            provider = _S3FSSessionCredentialProvider.from_fsspec_fs(fsspec_fs)
+            if provider is None or not provider.can_fetch_credentials():
                 return None
-            kwargs["access_key_id"] = frozen["access_key"]
-            if frozen["secret_key"]:
-                kwargs["secret_access_key"] = frozen["secret_key"]
-            if frozen["token"]:
-                kwargs["session_token"] = frozen["token"]
+            kwargs["credential_provider"] = provider
         return kwargs
 
     # Unrecognized non-None filesystem — route to threaded so the user's FS
@@ -369,25 +404,18 @@ def _obstore_filesystem_requires_threaded_download(
 
 
 def _is_fsspec_s3_filesystem(filesystem: "pyarrow.fs.FileSystem") -> bool:
-    """True if *filesystem* is a PyFileSystem wrapping an fsspec s3/s3a handler."""
+    """True if *filesystem* is a PyFileSystem wrapping an s3fs ``S3FileSystem``."""
     if isinstance(filesystem, RetryingPyFileSystem):
         filesystem = filesystem.unwrap()
-    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
-    FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
-    if (
-        PyFileSystem is None
-        or FSSpecHandler is None
-        or not isinstance(filesystem, PyFileSystem)
-        or not isinstance(filesystem.handler, FSSpecHandler)
-    ):
+    if not isinstance(filesystem, pyarrow.fs.PyFileSystem):
         return False
-    fsspec_fs = getattr(filesystem.handler, "fs", None)
-    if fsspec_fs is None:
+    if not isinstance(filesystem.handler, pyarrow.fs.FSSpecHandler):
         return False
-    protocol = getattr(fsspec_fs, "protocol", None)
-    if isinstance(protocol, tuple):
-        protocol = protocol[0] if protocol else None
-    return protocol in ("s3", "s3a")
+    try:
+        from s3fs import S3FileSystem
+    except ImportError:
+        return False
+    return isinstance(filesystem.handler.fs, S3FileSystem)
 
 
 # Per-process dedup for credential-extraction warnings. Keyed by ``id(fs)`` so
