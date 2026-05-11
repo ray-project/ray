@@ -785,6 +785,31 @@ RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = float(
     os.environ.get("RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", "0.5")
 )
 
+# Maximum number of HAProxy runtime-API commands (e.g. `add server`,
+# `disable server`, `del server`, `enable server`) batched onto a single
+# admin-socket connection. Each chunk is sent as a `;`-separated command
+# string and shares one socket-level timeout. Smaller chunks reduce the
+# risk of any one chunk exceeding the read timeout when HAProxy's CLI
+# mux is queueing behind HTTP worker dispatch under load: the per-chunk
+# overhead (~single-digit ms of socket setup) is negligible compared to
+# the cost of a fallback full reload triggered by a timeout. 16 leaves
+# substantial headroom even at high traffic load.
+RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE = int(
+    os.environ.get("RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE", "16")
+)
+
+# Connect/read timeout (seconds) for HAProxy admin-socket commands. The
+# CLI mux serializes admin operations behind HTTP worker dispatch, so a
+# batch of `add server` / `del server` / etc. commands can routinely take
+# more than a few seconds while HAProxy is serving heavy traffic. The
+# previous hardcoded 5s was tight enough that broadcasts during
+# autoscaling churn hit it routinely, falling back to expensive full
+# reloads. 15s lets the slower-but-functional runtime-API path complete
+# in those cases instead of cascading into reloads.
+RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S", "15")
+)
+
 # Number of consecutive failed server health checks that must occur
 # before haproxy marks the server as down.
 RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(

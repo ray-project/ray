@@ -44,9 +44,11 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S,
     RAY_SERVE_HAPROXY_RETRIES,
+    RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S,
     RAY_SERVE_HAPROXY_STATS_PORT,
     RAY_SERVE_HAPROXY_SYSLOG_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
@@ -1162,7 +1164,7 @@ class HAProxyApi(ProxyApi):
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_unix_connection(self.cfg.socket_path),
-                    timeout=5.0,
+                    timeout=RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S,
                 )
             except asyncio.TimeoutError:
                 raise RuntimeError(
@@ -1175,7 +1177,9 @@ class HAProxyApi(ProxyApi):
 
                 # Read until EOF (HAProxy closes connection after response)
                 try:
-                    result_bytes = await asyncio.wait_for(reader.read(), timeout=5.0)
+                    result_bytes = await asyncio.wait_for(
+                        reader.read(), timeout=RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S
+                    )
                 except asyncio.TimeoutError:
                     raise RuntimeError(
                         f"Timeout while sending command '{command}' to HAProxy socket"
@@ -1239,33 +1243,41 @@ class HAProxyApi(ProxyApi):
         return result
 
     async def _send_runtime_commands(
-        self, commands: List[str], chunk_size: int = 64
+        self,
+        commands: List[str],
+        chunk_size: int = RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE,
     ) -> None:
         """Send multiple admin-socket commands batched onto single connections.
 
         HAProxy's CLI accepts multiple commands per connection separated by
         `;`. This lets us collapse what would otherwise be N separate Unix
         socket round-trips (each contending with HTTP worker threads for
-        accept/dispatch) into a small number of connections, dramatically
-        reducing the wallclock cost of a large apply.
+        accept/dispatch) into a small number of connections, reducing the
+        wallclock cost of a large apply.
 
-        At Ray Serve scales (autoscaling broadcast = tens to hundreds of
-        server changes across many backends), the previous per-command
-        connection model meant a single broadcast triggered ~200 separate
-        admin-socket round-trips per proxy. Each round-trip competes with
-        live traffic on HAProxy's worker threads; the per-command overhead
-        compounds and pushes individual commands past the 5s timeout under
-        load. With batching, the same 200 commands ride through 4 socket
-        sessions (at the default chunk_size), each session handling its
-        commands in-order without re-acquiring the connection.
+        chunk_size controls how many commands ride through each socket
+        connection. The socket-level timeout (RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S)
+        applies per chunk, so smaller chunks give each chunk its own budget
+        rather than forcing the whole batch to fit in one timeout window.
+        Under load HAProxy's CLI mux serializes admin operations behind HTTP
+        worker dispatch, so the dominant cost is HAProxy's processing time
+        per command, not per-chunk socket setup -- keeping chunks small
+        trades a small amount of extra wallclock for a much higher chance of
+        completing the runtime-API path instead of timing out into a full
+        reload.
 
-        Error detection mirrors `_send_runtime_command`: substring-match the
-        concatenated response for known HAProxy error markers and raise on
-        the first hit. Loses per-command attribution (we don't know which
-        command in the batch failed), but the caller's response to any
-        failure is the same fallback reload regardless.
+        Error detection: substring-match the concatenated response for known
+        HAProxy error markers and raise on the first hit. Loses per-command
+        attribution (we don't know which command in the batch failed), but
+        the caller's response to any failure is the same fallback reload
+        regardless.
 
-        chunk_size of 64 stays comfortably under HAProxy's default 16 KB CLI
+        On failure, logs per-chunk wallclock so we can distinguish "just over
+        the timeout budget" from "HAProxy genuinely wedged" -- the right fix
+        for the two is different (smaller chunks vs. investigating HAProxy
+        state).
+
+        chunk_size stays comfortably under HAProxy's default 16 KB CLI
         buffer (`tune.bufsize`) for typical command lengths (~80 bytes).
         """
         if not commands:
@@ -1285,10 +1297,35 @@ class HAProxyApi(ProxyApi):
             "unknown command",
             "must be disabled",
         )
+        num_chunks = (len(commands) + chunk_size - 1) // chunk_size
+        chunk_times: List[float] = []
+        batch_start = time.monotonic()
         for i in range(0, len(commands), chunk_size):
             chunk = commands[i : i + chunk_size]
             batched = ";".join(chunk)
-            result = await self._send_socket_command(batched)
+            chunk_start = time.monotonic()
+            try:
+                result = await self._send_socket_command(batched)
+            except Exception:
+                # Per-chunk wallclock tells us whether we're at "just over
+                # budget" (e.g. 15.0s = hit the timeout exactly, smaller chunks
+                # or larger timeout would help) or "HAProxy is wedged" (much
+                # longer than that, something else is wrong).
+                logger.warning(
+                    "Runtime API chunk %d/%d (size=%d) failed after %.2fs; "
+                    "total_commands=%d, prior_chunk_times=%s, "
+                    "batch_elapsed=%.2fs",
+                    i // chunk_size + 1,
+                    num_chunks,
+                    len(chunk),
+                    time.monotonic() - chunk_start,
+                    len(commands),
+                    [f"{t:.2f}s" for t in chunk_times],
+                    time.monotonic() - batch_start,
+                    extra={"log_to_stderr": False},
+                )
+                raise
+            chunk_times.append(time.monotonic() - chunk_start)
             if not result:
                 continue
             normalized = result.lower()
@@ -1299,6 +1336,15 @@ class HAProxyApi(ProxyApi):
                         f"batch of {len(chunk)} (chunk starts at index {i}): "
                         f"{result.strip()[:500]}"
                     )
+        logger.info(
+            "Runtime API batch OK: %d commands, %d chunks, chunk_times=%s, "
+            "total=%.2fs",
+            len(commands),
+            num_chunks,
+            [f"{t:.2f}s" for t in chunk_times],
+            time.monotonic() - batch_start,
+            extra={"log_to_stderr": True},
+        )
 
     @staticmethod
     def _parse_haproxy_csv_stats(
