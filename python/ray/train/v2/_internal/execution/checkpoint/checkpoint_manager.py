@@ -58,7 +58,12 @@ class _CheckpointManagerState(BaseModel):
     pending_training_results: List[_TrainingResultState]
     pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
     current_report_index: int
+
+    # List of processed checkpoints based on if successfully validated,
+    #   timed out or failed due to an error or canceled for some reason.
     validated_checkpoint_dir_names: List[str]
+    timed_out_validation_checkpoint_dir_names: List[str]
+    failed_validation_checkpoint_dir_names: List[str]
 
 
 def _get_training_result_from_state(
@@ -108,8 +113,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]
         ] = {}
 
-        # Set of checkpoints that have completed validation.
+        # Set of checkpoints that have successfully completed, been timed out
+        #   or failed validation.
         self._validated_checkpoints: set = set()
+        self._timed_out_validation_checkpoints: set = set()
+        self._failed_validation_checkpoints: set = set()
 
         # Map from checkpoint to report index. Used to order checkpoints.
         self._checkpoint_to_report_index = {}
@@ -175,32 +183,54 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         self._notify()
 
-    def update_checkpoints_with_metrics(
-        self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
+    def update_checkpoints_with_validation_result(
+        self,
+        checkpoint_updates: Dict[
+            Checkpoint, Tuple[Dict[str, Any], ReportedCheckpointStatus]
+        ],
     ):
-        """Update the checkpoints with the metrics."""
-        for checkpoint, metrics in checkpoint_to_metrics.items():
+        """Finalize pending validations by recording terminal status and metrics.
+
+        * For VALIDATED checkpoints, metrics are merged into the checkpoint's
+          existing metrics and the checkpoint is re-sorted.
+        * For VALIDATION_TIMEOUT and VALIDATION_FAILED checkpoints, metrics are
+          left untouched and the checkpoint retains its original training-time
+          score position.
+        """
+        for checkpoint, (metrics, status) in checkpoint_updates.items():
             if checkpoint not in self._pending_training_results:
                 logger.warning(
                     f"Checkpoint {checkpoint} not found in pending training results. "
                 )
                 continue
             checkpoint_result, _ = self._pending_training_results[checkpoint]
-            checkpoint_result.metrics.update(metrics)
             if checkpoint_result not in self._checkpoint_results:
                 raise ValueError(
                     f"Checkpoint {checkpoint} was in pending training results but not "
                     "checkpoint results. "
                 )
-            self._checkpoint_results.remove(checkpoint_result)
-            _insert_into_sorted_list(
-                self._checkpoint_results,
-                checkpoint_result,
-                key=self._get_checkpoint_score,
-                checkpoint_to_report_index=self._checkpoint_to_report_index,
-            )
             self._pending_training_results.pop(checkpoint)
-            self._validated_checkpoints.add(checkpoint)
+
+            if status == ReportedCheckpointStatus.VALIDATED:
+                # Update the metrics and sort into checkpoint_results
+                checkpoint_result.metrics.update(metrics)
+                self._checkpoint_results.remove(checkpoint_result)
+                _insert_into_sorted_list(
+                    self._checkpoint_results,
+                    checkpoint_result,
+                    key=self._get_checkpoint_score,
+                    checkpoint_to_report_index=self._checkpoint_to_report_index,
+                )
+                self._validated_checkpoints.add(checkpoint)
+            elif status == ReportedCheckpointStatus.VALIDATION_TIMEOUT:
+                self._timed_out_validation_checkpoints.add(checkpoint)
+            elif status == ReportedCheckpointStatus.VALIDATION_FAILED:
+                self._failed_validation_checkpoints.add(checkpoint)
+            else:
+                raise ValueError(
+                    f"Unexpected terminal validation status {status} for "
+                    f"checkpoint {checkpoint}."
+                )
 
         self._save_state_and_delete_old_checkpoints()
         self._notify()
@@ -243,7 +273,15 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ]
             for checkpoint_result in results_to_delete:
                 del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
+
+                # discard doesn't raise an error if the element isn't found
                 self._validated_checkpoints.discard(checkpoint_result.checkpoint)
+                self._timed_out_validation_checkpoints.discard(
+                    checkpoint_result.checkpoint
+                )
+                self._failed_validation_checkpoints.discard(
+                    checkpoint_result.checkpoint
+                )
 
         # Save the checkpoint manager state to storage.
         # Note: We save the state before deleting the old checkpoints.
@@ -291,9 +329,17 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             v for _, v in self._pending_training_results.values()
         ]
 
-        validated_checkpoint_dir_names = [
+        validated_ckpt_dir_names = [
             self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
             for checkpoint in self._validated_checkpoints
+        ]
+        timed_out_validation_ckpt_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._timed_out_validation_checkpoints
+        ]
+        failed_validation_ckpt_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._failed_validation_checkpoints
         ]
 
         manager_snapshot = _CheckpointManagerState(
@@ -303,7 +349,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             pending_training_results=pending_training_results,
             pending_validation_specs=pending_validation_specs,
             current_report_index=self._current_report_index,
-            validated_checkpoint_dir_names=validated_checkpoint_dir_names,
+            validated_checkpoint_dir_names=validated_ckpt_dir_names,
+            timed_out_validation_checkpoint_dir_names=timed_out_validation_ckpt_dir_names,
+            failed_validation_checkpoint_dir_names=failed_validation_ckpt_dir_names,
         )
         return manager_snapshot.json()
 
@@ -380,12 +428,27 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 validation_spec,
             )
 
-        # Restore validated checkpoints. Only checkpoints still in _checkpoint_results can be looked up; evicted checkpoints are irrelevant.
-        for dir_name in manager_snapshot.validated_checkpoint_dir_names:
-            if dir_name in checkpoint_dir_name_to_checkpoint_result:
-                self._validated_checkpoints.add(
-                    checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
-                )
+        # Restore terminal validation statuses. Only checkpoints still in
+        # _checkpoint_results can be looked up; evicted checkpoints are irrelevant.
+        for dir_names, target_set in (
+            (
+                manager_snapshot.validated_checkpoint_dir_names,
+                self._validated_checkpoints,
+            ),
+            (
+                manager_snapshot.timed_out_validation_checkpoint_dir_names,
+                self._timed_out_validation_checkpoints,
+            ),
+            (
+                manager_snapshot.failed_validation_checkpoint_dir_names,
+                self._failed_validation_checkpoints,
+            ),
+        ):
+            for dir_name in dir_names:
+                if dir_name in checkpoint_dir_name_to_checkpoint_result:
+                    target_set.add(
+                        checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
+                    )
 
         self._current_report_index = manager_snapshot.current_report_index
 
@@ -498,6 +561,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         """Get ReportedCheckpoint's status."""
         if checkpoint in self._pending_training_results:
             return ReportedCheckpointStatus.PENDING_VALIDATION
+        elif checkpoint in self._timed_out_validation_checkpoints:
+            return ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        elif checkpoint in self._failed_validation_checkpoints:
+            return ReportedCheckpointStatus.VALIDATION_FAILED
         elif checkpoint in self._validated_checkpoints:
             return ReportedCheckpointStatus.VALIDATED
         else:
