@@ -1,7 +1,6 @@
-import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Iterator, Optional, Tuple
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -18,147 +17,47 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import (
         StreamingExecutor,
     )
-
+    from ray.data.dataset import _ExecutionCache
 
 logger = logging.getLogger(__name__)
 
 
 class ExecutionPlan:
-    """A lazy execution plan for a Dataset.
+    """A thin execution shell for a Dataset.
 
-    This lazy execution plan builds up a chain of ``List[RefBundle]`` -->
-    ``List[RefBundle]`` operators. Prior to execution, we apply a set of logical
-    plan optimizations, such as operator fusion, in order to reduce Ray task
-    overhead and data copies.
-
-    Internally, the execution plan holds a cache of a computed list of
-    blocks and their associated metadata under ``self._cache``,
-    where this snapshot is the cached output of executing the operator chain."""
+    This plan holds shared references to Dataset's cache, stats, context,
+    and logical plan. It provides execution methods that bridge the logical
+    plan to the streaming executor. All owned state lives on Dataset;
+    ExecutionPlan is a temporary wrapper removed in a future PR.
+    """
 
     def __init__(
         self,
-        stats: DatasetStats,
-        data_context: DataContext,
+        context: DataContext,
+        cache: "_ExecutionCache",
+        in_stats: DatasetStats,
+        logical_plan: LogicalPlan,
     ):
-        """Create a plan with no transformation operators.
-
-        Args:
-            stats: Stats for the base blocks.
-            data_context: :class:`~ray.data.context.DataContext`
-                object to use for execution.
-        """
-        from ray.data.dataset import _ExecutionCache
-
-        self._in_stats = stats
-        # Cache for holding data from previous execution or iteration.
-        self._cache = _ExecutionCache()
-
-        # Set when a Dataset is constructed with this plan
-        self._dataset_uuid = None
-        # Index of the current execution.
-        self._run_index = -1
-
-        self._dataset_name = None
-
-        self._has_started_execution = False
-
-        self._context = data_context
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Flush execution cache before serialization
-        state.pop("_cache", None)
-        return state
-
-    def __setstate__(self, state):
-        from ray.data.dataset import _ExecutionCache
-
-        self.__dict__.update(state)
-        self._cache = _ExecutionCache()
-
-    def get_dataset_id(self) -> str:
-        """Unique ID of the dataset, including the dataset name,
-        UUID, and current execution index.
-        """
-        return (
-            f"{self._dataset_name or 'dataset'}_{self._dataset_uuid}_{self._run_index}"
-        )
-
-    def create_executor(self) -> "StreamingExecutor":
-        """Create an executor for this plan."""
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
-
-        self._run_index += 1
-        executor = StreamingExecutor(self._context, self.get_dataset_id())
-        return executor
-
-    def __repr__(self) -> str:
-        return (
-            f"ExecutionPlan("
-            f"dataset_uuid={self._dataset_uuid}, "
-            f"snapshot_operator={self._cache._operator}"
-            f")"
-        )
-
-    def link_logical_plan(self, logical_plan: "LogicalPlan"):
-        """Link the logical plan into this execution plan.
-
-        This is used for triggering execution for optimizer code path in this legacy
-        execution plan.
-        """
+        self._context = context
+        self._cache = cache
+        self._in_stats = in_stats
         self._logical_plan = logical_plan
-        self._logical_plan._context = self._context
-
-    def copy(self) -> "ExecutionPlan":
-        """Create a shallow copy of this execution plan.
-
-        This copy can be executed/cleared without mutating the original,
-        but the copied cache data initially shares references with the
-        original.
-
-        Returns:
-            A shallow copy of this execution plan.
-        """
-        plan_copy = ExecutionPlan(
-            self._in_stats,
-            data_context=self._context,
-        )
-        plan_copy._cache = self._cache.copy()
-        plan_copy._dataset_name = self._dataset_name
-        return plan_copy
-
-    def deep_copy(self) -> "ExecutionPlan":
-        """Create a deep copy of this execution plan.
-
-        Returns:
-            A deep copy of this execution plan.
-        """
-        plan_copy = ExecutionPlan(
-            copy.copy(self._in_stats),
-            data_context=self._context.copy(),
-        )
-        plan_copy._cache = self._cache.deep_copy()
-        plan_copy._dataset_name = self._dataset_name
-        return plan_copy
 
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
+        create_executor_fn: Callable[[], "StreamingExecutor"],
     ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
 
-        NOTE: Executor will be shutdown upon either of the 2 following conditions:
-
-            - Iterator is fully exhausted (ie until StopIteration is raised)
-            - Executor instances is garbage-collected
+        Args:
+            create_executor_fn: Factory that creates a StreamingExecutor.
 
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
-        self._has_started_execution = True
-
         cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
         if cached_bundle is not None:
             return iter([cached_bundle]), self._cache.get_stats(), None
@@ -167,7 +66,7 @@ class ExecutionPlan:
             execute_to_legacy_bundle_iterator,
         )
 
-        executor = self.create_executor()
+        executor = create_executor_fn()
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -182,18 +81,20 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute(
         self,
+        dataset_uuid: str,
+        create_executor_fn: Callable[[], "StreamingExecutor"],
         preserve_order: bool = False,
     ) -> RefBundle:
         """Executes this plan (eagerly).
 
         Args:
+            dataset_uuid: The dataset UUID for stats tagging.
+            create_executor_fn: Factory that creates a StreamingExecutor.
             preserve_order: Whether to preserve order in execution.
 
         Returns:
             The blocks of the output dataset.
         """
-        self._has_started_execution = True
-
         # Always used the saved context for execution.
         context = self._context
         if not ray.available_resources().get("CPU"):
@@ -239,11 +140,11 @@ class ExecutionPlan:
                 )
             else:
                 # Make sure executor is properly shutdown
-                with self.create_executor() as executor:
+                with create_executor_fn() as executor:
                     bundle = execute_to_ref_bundle(
                         executor,
                         self,
-                        dataset_uuid=self._dataset_uuid,
+                        dataset_uuid=dataset_uuid,
                         preserve_order=preserve_order,
                     )
 
@@ -285,7 +186,7 @@ class ExecutionPlan:
             collect_stats(stats)
 
             # Set the snapshot to the output of the final operator.
-            stats.dataset_uuid = self._dataset_uuid
+            stats.dataset_uuid = dataset_uuid
             self._cache.set_bundle(self._logical_plan.dag, bundle)
             self._cache.set_stats(stats)
 
