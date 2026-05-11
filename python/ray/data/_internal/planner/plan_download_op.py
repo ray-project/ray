@@ -130,12 +130,14 @@ def plan_download_op(
     if use_obstore_path:
         download_fn = download_bytes_async
         logger.debug("Using obstore async download path.")
-    elif OBSTORE_AVAILABLE:
-        # Warning already emitted by _plan_obstore_routing.
-        download_fn = download_bytes_threaded
     else:
         download_fn = download_bytes_threaded
-        _log_fallback_warning()
+        # The "obstore not installed" warning is only relevant when obstore is
+        # missing entirely. When obstore is available but the filesystem can't
+        # be routed through it, _plan_obstore_routing already logged the reason
+        # (a WARNING for fsspec-S3-unextractable, DEBUG otherwise).
+        if not OBSTORE_AVAILABLE:
+            _log_fallback_warning()
 
     fn, init_fn = _get_udf(
         download_fn,
