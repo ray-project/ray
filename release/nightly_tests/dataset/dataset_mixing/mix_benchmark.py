@@ -1,6 +1,4 @@
 import argparse
-import os
-import sys
 import tempfile
 import time
 
@@ -9,7 +7,6 @@ import pyarrow as pa
 import torch
 import torch.distributed as dist
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark import Benchmark, BenchmarkMetric
 
 import ray
