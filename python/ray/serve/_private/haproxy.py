@@ -62,6 +62,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
+    HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE,
     HAPROXY_HEALTHZ_RULES_TEMPLATE,
 )
 from ray.serve._private.logging_utils import get_component_logger_file_path
@@ -322,8 +323,6 @@ class HealthRouteInfo:
     health_message: str = HEALTHY_MESSAGE
     routes_message: str = "{}"
     routes_content_type: str = "application/json"
-    # gRPC status code (0 = OK, 14 = UNAVAILABLE)
-    grpc_health_status: int = 0
 
 
 @dataclass
@@ -623,7 +622,6 @@ class HAProxyConfig:
             health_message=message,
             routes_message=routes_message,
             routes_content_type="application/json" if healthy else "text/plain",
-            grpc_health_status=0 if healthy else 14,
         )
 
     # TODO: support custom root_path and https
@@ -902,6 +900,14 @@ class HAProxyApi(ProxyApi):
                     "health_info": health_route_info,
                 }
             )
+            grpc_healthz_template = env.from_string(HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE)
+            grpc_healthz_rules = grpc_healthz_template.render(
+                {
+                    "config": self.cfg,
+                    "backends": grpc_backends,
+                    "health_info": health_route_info,
+                }
+            )
 
             config_template = env.from_string(HAPROXY_CONFIG_TEMPLATE)
             config_content = config_template.render(
@@ -914,6 +920,7 @@ class HAProxyApi(ProxyApi):
                         grpc_backends_with_health_config
                     ),
                     "healthz_rules": healthz_rules,
+                    "grpc_healthz_rules": grpc_healthz_rules,
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,

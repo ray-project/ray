@@ -18,6 +18,30 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 {%- endif %}
 """
 
+# Same shape as HAPROXY_HEALTHZ_RULES_TEMPLATE, but emits gRPC trailers-only
+# responses. The OK / UNAVAILABLE distinction maps to grpc-status 0 / 14
+# (gRPC clients map HTTP 503 to UNAVAILABLE, which is why every shape here
+# uses HTTP 200 and signals state through grpc-status).
+HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint (gRPC `Healthz`)
+    acl is_healthz path /ray.serve.RayServeAPIService/Healthz
+    # Suppress logging for health checks
+    http-request set-log-level silent if is_healthz
+{%- if not health_info.healthy %}
+    # Override: force health checks to fail (used by drain/disable)
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "{{ health_info.health_message }}" if is_healthz
+{%- elif backends %}
+    # OK if any backend has at least one server UP
+{%-   for backend in backends %}
+    acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
+{%-   endfor %}
+    # Any backend with a server UP passes the health check (OR logic)
+{%-   for backend in backends %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 0 if is_healthz backend_{{ backend.name or 'unknown' }}_server_up
+{%-   endfor %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "Service Unavailable" if is_healthz
+{%- endif %}
+"""
+
 HAPROXY_CONFIG_TEMPLATE = """global
     # Log to the standard system log socket with debug level.
     log /dev/log local0 debug
@@ -190,12 +214,7 @@ frontend grpc_frontend
     mode http
     log global
 
-    # Healthz is answered directly from this proxy's health state rather than
-    # forwarded, so the check reflects the local proxy. grpc-status (0 vs 14)
-    # and grpc-message are populated by build_health_route_info in haproxy.py,
-    # mirroring how /-/healthz and /-/routes are populated for HTTP.
-    acl is_healthz path /ray.serve.RayServeAPIService/Healthz
-    http-request return status 200 content-type application/grpc hdr grpc-status {{ route_info.grpc_health_status }} hdr grpc-message "{{ route_info.health_message }}" if is_healthz
+{{ grpc_healthz_rules|safe }}
 
     # ListApplications must aggregate across all apps, so it goes to the
     # head-node fallback Serve proxy rather than an individual replica.
