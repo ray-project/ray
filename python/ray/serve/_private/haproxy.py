@@ -853,12 +853,8 @@ class HAProxyApi(ProxyApi):
             # (by the `application` gRPC metadata) and need a different
             # frontend / backend rendering. Split them up here so the template
             # can iterate each set independently.
-            http_backends = [
-                b for b in backends if b.protocol == RequestProtocol.HTTP
-            ]
-            grpc_backends = [
-                b for b in backends if b.protocol == RequestProtocol.GRPC
-            ]
+            http_backends = [b for b in backends if b.protocol == RequestProtocol.HTTP]
+            grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
 
             # Derive from the write result: returns None when no backend has
             # both routers and replicas with IDs (transient during scaling).
