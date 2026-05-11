@@ -78,7 +78,6 @@ from ray.data._internal.logical.operators import (
     Read,
     ReadFiles,
 )
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -133,8 +132,6 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
-
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -159,15 +156,10 @@ def from_blocks(blocks: List[Block]):
     meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
 
     from_blocks_op = FromBlocks(block_refs, meta_with_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(from_blocks_op, context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -256,15 +248,10 @@ def from_items(
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(from_items_op, execution_plan._context)
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(from_items_op, context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -580,9 +567,14 @@ def _read_datasource_v2(
     )
 
     stats = DatasetStats(metadata={"Read": []}, parent=None)
-    execution_plan = ExecutionPlan(stats, DataContext.get_current().copy())
-    logical_plan = LogicalPlan(read_op, execution_plan._context)
-    return Dataset(plan=execution_plan, logical_plan=logical_plan)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(read_op, context)
+
+    return Dataset(
+        logical_plan=logical_plan,
+        context=context,
+        in_stats=stats,
+    )
 
 
 @PublicAPI
@@ -712,15 +704,9 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
     )
-    execution_plan = ExecutionPlan(
-        stats,
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(read_op, execution_plan._context)
-    return Dataset(
-        plan=execution_plan,
-        logical_plan=logical_plan,
-    )
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(read_op, context)
+    return Dataset(logical_plan, context, stats)
 
 
 @PublicAPI(stability="alpha")
@@ -2223,20 +2209,10 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
-
-    .. tip::
-        Using the ``tfx-bsl`` library is more performant when reading large
-        datasets (for example, in production use cases). To use this
-        implementation, you must first install ``tfx-bsl``:
-
-        1. `pip install tfx_bsl --no-dependencies`
-        2. Pass tfx_read_options to read_tfrecords, for example:
-           `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -2304,33 +2280,12 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        tfx_read_options: Specifies read options when reading TFRecord files with TFX.
-            When no options are provided, the default version without tfx-bsl will
-            be used to read the tfrecords.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
-    import platform
-
-    tfx_read = False
-
-    if tfx_read_options and platform.processor() != "arm":
-        try:
-            import tfx_bsl  # noqa: F401
-
-            tfx_read = True
-        except ModuleNotFoundError:
-            # override the tfx_read_options given that tfx-bsl is not installed
-            tfx_read_options = None
-            logger.warning(
-                "Please install tfx-bsl package with"
-                " `pip install tfx_bsl --no-dependencies`."
-                " This can help speed up the reading of large TFRecord files."
-            )
-
     datasource = TFRecordDatasource(
         paths,
         tf_schema=tf_schema,
@@ -2342,9 +2297,8 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        tfx_read_options=tfx_read_options,
     )
-    ds = read_datasource(
+    return read_datasource(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
@@ -2354,20 +2308,6 @@ def read_tfrecords(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-
-    if (
-        tfx_read_options
-        and tfx_read_options.auto_infer_schema
-        and tfx_read
-        and not tf_schema
-    ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
-            _infer_schema_and_transform,
-        )
-
-        return _infer_schema_and_transform(ds)
-
-    return ds
 
 
 @PublicAPI(stability="alpha")
@@ -3455,34 +3395,20 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
-        execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
-            DataContext.get_current().copy(),
-        )
-        logical_plan = LogicalPlan(
-            FromPandas(dfs, metadata_schema), execution_plan._context
-        )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
+        ctx = DataContext.get_current().copy()
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata_schema), ctx)
+        return MaterializedDataset(logical_plan, ctx, stats)
 
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(
-        FromPandas(blocks, metadata_schema), execution_plan._context
-    )
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
+    ctx = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata_schema), ctx)
+    return MaterializedDataset(logical_plan, ctx, stats)
 
 
 @PublicAPI
@@ -3598,19 +3524,10 @@ def from_numpy_refs(
     blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
 
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-
-    logical_plan = LogicalPlan(
-        FromNumpy(blocks, metadata_schema), execution_plan._context
-    )
-
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata_schema), context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -3753,18 +3670,10 @@ def from_arrow_refs(
 
     get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
     metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(
-        FromArrow(tables, metadata_schema), execution_plan._context
-    )
-
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromArrow(tables, metadata_schema), context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI(stability="alpha")
