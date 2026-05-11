@@ -872,7 +872,7 @@ class DataContext:
 
         elif name == "retried_io_errors" and tuple(value) != DEFAULT_RETRIED_IO_ERRORS:
             warnings.warn(
-                "`retried_io_errors` using substring matching will be deprecated in a future version. Please ensure that you use valid regex patterns for `retried_io_errors`",
+                "`retried_io_errors` using substring matching will be deprecated in December 2026. Please ensure that you use valid regex patterns for `retried_io_errors`",
                 DeprecationWarning,
             )
 
