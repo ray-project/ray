@@ -10,7 +10,7 @@ from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -782,7 +782,7 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
         self._ingress: bool = False
-        self._replica_pg = None
+        self._replica_pg: Optional["ReplicaPlacementGroup"] = None
         self._gang_placement_group = None
         self._gang_pg_index = None
 
@@ -1019,9 +1019,7 @@ class ActorReplicaWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
-        gang_placement_group: Optional[
-            Union[PlacementGroup, "ReplicaPlacementGroup"]
-        ] = None,
+        gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
@@ -1173,7 +1171,7 @@ class ActorReplicaWrapper:
         self,
         actor_handle: ActorHandle,
         placement_group: Optional[PlacementGroup] = None,
-        placement_group_manager: Optional[Any] = None,
+        placement_group_manager: Optional["ReplicaPlacementGroup"] = None,
     ):
         self._actor_handle = actor_handle
         self._placement_group = placement_group
@@ -1930,9 +1928,7 @@ class DeploymentReplica:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
-        gang_placement_group: Optional[
-            Union[PlacementGroup, "ReplicaPlacementGroup"]
-        ] = None,
+        gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:

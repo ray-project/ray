@@ -8,7 +8,6 @@ from ray.serve._private.common import CreatePlacementGroupRequest
 from ray.serve._private.default_impl import (
     ReplicaPlacementGroup,
     _create_replica_placement_group,
-    _default_create_placement_group,
 )
 from ray.serve.api import deployment
 from ray.serve.config import TPUAcceleratorConfig
@@ -90,32 +89,52 @@ def test_tpu_accelerator_config_validation(invalid_kwargs):
         TPUAcceleratorConfig(**invalid_kwargs)
 
 
-@pytest.mark.parametrize(
-    "creation_fn, expects_wrapper",
-    [
-        (_default_create_placement_group, False),
-        (_create_replica_placement_group, True),
-    ],
-)
-def test_placement_group_creation_types(creation_fn, expects_wrapper):
-    """Verify that external overrides return bare PGs while internal ones return wrappers."""
+@pytest.mark.parametrize("with_accelerator", [False, True])
+def test_placement_group_creation_types(with_accelerator):
+    """Verify that _create_replica_placement_group always returns wrappers."""
+
+    accelerator_config = None
+    if with_accelerator:
+        accelerator_config = TPUAcceleratorConfig(
+            topology="4x4", accelerator_version="v6e"
+        )
+
     request = CreatePlacementGroupRequest(
         bundles=[{"CPU": 1.0}],
         strategy="SPREAD",
         target_node_id="",
         name="test",
+        accelerator_config=accelerator_config,
     )
 
     mock_pg = MagicMock(spec=PlacementGroup)
-    with patch("ray.util.placement_group", return_value=mock_pg):
-        result = creation_fn(request)
 
-    if expects_wrapper:
-        assert isinstance(result, ReplicaPlacementGroup)
-        assert result.placement_group == mock_pg
+    # Accelerator path. Returns a wrapper holding a SlicePlacementGroup.
+    if with_accelerator:
+        mock_slice_pg = MagicMock()
+        mock_slice_pg.placement_group = mock_pg
+        with patch(
+            "ray.serve._private.default_impl.slice_placement_group",
+            return_value=mock_slice_pg,
+        ):
+            result = _create_replica_placement_group(request)
+    # Non-accelerator path. Returns a wrapper holding a regular PG.
     else:
-        assert result == mock_pg
-        assert not isinstance(result, ReplicaPlacementGroup)
+        with patch("ray.util.placement_group", return_value=mock_pg):
+            result = _create_replica_placement_group(request)
+
+    assert isinstance(result, ReplicaPlacementGroup), (
+        "_create_replica_placement_group must always return a ReplicaPlacementGroup, "
+        "regardless of whether accelerator_config is set."
+    )
+    assert result.placement_group == mock_pg
+
+    if with_accelerator:
+        assert (
+            result._slice_pg is not None
+        ), "Accelerator path must set _slice_pg for cleanup tracking."
+    else:
+        assert result._slice_pg is None, "Non-accelerator path must not set _slice_pg."
 
 
 @pytest.mark.parametrize("with_accelerator", [False, True])
