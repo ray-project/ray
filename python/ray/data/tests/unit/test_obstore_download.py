@@ -602,11 +602,25 @@ class TestThreadedDownloadPreResolve:
             f"data-{i}".encode() for i in range(10)
         ]
 
-    def test_supplied_fs_skips_probe(self, tmp_path):
+    @pytest.mark.parametrize(
+        "fs_factory",
+        [
+            pytest.param(lambda: pafs.LocalFileSystem(), id="pyarrow-local"),
+            # fsspec.filesystem objects lack ``open_input_stream`` and must be
+            # normalized to PyFileSystem(FSSpecHandler) before RetryingPyFileSystem
+            # wraps them, otherwise reading raises AttributeError mid-flight.
+            pytest.param(
+                lambda: pytest.importorskip("fsspec").filesystem("file"),
+                id="fsspec-local",
+            ),
+        ],
+    )
+    def test_supplied_fs_skips_probe(self, tmp_path, fs_factory):
         (tmp_path / "f.bin").write_bytes(b"supplied")
         table = pa.Table.from_arrays(
             [pa.array([f"file://{tmp_path}/f.bin"])], names=["uri"]
         )
+
         spy, probes, _ = _spy_resolve()
         with spy:
             results = list(
@@ -615,7 +629,7 @@ class TestThreadedDownloadPreResolve:
                     ["uri"],
                     ["bytes"],
                     DataContext.get_current(),
-                    filesystem=pafs.LocalFileSystem(),
+                    filesystem=fs_factory(),
                 )
             )
 

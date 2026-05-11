@@ -33,7 +33,10 @@ from ray.data._internal.util import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _validate_and_wrap_filesystem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +222,11 @@ def download_bytes_threaded(
         # IMDS credential fetch. With N concurrent Download tasks on an EC2
         # node that's 16*N near-simultaneous IMDS calls — enough to trip the
         # per-instance rate limit and produce intermittent NoCredentialsError.
-        resolved_fs = filesystem
+        #
+        # Normalize a user-supplied fsspec FS to PyFileSystem(FSSpecHandler) so
+        # RetryingPyFileSystem.wrap (which forwards open_input_stream to the
+        # inner FS) doesn't end up calling a method fsspec filesystems lack.
+        resolved_fs = _validate_and_wrap_filesystem(filesystem)
         if resolved_fs is None:
             for probe_uri in uris:
                 if probe_uri is None:
