@@ -478,54 +478,6 @@ class BackendConfig:
             "default_server_directive": default_server_directive,
         }
 
-    def build_grpc_health_check_config(self, global_config: "HAProxyConfig") -> dict:
-        """Build TCP-level health check configuration for a gRPC backend.
-
-        Replica direct-ingress gRPC servers do not expose an HTTP healthz path,
-        so we use TCP-level checks instead of `option httpchk`. Returns a dict
-        with a "default_server_directive" key containing the rendered line.
-        """
-        fall = (
-            self.health_check_fall
-            if self.health_check_fall is not None
-            else global_config.health_check_fall
-        )
-        rise = (
-            self.health_check_rise
-            if self.health_check_rise is not None
-            else global_config.health_check_rise
-        )
-        inter = (
-            self.health_check_inter
-            if self.health_check_inter is not None
-            else global_config.health_check_inter
-        )
-        fastinter = (
-            self.health_check_fastinter
-            if self.health_check_fastinter is not None
-            else global_config.health_check_fastinter
-        )
-        downinter = (
-            self.health_check_downinter
-            if self.health_check_downinter is not None
-            else global_config.health_check_downinter
-        )
-
-        parts = []
-        if fastinter is not None:
-            parts.append(f"fastinter {fastinter}")
-        if downinter is not None:
-            parts.append(f"downinter {downinter}")
-        if fall is not None:
-            parts.append(f"fall {fall}")
-        if rise is not None:
-            parts.append(f"rise {rise}")
-        if inter is not None:
-            parts.append(f"inter {inter}")
-        parts.append("check")
-
-        return {"default_server_directive": "default-server " + " ".join(parts)}
-
     def __str__(self) -> str:
         return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, fallback_server={self.fallback_server}, protocol={self.protocol.value})"
 
@@ -930,7 +882,7 @@ class HAProxyApi(ProxyApi):
             grpc_backends_with_health_config = [
                 {
                     "backend": backend,
-                    "health_config": backend.build_grpc_health_check_config(self.cfg),
+                    "health_config": backend.build_health_check_config(self.cfg),
                 }
                 for backend in grpc_backends
             ]
