@@ -461,8 +461,11 @@ def _wrap_iceberg_on_write_complete(
     if getattr(datasink, "_iceberg_checkpoint_wrapped", False):
         return
 
-    # Capture user's original intent, then disable framework's auto-delete so the
-    # ckpt dir survives until after the Iceberg commit completes.
+    # Capture user's original intent before temporarily disabling framework
+    # auto-delete. We must suppress auto-delete so the checkpoint directory
+    # survives until after the Iceberg commit completes; we then manually
+    # delete it (if requested) and restore the original value so that any
+    # subsequent retry sees the correct setting.
     _original_delete_on_success = (
         checkpoint_config.delete_checkpoint_on_success
         if checkpoint_config is not None
@@ -505,6 +508,12 @@ def _wrap_iceberg_on_write_complete(
         result = original_on_write_complete(write_result)
         # Only reached if the Iceberg commit above succeeded. On failure, the
         # exception propagates and the ckpt dir is preserved for retry.
+        # Restore the original delete_checkpoint_on_success value so that any
+        # subsequent retry (or the framework's cleanup path in
+        # LoadCheckpointCallback.after_execution_succeeds) sees the user's
+        # original intent rather than the False we injected above.
+        if checkpoint_config is not None:
+            checkpoint_config.delete_checkpoint_on_success = _original_delete_on_success
         _delete_checkpoint_after_commit()
         return result
 

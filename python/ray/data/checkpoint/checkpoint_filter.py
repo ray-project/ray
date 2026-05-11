@@ -21,7 +21,6 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
-from ray.data.datasource import PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
 
@@ -445,9 +444,23 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
     ):
         """Load checkpointed IDs via CheckpointManager.
 
+        Returns None immediately (without hitting the filesystem) when the
+        checkpoint directory does not yet exist, which is the normal case on
+        the very first run.
+
         Returns:
             ObjectRef[np.ndarray] or None if no checkpoint exists.
         """
+        # Fast-path: skip the full load when the checkpoint directory has not
+        # been created yet (first-ever run).  Without this guard,
+        # ray.data.read_parquet() would raise an error on a missing path.
+        if self._filesystem.get_file_info(self._checkpoint_path_unwrapped).type == FileType.NotFound:
+            logger.info(
+                "Checkpoint path does not exist, skipping checkpoint load: %s",
+                self._checkpoint_path_unwrapped,
+            )
+            return None
+
         checkpoint_ref, _size = self._manager.load_checkpoint(
             data_file_dir=data_file_dir,
             data_file_filesystem=data_file_filesystem,

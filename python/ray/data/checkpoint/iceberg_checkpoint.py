@@ -99,34 +99,6 @@ class IcebergCheckpointLoader:
         )
         return results
 
-    def get_checkpoint_ids(self, id_col: str) -> Set:
-        """Load all checkpointed row IDs from .parquet files.
-
-        Args:
-            id_col: The name of the ID column in checkpoint parquet files.
-
-        Returns:
-            Set of all checkpointed row IDs.
-        """
-        file_infos = self.filesystem.get_file_info(
-            FileSelector(self.checkpoint_path_unwrapped, recursive=False)
-        )
-
-        all_ids = set()
-        for f in file_infos:
-            if f.type != FileType.File:
-                continue
-            basename = os.path.basename(f.path)
-            if basename.endswith(".parquet") and not basename.endswith(
-                ".pending.parquet"
-            ):
-                table = pq.read_table(
-                    f.path, filesystem=self.filesystem, columns=[id_col]
-                )
-                all_ids.update(table[id_col].to_pylist())
-
-        return all_ids
-
 
 def write_iceberg_checkpoint_metadata(
     filesystem,

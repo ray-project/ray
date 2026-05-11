@@ -8,7 +8,6 @@ import numpy as np
 
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
-    remove_execution_callback,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data.checkpoint import CheckpointConfig
@@ -65,8 +64,6 @@ class LoadCheckpointCallback(ExecutionCallback):
     def after_execution_succeeds(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
 
-        # Remove the callback from the DataContext.
-        remove_execution_callback(self, executor._data_context)
         # Delete checkpoint data.
         try:
             if self._config.delete_checkpoint_on_success:
@@ -76,9 +73,6 @@ class LoadCheckpointCallback(ExecutionCallback):
 
     def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
         assert self._config is executor._data_context.checkpoint_config
-
-        # Remove the callback from the DataContext.
-        remove_execution_callback(self, executor._data_context)
 
     def load_checkpoint(self) -> Optional[ObjectRef[np.ndarray]]:
         assert self._loaded, "load_checkpoint() called before before_execution_starts()"

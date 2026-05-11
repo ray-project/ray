@@ -23,16 +23,3 @@ class ExecutionCallback:
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
         """Called after the Dataset execution fails."""
         ...
-
-
-def remove_execution_callback(
-    callback: "ExecutionCallback", context: "DataContext"
-) -> None:
-    """No-op compatibility shim.
-
-    LoadCheckpointCallback is added directly to the planner's callbacks list
-    and passed to StreamingExecutor — it is never registered in DataContext.
-    This function exists so LoadCheckpointCallback.after_execution_succeeds/fails
-    can call it without branching on the execution path.
-    """
-    pass
