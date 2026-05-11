@@ -223,6 +223,13 @@ class Read(
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
         predicated_datasource = self.datasource.apply_predicate(predicate_expr)
 
+        # A datasource returns its own instance to signal "no pushdown applied"
+        # (e.g. ``ParquetDatasource`` does this when a mixed-column conjunct
+        # leaves a residual). Preserve identity here so ``PredicatePushdown``'s
+        # ``result_op is input_op`` no-op check keeps the ``Filter`` above.
+        if self.datasource is predicated_datasource:
+            return self
+
         return replace(
             self,
             datasource=predicated_datasource,
