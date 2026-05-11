@@ -1168,6 +1168,14 @@ class HAProxyApi(ProxyApi):
                 self._proc = await self._start_and_wait_for_haproxy()
                 phases.append(f"fresh_start={time.monotonic() - t0:.2f}s")
 
+                # On fresh-start there is no old process competing for
+                # the admin socket, so this should resolve immediately;
+                # we still wait defensively in case the new proc takes
+                # a moment to bind.
+                t0 = time.monotonic()
+                await self._wait_for_admin_socket_bound_by(self._proc.pid)
+                phases.append(f"admin_wait={time.monotonic() - t0:.2f}s")
+
                 # New process started with empty server-template slots;
                 # rebind pools from backend_configs and repopulate.
                 t0 = time.monotonic()
@@ -1210,6 +1218,18 @@ class HAProxyApi(ProxyApi):
             # Track old process so we can ensure it's cleaned up during shutdown
             if old_proc is not None:
                 self._old_procs.append(old_proc)
+
+            # `_start_and_wait_for_haproxy` returns as soon as the new
+            # proc's frontend listener accepts TCP -- which it does very
+            # early via `-x` FD transfer. The runtime-API admin socket
+            # binding lags behind that, and during the lag connections
+            # to the socket path still go to the OLD proc (which has
+            # the old config and rejects new-config commands with
+            # "No such backend"). Wait for the admin socket to be owned
+            # by the new proc before we issue any runtime commands.
+            t0 = time.monotonic()
+            await self._wait_for_admin_socket_bound_by(self._proc.pid)
+            phases.append(f"admin_wait={time.monotonic() - t0:.2f}s")
 
             # New process has empty server-template slots; rebind pools
             # from backend_configs and repopulate.
@@ -1257,6 +1277,52 @@ class HAProxyApi(ProxyApi):
         except Exception:
             pass
         return True
+
+    async def _wait_for_admin_socket_bound_by(
+        self, target_pid: int, timeout_s: float = 10.0
+    ) -> bool:
+        """Wait until the admin socket is bound by the proc with `target_pid`.
+
+        After a graceful reload, the new HAProxy process binds the
+        frontend listener very early (often within a few ms via the `-x`
+        FD transfer) but the runtime-API admin socket binding can lag
+        behind by tens to hundreds of milliseconds. During that window
+        the old proc still owns the admin-socket path, so any
+        `_send_socket_command` (e.g. our `set server` / `show servers
+        state` calls) gets routed to the OLD process -- which has the
+        OLD config and returns "No such backend" for templated slots in
+        the new config.
+
+        Polls `show info` and parses the `Pid:` line until it matches
+        the new proc, or until `timeout_s` elapses. Returns True if
+        confirmed, False on timeout. Failures here are logged but not
+        fatal: callers should still attempt their runtime commands, and
+        if those fail the regular reload-fallback path kicks in.
+        """
+        deadline = time.monotonic() + timeout_s
+        pid_re = re.compile(r"^Pid:\s*(\d+)\s*$", re.MULTILINE)
+        last_seen_pid: Optional[int] = None
+        while time.monotonic() < deadline:
+            try:
+                info = await self._send_socket_command("show info")
+                match = pid_re.search(info)
+                if match:
+                    seen = int(match.group(1))
+                    last_seen_pid = seen
+                    if seen == target_pid:
+                        return True
+            except Exception:
+                pass
+            await asyncio.sleep(0.05)
+        logger.warning(
+            "Admin socket did not bind to new HAProxy pid=%d within %.1fs "
+            "(last seen pid=%s); proceeding anyway -- runtime commands may "
+            "fail and trigger another reload.",
+            target_pid,
+            timeout_s,
+            last_seen_pid,
+        )
+        return False
 
     async def probe_http_listener(self) -> bool:
         """Probe the HAProxy HTTP listener via /-/healthz.
@@ -1441,6 +1507,12 @@ class HAProxyApi(ProxyApi):
                 logger.info("Successfully generated HAProxy config file.")
 
             self._proc = await self._start_and_wait_for_haproxy()
+            # No old process competes for the admin socket on initial
+            # start, but the new proc still needs a moment to bind it
+            # after the frontend listener comes up. Wait briefly so
+            # `_rebind_slot_pools`'s runtime-API calls don't race the
+            # bind.
+            await self._wait_for_admin_socket_bound_by(self._proc.pid)
             # Rebuild in-memory pools and populate slots from any
             # already-set backend_configs (test fixtures or production
             # reloads that wrote backend_configs before calling start).
