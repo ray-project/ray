@@ -265,6 +265,14 @@ def _get_read_task(
     )
 
 
+def _get_iceberg_catalog(catalog_kwargs: Optional[Dict[str, Any]] = None) -> "Catalog":
+    from pyiceberg import catalog
+
+    catalog_kwargs = (catalog_kwargs or {}).copy()
+    catalog_name = catalog_kwargs.pop("name", "default")
+    return catalog.load_catalog(catalog_name, **catalog_kwargs)
+
+
 @DeveloperAPI
 class IcebergDatasource(Datasource):
     """
@@ -304,17 +312,12 @@ class IcebergDatasource(Datasource):
         _check_import(self, module="pyiceberg", package="pyiceberg")
         from pyiceberg.expressions import AlwaysTrue
 
-        self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
-        self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
-
-        if "name" in self._catalog_kwargs:
-            self._catalog_name = self._catalog_kwargs.pop("name")
-        else:
-            self._catalog_name = "default"
+        self._scan_kwargs = (scan_kwargs or {}).copy()
+        self._catalog_kwargs = (catalog_kwargs or {}).copy()
 
         self.table_identifier = table_identifier
-
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
+
         # Convert selected_fields to projection_map (identity mapping if specified)
         # Note: Empty tuple () means no columns, None/"*" means all columns
         if selected_fields is None or selected_fields == ("*",):
@@ -329,9 +332,7 @@ class IcebergDatasource(Datasource):
         self._table = None
 
     def _get_catalog(self) -> "Catalog":
-        from pyiceberg import catalog
-
-        return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
+        return _get_iceberg_catalog(self._catalog_kwargs)
 
     @property
     def table(self) -> "Table":

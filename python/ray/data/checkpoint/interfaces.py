@@ -108,7 +108,7 @@ class CheckpointConfig:
             override_filesystem,
             override_backend,
         )
-        self.filesystem: "pyarrow.fs.FileSystem" = inferred_fs
+        self.filesystem: Optional["pyarrow.fs.FileSystem"] = inferred_fs
         self.backend: CheckpointBackend = inferred_backend
         self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
         self.write_num_threads: int = write_num_threads
@@ -131,7 +131,7 @@ class CheckpointConfig:
         checkpoint_path: str,
         override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         override_backend: Optional[CheckpointBackend] = None,
-    ) -> Tuple[CheckpointBackend, "pyarrow.fs.FileSystem"]:
+    ) -> Tuple[CheckpointBackend, Optional["pyarrow.fs.FileSystem"]]:
         try:
             if override_filesystem is not None:
                 assert isinstance(override_filesystem, pyarrow.fs.FileSystem), (

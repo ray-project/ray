@@ -1,37 +1,65 @@
 import logging
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    import pyarrow.fs
+
+import numpy as np
 
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data.checkpoint import CheckpointConfig
-from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
 
 class LoadCheckpointCallback(ExecutionCallback):
-    """
-    ExecutionCallback that handles checkpoints. This Callback is responsible for
-    deleting the checkpoint directory when these conditions are met:
-    1. `delete_checkpoint_on_success` is True.
-    2. The job finishes successfully.
-    """
+    """ExecutionCallback that handles checkpoints."""
 
     def __init__(
         self,
         config: CheckpointConfig,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ):
         assert config is not None
         self._config = config
+        self._data_file_dir = data_file_dir
+        self._data_file_filesystem = data_file_filesystem
+
+        self._ckpt_filter = self._create_checkpoint_filter(config)
+        # _loaded=False means before_execution_starts has not been called yet.
+        # After it is called, _checkpoint_ref holds the loaded ref (or None if
+        # no prior checkpoint exists).
+        self._loaded: bool = False
+        self._checkpoint_ref: Optional[ObjectRef[np.ndarray]] = None
+
+    def _create_checkpoint_filter(
+        self, config: CheckpointConfig
+    ) -> BatchBasedCheckpointFilter:
+        """Factory method to create the checkpoint filter.
+
+        Subclasses can override this to use a different filter implementation.
+        """
+        return BatchBasedCheckpointFilter(config)
+
+    def _load_checkpoint_data(self) -> Optional[ObjectRef[np.ndarray]]:
+        """Load checkpoint data from storage (via the checkpoint filter)."""
+        return self._ckpt_filter.load_checkpoint(
+            data_file_dir=self._data_file_dir,
+            data_file_filesystem=self._data_file_filesystem,
+        )
 
     def before_execution_starts(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
 
-    def _delete_checkpoint(self):
-        checkpoint_path_unwrapped = _unwrap_protocol(self._config.checkpoint_path)
-        filesystem = self._config.filesystem
-        filesystem.delete_dir(checkpoint_path_unwrapped)
+        # Load checkpoint data before execution starts.
+        self._checkpoint_ref = self._load_checkpoint_data()
+        self._loaded = True
 
     def after_execution_succeeds(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
@@ -39,9 +67,13 @@ class LoadCheckpointCallback(ExecutionCallback):
         # Delete checkpoint data.
         try:
             if self._config.delete_checkpoint_on_success:
-                self._delete_checkpoint()
+                self._ckpt_filter.delete_checkpoint()
         except Exception:
             logger.warning("Failed to delete checkpoint data.", exc_info=True)
 
     def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
         assert self._config is executor._data_context.checkpoint_config
+
+    def load_checkpoint(self) -> Optional[ObjectRef[np.ndarray]]:
+        assert self._loaded, "load_checkpoint() called before before_execution_starts()"
+        return self._checkpoint_ref

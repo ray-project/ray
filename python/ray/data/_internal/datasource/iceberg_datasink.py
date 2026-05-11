@@ -133,10 +133,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     f"Removed '{invalid_param}' from overwrite_kwargs: {reason}"
                 )
 
-        if "name" in self._catalog_kwargs:
-            self._catalog_name = self._catalog_kwargs.pop("name")
-        else:
-            self._catalog_name = "default"
+        self._catalog_name = self._catalog_kwargs.get("name", "default")
 
         self._table: "Table" = None
         self._io: "FileIO" = None
@@ -176,10 +173,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         )
 
     def _get_catalog(self) -> "Catalog":
-        from pyiceberg import catalog
+        from ray.data._internal.datasource.iceberg_datasource import (
+            _get_iceberg_catalog,
+        )
 
         return self._with_retry(
-            lambda: catalog.load_catalog(self._catalog_name, **self._catalog_kwargs),
+            lambda: _get_iceberg_catalog(self._catalog_kwargs),
             description=f"load Iceberg catalog '{self._catalog_name}'",
         )
 

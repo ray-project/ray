@@ -209,7 +209,6 @@ class Planner:
             logical_plan
         ):
             self._supports_checkpointing = True
-            data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config,
@@ -218,13 +217,12 @@ class Planner:
             callbacks.append(checkpoint_callback)
 
             # Dynamically set the plan functions for checkpointing because they
-            # need to a reference to the checkpoint ref.
+            # need a reference to the checkpoint callback's load_checkpoint fn.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                data_file_dir, data_file_fs
+                checkpoint_callback.load_checkpoint
             )
 
         elif checkpoint_config is not None:
-            assert not self._check_supports_checkpointing(logical_plan)
             warnings.warn(
                 "You've enabled checkpointing, but the logical plan doesn't support "
                 "checkpointing. Checkpointing will be disabled."
@@ -324,12 +322,12 @@ class Planner:
 
     def _get_plan_fns_for_checkpointing(
         self,
-        data_file_dir: Optional[str] = None,
-        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        load_checkpoint: Optional[Callable] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
             Read: partial(
-                plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
+                plan_read_op_with_checkpoint_filter,
+                load_checkpoint=load_checkpoint,
             ),
             Write: plan_write_op_with_checkpoint_writer,
         }
