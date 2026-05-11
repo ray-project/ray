@@ -186,14 +186,6 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
 
         return len(self._pending_validations)
 
-    def _resolve_timeout_s(
-        self, validation: Union[bool, ValidationTaskConfig]
-    ) -> Optional[float]:
-        """Resolve the effective timeout for a validation task."""
-        if isinstance(validation, ValidationTaskConfig):
-            return validation.timeout_s
-        return self._validation_config.task_config.timeout_s
-
     def _kick_off_validations(self) -> int:
         """Kick off validations and return the number of pending validations."""
         # TODO: figure out where to place run_validation_fn task:
@@ -214,10 +206,14 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 training_report.validation,
                 training_report.checkpoint,
             )
+            if isinstance(training_report.validation, ValidationTaskConfig):
+                timeout_s = training_report.validation.timeout_s
+            else:
+                timeout_s = self._validation_config.task_config.timeout_s
             self._pending_validations[validate_task] = _PendingValidation(
                 checkpoint=training_report.checkpoint,
                 start_time=time.monotonic(),
-                timeout_s=self._resolve_timeout_s(training_report.validation),
+                timeout_s=timeout_s,
             )
             logger.info(
                 f"Launched async validation task for checkpoint {training_report.checkpoint}"

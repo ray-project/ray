@@ -24,9 +24,8 @@ class ValidationTaskConfig:
         fn_kwargs: json-serializable keyword arguments to pass to the validation function.
             Note that we always pass `checkpoint` as the first argument to the
             validation function.
-        timeout_s: Timeout in seconds for this validation task. ``-1`` means
-            no timeout. ``None`` uses the ``ValidationConfig.task_config.timeout_s``
-            where the default is no timeout.
+        timeout_s: Timeout in seconds for this validation task.
+            ``None`` is no timeout.
     """
 
     fn_kwargs: Optional[Dict[str, Any]] = None
@@ -35,6 +34,9 @@ class ValidationTaskConfig:
     def __post_init__(self):
         if self.fn_kwargs is None:
             self.fn_kwargs = {}
+            assert (
+                self.timeout_s is None or self.timeout_s >= 0
+            ), f"The `timeout_s` should be None or greater than zero, actual value: {self.timeout_s}"
 
 
 @PublicAPI(stability="alpha")
