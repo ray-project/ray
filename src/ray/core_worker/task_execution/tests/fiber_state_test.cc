@@ -103,5 +103,74 @@ TEST(FiberStateTest, DoubleStopJoin) {
   fiber_state.Join();
 }
 
+namespace {
+
+// Shared state for FiberPreCallback test below. The hook is a plain C function
+// pointer with no captures, so test state lives at file scope.
+std::atomic<int> pre_callback_invocations_{0};
+std::atomic<bool> pre_callback_ran_before_user_{false};
+std::atomic<bool> user_callback_ran_{false};
+
+void ResetPreCallbackTestState() {
+  pre_callback_invocations_.store(0);
+  pre_callback_ran_before_user_.store(false);
+  user_callback_ran_.store(false);
+}
+
+void TestFiberPreCallback() {
+  // Record that the pre-callback fired. The user callback below checks this
+  // flag at its entry to verify the pre-callback ran first.
+  pre_callback_invocations_.fetch_add(1);
+}
+
+}  // namespace
+
+TEST(FiberStateTest, FiberPreCallbackFiresBeforeUserCallbackAndIsOptional) {
+  TotalCounter total_counter;
+
+  // Sanity check: with no hook installed, EnqueueFiber runs the user callback
+  // exactly as before -- this validates the `if (pre != nullptr)` guard.
+  {
+    ResetPreCallbackTestState();
+    FiberState fiber_state(1);
+    fiber_state.EnqueueFiber([&]() {
+      user_callback_ran_.store(true);
+      total_counter.increment();
+    });
+    total_counter.wait_for(1);
+    EXPECT_TRUE(user_callback_ran_.load());
+    EXPECT_EQ(pre_callback_invocations_.load(), 0);
+    fiber_state.Stop();
+    fiber_state.Join();
+  }
+
+  // Install the hook and verify it fires before every user callback.
+  {
+    ResetPreCallbackTestState();
+    FiberState::SetFiberPreCallback(&TestFiberPreCallback);
+    FiberState fiber_state(1);
+    const int kNumDispatches = 5;
+    for (int i = 0; i < kNumDispatches; ++i) {
+      fiber_state.EnqueueFiber([&]() {
+        // Pre-callback should have already incremented the counter by the
+        // time the user callback runs.
+        if (pre_callback_invocations_.load() > 0) {
+          pre_callback_ran_before_user_.store(true);
+        }
+        total_counter.increment();
+      });
+    }
+    total_counter.wait_for(kNumDispatches);
+    EXPECT_EQ(pre_callback_invocations_.load(), kNumDispatches);
+    EXPECT_TRUE(pre_callback_ran_before_user_.load());
+    fiber_state.Stop();
+    fiber_state.Join();
+
+    // The hook is a static member; reset it so it doesn't leak into later
+    // tests in this process.
+    FiberState::SetFiberPreCallback(nullptr);
+  }
+}
+
 }  // namespace core
 }  // namespace ray
