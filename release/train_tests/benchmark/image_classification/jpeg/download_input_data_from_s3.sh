@@ -20,6 +20,10 @@ if [ ! -d "$TRAIN_DIR" ]; then
     unzip -q "$ZIP_NAME"
     rm "$ZIP_NAME"
 
+    echo "--- after unzip, contents of $DATA_DIR ---"
+    ls -la "$DATA_DIR"
+    find "$DATA_DIR" -maxdepth 3 -type d | head -50
+
     popd || exit
 else
     echo "Dataset already exists at $TRAIN_DIR. Skipping download and unzip."
