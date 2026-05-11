@@ -1036,9 +1036,7 @@ class EnvRunnerGroup:
 
         Args:
             timeout_seconds: Per-actor ping timeout. If None (default), uses
-                ``AlgorithmConfig.env_runner_health_probe_timeout_s``. Pass
-                a smaller value when calling this from a tight loop to
-                avoid blocking up to the config default (30s) per probe.
+                ``AlgorithmConfig.env_runner_health_probe_timeout_s``.
 
         Returns:
             List of IDs of the workers that were restored.
