@@ -319,18 +319,24 @@ def test_iterate_with_retry():
     )
 
 
-def test_matches_error():
-    """Test the _matches_error function that is used for retries to match error strings against substrings first and then regex"""
-    # Plain substring match.
-    assert _matches_error("transient", "transient network error")
-    # Regex match when substring check fails.
-    assert _matches_error("40[0-9]", "HTTP 404 not found")
-    # Substring takes priority: literal "(503)" found before regex is tried.
-    assert _matches_error("(503)", "error (503) returned")
-    # Invalid regex falls back to False, not re.error.
-    assert not _matches_error("[unclosed", "some error message")
-    # No match at all.
-    assert not _matches_error("rate limit", "connection refused")
+@pytest.mark.parametrize(
+    "pattern, error_message, expected",
+    [
+        # Plain substring match.
+        ("transient", "transient network error", True),
+        # Regex match when substring check fails.
+        ("40[0-9]", "HTTP 404 not found", True),
+        # Substring takes priority: literal "(503)" found before regex is tried.
+        ("(503)", "error (503) returned", True),
+        # Invalid regex falls back to False, not re.error.
+        ("[unclosed", "some error message", False),
+        # No match at all.
+        ("rate limit", "connection refused", False),
+    ],
+)
+def test_matches_error(pattern, error_message, expected):
+    """Retry helper matches substring first, then regex; invalid patterns do not raise."""
+    assert _matches_error(pattern, error_message) is expected
 
 
 def test_find_partition_index_single_column_ascending():
