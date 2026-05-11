@@ -34,9 +34,9 @@ class ValidationTaskConfig:
     def __post_init__(self):
         if self.fn_kwargs is None:
             self.fn_kwargs = {}
-            assert (
-                self.timeout_s is None or self.timeout_s >= 0
-            ), f"The `timeout_s` should be None or greater than zero, actual value: {self.timeout_s}"
+        assert (
+            self.timeout_s is None or self.timeout_s > 0
+        ), f"The `timeout_s` should be None or greater than zero, actual value: {self.timeout_s}"
 
 
 @PublicAPI(stability="alpha")
