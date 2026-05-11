@@ -322,6 +322,8 @@ class HealthRouteInfo:
     health_message: str = HEALTHY_MESSAGE
     routes_message: str = "{}"
     routes_content_type: str = "application/json"
+    # gRPC status code (0 = OK, 14 = UNAVAILABLE)
+    grpc_health_status: int = 0
 
 
 @dataclass
@@ -615,12 +617,14 @@ class HAProxyConfig:
         else:
             routes_message = message
 
+
         return HealthRouteInfo(
             healthy=healthy,
             status=200 if healthy else 503,
             health_message=message,
             routes_message=routes_message,
             routes_content_type="application/json" if healthy else "text/plain",
+            grpc_health_status=0 if healthy else 14,
         )
 
     # TODO: support custom root_path and https
@@ -671,6 +675,9 @@ class HAProxyApi(ProxyApi):
     ):
         self.cfg = cfg
         self.backend_configs = backend_configs or {}
+        # Standalone gRPC fallback server used for requests (e.g. ListApplications)
+        # that can only be answered by the Serve proxy.
+        self.grpc_fallback_server: Optional[ServerConfig] = None
         self.config_file_path = config_file_path
         # Lock to prevent concurrent config modifications
         self._config_lock = asyncio.Lock()
@@ -917,6 +924,7 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_bufsize": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
                     ),
+                    "grpc_fallback_server": self.grpc_fallback_server,
                 }
             )
 
@@ -1153,6 +1161,9 @@ class HAProxyApi(ProxyApi):
         self.cfg.has_received_servers = self.cfg.has_received_servers or any(
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
+
+    def set_grpc_fallback_server(self, server: Optional[ServerConfig]) -> None:
+        self.grpc_fallback_server = server
 
     async def is_running(self) -> bool:
         try:
@@ -1471,6 +1482,14 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
+
+        grpc_fallback_server = (
+            self._target_to_server(self._grpc_fallback_target)
+            if self._grpc_fallback_target is not None
+            else None
+        )
+        self._haproxy.set_grpc_fallback_server(grpc_fallback_server)
+
         self.event_loop.create_task(self._reload_haproxy())
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
