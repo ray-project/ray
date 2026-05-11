@@ -1,4 +1,3 @@
-import importlib
 import json
 import time
 from collections import OrderedDict
@@ -863,19 +862,27 @@ def test_get_framework_version():
     assert list(versions.keys()) == ["ray"]
     assert versions["ray"] == ray.__version__
 
-    # Each framework should return ray + versions for all importable modules.
-    for framework in TrainingFramework:
-        versions = _get_framework_version(framework)
-        assert "ray" in versions
-        assert versions["ray"] == ray.__version__
+    # Mock importlib.import_module to prevent heavy imports
+    mock_versions = {
+        name: f"{name}-mock-1.2.3"
+        for framework in TrainingFramework
+        for name in framework.module_names()
+    }
 
-        for module_name in framework.module_names():
-            try:
-                module = importlib.import_module(module_name)
-                assert module_name in versions
-                assert versions[module_name] == module.__version__
-            except ModuleNotFoundError:
-                assert module_name not in versions
+    def mock_import(name):
+        module = MagicMock()
+        module.__version__ = mock_versions[name]
+        return module
+
+    with patch(
+        "ray.train.v2._internal.callbacks.state_manager.importlib"
+    ) as mock_importlib:
+        mock_importlib.import_module.side_effect = mock_import
+        for framework in TrainingFramework:
+            versions = _get_framework_version(framework)
+            assert versions["ray"] == ray.__version__
+            for module_name in framework.module_names():
+                assert versions[module_name] == mock_versions[module_name]
 
 
 def test_execution_options_to_model_defaults_and_custom():
