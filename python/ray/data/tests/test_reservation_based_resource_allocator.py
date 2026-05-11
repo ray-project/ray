@@ -160,12 +160,10 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
-        # Test get_allocation = max(planned_grant, usage).
-        # planned_grant[o2] = (4, 0, 125) + op_shared = (4, 0, 125) + (3, 0, 113)
-        #   = (7, 0, 238); usage[o2] = (6, 0, 500) → max = (7, 0, 500)
-        # planned_grant[o3] = (4, 0, 125) + (3, 0, 112) = (7, 0, 237);
-        #   usage[o3] = (2, 0, 125) → max = (7, 0, 237)
-        assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 500)
+        # Test get_allocation = planned_grant.
+        # planned_grant[o2] = (4, 0, 125) + op_shared(3, 0, 113) = (7, 0, 238)
+        # planned_grant[o3] = (4, 0, 125) + op_shared(3, 0, 112) = (7, 0, 237)
+        assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 238)
         assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
         # Test get_signed_headroom = planned_grant - usage (component-wise, can be negative).
         # o2: CPU headroom = 7 - 6 = 1 (within grant); OSM headroom = 238 - 500 = -262
@@ -207,11 +205,10 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
-        # Test get_allocation = max(planned_grant, usage).
-        # planned_grant[o2] = (3, 0, 100) + op_shared(1.5, 0, 50) = (4.5, 0, 150);
-        #   usage[o2] = (6, 0, 500) → max = (6, 0, 500)
-        # planned_grant[o3] = (4.5, 0, 150); usage[o3] = (2, 0, 125) → max = (4.5, 0, 150)
-        assert allocator.get_allocation(o2) == ExecutionResources(6, 0, 500)
+        # Test get_allocation = planned_grant.
+        # planned_grant[o2] = (3, 0, 100) + op_shared(1.5, 0, 50) = (4.5, 0, 150)
+        # planned_grant[o3] = (4.5, 0, 150)
+        assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
         assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
 
     def test_get_signed_headroom_on_cpu(self, restore_data_context):

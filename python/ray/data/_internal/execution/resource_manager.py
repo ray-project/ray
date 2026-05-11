@@ -1032,10 +1032,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return op_mem_usage
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        # NOTE: uses _op_planned_grants directly (not get_allocation) so that budget
-        # is always based on the planned grant, not max(planned_grant, usage). Using
-        # get_allocation here would inflate the budget when an op is over-budget,
-        # allowing more task submissions precisely when the op is already over-consuming.
         planned_grant = self._op_planned_grants.get(op)
         if planned_grant is None:
             return None
@@ -1070,13 +1066,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        planned_grant = self._op_planned_grants.get(op)
-        if planned_grant is None:
-            return None
-        # Allocation = resources currently committed to this op: the greater of
-        # what was planned and what in-flight tasks are already holding (since in-flight
-        # resources cannot be reclaimed until those tasks complete).
-        return planned_grant.max(self._resource_manager.get_op_usage(op))
+        return self._op_planned_grants.get(op)
 
     def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         planned_grant = self._op_planned_grants.get(op)
