@@ -341,30 +341,28 @@ class MinimalSessionManagerTest(unittest.TestCase):
         top_level_aic = cluster_manager.cluster_compute["advanced_instance_config"]
         self.assertIn("TagSpecifications", top_level_aic)
 
-        # head_node.advanced_instance_config should have tags
-        head_aic = cluster_manager.cluster_compute["head_node"][
-            "advanced_instance_config"
-        ]
-        self.assertIn("TagSpecifications", head_aic)
+        # head_node and worker_nodes must NOT be annotated. Populating
+        # per-group advanced_instance_config causes Anyscale to use it
+        # (TagSpecifications only) and drop the cluster-level IamInstanceProfile
+        # and other fields, since per-group spec replaces (not merges with) base.
+        self.assertNotIn(
+            "advanced_instance_config",
+            cluster_manager.cluster_compute.get("head_node", {}),
+        )
+        for worker in cluster_manager.cluster_compute.get("worker_nodes", []):
+            self.assertNotIn("advanced_instance_config", worker)
 
-        # worker_nodes[0].advanced_instance_config should have tags
-        worker_aic = cluster_manager.cluster_compute["worker_nodes"][0][
-            "advanced_instance_config"
-        ]
-        self.assertIn("TagSpecifications", worker_aic)
-
-        # Verify tag values for all tracked resource types
-        for aic in [top_level_aic, head_aic, worker_aic]:
-            tag_specs = aic["TagSpecifications"]
-            self.assertEqual(
-                len(tag_specs), len(RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING)
-            )
-            for resource_type in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING:
-                resource_tags = [
-                    ts for ts in tag_specs if ts["ResourceType"] == resource_type
-                ]
-                self.assertEqual(len(resource_tags), 1)
-                self.assertIn({"Key": "foo", "Value": "bar"}, resource_tags[0]["Tags"])
+        # Verify tag values for all tracked resource types on the top-level spec
+        tag_specs = top_level_aic["TagSpecifications"]
+        self.assertEqual(
+            len(tag_specs), len(RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING)
+        )
+        for resource_type in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING:
+            resource_tags = [
+                ts for ts in tag_specs if ts["ResourceType"] == resource_type
+            ]
+            self.assertEqual(len(resource_tags), 1)
+            self.assertIn({"Key": "foo", "Value": "bar"}, resource_tags[0]["Tags"])
 
         # Test merging with already existing tags
         cluster_compute_with_tags = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
