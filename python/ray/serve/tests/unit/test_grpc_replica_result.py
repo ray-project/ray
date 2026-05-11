@@ -2,10 +2,12 @@ import asyncio
 import sys
 import threading
 
+import grpc
 import pytest
 
 from ray import ActorID, cloudpickle
 from ray._common.test_utils import wait_for_condition
+from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.replica_result import gRPCReplicaResult
 from ray.serve.generated import serve_pb2
@@ -28,6 +30,22 @@ class FakegRPCUnaryCall:
 
     def add_done_callback(self, cb):
         pass
+
+
+class FakegRPCDoneCall:
+    def __init__(self, code):
+        self._callbacks = []
+        self._code = code
+
+    async def code(self):
+        return self._code
+
+    def add_done_callback(self, cb):
+        self._callbacks.append(cb)
+
+    def fire_done_callbacks(self):
+        for cb in self._callbacks:
+            cb(self)
 
 
 class FakegRPCStreamCall:
@@ -130,6 +148,28 @@ class TestSameLoop:
         )
         with pytest.raises(RuntimeError, match="oh no!"):
             await replica_result.__anext__()
+
+    async def test_done_callback_unavailable_maps_to_actor_unavailable(self):
+        fake_call = FakegRPCDoneCall(grpc.StatusCode.UNAVAILABLE)
+        replica_result = gRPCReplicaResult(
+            fake_call,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                is_streaming=False,
+                _on_separate_loop=False,
+            ),
+            actor_id=ActorID(b"2" * 16),
+            loop=asyncio.get_running_loop(),
+        )
+        callback_args = []
+        replica_result.add_done_callback(callback_args.append)
+
+        fake_call.fire_done_callbacks()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert isinstance(callback_args[-1], ActorUnavailableError)
 
 
 class TestSeparateLoop:

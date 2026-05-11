@@ -566,8 +566,28 @@ class gRPCReplicaResult(ReplicaResult):
             )
             return await asyncio.wrap_future(fut)
 
+    async def _process_done_callback(self, call: grpc.aio.Call, callback: Callable):
+        callback_arg = call
+        try:
+            if await call.code() == grpc.StatusCode.UNAVAILABLE:
+                callback_arg = ActorUnavailableError(
+                    "Actor is unavailable.",
+                    self._actor_id.binary(),
+                )
+        except Exception:
+            logger.exception("Failed to process gRPC request completion status.")
+
+        callback(callback_arg)
+
     def add_done_callback(self, callback: Callable):
-        self._call.add_done_callback(callback)
+        def wrapped_callback(call: grpc.aio.Call):
+            self._grpc_call_loop.call_soon_threadsafe(
+                lambda: self._grpc_call_loop.create_task(
+                    self._process_done_callback(call, callback)
+                )
+            )
+
+        self._call.add_done_callback(wrapped_callback)
 
     def cancel(self):
         self._call.cancel()
