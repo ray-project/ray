@@ -17,7 +17,6 @@ populated by a mock metric generator for prototype review.
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
-    GridPos,
     Panel,
     Row,
     Target,
@@ -33,17 +32,17 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 _WORKER_JOIN = (
     "\n* on(WorkerId) group_left(deployment, replica)"
     "\nmax by(WorkerId, deployment, replica) ("
-    'ray_serve_deployment_request_counter_total{{{global_filters}, deployment=~"$deployment"}} * 0 + 1)'
+    'ray_serve_deployment_request_counter_total{{deployment=~"$deployment"}} * 0 + 1)'
 )
 
 # Standard SGLang metric filter
-_SGLANG_FILTER = (
-    'model_name=~"$sglang_model_name", WorkerId=~"$workerid", {global_filters}'
-)
+_SGLANG_FILTER = 'model_name=~"$sglang_model_name", WorkerId=~"$workerid"'
 
 # SGLang filter scoped to a specific deployment (used for ray_serve_* metrics
 # that also carry model_name / WorkerId labels).
-_SGLANG_DEPLOYMENT_FILTER = 'model_name=~"$sglang_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"'
+_SGLANG_DEPLOYMENT_FILTER = (
+    'model_name=~"$sglang_model_name", WorkerId=~"$workerid", deployment=~"$deployment"'
+)
 
 # Legend used by most per-worker panels
 _DEP_REPLICA = "{{deployment}}: {{replica}}"
@@ -102,7 +101,6 @@ def _histogram_panels(
     metric_base: str,
     label: str,
     ids: tuple,
-    y: int,
     unit: str = "s",
     linewidth: int = 2,
     description: str = "",
@@ -118,7 +116,6 @@ def _histogram_panels(
             fill=1,
             linewidth=linewidth,
             stack=False,
-            grid_pos=GridPos(0, y, 8, 8),
         ),
         Panel(
             id=ids[1],
@@ -133,7 +130,6 @@ def _histogram_panels(
             fill=1,
             linewidth=linewidth,
             stack=False,
-            grid_pos=GridPos(8, y, 8, 8),
         ),
         Panel(
             id=ids[2],
@@ -148,7 +144,6 @@ def _histogram_panels(
             fill=1,
             linewidth=linewidth,
             stack=False,
-            grid_pos=GridPos(16, y, 8, 8),
         ),
     ]
 
@@ -175,7 +170,6 @@ _throughput_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 1, 8, 8),
     ),
     Panel(
         id=3,
@@ -195,7 +189,6 @@ _throughput_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(8, 1, 8, 8),
     ),
     Panel(
         id=4,
@@ -215,7 +208,6 @@ _throughput_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(16, 1, 8, 8),
     ),
 ]
 
@@ -223,15 +215,12 @@ _throughput_panels = [
 # Row 2: Latency (3x3 grid)
 # ===================================================================
 _latency_panels_list = [
-    *_histogram_panels("ray_sglang_inter_token_latency_seconds", "TPOT", (6, 7, 8), 10),
-    *_histogram_panels(
-        "ray_sglang_time_to_first_token_seconds", "TTFT", (9, 10, 11), 18
-    ),
+    *_histogram_panels("ray_sglang_inter_token_latency_seconds", "TPOT", (6, 7, 8)),
+    *_histogram_panels("ray_sglang_time_to_first_token_seconds", "TTFT", (9, 10, 11)),
     *_histogram_panels(
         "ray_sglang_e2e_request_latency_seconds",
         "Request Latency",
         (12, 13, 14),
-        26,
         description="End-to-end request latency (in seconds).",
     ),
 ]
@@ -254,7 +243,6 @@ _cache_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 35, 12, 8),
     ),
     Panel(
         id=17,
@@ -270,7 +258,6 @@ _cache_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 35, 12, 8),
     ),
 ]
 
@@ -282,7 +269,6 @@ _request_length_panels = [
         "ray_sglang_prompt_tokens_histogram",
         "Prompt Length",
         (19, 20, 21),
-        44,
         unit="short",
         linewidth=1,
     ),
@@ -290,7 +276,6 @@ _request_length_panels = [
         "ray_sglang_generation_tokens_histogram",
         "Generation Length",
         (22, 23, 24),
-        52,
         unit="short",
         linewidth=1,
     ),
@@ -314,7 +299,6 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 61, 8, 8),
     ),
     Panel(
         id=27,
@@ -330,7 +314,6 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 61, 8, 8),
     ),
     Panel(
         id=28,
@@ -346,7 +329,6 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 61, 8, 8),
     ),
     Panel(
         id=29,
@@ -362,7 +344,6 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 69, 8, 8),
     ),
     Panel(
         id=30,
@@ -378,7 +359,6 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 69, 8, 8),
     ),
     Panel(
         id=31,
@@ -394,7 +374,6 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 69, 8, 8),
     ),
 ]
 
