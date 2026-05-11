@@ -13,7 +13,12 @@ import pytest
 import ray
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray.exceptions import ActorDiedError, ActorUnavailableError, RayTaskError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnavailableError,
+    RayTaskError,
+    TaskCancelledError,
+)
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -1749,6 +1754,95 @@ class TestChooseReplica:
             assert router._metrics_manager._num_reserved_slots == before + 1
         # Exit ran cleanly even though release raised.
         assert router._metrics_manager._num_reserved_slots == before
+
+    async def test_inc_reserved_slots_failure_releases_slot(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """If gauge.set() throws during inc, cleanup must still release the
+        slot and rebalance the counter."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        # Raise only on inc's set(1); the cleanup's set(0) must still run.
+        gauge_mock = Mock()
+        gauge_mock.set = Mock(
+            side_effect=lambda v: (_ for _ in ()).throw(RuntimeError("gauge boom"))
+            if v > 0
+            else None
+        )
+        router._metrics_manager._reserved_slots_gauge = gauge_mock
+
+        with pytest.raises(RuntimeError, match="gauge boom"):
+            async with router.choose_replica(dummy_request_metadata()):
+                pass
+
+        assert replica._reserved_slots == set()
+        assert router._metrics_manager._num_reserved_slots == 0
+
+    @pytest.mark.parametrize(
+        "callback_result,expect_release",
+        [
+            pytest.param(None, False, id="actor_success"),
+            pytest.param(TaskCancelledError(), True, id="actor_cancellation"),
+            pytest.param(
+                Mock(cancelled=Mock(return_value=False)),
+                False,
+                id="grpc_success",
+            ),
+            pytest.param(
+                Mock(cancelled=Mock(return_value=True)),
+                True,
+                id="grpc_cancellation",
+            ),
+        ],
+    )
+    async def test_dispatch_release_slot_fires_only_on_cancellation(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        callback_result,
+        expect_release,
+    ):
+        """Done-callback fires release_slot only when the dispatched
+        request was cancelled. On success the replica already consumed the
+        slot when try_send_request arrived, so a follow-up RPC would be a
+        no-op per dispatched request. Covers both transports."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        release_slot_calls: List[str] = []
+        original_release_slot = replica.release_slot
+
+        async def spy_release_slot(slot_token):
+            release_slot_calls.append(slot_token)
+            return await original_release_slot(slot_token)
+
+        replica.release_slot = spy_release_slot
+
+        request_metadata = dummy_request_metadata()
+        async with router.choose_replica(request_metadata) as selection:
+            slot_token = selection._slot_token
+            result = await router.dispatch(selection, request_metadata)
+
+        # try_send_request consumed the slot synchronously; the done-callback
+        # hasn't fired yet, so no release_slot call should have happened.
+        assert release_slot_calls == []
+
+        result.fire_done_callbacks(result=callback_result)
+        # Drain the call_soon_threadsafe → create_task chain.
+        for _ in range(2):
+            await asyncio.sleep(0)
+
+        assert release_slot_calls == ([slot_token] if expect_release else [])
 
     async def test_dispatch_failure_is_not_masked_by_release_failure(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]

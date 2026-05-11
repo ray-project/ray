@@ -26,7 +26,13 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError, RayTaskError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnavailableError,
+    RayError,
+    RayTaskError,
+    TaskCancelledError,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -1254,9 +1260,6 @@ class AsyncioRouter:
                 raise self._make_upstream_crash_error(e)
             replica, slot_token = await self._pick_and_reserve_replica(pr)
 
-            # Increment reserved slots metric (after queue metric is decremented)
-            self._metrics_manager.inc_reserved_slots()
-
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
                 node_ip=replica._replica_info.node_ip,
@@ -1271,6 +1274,7 @@ class AsyncioRouter:
             )
 
         try:
+            self._metrics_manager.inc_reserved_slots()
             yield selection
         finally:
             try:
@@ -1365,20 +1369,32 @@ class AsyncioRouter:
         # finally skips its manual call (exactly one per reservation).
         selection._completion_callback_registered = True
         self._register_decrement_queue_len_cache_callback(result, replica.replica_id)
-        result.add_done_callback(
-            lambda _: self._event_loop.call_soon_threadsafe(
-                lambda: self._event_loop.create_task(
-                    self._release_slot_if_still_reserved(selection)
-                )
+
+        # Only the cancellation path needs a follow-up release_slot RPC: on
+        # success or replica-side failure, `_start_request` already consumed
+        # the slot. Skipping it on the happy path saves one actor RPC per
+        # dispatched request.
+        def _maybe_release_slot(fut, sel=selection):
+            cancelled = isinstance(fut, TaskCancelledError) or (
+                callable(getattr(fut, "cancelled", None)) and fut.cancelled()
             )
-        )
+            if cancelled:
+                self._event_loop.call_soon_threadsafe(
+                    lambda: self._event_loop.create_task(
+                        self._release_slot_if_still_reserved(sel)
+                    )
+                )
+
+        result.add_done_callback(_maybe_release_slot)
 
         return result
 
     async def _release_slot_if_still_reserved(
         self, selection: ReplicaSelection
     ) -> None:
-        """Best-effort cleanup if a dispatched request was cancelled before starting."""
+        """Best-effort release_slot when a dispatched request was cancelled
+        before the replica could consume the reservation. A no-op on the
+        replica side if the slot was already consumed."""
         try:
             await selection._release_slot(force=True)
         except Exception:
