@@ -57,3 +57,5 @@ YOLO
 [Pp]arameterization(s)?
 repr
 Zarr
+[Uu]psample(d|s)?
+[Rr]ebatch(ing|ed|es)?

@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/util/network_util.h"
 
 extern "C" {

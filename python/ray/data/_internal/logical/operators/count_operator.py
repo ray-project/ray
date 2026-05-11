@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -19,13 +19,11 @@ class Count(LogicalOperator):
 
     COLUMN_NAME = "__num_rows"
 
-    input_op: InitVar[LogicalOperator]
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", [input_op])
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
 
     @property
     def num_outputs(self) -> Optional[int]:
