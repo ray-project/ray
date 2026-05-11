@@ -674,7 +674,7 @@ class DeploymentScheduler(ABC):
                         accelerator_config=scheduling_request.accelerator_config,
                     ),
                 )
-
+                # Import ReplicaPlacementGroup inline here to avoid circular dependency with default_impl
                 from ray.serve._private.default_impl import ReplicaPlacementGroup
 
                 assert isinstance(
