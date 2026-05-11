@@ -3,6 +3,6 @@ zones:
     - us-west1-b
 
 head_node:
-    instance_type: n1-standard-8
+    instance_type: n1-standard-2
 
 worker_nodes: []
