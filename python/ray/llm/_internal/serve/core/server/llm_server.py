@@ -740,4 +740,12 @@ class LLMServer(LLMServerProtocol):
         }
         deployment_options["ray_actor_options"] = ray_actor_options
 
+        # Let the accelerator backend populate hardware-specific deployment options.
+        deployment_options.update(
+            engine_config.accelerator.get_deployment_options(
+                accelerator_type=llm_config.accelerator_type,
+                placement_group_config=llm_config.placement_group_config,
+            )
+        )
+
         return deployment_options

@@ -7,6 +7,7 @@ from typing_extensions import Annotated
 
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve.config import TPUAcceleratorConfig
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
 
@@ -110,6 +111,15 @@ class AcceleratorBackend(ABC):
     def get_remote_options(self, accelerator_type_str: str = None) -> Dict[str, Any]:
         """Returns the hardware-specific kwargs for ray.remote().options()."""
         pass
+
+    def get_deployment_options(
+        self,
+        *,
+        accelerator_type: Optional[str] = None,
+        placement_group_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Returns Serve deployment options specific to this accelerator."""
+        return {}
 
     def shutdown(self) -> None:
         """Release any resources owned by this backend. Idempotent."""
@@ -260,6 +270,34 @@ class TPUAccelerator(AcceleratorBackend):
         if accelerator_type_str:
             options["accelerator_type"] = accelerator_type_str
         return options
+
+    def get_deployment_options(
+        self,
+        *,
+        accelerator_type: Optional[str] = None,
+        placement_group_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        if not self._config.topology:
+            return {}
+
+        if not accelerator_type:
+            raise ValueError(
+                "accelerator_type must be specified when "
+                "accelerator_config is a TPUConfig with topology."
+            )
+
+        version = get_tpu_version_from_type(accelerator_type)
+        resources_per_bundle = (placement_group_config or {}).get("bundle_per_worker")
+
+        return {
+            "accelerator_config": TPUAcceleratorConfig(
+                topology=self._config.topology,
+                accelerator_version=version,
+                num_slices=getattr(self._config, "num_slices", 1),
+                chips_per_vm=getattr(self._config, "chips_per_vm", None),
+                resources_per_bundle=resources_per_bundle,
+            )
+        }
 
     def shutdown(self):
         if self._slice_pg_wrapper is not None:

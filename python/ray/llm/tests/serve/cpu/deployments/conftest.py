@@ -20,6 +20,9 @@ def ray_tpu_cluster():
     """
     Simulates a Ray cluster with a multi-host TPU v6e-16 slice (4x4 topology).
     """
+    if ray.is_initialized():
+        ray.shutdown()
+
     pod_type = "v6e-16"
     topology = "4x4"
 

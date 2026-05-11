@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from ray import serve
+from ray.llm._internal.serve.core.configs.accelerators import TPUConfig
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -691,6 +692,28 @@ class TestGetDeploymentOptions:
 
         assert "placement_group_bundles" not in serve_options
         assert "placement_group_strategy" not in serve_options
+
+    def test_tpu_accelerator_config_translation(self):
+        """Test that TPUConfig is correctly translated to Serve TPUAcceleratorConfig."""
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+            accelerator_type="TPU-V6E",
+            accelerator_config=TPUConfig(kind="tpu", topology="4x4"),
+            placement_group_config={"bundle_per_worker": {"TPU": 1}},
+            llm_engine="vLLM",
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert "placement_group_bundles" not in serve_options
+        assert "placement_group_strategy" not in serve_options
+
+        assert "accelerator_config" in serve_options
+        acc_config = serve_options["accelerator_config"]
+        assert acc_config.topology == "4x4"
+        assert acc_config.accelerator_version == "v6e"
+        assert acc_config.resources_per_bundle == {"TPU": 1}
 
 
 if __name__ == "__main__":

@@ -60,7 +60,6 @@ def mock_tpu_cluster():
 
 def test_tpu_accelerator_config_integration(mock_tpu_cluster):
     """Test that AcceleratorConfig correctly creates SlicePlacementGroup in a mock cluster."""
-
     tpu_config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
 
     request = CreatePlacementGroupRequest(
