@@ -3,7 +3,7 @@ import posixpath
 from typing import Iterable, List
 
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.interfaces import (
     CheckpointConfig,
 )
@@ -83,27 +83,3 @@ def filter_checkpointed_rows_for_blocks(
         if ba.num_rows() > 0:
             yield filtered_block
 
-
-def filter_checkpointed_rows_for_batches(
-    batches: Iterable[DataBatch],
-    task_context: TaskContext,
-    checkpoint_config: CheckpointConfig,
-) -> Iterable[DataBatch]:
-    """For each batch, filter rows that have already been checkpointed
-    and yield the resulting batches."""
-    from ray.data.checkpoint.checkpoint_filter import (
-        BatchBasedCheckpointFilter,
-    )
-
-    # Use .get() so that tasks where load_checkpoint was None do not raise KeyError.
-    checkpointed_ids = task_context.kwargs.get(CHECKPOINTED_IDS_KWARG_NAME)
-
-    # Build the filter once per task invocation, not once per batch.
-    ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
-
-    for batch in batches:
-        filtered_batch = ckpt_filter.filter_rows_for_batch(
-            batch=batch,
-            checkpointed_ids=checkpointed_ids,
-        )
-        yield filtered_batch
