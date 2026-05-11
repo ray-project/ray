@@ -43,6 +43,7 @@ async def test_reconcile_node_cache_corrects_stale_dashboard_state():
     missing_node_id = "missing-from-gcs"
     current_node_id = "current"
     new_node_id = "new"
+    node_added_during_get_all_id = "added-during-get-all"
 
     original_nodes = DataSource.nodes
     DataSource.nodes = {
@@ -55,6 +56,10 @@ async def test_reconcile_node_cache_corrects_stale_dashboard_state():
         node_head._dead_node_queue = deque([missing_node_id])
 
         async def get_all_nodes_from_gcs():
+            DataSource.nodes[node_added_during_get_all_id] = _node_info(
+                node_added_during_get_all_id, "ALIVE"
+            )
+            node_head._stubs[node_added_during_get_all_id] = object()
             return [
                 _node_info(stale_alive_node_id, "DEAD"),
                 _node_info(current_node_id, "ALIVE"),
@@ -66,11 +71,9 @@ async def test_reconcile_node_cache_corrects_stale_dashboard_state():
 
         kv_deleted_keys = []
 
-        async def fake_kv_del(key, **kwargs):
-            kv_deleted_keys.append(key)
-
         class FakeGcsClient:
-            async_internal_kv_del = fake_kv_del
+            async def async_internal_kv_del(self, key, **kwargs):
+                kv_deleted_keys.append(key)
 
         node_head.gcs_client = FakeGcsClient()
         node_head._get_all_nodes_from_gcs = get_all_nodes_from_gcs
@@ -90,6 +93,42 @@ async def test_reconcile_node_cache_corrects_stale_dashboard_state():
         assert DataSource.nodes[stale_alive_node_id]["state"] == "DEAD"
         assert DataSource.nodes[current_node_id]["state"] == "ALIVE"
         assert DataSource.nodes[new_node_id]["state"] == "ALIVE"
+        assert DataSource.nodes[node_added_during_get_all_id]["state"] == "ALIVE"
+        assert node_added_during_get_all_id in node_head._stubs
+    finally:
+        DataSource.nodes = original_nodes
+
+
+@pytest.mark.asyncio
+async def test_reconcile_node_cache_handles_dead_to_alive_transition():
+    node_head = NodeHead.__new__(NodeHead)
+    revived_node_id = "revived"
+
+    original_nodes = DataSource.nodes
+    DataSource.nodes = {
+        revived_node_id: _node_info(revived_node_id, "DEAD"),
+    }
+    try:
+        node_head._registered_head_node_id = None
+        node_head._head_node_registration_time_s = None
+        node_head._module_start_time = time.time()
+        node_head._stubs = {}
+        node_head._dead_node_queue = deque([revived_node_id, revived_node_id])
+
+        async def get_all_nodes_from_gcs():
+            return [_node_info(revived_node_id, "ALIVE")]
+
+        node_head._get_all_nodes_from_gcs = get_all_nodes_from_gcs
+
+        stats = await node_head._reconcile_node_cache_once()
+
+        assert stats == {
+            "num_pruned": 0,
+            "num_state_corrected": 1,
+            "num_added": 0,
+        }
+        assert DataSource.nodes[revived_node_id]["state"] == "ALIVE"
+        assert revived_node_id not in node_head._dead_node_queue
     finally:
         DataSource.nodes = original_nodes
 

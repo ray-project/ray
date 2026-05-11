@@ -253,6 +253,13 @@ class NodeHead(SubprocessModule):
             )
         )
 
+    def _remove_from_dead_node_queue(self, node_id: str):
+        while True:
+            try:
+                self._dead_node_queue.remove(node_id)
+            except ValueError:
+                return
+
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]
         if (
@@ -281,7 +288,9 @@ class NodeHead(SubprocessModule):
             )
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
-        if not is_alive:
+        if is_alive:
+            self._remove_from_dead_node_queue(node_id)
+        else:
             await self._delete_agent_kv_keys(node_id, node["nodeManagerAddress"])
 
             self._dead_node_queue.append(node_id)
@@ -335,14 +344,19 @@ class NodeHead(SubprocessModule):
         )
 
     async def _reconcile_node_cache_once(self) -> Dict[str, int]:
+        local_nodes_before_get_all = dict(DataSource.nodes)
         gcs_nodes = await self._get_all_nodes_from_gcs()
         if not gcs_nodes:
             return {"num_pruned": 0, "num_state_corrected": 0, "num_added": 0}
         gcs_node_ids = {node["nodeId"] for node in gcs_nodes}
 
         num_pruned = 0
-        for node_id, local_node in list(DataSource.nodes.items()):
+        for node_id, local_node_before_get_all in local_nodes_before_get_all.items():
             if node_id in gcs_node_ids:
+                continue
+
+            local_node = DataSource.nodes.get(node_id)
+            if local_node is not local_node_before_get_all:
                 continue
 
             logger.warning(
@@ -351,13 +365,10 @@ class NodeHead(SubprocessModule):
                 node_id,
                 local_node.get("state"),
             )
-            await self._delete_agent_kv_keys(
-                node_id, local_node["nodeManagerAddress"]
-            )
             DataSource.nodes.pop(node_id, None)
             self._stubs.pop(node_id, None)
-            if node_id in self._dead_node_queue:
-                self._dead_node_queue.remove(node_id)
+            self._remove_from_dead_node_queue(node_id)
+            await self._delete_agent_kv_keys(node_id, local_node["nodeManagerAddress"])
             num_pruned += 1
 
         num_state_corrected = 0
@@ -368,10 +379,7 @@ class NodeHead(SubprocessModule):
             if local_node is None:
                 await self._update_node(gcs_node)
                 num_added += 1
-            elif (
-                local_node.get("state") != gcs_node["state"]
-                and local_node.get("state") != "DEAD"
-            ):
+            elif local_node.get("state") != gcs_node["state"]:
                 logger.warning(
                     "Reconciling node %s: dashboard state=%s, GCS state=%s. "
                     "A pub/sub update was likely missed.",
