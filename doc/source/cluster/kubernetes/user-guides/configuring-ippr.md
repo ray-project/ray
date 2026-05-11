@@ -18,7 +18,7 @@ For background on the underlying Kubernetes feature, see [Resize CPU and Memory 
 
 Without IPPR, the Ray Autoscaler scales horizontally only: when pending tasks, actors, or placement groups can't fit on existing Ray worker nodes, the Autoscaler launches new worker Pods. If the underlying Kubernetes cluster doesn't have capacity for those Pods, the [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) (which you configure separately) can in turn provision new Kubernetes nodes. See {ref}`the 3 levels of autoscaling in KubeRay for more details <kuberay-autoscaling>`.
 
-With IPPR, the Autoscaler can first try to satisfy pending demand by *resizing* existing worker Pods up to a per-group maximum, and only falls back to launching new Pods when in-place resizing isn't sufficient.
+With IPPR, the Autoscaler can first try to satisfy pending demand by *resizing* existing worker Pods without restarting them up to a per-group maximum, and only falls back to launching new Pods when in-place resizing isn't sufficient.
 
 ```{admonition} When to use IPPR?
 IPPR can reduce Pod-launch overhead and improve packing of long-lived workloads on a smaller number of larger Pods.
@@ -68,11 +68,11 @@ Enable IPPR by setting the `ray.io/ippr` annotation on the RayCluster custom res
 
 ### Validation rules
 
-In addition to the schema above, KubeRay validates the following requirements when IPPR is enabled for a worker group. Misconfiguration causes the cluster to be rejected.
+In addition to the schema above, the Ray Autoscaler validates the following requirements when IPPR is enabled for a worker group. If validation fails, the Autoscaler raises an error during reconciliation (visible in the head Pod logs and via `ray status`) and will refuse to launch worker Pods for the misconfigured group until the RayCluster is updated accordingly.
 
 1. **No CPU/memory in `rayStartParams`.** The corresponding worker group must not set `num-cpus` or `memory` in `rayStartParams`. Hard-coding logical resources there would cause Ray's view of the node's capacity to drift from the Pod's physical resources after a resize.
 2. **CPU and memory requests are required.** The Ray container in the worker group must specify both `cpu` and `memory` under `resources.requests`.
-3. **`resizePolicy.restartPolicy: NotRequired`.** The Ray container must declare a `resizePolicy` for both CPU and memory with `restartPolicy: NotRequired`, so that Kubernetes resizes the container in place rather than restarting it.
+3. **`resizePolicy` must use `restartPolicy: NotRequired`.** That's the Kubernetes default, so leaving `resizePolicy` unset is fine. Setting it to `RestartContainer` is rejected because IPPR resizes the container in place.
 
 ## Example
 
@@ -135,12 +135,8 @@ spec:
             limits:
               cpu: "1"
               memory: "1Gi"
-          # Required: resize CPU and memory in place without restarting the container.
-          resizePolicy:
-          - resourceName: cpu
-            restartPolicy: NotRequired
-          - resourceName: memory
-            restartPolicy: NotRequired
+          # `resizePolicy` is omitted; IPPR requires the default
+          # `restartPolicy: NotRequired` for cpu and memory.
 ```
 
 ## Resize behavior
