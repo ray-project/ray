@@ -26,6 +26,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels 
 from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import (
     serve_llm_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.serve_llm_sglang_dashboard_panels import (
+    serve_llm_sglang_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
@@ -131,6 +134,23 @@ def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(serve_llm_dashboard_config)
+
+
+def generate_serve_llm_sglang_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the SGLang Serve LLM dashboard and returns both the content
+    and the uid.
+
+    Provides parallel observability surface to ``generate_serve_llm_grafana_dashboard``
+    for deployments using SGLang as the inference engine. Metric names are
+    placeholders until sgl-project/sglang#24610 + the Ray-backed wrapper
+    (RFC #24467 item 2) land; the dashboard layout, variables, and panel
+    structure can be reviewed independently.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(serve_llm_sglang_dashboard_config)
 
 
 def generate_data_grafana_dashboard() -> Tuple[str, str]:
