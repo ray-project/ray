@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from jinja2 import Environment
 
 import ray
+from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
     NodeId,
@@ -55,6 +56,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -542,7 +544,10 @@ class HAProxyConfig:
 
     @property
     def frontend_host(self) -> str:
-        if self.http_options.host is None or self.http_options.host == "0.0.0.0":
+        if self.http_options.host is None or self.http_options.host in (
+            "0.0.0.0",
+            "::",
+        ):
             return "*"
 
         return self.http_options.host
@@ -800,6 +805,7 @@ class HAProxyApi(ProxyApi):
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )
@@ -811,7 +817,7 @@ class HAProxyApi(ProxyApi):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
-    def _generate_config_file_internal(self) -> None:
+    def _generate_config_file_internal(self) -> bool:
         """Internal config generation without locking (for use within locked sections)."""
         try:
             env = Environment()
@@ -867,6 +873,9 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_bufsize": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
+                    ),
+                    "ingress_request_router_forward_body": (
+                        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
                 }
             )
@@ -1344,6 +1353,8 @@ class HAProxyManager(ProxyActorInterface):
 
     def _target_to_server(self, target: Target) -> ServerConfig:
         """Convert a target to a server."""
+        # Use localhost if target is on the same node as HAProxy
+        host = get_localhost_ip() if target.ip == self._node_ip_address else target.ip
         return ServerConfig(
             # The server name is derived from the replica's actor name, with the
             # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
@@ -1351,8 +1362,7 @@ class HAProxyManager(ProxyActorInterface):
             # Special characters in the names are converted to comply with haproxy
             # config's allowed characters, e.g. `#` -> `-`.
             name=self.get_safe_name(target.name),
-            # Use localhost if target is on the same node as HAProxy
-            host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
+            host=host,
             port=target.port,
             # Unsanitized actor name; matches what /internal/route returns.
             replica_id=target.name,

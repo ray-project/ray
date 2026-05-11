@@ -583,10 +583,135 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
 
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
+        assert "option http-buffer-request" not in cfg
+        direct_backend = cfg.split("backend llm-via-ingress-request-router", 1)[1]
+        direct_backend = direct_backend.split("listen stats", 1)[0]
+        assert "http-reuse always" in direct_backend
+        assert "option http-server-close" not in direct_backend
         # Only router-bearing backends contribute a set-var directive that
         # arms the Lua dispatch; the plain `api` backend must not.
         assert "set-var(txn.ingress_request_router_app) str(llm)" in cfg
         assert "set-var(txn.ingress_request_router_app) str(api)" not in cfg
+
+
+def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup):
+    """The 503-on-router-failure rule must be rendered before any
+    ``use_backend`` directive. If it isn't, a failed Lua dispatch would
+    silently fall through to the primary backend and the router policy
+    the operator opted into would be invisibly bypassed."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = _make_api(
+            temp_dir,
+            {
+                "llm": BackendConfig(
+                    name="llm",
+                    path_prefix="/",
+                    app_name="llm",
+                    servers=[
+                        ServerConfig(
+                            name="r1",
+                            host="10.0.0.1",
+                            port=30001,
+                            replica_id="rid_1",
+                        )
+                    ],
+                    ingress_request_router_servers=[
+                        ServerConfig(name="router", host="10.0.0.10", port=9000)
+                    ],
+                ),
+            },
+        )
+        with mock.patch(
+            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            api.config_file_path,
+        ):
+            api._generate_config_file_internal()
+        with open(api.config_file_path) as f:
+            cfg = f.read()
+
+        # Parse line-by-line so we don't accidentally match the substring
+        # "use_backend" inside an explanatory comment block rendered above.
+        lines = cfg.splitlines()
+        sentinel_line = next(
+            (
+                i
+                for i, ln in enumerate(lines)
+                if "var(txn.ingress_request_router_failed) -m found" in ln
+            ),
+            None,
+        )
+        first_use_backend_line = next(
+            (i for i, ln in enumerate(lines) if ln.strip().startswith("use_backend ")),
+            None,
+        )
+        assert sentinel_line is not None, cfg
+        assert first_use_backend_line is not None, cfg
+        assert sentinel_line < first_use_backend_line, (
+            "503-on-router-failure rule must precede every use_backend so a "
+            "failed dispatch does not silently fall through to the primary "
+            "backend.\n" + cfg
+        )
+        # Spot-check rule shape.
+        assert "status 503" in cfg, cfg
+        assert "X-Serve-Reason" in cfg, cfg
+
+
+@pytest.mark.parametrize("forward_body", [True, False])
+def test_ingress_request_router_forward_body_gate_renders(
+    haproxy_api_cleanup, monkeypatch, forward_body
+):
+    """The FORWARD_BODY escape hatch must drive both:
+    - HAProxy ``wait-for-body`` + ``tune.bufsize`` directives (memory cost
+      and the per-request body round-trip), and
+    - the Lua ``FORWARD_BODY`` constant (whether the action reads the body
+      and forwards it to ``/internal/route``).
+
+    Off by default: round-robin ignores the body, so neither cost is paid.
+    """
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        forward_body,
+    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = _make_api(
+            temp_dir,
+            {
+                "llm": BackendConfig(
+                    name="llm",
+                    path_prefix="/",
+                    app_name="llm",
+                    servers=[
+                        ServerConfig(
+                            name="r1",
+                            host="10.0.0.1",
+                            port=30001,
+                            replica_id="rid_1",
+                        )
+                    ],
+                    ingress_request_router_servers=[
+                        ServerConfig(name="router", host="10.0.0.10", port=9000)
+                    ],
+                ),
+            },
+        )
+        with mock.patch(
+            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            api.config_file_path,
+        ):
+            api._generate_config_file_internal()
+        with open(api.config_file_path) as f:
+            cfg = f.read()
+        with open(os.path.join(temp_dir, "ingress_request_router.lua")) as f:
+            lua = f.read()
+
+        if forward_body:
+            assert "tune.bufsize" in cfg, cfg
+            assert "wait-for-body" in cfg, cfg
+            assert "local FORWARD_BODY = true" in lua, lua
+        else:
+            assert "tune.bufsize" not in cfg, cfg
+            assert "wait-for-body" not in cfg, cfg
+            assert "local FORWARD_BODY = false" in lua, lua
 
 
 def _create_replica_server(port: int, replica_id_header: str):
@@ -608,7 +733,7 @@ def _create_replica_server(port: int, replica_id_header: str):
 
 def _create_router_server(port: int, replica_id_to_return: str):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    actually buffered + forwarded the request."""
+    forwards the buffered request body prefix to the router."""
     app = FastAPI()
     captured = {"bodies": []}
 
@@ -627,14 +752,20 @@ def _create_router_server(port: int, replica_id_to_return: str):
         )
 
     server, thread = _serve_fastapi_app(app, port, ready)
+    # Discard the readiness-probe body so callers see only client traffic.
+    captured["bodies"].clear()
     return server, thread, captured
 
 
 @pytest.mark.asyncio
-async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
+async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
     """Run actual HAProxy against a fake router + two replicas; verify a POST
     is pinned to the replica the router selects, while a GET (which doesn't
     trigger the router-routed path) is not."""
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -725,12 +856,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
 
-            # The router actually saw the original body (via wait-for-body +
-            # txn.sf:req_body()). Just check the field made it through.
-            assert any(
-                '"prompt"' in body and "hello" in body
-                for body in router_captured["bodies"]
-            )
+            # Direct streaming keeps a bounded request-body path for
+            # prefix-cache-aware routing.
+            assert router_captured["bodies"] == ['{"prompt": "hello"}']
 
             # Repeat to confirm the pin holds across requests.
             for _ in range(3):
@@ -740,9 +868,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                     timeout=5,
                 )
                 assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
 
-            # GET is not POST, so wait-for-body / Lua never run; the router
-            # should have seen exactly the four POSTs above and nothing more.
+            # GET is not POST, so Lua routing never runs; the router should
+            # have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
             requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
@@ -758,6 +887,154 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                 except Exception:
                     pass
             for thr in (replica_a_thread, replica_b_thread, router_thread):
+                try:
+                    thr.join(timeout=5)
+                except Exception:
+                    pass
+
+
+def _create_broken_router_server(port: int, status_code: int = 500):
+    """Fake /internal/route that always returns ``status_code`` (default 500).
+    Used to verify the fail-loud path: a router non-200 must surface to the
+    client as 5xx with X-Serve-Reason, not silently fall back to a primary
+    backend."""
+    app = FastAPI()
+
+    @app.get("/-/healthz")
+    async def health():
+        return {"status": "OK"}
+
+    @app.post("/internal/route")
+    async def route(res: Response):
+        res.status_code = status_code
+        return {"error": "broken"}
+
+    return _serve_fastapi_app(app, port, _healthz_ready(port))
+
+
+def _backend_stot(stats_csv: str, backend_name: str) -> int:
+    """Pull ``stot`` (cumulative sessions) for the BACKEND aggregate row of
+    ``backend_name`` from HAProxy's CSV stats. Returns -1 if not found."""
+    lines = stats_csv.splitlines()
+    if not lines:
+        return -1
+    header = lines[0].lstrip("# ").split(",")
+    pxname_idx = header.index("pxname")
+    svname_idx = header.index("svname")
+    stot_idx = header.index("stot")
+    for row in lines[1:]:
+        parts = row.split(",")
+        if (
+            len(parts) > stot_idx
+            and parts[pxname_idx] == backend_name
+            and parts[svname_idx] == "BACKEND"
+        ):
+            return int(parts[stot_idx] or 0)
+    return -1
+
+
+@pytest.mark.asyncio
+async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
+    """When ``/internal/route`` returns non-200, HAProxy must return 5xx with
+    ``X-Serve-Reason`` rather than silently falling back to the primary
+    backend. The primary backend's cumulative session count must stay 0."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        router_port = find_free_port()
+
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+
+        replica, replica_thread = _create_replica_server(
+            replica_port, replica_id_header="A"
+        )
+        broken_router, broken_router_thread = _create_broken_router_server(router_port)
+
+        try:
+            config = HAProxyConfig(
+                http_options=HTTPOptions(
+                    host="127.0.0.1",
+                    port=haproxy_port,
+                    keep_alive_timeout_s=58,
+                ),
+                stats_port=stats_port,
+                socket_path=os.path.join(temp_dir, "admin.sock"),
+                has_received_routes=True,
+                has_received_servers=True,
+                health_check_path="/-/healthz",
+                health_check_inter="500ms",
+                health_check_rise=1,
+                health_check_fall=2,
+            )
+
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+            )
+
+            api = HAProxyApi(
+                cfg=config,
+                backend_configs={"llm": backend},
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+            )
+            haproxy_api_cleanup(api)
+            await api.start()
+
+            wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
+            await async_wait_for_condition(
+                lambda: requests.get(
+                    f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
+                ).status_code
+                == 200,
+                timeout=10,
+            )
+
+            # Every dispatch failure must surface as 5xx with a reason
+            # label, never as a silent primary-backend fallback. The broken
+            # router returns 500 for both empty and non-empty bodies, so
+            # both shapes surface the same ``router_non_200`` reason; the
+            # body shape is parametrized to pin that empty-body POSTs are
+            # routed through the router and not silently bypassed.
+            for body_kwargs in (dict(json={"prompt": "hi"}), dict(data="")):
+                for _ in range(3):
+                    resp = requests.post(
+                        f"http://127.0.0.1:{haproxy_port}/predict",
+                        timeout=5,
+                        **body_kwargs,
+                    )
+                    assert resp.status_code == 503, resp.text
+                    assert (
+                        resp.headers.get("X-Serve-Reason") == "router_non_200"
+                    ), resp.headers
+
+            stats_csv = requests.get(
+                f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
+            ).text
+            assert _backend_stot(stats_csv, "llm") == 0, stats_csv
+            assert (
+                _backend_stot(stats_csv, "llm-via-ingress-request-router") == 0
+            ), stats_csv
+        finally:
+            for srv in (replica, broken_router):
+                try:
+                    srv.should_exit = True
+                except Exception:
+                    pass
+            for thr in (replica_thread, broken_router_thread):
                 try:
                     thr.join(timeout=5)
                 except Exception:

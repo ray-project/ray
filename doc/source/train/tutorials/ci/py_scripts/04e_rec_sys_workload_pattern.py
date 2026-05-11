@@ -1,7 +1,7 @@
 # 00. Runtime setup
 import os
-import sys
 import subprocess
+import sys
 
 # Non-secret env var 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -11,21 +11,17 @@ subprocess.check_call([
     sys.executable, "-m", "pip", "install", "--no-cache-dir",
     "torch==2.8.0",
     "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
+    "pyarrow==17.0.0",
 ])
 
 # 01. Imports
 
 # Standard libraries
 import os
-import uuid
-import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import zipfile
 import shutil
-import tempfile
 
 # PyTorch
 import torch
@@ -33,13 +29,14 @@ from torch import nn
 import torch.nn.functional as F
 
 # Ray
-import ray
 import ray.data
-from ray.train import ScalingConfig, RunConfig, CheckpointConfig, FailureConfig, Checkpoint, get_checkpoint, get_context,  get_dataset_shard, report
+from ray.train import (
+    ScalingConfig, RunConfig, CheckpointConfig, FailureConfig,
+    Checkpoint, get_checkpoint, get_context,  get_dataset_shard, report
+)
 from ray.train.torch import TorchTrainer, prepare_model
 
 # Other
-from tqdm import tqdm
 
 import subprocess
 # 02. Load MovieLens 100K Dataset and store in /mnt/cluster_storage/ as CSV + Parquet
