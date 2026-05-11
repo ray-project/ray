@@ -18,6 +18,30 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 {%- endif %}
 """
 
+# Same shape as HAPROXY_HEALTHZ_RULES_TEMPLATE, but emits gRPC trailers-only
+# responses. The OK / UNAVAILABLE distinction maps to grpc-status 0 / 14
+# (gRPC clients map HTTP 503 to UNAVAILABLE, which is why every shape here
+# uses HTTP 200 and signals state through grpc-status).
+HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint (gRPC `Healthz`)
+    acl is_healthz path /ray.serve.RayServeAPIService/Healthz
+    # Suppress logging for health checks
+    http-request set-log-level silent if is_healthz
+{%- if not health_info.healthy %}
+    # Override: force health checks to fail (used by drain/disable)
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "{{ health_info.health_message }}" if is_healthz
+{%- elif backends %}
+    # OK if any backend has at least one server UP
+{%-   for backend in backends %}
+    acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
+{%-   endfor %}
+    # Any backend with a server UP passes the health check (OR logic)
+{%-   for backend in backends %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 0 if is_healthz backend_{{ backend.name or 'unknown' }}_server_up
+{%-   endfor %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "Service Unavailable" if is_healthz
+{%- endif %}
+"""
+
 HAPROXY_CONFIG_TEMPLATE = """global
     # Log to the standard system log socket with debug level.
     log /dev/log local0 debug
@@ -187,6 +211,84 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- endif %}
 {%- endif %}
 {%- endfor %}
+{%- if config.grpc_enabled %}
+frontend grpc_frontend
+    # gRPC requires HTTP/2. HAProxy decodes H2 frames into HTTP request
+    # semantics in `mode http` when `proto h2` is on the bind line.
+    bind {{ config.grpc_frontend_host }}:{{ config.grpc_frontend_port }} proto h2
+    mode http
+    log global
+
+{{ grpc_healthz_rules|safe }}
+
+    # ListApplications must aggregate across all apps, so it goes to the
+    # head-node fallback Serve proxy rather than an individual replica.
+    acl is_list_applications path /ray.serve.RayServeAPIService/ListApplications
+{%- if grpc_fallback_server %}
+    use_backend grpc_fallback_backend if is_list_applications
+{%- else %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "ListApplications is unavailable" if is_list_applications
+{%- endif %}
+
+    # Route per-app on the `application` metadata that Ray Serve clients attach.
+{%- for backend in grpc_backends %}
+    acl is_{{ backend.name or 'unknown' }} req.hdr(application) -m str {{ backend.app_name }}
+    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
+{%- endfor %}
+{%- if grpc_backends|length == 1 %}
+    # With exactly one app deployed, route there regardless of metadata so
+    # clients can call it without setting the `application` header.
+    default_backend {{ grpc_backends[0].name or 'unknown' }}
+{%- else %}
+    # Zero apps, or multiple apps without a matching `application` header.
+    default_backend default_grpc_backend
+{%- endif %}
+
+{%- if grpc_fallback_server %}
+backend grpc_fallback_backend
+    mode http
+    log global
+    # `proto h2` makes HAProxy speak HTTP/2 cleartext to the fallback gRPC server.
+    server {{ grpc_fallback_server.name }} {{ grpc_fallback_server.host }}:{{ grpc_fallback_server.port }} proto h2 check
+{%- endif %}
+{%- if grpc_backends|length != 1 %}
+backend default_grpc_backend
+    mode http
+    log global
+    # Trailers-only NOT_FOUND. gRPC clients surface this as
+    # grpc.StatusCode.NOT_FOUND; an HTTP 503 would map to UNAVAILABLE instead.
+    acl has_application_header req.hdr(application) -m found
+    http-request return status 200 content-type application/grpc hdr grpc-status 5 hdr grpc-message "Application '%[req.hdr(application)]' not found. Ping /ray.serve.RayServeAPIService/ListApplications for available applications." if has_application_header
+    http-request return status 200 content-type application/grpc hdr grpc-status 5 hdr grpc-message "Application metadata not set. Ping /ray.serve.RayServeAPIService/ListApplications for available applications."
+{%- endif %}
+{%- for item in grpc_backends_with_health_config %}
+{%- set backend = item.backend %}
+{%- set hc = item.health_config %}
+backend {{ backend.name or 'unknown' }}
+    mode http
+    log global
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_client_s is not none %}
+    timeout client {{ backend.timeout_client_s }}s
+    {%- endif %}
+    # TCP-level health checks: replica direct-ingress gRPC servers don't
+    # expose an HTTP healthz path. Promote to gRPC `Health/Check` later.
+    option tcp-check
+    {{ hc.default_server_directive }}
+    # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
+    {%- for server in backend.servers %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2
+    {%- endfor %}
+    {%- if backend.fallback_server %}
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 backup
+    {%- endif %}
+{%- endfor %}
+{%- endif %}
 listen stats
   bind *:{{ config.stats_port }}
   stats enable

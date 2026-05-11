@@ -34,6 +34,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -998,7 +999,8 @@ def ping_grpc_healthz(channel, test_draining=False):
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
-        assert response.message == "success"
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            assert response.message == "success"
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
