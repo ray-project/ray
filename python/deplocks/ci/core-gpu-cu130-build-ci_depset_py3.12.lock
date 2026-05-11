@@ -25,9 +25,9 @@ adal==1.2.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   msrestazure
-aiobotocore==2.8.0 \
-    --hash=sha256:32e632fea387acd45416c2bbc03828ee2c2a66a7dc4bd3a9bcb808dea249c469 \
-    --hash=sha256:f160497cef21cfffc1a8d4219eeb27bb7b243389c2d021a812b9c0e3fb8e2bd1
+aiobotocore==2.25.1 \
+    --hash=sha256:ea9be739bfd7ece8864f072ec99bb9ed5c7e78ebb2b0b15f29781fbe02daedbc \
+    --hash=sha256:eb6daebe3cbef5b39a0bb2a97cffbe9c7cb46b2fcc399ad141f369f3c2134b1f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   s3fs
@@ -467,18 +467,18 @@ billiard==4.2.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   celery
-boto3==1.29.7 \
-    --hash=sha256:1eb4c548118b5fc5e018dee956fd33e6fb249cd1f2def85f1bba816aef4d9f3e \
-    --hash=sha256:96e9890ebe7cd823b5f4976dd676e112c000c6528c28e20a2f274590589dd18b
+boto3==1.40.61 \
+    --hash=sha256:6b9c57b2a922b5d8c17766e29ed792586a818098efe84def27c8f582b33f898c \
+    --hash=sha256:d6c56277251adf6c2bdd25249feae625abe4966831676689ff23b4694dea5b12
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   aws-sam-translator
     #   moto
     #   smart-open
-botocore==1.32.7 \
-    --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
-    --hash=sha256:c6795c731b04c8e3635588c44cfd1a4462fc5987859195522c96812cf3eceff9
+botocore==1.40.61 \
+    --hash=sha256:17ebae412692fd4824f99cde0f08d50126dc97954008e5ba2b522eb049238aa7 \
+    --hash=sha256:a2487ad69b090f9cccd64cf07c7021cd80ee9c0655ad974f87045b02f3ef52cd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiobotocore
@@ -2349,6 +2349,7 @@ jmespath==1.1.0 \
     --hash=sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   aiobotocore
     #   azure-cli-core
     #   boto3
     #   botocore
@@ -3400,6 +3401,7 @@ multidict==6.7.1 \
     --hash=sha256:fcee94dfbd638784645b066074b338bc9cc155d4b4bffa4adce1615c5a426c19
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   aiobotocore
     #   aiohttp
     #   yarl
 mypy==1.7.0 \
@@ -5302,6 +5304,7 @@ python-dateutil==2.9.0.post0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   adal
+    #   aiobotocore
     #   botocore
     #   celery
     #   freezegun
@@ -5898,9 +5901,9 @@ s3fs==2023.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/core-requirements.txt
-s3transfer==0.8.0 \
-    --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
-    --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
+s3transfer==0.14.0 \
+    --hash=sha256:ea3b790c7077558ed1f02a3072fb3cb992bbbd253392f4b6e9e8976941c7d456 \
+    --hash=sha256:eff12264e7c8b4985074ccce27a3b38a485bb7f7422cc8046fee9be4983e4125
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   boto3
@@ -6821,9 +6824,9 @@ uritemplate==4.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-api-python-client
-urllib3==1.26.20 \
-    --hash=sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e \
-    --hash=sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32
+urllib3==2.6.3 \
+    --hash=sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed \
+    --hash=sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botocore

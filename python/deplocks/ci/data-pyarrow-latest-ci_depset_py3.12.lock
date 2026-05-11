@@ -18,13 +18,19 @@ absl-py==2.4.0 \
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
-aioboto3==12.1.0 \
-    --hash=sha256:8eae15dd52c9a43845448508ad0f912028a0a176bbd85b78e1377bb5f2a4d450 \
-    --hash=sha256:9f9e07261ddf3d6fec04dd8d5f5a55e0cb3250089f4282f7a60054495ad9699b
+aioboto3==15.5.0 \
+    --hash=sha256:cc880c4d6a8481dd7e05da89f41c384dbd841454fc1998ae25ca9c39201437a6 \
+    --hash=sha256:ea8d8787d315594842fbfcf2c4dce3bac2ad61be275bc8584b2ce9a3402a6979
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-aiobotocore==2.8.0 \
-    --hash=sha256:32e632fea387acd45416c2bbc03828ee2c2a66a7dc4bd3a9bcb808dea249c469 \
-    --hash=sha256:f160497cef21cfffc1a8d4219eeb27bb7b243389c2d021a812b9c0e3fb8e2bd1
+aiobotocore==2.25.1 \
+    --hash=sha256:ea9be739bfd7ece8864f072ec99bb9ed5c7e78ebb2b0b15f29781fbe02daedbc \
+    --hash=sha256:eb6daebe3cbef5b39a0bb2a97cffbe9c7cb46b2fcc399ad141f369f3c2134b1f
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   aioboto3
+aiofiles==24.1.0 \
+    --hash=sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c \
+    --hash=sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aioboto3
@@ -333,16 +339,16 @@ bokeh==3.1.0 \
     --hash=sha256:9047dfe50a671b5e19ca588fd90a8e6bff197114a5dbd6a59cc2678942c27887 \
     --hash=sha256:9d38ed3b130e1e043447694934c02deb1ae4adfeda1136b8b8eaed9cb26de11c
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-boto3==1.29.7 \
-    --hash=sha256:1eb4c548118b5fc5e018dee956fd33e6fb249cd1f2def85f1bba816aef4d9f3e \
-    --hash=sha256:96e9890ebe7cd823b5f4976dd676e112c000c6528c28e20a2f274590589dd18b
+boto3==1.40.61 \
+    --hash=sha256:6b9c57b2a922b5d8c17766e29ed792586a818098efe84def27c8f582b33f898c \
+    --hash=sha256:d6c56277251adf6c2bdd25249feae625abe4966831676689ff23b4694dea5b12
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiobotocore
     #   snowflake-connector-python
-botocore==1.32.7 \
-    --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
-    --hash=sha256:c6795c731b04c8e3635588c44cfd1a4462fc5987859195522c96812cf3eceff9
+botocore==1.40.61 \
+    --hash=sha256:17ebae412692fd4824f99cde0f08d50126dc97954008e5ba2b522eb049238aa7 \
+    --hash=sha256:a2487ad69b090f9cccd64cf07c7021cd80ee9c0655ad974f87045b02f3ef52cd
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiobotocore
@@ -2060,6 +2066,7 @@ jmespath==1.1.0 \
     --hash=sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   aiobotocore
     #   boto3
     #   botocore
 joblib==1.2.0 \
@@ -2708,6 +2715,7 @@ multidict==6.7.1 \
     --hash=sha256:fcee94dfbd638784645b066074b338bc9cc155d4b4bffa4adce1615c5a426c19
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   aiobotocore
     #   aiohttp
     #   yarl
 namex==0.1.0 \
@@ -4310,6 +4318,7 @@ python-dateutil==2.9.0.post0 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   aiobotocore
     #   botocore
     #   celery
     #   google-cloud-bigquery
@@ -4605,9 +4614,9 @@ rsa==4.7.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   google-auth
-s3transfer==0.8.0 \
-    --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
-    --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
+s3transfer==0.14.0 \
+    --hash=sha256:ea3b790c7077558ed1f02a3072fb3cb992bbbd253392f4b6e9e8976941c7d456 \
+    --hash=sha256:eff12264e7c8b4985074ccce27a3b38a485bb7f7422cc8046fee9be4983e4125
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   boto3
@@ -5149,9 +5158,9 @@ uc-micro-py==2.0.0 ; sys_platform != 'win32' \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   linkify-it-py
-urllib3==1.26.20 \
-    --hash=sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e \
-    --hash=sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32
+urllib3==2.6.3 \
+    --hash=sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed \
+    --hash=sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   botocore

@@ -38,9 +38,9 @@ aimrecords==0.0.7
     # via aim
 aimrocks==0.5.2
     # via aim
-aioboto3==12.1.0
+aioboto3==15.5.0
     # via -r python/requirements/ml/py313/data-requirements.txt
-aiobotocore==2.8.0
+aiobotocore==2.25.1
     # via
     #   aioboto3
     #   s3fs
@@ -243,7 +243,7 @@ boltons==21.0.0
     #   semgrep
 boto==2.49.0
     # via gcs-oauth2-boto-plugin
-boto3==1.29.7
+boto3==1.40.61
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
@@ -255,7 +255,7 @@ boto3==1.29.7
     #   moto
     #   smart-open
     #   snowflake-connector-python
-botocore==1.32.7
+botocore==1.40.61
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
@@ -2092,7 +2092,7 @@ s3torchconnector==1.4.3
     # via -r python/requirements/ml/py313/train-test-requirements.txt
 s3torchconnectorclient==1.4.3
     # via s3torchconnector
-s3transfer==0.8.0
+s3transfer==0.14.0
     # via boto3
 safehttpx==0.1.7
     # via gradio
@@ -2568,7 +2568,7 @@ uri-template==1.3.0
     # via jsonschema
 uritemplate==4.2.0
     # via google-api-python-client
-urllib3==1.26.20
+urllib3==2.6.3
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   botocore

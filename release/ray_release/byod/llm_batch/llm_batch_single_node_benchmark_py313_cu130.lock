@@ -799,7 +799,7 @@ h11==0.16.0 \
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.4.3 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
+hf-xet==1.4.3 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:0392c79b7cf48418cd61478c1a925246cf10639f4cd9d94368d8ca1e8df9ea07 \
     --hash=sha256:1feb0f3abeacee143367c326a128a2e2b60868ec12a36c225afb1d6c5a05e6d2 \
     --hash=sha256:21644b404bb0100fe3857892f752c4d09642586fd988e61501c95bbf44b393a3 \
@@ -833,13 +833,13 @@ httpcore==1.0.9 \
 httpx==0.28.1 \
     --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
-    # via
-    #   datasets
-    #   huggingface-hub
-huggingface-hub==1.12.0 \
-    --hash=sha256:7c3fe85e24b652334e5d456d7a812cd9a071e75630fac4365d9165ab5e4a34b6 \
-    --hash=sha256:d74939969585ee35748bd66de09baf84099d461bda7287cd9043bfb99b0e424d
     # via datasets
+huggingface-hub==0.36.2 \
+    --hash=sha256:1934304d2fb224f8afa3b87007d58501acfda9215b334eed53072dd5e815ff7a \
+    --hash=sha256:48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270
+    # via
+    #   -r release/llm_tests/batch/requirements.in
+    #   datasets
 idna==3.13 \
     --hash=sha256:585ea8fe5d69b9181ec1afba340451fba6ba764af97026f92a91d4eef164a242 \
     --hash=sha256:892ea0cde124a99ce773decba204c5552b69c3c67ffd5f232eb7696135bc8bb3
@@ -1948,6 +1948,7 @@ requests==2.33.1 \
     #   -r python/requirements.txt
     #   datasets
     #   google-api-core
+    #   huggingface-hub
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
     --hash=sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
@@ -2183,9 +2184,7 @@ tqdm==4.67.3 \
 typer==0.25.0 \
     --hash=sha256:123eaf9f19bb40fd268310e12a542c0c6b4fab9c98d9d23342a01ff95e3ce930 \
     --hash=sha256:ac01b48823d3db9a83c9e164338057eadbb1c9957a2a6b4eeb486669c560b5dc
-    # via
-    #   -r python/requirements.txt
-    #   huggingface-hub
+    # via -r python/requirements.txt
 typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via

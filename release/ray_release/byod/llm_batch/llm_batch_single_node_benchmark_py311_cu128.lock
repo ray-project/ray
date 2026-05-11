@@ -883,7 +883,9 @@ httpx==0.28.1 \
 huggingface-hub==0.36.0 \
     --hash=sha256:47b3f0e2539c39bf5cde015d63b72ec49baff67b6931c3d97f3f84532e2b8d25 \
     --hash=sha256:7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d
-    # via datasets
+    # via
+    #   -r release/llm_tests/batch/requirements.in
+    #   datasets
 idna==3.11 \
     --hash=sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea \
     --hash=sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902

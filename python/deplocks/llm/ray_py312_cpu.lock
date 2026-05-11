@@ -2337,9 +2337,9 @@ uc-micro-py==2.0.0 ; sys_platform != 'win32' \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   linkify-it-py
-urllib3==1.26.20 \
-    --hash=sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e \
-    --hash=sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32
+urllib3==2.6.3 \
+    --hash=sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed \
+    --hash=sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   requests

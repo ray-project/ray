@@ -4,7 +4,7 @@
 getdaft==0.4.3
 dask[complete]>=2025.5.0
 distributed>=2025.5.0
-aioboto3==12.1.0
+aioboto3==15.5.0
 crc32c==2.3
 flask_cors
 bokeh==3.1.0
