@@ -2435,7 +2435,7 @@
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: compiled_graphs_GPU
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2452,7 +2452,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2469,7 +2469,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: compiled_graphs_GPU_cu130
-  python: "3.14"
+  python: "3.12"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2507,7 +2507,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: rdt_single_node_T4_microbenchmark
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2563,7 +2563,7 @@
 #     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -3795,7 +3795,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
-  python: "3.14"
+  python: "3.10"
   group: core-observability-test
   working_dir: dashboard
 
