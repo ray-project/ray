@@ -690,6 +690,11 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
+    @abstractmethod
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return planned_grant - usage, or None if the op has no allocation."""
+        ...
+
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         """Returns a list of operators eligible for allocation.
 
@@ -978,14 +983,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             memory=h.memory if pg.memory > 0 else 0,
         )
 
-    def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
-        """Get total reserved resources for an operator, including outputs reservation."""
-        op_reserved = self._op_reserved[op]
-        reserved_for_outputs = self._reserved_for_op_outputs[op]
-        return op_reserved.copy(
-            object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
-        )
-
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         budget = self.get_budget(op)
         if budget is None:
@@ -1082,14 +1079,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             max_resource_usage = op_max_resources[op]
 
             # Step 1: cap op_proportional so reserved + proportional <= max_resource_usage.
-            total_reserved = (
-                self._get_total_reserved(op)
+            op_reserved = (
+                self._op_reserved[op]
                 if max_resource_usage != ExecutionResources.inf()
                 else None
             )
-            if total_reserved is not None:
+            if op_reserved is not None:
                 op_proportional = op_proportional.min(
-                    max_resource_usage.subtract(total_reserved).max(
+                    max_resource_usage.subtract(op_reserved).max(
                         ExecutionResources.zero()
                     )
                 )
@@ -1107,9 +1104,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 op_shared = op_shared.add(shortfall)
 
             # Step 3: cap op_shared so total grant <= max_resource_usage.
-            if total_reserved is not None:
+            if op_reserved is not None:
                 op_usage = self._resource_manager.get_op_usage(op)
-                current_allocation = total_reserved.add(op_proportional).max(op_usage)
+                current_allocation = op_reserved.add(op_proportional).max(op_usage)
                 op_shared = op_shared.min(
                     max_resource_usage.subtract(current_allocation).max(
                         ExecutionResources.zero()

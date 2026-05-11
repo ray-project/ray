@@ -1384,6 +1384,35 @@ class TestReservationOpResourceAllocator:
             headroom2.cpu < 0
         ), f"Expected negative headroom for o2, got {headroom2.cpu}"
 
+        # --- Scenario 3: OSM cap uses _op_reserved, not _op_reserved + _reserved_for_op_outputs ---
+        # With limits=1600 OSM and 2 ops at reservation_ratio=0.5:
+        #   default_reserved=400 OSM/op → _op_reserved[o2]=200, _reserved_for_op_outputs[o2]=200.
+        # o2 has an OSM cap of 600. The shared portion available to o2 is
+        #   600 - _op_reserved[o2] = 400 (correct), not 600 - 400 = 200 (buggy).
+        # With zero usage o2 should absorb 400 shared OSM → planned_grant[o2].osm == 600.
+        limits_1600 = ExecutionResources(cpu=16, gpu=0, object_store_memory=1600)
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources(cpu=float("inf"), gpu=0, object_store_memory=600),
+            )
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+        resource_manager.get_global_limits = MagicMock(return_value=limits_1600)
+        op_usages[o2] = ExecutionResources.zero()
+        op_usages[o3] = ExecutionResources.zero()
+        allocator.update_budgets(limits=limits_1600)
+        assert allocator._reserved_for_op_outputs[o2] == pytest.approx(200)
+        assert allocator._op_planned_grants[o2].object_store_memory == pytest.approx(
+            600
+        ), (
+            f"planned_grant[o2].osm should reach the cap (600), not the over-conservative "
+            f"value (400) that results from subtracting _reserved_for_op_outputs from the cap. "
+            f"Got: {allocator._op_planned_grants[o2].object_store_memory}"
+        )
+
     @pytest.mark.parametrize(
         "ray_remote_args,global_limits,o2_usage,o3_usage,"
         "expected_reserved,expected_shared,"
