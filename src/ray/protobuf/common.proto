@@ -662,6 +662,9 @@ message TaskInfoEntry {
   map<string, string> label_selector = 28;
 
   optional FallbackStrategy fallback_strategy = 29;
+  // True if this task creates a detached actor. Only meaningful when
+  // type == ACTOR_CREATION_TASK; defaults to false otherwise.
+  bool is_detached_actor = 30;
 }
 
 message TaskAttempt {

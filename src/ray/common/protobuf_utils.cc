@@ -197,6 +197,9 @@ void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_s
   } else if (task_spec.IsActorCreationTask()) {
     type = rpc::TaskType::ACTOR_CREATION_TASK;
     task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+    if (task_spec.IsDetachedActor()) {
+      task_info->set_is_detached_actor(true);
+    }
   } else {
     RAY_CHECK(task_spec.IsActorTask());
     type = rpc::TaskType::ACTOR_TASK;
