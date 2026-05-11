@@ -16,7 +16,6 @@
 
 #include <boost/fiber/all.hpp>
 #include <chrono>
-#include <cstdio>
 #include <memory>
 #include <utility>
 
@@ -157,11 +156,6 @@ class FiberState {
     auto op_status = channel_.push([this, callback = std::move(callback)]() {
       rate_limiter_.Acquire();
       FiberPreCallback pre = fiber_pre_callback_;
-      // Diagnostic: confirm whether the hook is wired in. Strip once fixed.
-      std::fprintf(stderr,
-                   "[ray-py314-fiber] EnqueueFiber lambda: pre=%p\n",
-                   reinterpret_cast<void *>(pre));
-      std::fflush(stderr);
       if (pre != nullptr) {
         pre();
       }

@@ -437,35 +437,9 @@ cdef increase_recursion_limit():
     so we need to increase the limit when we start getting close.
 
     0x30E0000 is Python 3.14+
-        On 3.14+, the recursion guard has TWO parts and we have to handle both.
-        (1) `py_recursion_remaining` (renamed from `c_recursion_remaining`) counts
-            Python frames; bumping it by 1000 when it drops below 1000 mirrors the
-            3.12-3.13 behavior.
-        (2) `_Py_MakeRecCheck` / `_Py_ReachedRecursionLimit` (Include/internal/
-            pycore_ceval.h) compare `__builtin_frame_address(0)` to a per-thread
-            `c_stack_soft_limit` on `_PyThreadStateImpl` (Include/internal/
-            pycore_tstate.h). Those limits are anchored at PyThreadState bind
-            time using `pthread_getattr_np` -- i.e., they describe the OS thread's
-            pthread stack. Ray's FiberState
-            (src/ray/core_worker/task_execution/fiber.h:104) runs each async
-            actor task on a 256 KiB `boost::fibers::fixedsize_stack` in a
-            separate memory region, so the very first Python call on the fiber
-            trips the check and CPython aborts with a fatal "Unrecoverable
-            stack overflow (used XXX kB)" -- XXX is just the address gap, not
-            real usage. Calling `_Py_InitializeRecursionLimits` would re-anchor
-            to the *pthread* stack again, which is the same wrong answer; we
-            re-anchor by hand to the current frame address with a fixed budget
-            that fits inside the fiber's 256 KiB stack.
-        We access `c_stack_*` by offset to avoid depending on Py_BUILD_CORE-
-        gated internal headers; layout in 3.14 is:
-            typedef struct _PyThreadStateImpl {
-                PyThreadState base;          // [0]
-                Py_ssize_t    refcount;      // [1]
-                uintptr_t     c_stack_top;        // [2]
-                uintptr_t     c_stack_soft_limit; // [3]
-                uintptr_t     c_stack_hard_limit; // [4]
-                ...
-            } _PyThreadStateImpl;
+        On 3.14+, when recursion depth increases, py_recursion_remaining will decrease
+        (renamed from c_recursion_remaining in 3.12-3.13).
+        Increasing it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
     0x30C0000 is Python 3.12-3.13
         On 3.12-3.13, when recursion depth increases, c_recursion_remaining will decrease,
         and that's what's actually compared to raise a RecursionError. So increasing
@@ -483,39 +457,13 @@ cdef increase_recursion_limit():
         cdef extern from *:
             """
 #if PY_VERSION_HEX >= 0x30E0000
-    // Python 3.14+: bump py_recursion_remaining AND re-anchor the per-thread
-    // C-stack address guard to the current frame. See the Cython docstring
-    // for the full rationale.
+    // Python 3.14+ renamed c_recursion_remaining to py_recursion_remaining
     bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
-        bool changed = false;
         if (x->py_recursion_remaining < 1000) {
             x->py_recursion_remaining += 1000;
-            changed = true;
+            return true;
         }
-        // Offset access to _PyThreadStateImpl c_stack_{top,soft_limit,hard_limit}.
-        // PyThreadState is the leading sub-struct; Py_ssize_t refcount follows;
-        // then three uintptr_t fields. Compatible with cp3.14.x while we're
-        // pinned to 3.14 -- re-validate the offset if/when we move to 3.15.
-        uintptr_t *c_stack =
-            (uintptr_t *)((char *)x + sizeof(PyThreadState) + sizeof(Py_ssize_t));
-        uintptr_t here = (uintptr_t)__builtin_frame_address(0);
-        // Only re-anchor if the recorded soft limit is at-or-above the current
-        // frame -- i.e., we're not on the stack the limits describe. On the
-        // worker's main pthread stack this branch is a no-op.
-        if (here <= c_stack[1] /* c_stack_soft_limit */) {
-            // boost::fibers fixedsize_stack is 256 KiB
-            // (src/ray/core_worker/task_execution/fiber.h:169 kStackSize).
-            // Reserve 192 KiB of headroom: above any reasonable Ray dispatch
-            // depth, below the fiber ceiling so genuine runaway is still
-            // caught.
-            const uintptr_t budget = 192UL * 1024UL;
-            const uintptr_t margin = 4UL * 1024UL;
-            c_stack[0] = here;                       // c_stack_top
-            c_stack[2] = here - budget;              // c_stack_hard_limit
-            c_stack[1] = here - (budget - margin);   // c_stack_soft_limit
-            changed = true;
-        }
-        return changed;
+        return false;
     }
 #elif PY_VERSION_HEX >= 0x30C0000
     // Python 3.12-3.13 use c_recursion_remaining
@@ -558,48 +506,40 @@ cdef increase_recursion_limit():
 
 # CPython 3.14 fiber-stack re-anchor hook.
 #
-# The cp3.14 branch of `IncreaseRecursionLimitIfNeeded` re-anchors the
-# per-thread `c_stack_*` fields on `_PyThreadStateImpl`, but it is called from
-# `run_async_func_or_coro_in_event_loop` on the worker thread's pthread stack,
-# *before* `YieldCurrentFiber` switches execution onto a boost::fibers
-# fixedsize_stack. On the pthread stack the re-anchor guard
-# `here <= c_stack_soft_limit` is false (current frame is well above the stack
-# bottom), so the re-anchor never fires and `_Py_ReachedRecursionLimit` still
-# trips on the first Python call inside the fiber.
+# cp3.14's `_Py_ReachedRecursionLimit` compares the current frame address to
+# `_PyThreadStateImpl::c_stack_soft_limit`, which is anchored to the OS thread's
+# pthread stack at PyThreadState bind time. Ray's async actor dispatch runs the
+# user callback on a boost::fibers fixedsize_stack (a separate memory region
+# from the pthread stack), so the very first Python call inside the fiber trips
+# the guard and CPython aborts with a fatal "Unrecoverable stack overflow".
 #
-# Fix: install a hook on `FiberState` that runs *inside* the fiber, after
-# `Acquire()` and before the user callback. From there, `__builtin_frame_address(0)`
-# is a fiber-stack address and the re-anchor writes the correct values.
+# Fix: install a hook on FiberState (see fiber.h) that runs inside every fiber
+# before the user callback. The hook rewrites c_stack_top / c_stack_soft_limit
+# / c_stack_hard_limit to bracket the current fiber-stack frame, using a 192
+# KiB budget out of the 256 KiB fiber stack.
 #
-# Layout for the offset writes is documented at the cp3.14 branch of
-# `IncreaseRecursionLimitIfNeeded` above.
+# We access `_PyThreadStateImpl` fields by offset to avoid pulling in the
+# Py_BUILD_CORE-gated `internal/pycore_tstate.h` header. cp3.14 layout is:
+#     PyThreadState base;
+#     Py_ssize_t    refcount;
+#     uintptr_t     c_stack_top;
+#     uintptr_t     c_stack_soft_limit;
+#     uintptr_t     c_stack_hard_limit;
+# Revisit this offset when supporting 3.15.
 cdef extern from *:
     """
 #if PY_VERSION_HEX >= 0x30E0000
-#include <stdio.h>
 #include "ray/core_worker/task_execution/fiber.h"
 
-// Why we leak the gilstate counter:
-//
-// PyGILState_Ensure() auto-creates a PyThreadState the first time it runs on
-// a given OS thread, registers it via autoTSSkey, and bumps the per-tstate
-// gilstate_counter to 1. PyGILState_Release at counter==0 *destroys* the
-// auto-created tstate. If we let that happen, the next PyGILState_Ensure
-// (from inside the user-callback path that runs immediately after our hook)
-// allocates a fresh tstate and calls _Py_InitializeRecursionLimits, which
-// re-anchors c_stack_* to the current OS pthread stack -- overwriting our
-// fiber-stack re-anchor and putting us right back into the crash.
-//
-// The fix: leak gilstate_counter by +1 exactly once per fiber-runner OS
-// thread. The tstate stays alive for the lifetime of the process; the
-// callback's PyGILState_Ensure / Release pair just bounces counter 1<->2
-// without ever tearing down the tstate (or, importantly, the c_stack_*
-// fields we wrote). The GIL itself is still releasable: Ray's
-// run_async_func_or_coro_in_event_loop wraps YieldCurrentFiber in
-// `with nogil:` (_raylet.pyx:4569 area), which calls PyEval_SaveThread
-// directly -- that path bypasses gilstate_counter and releases the GIL
-// regardless. So the AsyncIO Thread can still take the GIL during awaits.
 extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
+    // Leak gilstate_counter by +1 once per OS thread. PyGILState_Release at
+    // counter==0 would destroy the auto-created tstate, and the user
+    // callback's own PyGILState_Ensure would then allocate a fresh tstate
+    // whose c_stack_* fields _Py_InitializeRecursionLimits re-anchors to the
+    // pthread stack -- overwriting our re-anchor. Leaking the counter pins
+    // the tstate alive; the GIL itself is still releasable via Ray's
+    // existing `with nogil:` blocks (which call PyEval_SaveThread directly
+    // and bypass gilstate_counter), so AsyncIO Thread can still acquire it.
     static thread_local bool gil_leaked = false;
 
     PyGILState_STATE g = PyGILState_Ensure();
@@ -607,38 +547,17 @@ extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
     uintptr_t *c_stack =
         (uintptr_t *)((char *)tstate + sizeof(PyThreadState) + sizeof(Py_ssize_t));
     uintptr_t here = (uintptr_t)__builtin_frame_address(0);
-    uintptr_t old_top  = c_stack[0];
-    uintptr_t old_soft = c_stack[1];
-    uintptr_t old_hard = c_stack[2];
     if (here <= c_stack[1] /* c_stack_soft_limit */) {
         const uintptr_t budget = 192UL * 1024UL;
         const uintptr_t margin = 4UL   * 1024UL;
         c_stack[0] = here;                       // c_stack_top
         c_stack[2] = here - budget;              // c_stack_hard_limit
         c_stack[1] = here - (budget - margin);   // c_stack_soft_limit
-        fprintf(stderr,
-            "[ray-py314-hook] FIRE here=%p tstate=%p leaked=%d "
-            "old top/soft/hard=%p/%p/%p -> new top/soft/hard=%p/%p/%p\\n",
-            (void *)here, (void *)tstate, (int)gil_leaked,
-            (void *)old_top, (void *)old_soft, (void *)old_hard,
-            (void *)c_stack[0], (void *)c_stack[1], (void *)c_stack[2]);
-    } else {
-        fprintf(stderr,
-            "[ray-py314-hook] SKIP here=%p tstate=%p leaked=%d soft=%p (here > soft)\\n",
-            (void *)here, (void *)tstate, (int)gil_leaked, (void *)old_soft);
     }
-    fflush(stderr);
 
     if (gil_leaked) {
-        // Subsequent calls on the same OS thread: normal Release pairs with
-        // Ensure above. Counter goes back down by one, but stays >= 1 thanks
-        // to the leak below from the first call. tstate (and our re-anchor)
-        // survives.
         PyGILState_Release(g);
     } else {
-        // First call on this OS thread: do NOT release. gilstate_counter
-        // stays at 1 forever, pinning the tstate so the callback path can't
-        // tear it down.
         gil_leaked = true;
         (void)g;
     }
@@ -647,9 +566,6 @@ extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
 static void RayInstallFiberPreCallback(void) {
     ray::core::FiberState::SetFiberPreCallback(
         &RayReanchorPyRecursionLimitsOnCurrentFiber);
-    fprintf(stderr, "[ray-py314-hook] installed hook=%p\\n",
-            (void *)&RayReanchorPyRecursionLimitsOnCurrentFiber);
-    fflush(stderr);
 }
 #else
 static void RayInstallFiberPreCallback(void) { /* no-op on Python < 3.14 */ }
