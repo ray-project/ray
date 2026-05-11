@@ -152,10 +152,13 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
-    # Servers in this backend
-    {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} check
-    {%- endfor %}
+    # Pre-allocated slot pool. Slots start disabled with a placeholder
+    # address; the proxy actor populates them via the runtime API
+    # (`set server <backend>/srvN addr <ip> port <port>` + `state ready`)
+    # as replicas register, and releases them (`state maint`) when
+    # replicas exit. Slot count is computed by `_compute_slot_split` at
+    # config-generation time from the current replica count + headroom.
+    server-template srv 1-{{ backend.slot_pool_size }} 0.0.0.0:1 check disabled
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup

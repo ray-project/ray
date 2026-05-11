@@ -810,6 +810,38 @@ RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S", "15")
 )
 
+# Total number of server slots to pre-allocate across all backends via
+# HAProxy's `server-template` directive. Slots are partitioned across
+# backends at config-generation time (see `_compute_slot_split`); each
+# backend's share becomes the size of its `server-template` block and
+# the upper bound on how many replicas it can hold before the runtime-
+# API path returns False and a full reload re-computes the split. 4096
+# total comfortably covers Ray Serve clusters with hundreds of replicas
+# across a few dozen backends; raise it for larger fleets, but note that
+# every slot has a small HAProxy memory cost (~few KB per slot) and
+# slightly inflates `show stat` output.
+RAY_SERVE_HAPROXY_TOTAL_SLOTS = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TOTAL_SLOTS", "4096")
+)
+
+# Floor on per-backend slot allocation. Even backends with zero replicas
+# get this many slots reserved so they can absorb some growth without
+# requiring a reload to re-split. Set high enough to cover short bursts
+# of churn but low enough that idle backends don't crowd out active ones.
+# If N_backends * MIN_SLOTS exceeds TOTAL_SLOTS the split degrades to an
+# equal share of (TOTAL_SLOTS // N_backends) per backend.
+RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND = int(
+    os.environ.get("RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND", "16")
+)
+
+# Headroom multiplier applied when allocating slots. A backend with N
+# current replicas gets ~N * factor slots (subject to total/min limits);
+# the extra slots absorb scale-up without triggering a reload. 2.0 means
+# a backend can double in size between reloads before exhausting.
+RAY_SERVE_HAPROXY_SLOT_HEADROOM_FACTOR = float(
+    os.environ.get("RAY_SERVE_HAPROXY_SLOT_HEADROOM_FACTOR", "2.0")
+)
+
 # Number of consecutive failed server health checks that must occur
 # before haproxy marks the server as down.
 RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(

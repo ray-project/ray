@@ -225,6 +225,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 fallback_server=ServerConfig(
                     name="api_fallback_server", host="127.0.0.1", port=8500
                 ),
+                slot_pool_size=8,
             ),
             "web_backend": BackendConfig(
                 name="web_backend",
@@ -236,7 +237,8 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 timeout_tunnel_s=45,
                 servers=[
                     ServerConfig(name="web_server1", host="127.0.0.1", port=8003),
-                ]
+                ],
+                slot_pool_size=4,
                 # No health check overrides - should use global defaults
             ),
         }
@@ -368,9 +370,13 @@ backend api_backend
     option httpchk GET /api/health
     http-check expect status 200
     default-server fastinter 250ms downinter 250ms fall 2 rise 3 inter 5s check
-    # Servers in this backend
-    server api_server1 127.0.0.1:8001 check
-    server api_server2 127.0.0.1:8002 check
+    # Pre-allocated slot pool. Slots start disabled with a placeholder
+    # address; the proxy actor populates them via the runtime API
+    # (`set server <backend>/srvN addr <ip> port <port>` + `state ready`)
+    # as replicas register, and releases them (`state maint`) when
+    # replicas exit. Slot count is computed by `_compute_slot_split` at
+    # config-generation time from the current replica count + headroom.
+    server-template srv 1-8 0.0.0.0:1 check disabled
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
@@ -395,8 +401,13 @@ backend web_backend
     option httpchk GET /-/healthz
     http-check expect status 200
     default-server fastinter 250ms downinter 250ms fall 3 rise 2 inter 2s check
-    # Servers in this backend
-    server web_server1 127.0.0.1:8003 check
+    # Pre-allocated slot pool. Slots start disabled with a placeholder
+    # address; the proxy actor populates them via the runtime API
+    # (`set server <backend>/srvN addr <ip> port <port>` + `state ready`)
+    # as replicas register, and releases them (`state maint`) when
+    # replicas exit. Slot count is computed by `_compute_slot_split` at
+    # config-generation time from the current replica count + headroom.
+    server-template srv 1-4 0.0.0.0:1 check disabled
 listen stats
   bind *:8080
   stats enable

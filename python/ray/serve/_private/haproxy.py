@@ -1,8 +1,10 @@
 import asyncio
 import csv
+import heapq
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -41,12 +43,14 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
+    RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND,
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_RELOAD_TIMEOUT_S,
     RAY_SERVE_HAPROXY_RETRIES,
     RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
+    RAY_SERVE_HAPROXY_SLOT_HEADROOM_FACTOR,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
     RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S,
     RAY_SERVE_HAPROXY_STATS_PORT,
@@ -55,6 +59,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_TOTAL_SLOTS,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -322,6 +327,13 @@ class BackendConfig:
 
     # The app name for this backend.
     app_name: str = field(default_factory=str)
+
+    # Size of this backend's `server-template` slot pool. The rendered
+    # config emits `server-template srv 1-{slot_pool_size} ...` so the
+    # backend can hold up to `slot_pool_size` replicas before the runtime
+    # API has to fall back to a reload to re-split. Set by HAProxyManager
+    # via `_compute_slot_split` on every config (re)generation.
+    slot_pool_size: int = 0
 
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
@@ -617,6 +629,9 @@ def _compute_backend_diff(
             "path_prefix",
             "fallback_server",
             "app_name",
+            # slot_pool_size is part of the rendered `server-template` line,
+            # so any change requires a reload to take effect.
+            "slot_pool_size",
             "timeout_connect_s",
             "timeout_server_s",
             "timeout_client_s",
@@ -667,6 +682,159 @@ def _compute_backend_diff(
     )
 
 
+class BackendSlotPool:
+    """Tracks slot ↔ replica mapping for one backend's `server-template` block.
+
+    HAProxy's `server-template` directive pre-allocates a fixed pool of
+    server slots at config-generation time. The slots are named
+    `<prefix><N>` (e.g. `srv1`, `srv2`, ...) and start disabled with a
+    placeholder address. Once HAProxy is running we repurpose slots
+    dynamically via the runtime API:
+
+        # Assign slot N to a new replica:
+        set server <backend>/srvN addr <ip> port <port>
+        set server <backend>/srvN state ready
+
+        # Release slot N (replica removed):
+        set server <backend>/srvN state maint
+
+    The pool tracks which slots are in use and which are free; allocation
+    is "first-free" via a min-heap so slot numbers stay compact under
+    churn. `assign` is idempotent — re-assigning an already-present
+    replica returns its existing slot, which lets the apply loop handle
+    same-name-different-address transitions without bookkeeping.
+    """
+
+    def __init__(self, backend_name: str, pool_size: int):
+        if pool_size <= 0:
+            raise ValueError(f"BackendSlotPool requires pool_size > 0, got {pool_size}")
+        self.backend_name = backend_name
+        self.pool_size = pool_size
+        self._replica_to_slot: Dict[str, int] = {}
+        # min-heap of free slot numbers (1-indexed to match HAProxy CLI)
+        self._free_slots: List[int] = list(range(1, pool_size + 1))
+        heapq.heapify(self._free_slots)
+
+    def assign(self, replica_name: str) -> Optional[int]:
+        """Allocate a slot for `replica_name`. Returns the slot number,
+        or None if the pool is full. Idempotent: re-assigning an
+        already-present replica returns its existing slot."""
+        existing = self._replica_to_slot.get(replica_name)
+        if existing is not None:
+            return existing
+        if not self._free_slots:
+            return None
+        slot = heapq.heappop(self._free_slots)
+        self._replica_to_slot[replica_name] = slot
+        return slot
+
+    def release(self, replica_name: str) -> Optional[int]:
+        """Free the slot held by `replica_name`. Returns the slot number,
+        or None if the replica wasn't holding a slot."""
+        slot = self._replica_to_slot.pop(replica_name, None)
+        if slot is not None:
+            heapq.heappush(self._free_slots, slot)
+        return slot
+
+    def slot_for(self, replica_name: str) -> Optional[int]:
+        """Return the slot held by `replica_name`, or None if absent."""
+        return self._replica_to_slot.get(replica_name)
+
+    def in_use(self) -> int:
+        return len(self._replica_to_slot)
+
+    def free(self) -> int:
+        return len(self._free_slots)
+
+    def is_exhausted(self) -> bool:
+        return not self._free_slots
+
+    def mapping(self) -> Dict[str, int]:
+        """Return a copy of the replica → slot mapping (for diagnostics)."""
+        return dict(self._replica_to_slot)
+
+
+def _compute_slot_split(
+    backend_to_replica_count: Dict[str, int],
+    total: int = RAY_SERVE_HAPROXY_TOTAL_SLOTS,
+    min_per_backend: int = RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND,
+    headroom_factor: float = RAY_SERVE_HAPROXY_SLOT_HEADROOM_FACTOR,
+) -> Dict[str, int]:
+    """Partition `total` slots across backends.
+
+    Allocation strategy:
+      1. Reserve `min_per_backend` for every backend (floor).
+      2. Compute each backend's "demand" as `replicas * headroom_factor`.
+      3. Distribute the remaining slots proportionally to demand. Backends
+         with zero replicas only get their minimum (no extra share).
+
+    Invariants when N := len(backend_to_replica_count):
+      - sum(result.values()) <= total
+      - For each b: result[b] >= min_per_backend  (when N * min <= total)
+      - For each b: result[b] >= 1                (always)
+
+    Degraded path: if `N * min_per_backend > total`, we can't honor the
+    minimum and fall back to equal split (floor(total / N) each, with the
+    remainder distributed to the first few backends alphabetically). This
+    is a pathological case that should not occur with default settings
+    (4096 / 16 = 256 backends).
+    """
+    if not backend_to_replica_count:
+        return {}
+
+    n = len(backend_to_replica_count)
+    names = sorted(backend_to_replica_count.keys())
+
+    if n * min_per_backend > total:
+        # Pathological: too many backends to give each the minimum. Equal split.
+        base = max(1, total // n)
+        remainder = max(0, total - base * n)
+        return {
+            name: base + (1 if i < remainder else 0) for i, name in enumerate(names)
+        }
+
+    reserved = n * min_per_backend
+    remaining = total - reserved
+
+    demand = {
+        name: max(0, int(math.ceil(backend_to_replica_count[name] * headroom_factor)))
+        for name in names
+    }
+    total_demand = sum(demand.values())
+
+    extra: Dict[str, int] = {name: 0 for name in names}
+    if remaining > 0:
+        if total_demand == 0:
+            # No replicas anywhere — split the remainder equally.
+            per_backend = remaining // n
+            leftover = remaining - per_backend * n
+            for i, name in enumerate(names):
+                extra[name] = per_backend + (1 if i < leftover else 0)
+        else:
+            # Proportional to demand. Float-then-floor, then distribute the
+            # rounding remainder to backends with the largest fractional parts
+            # so we always allocate exactly `remaining` slots.
+            shares_float = {
+                name: remaining * demand[name] / total_demand for name in names
+            }
+            shares = {name: int(shares_float[name]) for name in names}
+            allocated = sum(shares.values())
+            leftover = remaining - allocated
+            # Sort by fractional part descending; ties broken by name asc.
+            order = sorted(
+                names,
+                key=lambda name: (
+                    -(shares_float[name] - shares[name]),
+                    name,
+                ),
+            )
+            for name in order[:leftover]:
+                shares[name] += 1
+            extra = shares
+
+    return {name: min_per_backend + extra[name] for name in names}
+
+
 class HAProxyApi(ProxyApi):
     """ProxyApi implementation for HAProxy."""
 
@@ -684,6 +852,10 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        # Slot pools, one per backend, sized by the most recent rendered
+        # config's `slot_pool_size`. Populated/reset by `_rebind_slot_pools`
+        # which is called after every successful (re)load.
+        self._slot_pools: Dict[str, BackendSlotPool] = {}
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -717,6 +889,124 @@ class HAProxyApi(ProxyApi):
             ef.write("Internal Server Error")
 
         self.cfg.error_file_path = error_file_path
+
+    async def _rebind_slot_pools(self) -> None:
+        """Rebuild slot pools from backend_configs and populate slots.
+
+        Called after every successful (re)load. The new HAProxy process
+        starts with all template slots disabled at the placeholder
+        address, so we:
+          1. Recreate the in-memory pools (sized per BackendConfig's
+             `slot_pool_size`, set by `_compute_slot_split` at
+             config-generation time).
+          2. Assign current `backend_configs[*].servers` to slots.
+          3. Send a single batched runtime-API call to point those slots
+             at the right addresses and bring them up.
+
+        This handles two cases under one path:
+          - Production: a reload was triggered because the incremental
+            apply gave up (e.g. structural change, pool exhausted). The
+            new desired state was already written to `backend_configs`
+            by `try_apply_servers_dynamically` before it returned False;
+            this method makes HAProxy actually serve from it.
+          - Tests: HAProxyApi is constructed with explicit
+            `backend_configs={...}` and `start()` is called; this
+            method binds those servers to slots without requiring the
+            caller to make an extra runtime-API call.
+
+        Step 3 is best-effort: on failure HAProxy is up but slots are
+        unpopulated; the next broadcast will diff against
+        `backend_configs` (which already reflects desired state) and
+        find no work to do, leaving slots empty. To recover, callers
+        should observe a failed apply and retry. In practice failures
+        here are rare since we just restarted HAProxy.
+        """
+        new_pools: Dict[str, BackendSlotPool] = {}
+        for name, bc in self.backend_configs.items():
+            if bc.slot_pool_size <= 0:
+                continue
+            new_pools[name] = BackendSlotPool(name, bc.slot_pool_size)
+        self._slot_pools = new_pools
+
+        if new_pools:
+            sizes = {n: p.pool_size for n, p in new_pools.items()}
+            logger.info(
+                "Slot pools reset: total=%d, split=%s",
+                sum(sizes.values()),
+                sizes,
+                extra={"log_to_stderr": True},
+            )
+
+        if not self.backend_configs:
+            return
+        commands: List[str] = []
+        for backend_name, bc in self.backend_configs.items():
+            pool = self._slot_pools.get(backend_name)
+            if pool is None or not bc.servers:
+                continue
+            for server in bc.servers:
+                slot = pool.assign(server.name)
+                if slot is None:
+                    logger.warning(
+                        "Slot population: backend %s pool exhausted "
+                        "(pool_size=%d). Some servers will be unreachable "
+                        "until the next reload re-splits.",
+                        backend_name,
+                        pool.pool_size,
+                    )
+                    break
+                commands.append(
+                    f"set server {backend_name}/srv{slot} "
+                    f"addr {server.host} port {server.port}"
+                )
+                commands.append(f"set server {backend_name}/srv{slot} state ready")
+        if not commands:
+            return
+        try:
+            await self._send_runtime_commands(commands)
+            logger.info(
+                "Slot population OK: %d servers placed across %d backends",
+                sum(len(bc.servers) for bc in self.backend_configs.values()),
+                len(self._slot_pools),
+                extra={"log_to_stderr": True},
+            )
+        except Exception as e:
+            logger.warning(
+                f"Slot population failed after reload: {e}. HAProxy is up "
+                f"but no replicas are routable until the next broadcast retry."
+            )
+        # Best-effort snapshot for live debugging.
+        self._write_slot_mapping_for_debug()
+
+    def _write_slot_mapping_for_debug(self) -> None:
+        """Best-effort dump of current slot mapping to a JSON file.
+
+        Writes `<socket_dir>/slot_mapping.json` so operators can `cat` it
+        to translate `srv1`/`srv2`/... back to replica IDs without
+        grepping logs. Best-effort: any failure is swallowed so a write
+        problem can't break an otherwise-successful apply.
+        """
+        try:
+            socket_dir = os.path.dirname(self.cfg.socket_path)
+            mapping_path = os.path.join(socket_dir, "slot_mapping.json")
+            payload = {
+                name: {
+                    "pool_size": pool.pool_size,
+                    "in_use": pool.in_use(),
+                    "free": pool.free(),
+                    "slots": {
+                        f"srv{slot}": replica
+                        for replica, slot in pool.mapping().items()
+                    },
+                }
+                for name, pool in self._slot_pools.items()
+            }
+            tmp = mapping_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(payload, f, indent=2, sort_keys=True)
+            os.replace(tmp, mapping_path)
+        except Exception as e:
+            logger.debug(f"Failed to write slot_mapping.json: {e}")
 
     def _is_running(self) -> bool:
         """Check if the HAProxy process is still running."""
@@ -845,6 +1135,12 @@ class HAProxyApi(ProxyApi):
                 self._proc = await self._start_and_wait_for_haproxy()
                 phases.append(f"fresh_start={time.monotonic() - t0:.2f}s")
 
+                # New process started with empty server-template slots;
+                # rebind pools from backend_configs and repopulate.
+                t0 = time.monotonic()
+                await self._rebind_slot_pools()
+                phases.append(f"rebind_slots={time.monotonic() - t0:.2f}s")
+
                 logger.info(
                     "HAProxy fresh-start reload OK in %.2fs (%s)",
                     time.monotonic() - reload_start,
@@ -891,6 +1187,12 @@ class HAProxyApi(ProxyApi):
             # Track old process so we can ensure it's cleaned up during shutdown
             if old_proc is not None:
                 self._old_procs.append(old_proc)
+
+            # New process has empty server-template slots; rebind pools
+            # from backend_configs and repopulate.
+            t0 = time.monotonic()
+            await self._rebind_slot_pools()
+            phases.append(f"rebind_slots={time.monotonic() - t0:.2f}s")
 
             logger.info(
                 "HAProxy graceful reload OK in %.2fs (%s)",
@@ -1116,6 +1418,10 @@ class HAProxyApi(ProxyApi):
                 logger.info("Successfully generated HAProxy config file.")
 
             self._proc = await self._start_and_wait_for_haproxy()
+            # Rebuild in-memory pools and populate slots from any
+            # already-set backend_configs (test fixtures or production
+            # reloads that wrote backend_configs before calling start).
+            await self._rebind_slot_pools()
             logger.info("HAProxy started successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize and start HAProxy configuration: {e}")
@@ -1468,18 +1774,23 @@ class HAProxyApi(ProxyApi):
         """Try to apply server-list changes via HAProxy's runtime API.
 
         Compares ``new_backend_configs`` to the current ``self.backend_configs``.
-        If the change is purely server adds/removes within existing backends,
-        applies them over the admin socket (`add server` / `del server`) without
-        regenerating the config or restarting HAProxy. Otherwise falls back
-        and returns False so the caller can perform a full reload.
+        If the change is purely server adds/removes within existing backends
+        with unchanged slot-pool sizes, applies the diff over the admin socket
+        using `set server <backend>/srvN addr ... port ...` plus
+        `set server ... state ready/maint` against the pre-allocated
+        `server-template` slots. Otherwise falls back to a full reload.
 
-        At Ray Serve scales with many replicas under autoscaling churn,
-        regenerating and reloading on every replica change blocks the proxy
-        actor's event loop long enough to fail controller health checks
-        (causing the proxy to be killed and recreated, cascading into the
-        ALB seeing all targets as unhealthy). The runtime API is ~1ms per
-        change vs. ~1-2s for a reload, so this incremental path keeps the
-        actor responsive under churn.
+        The slot pool model trades up-front memory (one templated server per
+        slot, regardless of whether it's in use) for runtime-API efficiency:
+        we never need to `add server`/`del server` -- which mutate HAProxy's
+        per-backend server list under lock -- only repurpose pre-existing
+        slots. The result is fewer admin-socket commands per broadcast and
+        no server-list mutation contention with HTTP workers.
+
+        Slot accounting (which slot holds which replica) lives in
+        ``self._slot_pools`` and is reset to "all free" after every
+        successful (re)load, since the new HAProxy process starts with all
+        template slots disabled at the placeholder address.
 
         Returns True if applied incrementally (no reload needed). Returns
         False if a reload is required (caller is responsible for calling
@@ -1498,53 +1809,82 @@ class HAProxyApi(ProxyApi):
 
         diff = _compute_backend_diff(self.backend_configs, new_backend_configs)
         if diff.is_structural:
+            # Structural change (which includes slot_pool_size shifts) → reload.
             self.set_backend_configs(new_backend_configs)
             return False
 
         if not diff.servers_to_add and not diff.servers_to_remove:
-            # No-op: server lists are identical. Update internal state
-            # defensively (in case other fields on ServerConfig change in the
-            # future) and skip the reload.
+            # No-op: server lists are identical.
             self.set_backend_configs(new_backend_configs)
             return True
 
-        # Apply the diff via the admin socket. We accumulate all commands
-        # into a list and ship them through `_send_runtime_commands`, which
-        # batches them onto a small number of Unix socket connections
-        # (separator: `;`). Previously each command opened its own
-        # connection, so a broadcast with N server changes incurred 2N
-        # admin-socket round-trips per proxy. Under load each round-trip
-        # competes with HTTP worker threads for accept/dispatch, and the
-        # cumulative wallclock easily exceeds the 5s `_send_socket_command`
-        # timeout. Batching collapses the 2N round-trips into ceil(2N/64)
-        # connections -- typically 1-4 for a real broadcast -- so the per-
-        # command overhead is amortized away.
-        #
-        # If any command in the batch fails, the whole apply fails and the
-        # caller falls back to a reload, which rebuilds full state from
-        # self.backend_configs (which we update below) and converges
-        # everything back to the new desired state.
-        try:
-            commands: List[str] = []
-            for backend_name, server_names in diff.servers_to_remove.items():
-                for sname in server_names:
-                    # Disable before delete: required when the server has
-                    # in-flight connections; safe even when it doesn't.
-                    commands.append(f"disable server {backend_name}/{sname}")
-                    commands.append(f"del server {backend_name}/{sname}")
+        # Build the command list. Process removals before adds so freed
+        # slots are available for new replicas in the same broadcast --
+        # otherwise a 1:1 churn (5 in, 5 out) would temporarily need 2x
+        # the slots.
+        commands: List[str] = []
+        added_count = 0
+        removed_count = 0
 
-            for backend_name, servers in diff.servers_to_add.items():
-                for server in servers:
-                    # Newly-added runtime servers inherit `default-server`
-                    # directives (inter/fall/rise/etc.) from the backend
-                    # block, so we only need address + the `check` flag.
-                    commands.append(
-                        f"add server {backend_name}/{server.name} "
-                        f"{server.host}:{server.port} check"
+        for backend_name, server_names in diff.servers_to_remove.items():
+            pool = self._slot_pools.get(backend_name)
+            if pool is None:
+                # No pool means the manager has produced a config we
+                # haven't loaded into HAProxy yet. Falling back to reload
+                # is the safe choice: it'll regenerate the config and
+                # rebuild pools.
+                logger.warning(
+                    "No slot pool for backend %s; falling back to reload.",
+                    backend_name,
+                )
+                self.set_backend_configs(new_backend_configs)
+                return False
+            for sname in server_names:
+                slot = pool.release(sname)
+                if slot is None:
+                    # Replica wasn't holding a slot. This can happen if a
+                    # prior apply failed mid-way; benign, skip.
+                    continue
+                commands.append(f"set server {backend_name}/srv{slot} state maint")
+                removed_count += 1
+
+        for backend_name, servers in diff.servers_to_add.items():
+            pool = self._slot_pools.get(backend_name)
+            if pool is None:
+                logger.warning(
+                    "No slot pool for backend %s; falling back to reload.",
+                    backend_name,
+                )
+                self.set_backend_configs(new_backend_configs)
+                return False
+            for server in servers:
+                slot = pool.assign(server.name)
+                if slot is None:
+                    logger.warning(
+                        "Backend %s slot pool exhausted "
+                        "(pool_size=%d, in_use=%d). Falling back to reload "
+                        "to re-split slots with bigger share for this "
+                        "backend.",
+                        backend_name,
+                        pool.pool_size,
+                        pool.in_use(),
                     )
-                    # Runtime-added servers start in MAINT state by default.
-                    commands.append(f"enable server {backend_name}/{server.name}")
+                    self.set_backend_configs(new_backend_configs)
+                    return False
+                commands.append(
+                    f"set server {backend_name}/srv{slot} "
+                    f"addr {server.host} port {server.port}"
+                )
+                commands.append(f"set server {backend_name}/srv{slot} state ready")
+                added_count += 1
 
+        if not commands:
+            # All adds/removes were no-ops (e.g. removes for replicas that
+            # never got slot-assigned). Update state and we're done.
+            self.set_backend_configs(new_backend_configs)
+            return True
+
+        try:
             await self._send_runtime_commands(commands)
         except Exception as e:
             logger.warning(
@@ -1556,14 +1896,12 @@ class HAProxyApi(ProxyApi):
             return False
 
         # Update internal state and regenerate the config file so any
-        # subsequent reload (e.g. for a structural change) starts from the
-        # current set of servers.
+        # subsequent reload starts from the current set of servers.
         self.set_backend_configs(new_backend_configs)
         try:
             self._generate_config_file_internal()
         except Exception as e:
-            # The runtime change is already applied. A failure to write the
-            # config file is non-fatal here: the next reload will rebuild it.
+            # Non-fatal: runtime change already applied; next reload rebuilds.
             logger.warning(
                 f"Applied backend update via runtime API but failed to "
                 f"refresh the config file: {e}",
@@ -1572,10 +1910,11 @@ class HAProxyApi(ProxyApi):
 
         logger.info(
             f"Applied backend update via runtime API: "
-            f"{sum(len(v) for v in diff.servers_to_add.values())} server(s) added, "
-            f"{sum(len(v) for v in diff.servers_to_remove.values())} server(s) removed.",
+            f"{added_count} server(s) added, {removed_count} server(s) removed.",
             extra={"log_to_stderr": False},
         )
+        # Best-effort slot-mapping snapshot for live debugging.
+        self._write_slot_mapping_for_debug()
         return True
 
     async def is_running(self) -> bool:
@@ -1907,7 +2246,15 @@ class HAProxyManager(ProxyActorInterface):
                 await self._haproxy.reload()
 
     def _build_name_to_backend_configs(self) -> Dict[str, BackendConfig]:
-        """Snapshot the current target groups + fallbacks into backend configs."""
+        """Snapshot the current target groups + fallbacks into backend configs.
+
+        Also computes the per-backend slot pool size via `_compute_slot_split`
+        and stamps each BackendConfig with its share. Slot pool sizes are
+        part of the rendered config (they show up in `server-template
+        srv 1-N`), so a change in the split is treated as a structural
+        change by `_compute_backend_diff` -- which is what we want: when
+        the split shifts, we need a reload to update the template.
+        """
         backend_configs = []
         for target_group in self._target_groups:
             fallback_target = None
@@ -1918,6 +2265,12 @@ class HAProxyManager(ProxyActorInterface):
 
             backend_config = self._create_backend_config(target_group, fallback_target)
             backend_configs.append(backend_config)
+
+        # Stamp each backend with its slot-pool size from the split.
+        replica_counts = {bc.name: len(bc.servers) for bc in backend_configs}
+        split = _compute_slot_split(replica_counts)
+        for bc in backend_configs:
+            bc.slot_pool_size = split.get(bc.name, 0)
 
         return {bc.name: bc for bc in backend_configs}
 
