@@ -155,6 +155,10 @@ class FiberState {
   void EnqueueFiber(std::function<void()> &&callback) {
     auto op_status = channel_.push([this, callback = std::move(callback)]() {
       rate_limiter_.Acquire();
+      FiberPreCallback pre = fiber_pre_callback_;
+      if (pre != nullptr) {
+        pre();
+      }
       callback();
       rate_limiter_.Release();
     });
@@ -165,8 +169,22 @@ class FiberState {
 
   void Join() { fiber_stopped_event_->Wait(); }
 
+  /// Optional hook invoked inside every fiber, after Acquire() and before the
+  /// user callback runs. Used on CPython 3.14 to re-anchor the per-thread
+  /// `c_stack_*` fields on `_PyThreadStateImpl` to the current frame address,
+  /// which by then is on the boost::fibers fixedsize_stack region rather than
+  /// the worker pthread stack. Without this, `_Py_ReachedRecursionLimit` trips
+  /// on the first Python call inside the fiber and CPython aborts with a fatal
+  /// "Unrecoverable stack overflow". The hook is installed from the Cython
+  /// extension at module init; pure-C++ targets keep it null. A plain C
+  /// function pointer keeps Python.h out of this header.
+  using FiberPreCallback = void (*)();
+  static void SetFiberPreCallback(FiberPreCallback cb) { fiber_pre_callback_ = cb; }
+
  private:
   static constexpr size_t kStackSize = 1024 * 256;
+
+  inline static FiberPreCallback fiber_pre_callback_ = nullptr;
 
   // The fiber stack allocator.
   boost::fibers::fixedsize_stack allocator_;

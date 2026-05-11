@@ -556,6 +556,61 @@ cdef increase_recursion_limit():
         logger.debug("Increased Python recursion limit")
 
 
+# CPython 3.14 fiber-stack re-anchor hook.
+#
+# The cp3.14 branch of `IncreaseRecursionLimitIfNeeded` re-anchors the
+# per-thread `c_stack_*` fields on `_PyThreadStateImpl`, but it is called from
+# `run_async_func_or_coro_in_event_loop` on the worker thread's pthread stack,
+# *before* `YieldCurrentFiber` switches execution onto a boost::fibers
+# fixedsize_stack. On the pthread stack the re-anchor guard
+# `here <= c_stack_soft_limit` is false (current frame is well above the stack
+# bottom), so the re-anchor never fires and `_Py_ReachedRecursionLimit` still
+# trips on the first Python call inside the fiber.
+#
+# Fix: install a hook on `FiberState` that runs *inside* the fiber, after
+# `Acquire()` and before the user callback. From there, `__builtin_frame_address(0)`
+# is a fiber-stack address and the re-anchor writes the correct values.
+#
+# Layout for the offset writes is documented at the cp3.14 branch of
+# `IncreaseRecursionLimitIfNeeded` above.
+cdef extern from *:
+    """
+#if PY_VERSION_HEX >= 0x30E0000
+#include "ray/core_worker/task_execution/fiber.h"
+
+extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
+    PyGILState_STATE g = PyGILState_Ensure();
+    PyThreadState *tstate = PyThreadState_Get();
+    uintptr_t *c_stack =
+        (uintptr_t *)((char *)tstate + sizeof(PyThreadState) + sizeof(Py_ssize_t));
+    uintptr_t here = (uintptr_t)__builtin_frame_address(0);
+    if (here <= c_stack[1] /* c_stack_soft_limit */) {
+        // 256 KiB fiber stack (FiberState::kStackSize). Reserve 192 KiB of
+        // budget; 64 KiB of headroom keeps the genuine-runaway guard live.
+        const uintptr_t budget = 192UL * 1024UL;
+        const uintptr_t margin = 4UL   * 1024UL;
+        c_stack[0] = here;                       // c_stack_top
+        c_stack[2] = here - budget;              // c_stack_hard_limit
+        c_stack[1] = here - (budget - margin);   // c_stack_soft_limit
+    }
+    PyGILState_Release(g);
+}
+
+static void RayInstallFiberPreCallback(void) {
+    ray::core::FiberState::SetFiberPreCallback(
+        &RayReanchorPyRecursionLimitsOnCurrentFiber);
+}
+#else
+static void RayInstallFiberPreCallback(void) { /* no-op on Python < 3.14 */ }
+#endif
+    """
+    void RayInstallFiberPreCallback()
+
+
+# Module-init: install the fiber pre-callback exactly once at import.
+RayInstallFiberPreCallback()
+
+
 cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     """A helper function that converts a CObjectLocation to a Python dict.
 
