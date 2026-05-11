@@ -207,6 +207,23 @@ class RayTrainWorker:
             return_value=return_value,
         )
 
+    def clear_result_queue(self) -> bool:
+        """Drain the result queue, discarding any pending training reports.
+
+        Returns:
+            True if the queue had at least one result, False if it was empty.
+        """
+        execution_context = get_train_context().execution_context
+        had_result = False
+        while True:
+            try:
+                execution_context.result_queue.get_nowait()
+                execution_context.result_queue.task_done()
+                had_result = True
+            except queue.Empty:
+                break
+        return had_result
+
     def shutdown(self):
         """Shutdown the worker.
 

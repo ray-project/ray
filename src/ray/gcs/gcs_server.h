@@ -18,8 +18,8 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -305,7 +305,7 @@ class GcsServer {
   /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   /// GCS PubSub handler (control-plane).
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
   /// Observability pubsub handler.
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
   /// GCS Task info manager for managing task states change events.
