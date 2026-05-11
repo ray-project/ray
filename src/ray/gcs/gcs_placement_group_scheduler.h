@@ -40,6 +40,8 @@ using PGSchedulingFailureCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>, bool)>;
 using PGSchedulingSuccessfulCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
+using PGSchedulingPreparedCallback =
+    std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
 
 using raylet_scheduling_policy::BundleSchedulingContext;
 using raylet_scheduling_policy::SchedulingOptions;
@@ -54,6 +56,8 @@ struct SchedulePgRequest {
   PGSchedulingFailureCallback failure_callback;
   // Called if the pg is successfully committed.
   PGSchedulingSuccessfulCallback success_callback;
+  // Called when all bundles are prepared and persisted before commit phase starts.
+  PGSchedulingPreparedCallback prepared_callback;
 };
 
 class GcsPlacementGroupSchedulerInterface {
@@ -413,7 +417,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void OnAllBundlePrepareRequestReturned(
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
       const PGSchedulingFailureCallback &schedule_failure_handler,
-      const PGSchedulingSuccessfulCallback &schedule_success_handler);
+      const PGSchedulingSuccessfulCallback &schedule_success_handler,
+      const PGSchedulingPreparedCallback &schedule_prepared_handler);
 
   /// Called when all commit requests are returned from nodes.
   void OnAllBundleCommitRequestReturned(
