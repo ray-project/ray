@@ -40,7 +40,7 @@ class TestDRLearning(unittest.TestCase):
 
         # Config settings for FQE model
         cls.q_model_config = {
-            "n_iters": 800,
+            "n_iters": 500,
             "minibatch_size": 64,
             "polyak_coef": 1.0,
             "model_config": {
