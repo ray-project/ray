@@ -576,29 +576,49 @@ cdef increase_recursion_limit():
 cdef extern from *:
     """
 #if PY_VERSION_HEX >= 0x30E0000
+#include <stdio.h>
 #include "ray/core_worker/task_execution/fiber.h"
 
+// Diagnostic build: every call prints to stderr so we can see in worker .err
+// logs (a) whether the hook is installed at module init, (b) whether it fires
+// on fiber dispatch, (c) the guard arm taken, (d) the addresses involved.
+// Once the fix is confirmed working, strip these prints.
 extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
     PyGILState_STATE g = PyGILState_Ensure();
     PyThreadState *tstate = PyThreadState_Get();
     uintptr_t *c_stack =
         (uintptr_t *)((char *)tstate + sizeof(PyThreadState) + sizeof(Py_ssize_t));
     uintptr_t here = (uintptr_t)__builtin_frame_address(0);
+    uintptr_t old_top  = c_stack[0];
+    uintptr_t old_soft = c_stack[1];
+    uintptr_t old_hard = c_stack[2];
     if (here <= c_stack[1] /* c_stack_soft_limit */) {
-        // 256 KiB fiber stack (FiberState::kStackSize). Reserve 192 KiB of
-        // budget; 64 KiB of headroom keeps the genuine-runaway guard live.
         const uintptr_t budget = 192UL * 1024UL;
         const uintptr_t margin = 4UL   * 1024UL;
         c_stack[0] = here;                       // c_stack_top
         c_stack[2] = here - budget;              // c_stack_hard_limit
         c_stack[1] = here - (budget - margin);   // c_stack_soft_limit
+        fprintf(stderr,
+            "[ray-py314-hook] FIRE here=%p tstate=%p "
+            "old top/soft/hard=%p/%p/%p -> new top/soft/hard=%p/%p/%p\\n",
+            (void *)here, (void *)tstate,
+            (void *)old_top, (void *)old_soft, (void *)old_hard,
+            (void *)c_stack[0], (void *)c_stack[1], (void *)c_stack[2]);
+    } else {
+        fprintf(stderr,
+            "[ray-py314-hook] SKIP here=%p tstate=%p soft=%p (here > soft)\\n",
+            (void *)here, (void *)tstate, (void *)old_soft);
     }
+    fflush(stderr);
     PyGILState_Release(g);
 }
 
 static void RayInstallFiberPreCallback(void) {
     ray::core::FiberState::SetFiberPreCallback(
         &RayReanchorPyRecursionLimitsOnCurrentFiber);
+    fprintf(stderr, "[ray-py314-hook] installed hook=%p\\n",
+            (void *)&RayReanchorPyRecursionLimitsOnCurrentFiber);
+    fflush(stderr);
 }
 #else
 static void RayInstallFiberPreCallback(void) { /* no-op on Python < 3.14 */ }
