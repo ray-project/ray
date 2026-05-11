@@ -141,9 +141,6 @@ def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCach
 
 
 CreatePlacementGroupFn = Callable[[CreatePlacementGroupRequest], PlacementGroup]
-CreateReplicaPlacementGroupFn = Callable[
-    [CreatePlacementGroupRequest], ReplicaPlacementGroup
-]
 
 
 def _default_create_placement_group(

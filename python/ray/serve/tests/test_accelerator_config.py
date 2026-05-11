@@ -94,7 +94,9 @@ def test_tpu_accelerator_config_partial_failure_cleanup(mock_tpu_cluster):
     """Test that SlicePlacementGroup cleans up head PGs if a multi-slice reservation fails."""
 
     # Request 2 slices to test partial failure cleanup
-    tpu_config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e", num_slices=2)
+    tpu_config = TPUAcceleratorConfig(
+        topology="4x4", accelerator_version="v6e", num_slices=2
+    )
 
     request = CreatePlacementGroupRequest(
         bundles=[{"CPU": 1}],
