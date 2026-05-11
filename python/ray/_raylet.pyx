@@ -579,11 +579,29 @@ cdef extern from *:
 #include <stdio.h>
 #include "ray/core_worker/task_execution/fiber.h"
 
-// Diagnostic build: every call prints to stderr so we can see in worker .err
-// logs (a) whether the hook is installed at module init, (b) whether it fires
-// on fiber dispatch, (c) the guard arm taken, (d) the addresses involved.
-// Once the fix is confirmed working, strip these prints.
+// Why we leak the gilstate counter:
+//
+// PyGILState_Ensure() auto-creates a PyThreadState the first time it runs on
+// a given OS thread, registers it via autoTSSkey, and bumps the per-tstate
+// gilstate_counter to 1. PyGILState_Release at counter==0 *destroys* the
+// auto-created tstate. If we let that happen, the next PyGILState_Ensure
+// (from inside the user-callback path that runs immediately after our hook)
+// allocates a fresh tstate and calls _Py_InitializeRecursionLimits, which
+// re-anchors c_stack_* to the current OS pthread stack — overwriting our
+// fiber-stack re-anchor and putting us right back into the crash.
+//
+// The fix: leak gilstate_counter by +1 exactly once per fiber-runner OS
+// thread. The tstate stays alive for the lifetime of the process; the
+// callback's PyGILState_Ensure / Release pair just bounces counter 1↔2
+// without ever tearing down the tstate (or, importantly, the c_stack_*
+// fields we wrote). The GIL itself is still releasable: Ray's
+// run_async_func_or_coro_in_event_loop wraps YieldCurrentFiber in
+// `with nogil:` (_raylet.pyx:4569 area), which calls PyEval_SaveThread
+// directly — that path bypasses gilstate_counter and releases the GIL
+// regardless. So the AsyncIO Thread can still take the GIL during awaits.
 extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
+    static thread_local bool gil_leaked = false;
+
     PyGILState_STATE g = PyGILState_Ensure();
     PyThreadState *tstate = PyThreadState_Get();
     uintptr_t *c_stack =
@@ -599,18 +617,31 @@ extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
         c_stack[2] = here - budget;              // c_stack_hard_limit
         c_stack[1] = here - (budget - margin);   // c_stack_soft_limit
         fprintf(stderr,
-            "[ray-py314-hook] FIRE here=%p tstate=%p "
+            "[ray-py314-hook] FIRE here=%p tstate=%p leaked=%d "
             "old top/soft/hard=%p/%p/%p -> new top/soft/hard=%p/%p/%p\\n",
-            (void *)here, (void *)tstate,
+            (void *)here, (void *)tstate, (int)gil_leaked,
             (void *)old_top, (void *)old_soft, (void *)old_hard,
             (void *)c_stack[0], (void *)c_stack[1], (void *)c_stack[2]);
     } else {
         fprintf(stderr,
-            "[ray-py314-hook] SKIP here=%p tstate=%p soft=%p (here > soft)\\n",
-            (void *)here, (void *)tstate, (void *)old_soft);
+            "[ray-py314-hook] SKIP here=%p tstate=%p leaked=%d soft=%p (here > soft)\\n",
+            (void *)here, (void *)tstate, (int)gil_leaked, (void *)old_soft);
     }
     fflush(stderr);
-    PyGILState_Release(g);
+
+    if (gil_leaked) {
+        // Subsequent calls on the same OS thread: normal Release pairs with
+        // Ensure above. Counter goes back down by one, but stays >= 1 thanks
+        // to the leak below from the first call. tstate (and our re-anchor)
+        // survives.
+        PyGILState_Release(g);
+    } else {
+        // First call on this OS thread: do NOT release. gilstate_counter
+        // stays at 1 forever, pinning the tstate so the callback path can't
+        // tear it down.
+        gil_leaked = true;
+        (void)g;
+    }
 }
 
 static void RayInstallFiberPreCallback(void) {
