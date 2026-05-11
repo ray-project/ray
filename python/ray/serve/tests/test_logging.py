@@ -1193,6 +1193,10 @@ def test_http_access_log_client_address(
         wait_for_condition(check_log, timeout=20)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1",
+    reason="gRPC not supported for HAProxy.",
+)
 @pytest.mark.parametrize(
     "ray_instance",
     [

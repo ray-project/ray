@@ -1098,54 +1098,5 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
     serve.shutdown()
 
 
-def _grpc_servicer_functions():
-    return [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
-    ]
-
-
-def test_haproxy_grpc_unary_unary_basic(ray_shutdown):
-    """End-to-end gRPC unary-unary call routed through HAProxy.
-
-    Verifies HAProxy forwards an incoming gRPC request on the gRPC port to a
-    replica direct-ingress gRPC server using HTTP/2 cleartext, with routing
-    decided by the `application` gRPC metadata.
-    """
-    import grpc as grpc_lib
-
-    from ray.serve._private.test_utils import (
-        ping_grpc_call_method,
-        ping_grpc_healthz,
-    )
-    from ray.serve.config import gRPCOptions
-    from ray.serve.tests.test_config_files.grpc_deployment import g
-
-    ray.init(num_cpus=8)
-    grpc_port = 9000
-    serve.start(
-        http_options=dict(port=8003),
-        grpc_options=gRPCOptions(
-            port=grpc_port,
-            grpc_servicer_functions=_grpc_servicer_functions(),
-        ),
-    )
-    serve.run(g)
-
-    channel = grpc_lib.insecure_channel(f"localhost:{grpc_port}")
-    try:
-        # Healthz / ListApplications carry no `application` metadata; they hit
-        # the gRPC frontend's default backend (any healthy replica).
-        ping_grpc_healthz(channel)
-
-        # Unary-unary user method routed by `application` metadata to the
-        # `grpc-default` backend.
-        ping_grpc_call_method(channel, "default")
-    finally:
-        channel.close()
-
-    serve.shutdown()
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
