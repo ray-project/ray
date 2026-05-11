@@ -769,6 +769,7 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
     expected_request_kwargs = dict(
         requester_id="train-test-run-123",
         resources=[resources_per_worker] * num_workers,
+        label_selectors=[{}] * num_workers,
         expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
         priority=ResourceRequestPriority.HIGH,
     )

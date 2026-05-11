@@ -418,19 +418,13 @@ class TrainController:
         scaling_config = self._train_run_context.scaling_config
 
         # Check for `label_selector` to influence WorkerGroup scheduling.
-        label_selector = None
-        if isinstance(scaling_config.label_selector, list):
-            label_selector = scaling_config.label_selector[:num_workers]
-        elif isinstance(scaling_config.label_selector, dict):
-            label_selector = [
-                scaling_config.label_selector.copy() for _ in range(num_workers)
-            ]
+        label_selector = scaling_config._label_selector_per_worker(num_workers)
         for callback in self._controller_callbacks:
             selector = callback.on_controller_start_worker_group(
                 scaling_config=scaling_config, num_workers=num_workers
             )
             if selector:
-                if label_selector:
+                if any(label_selector):
                     logger.warning(
                         f"Overriding `ScalingConfig.label_selector` {label_selector} "
                         f"with label_selector returned by user-specified callback {selector}"
