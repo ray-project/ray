@@ -134,9 +134,7 @@ class _S3FSSessionCredentialProvider:
 
     _DEFAULT_TTL = timedelta(minutes=30)
 
-    def __init__(
-        self, session: Any, ttl: Optional[timedelta] = None
-    ) -> None:
+    def __init__(self, session: Any, ttl: Optional[timedelta] = None) -> None:
         self._session = session
         self._ttl = ttl if ttl is not None else self._DEFAULT_TTL
         self._lock = threading.RLock()

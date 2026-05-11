@@ -281,6 +281,23 @@ def _raising_session(exc=RuntimeError("no creds")):
     return session
 
 
+def _async_session(access_key="AKIA_AIO", secret_key="s", token="t"):
+    """Build an aiobotocore-style session returning a credentials coroutine."""
+
+    async def _frozen():
+        return MagicMock(access_key=access_key, secret_key=secret_key, token=token)
+
+    async def _creds():
+        return MagicMock(
+            get_frozen_credentials=MagicMock(return_value=_frozen()),
+            expiry_time=None,
+        )
+
+    session = MagicMock()
+    session.get_credentials = MagicMock(return_value=_creds())
+    return session
+
+
 def _wrap_s3fs(session=None, storage_options=None, anon=False):
     """Build a PyFileSystem(FSSpecHandler(stub)) backed by an s3fs.S3FileSystem mock.
 
@@ -309,35 +326,23 @@ def _wrap_s3fs(session=None, storage_options=None, anon=False):
 class TestS3FSSessionCredentialProvider:
     """``_S3FSSessionCredentialProvider`` — obstore callback for session-backed s3fs."""
 
-    def test_returns_obstore_dict_sync_session(self):
-        # Botocore sessions return non-awaitable Credentials objects; the
-        # provider must still produce the obstore-shaped dict.
-        provider = _S3FSSessionCredentialProvider(_sync_session("AKIA"))
+    @pytest.mark.parametrize(
+        "session_factory,expected_key",
+        [
+            # Botocore returns plain Credentials objects.
+            pytest.param(lambda: _sync_session("AKIA"), "AKIA", id="sync-botocore"),
+            # aiobotocore returns coroutines from get_credentials and
+            # get_frozen_credentials; the provider drives either via
+            # ``inspect.isawaitable``, which also covers Tasks / Futures / custom
+            # awaitables, not just bare coroutines.
+            pytest.param(_async_session, "AKIA_AIO", id="async-aiobotocore"),
+        ],
+    )
+    def test_returns_obstore_dict(self, session_factory, expected_key):
+        provider = _S3FSSessionCredentialProvider(session_factory())
         result = asyncio.run(provider())
-        assert result["access_key_id"] == "AKIA"
-        assert result["secret_access_key"] == "sk"
-        assert result["token"] == "tk"
+        assert result["access_key_id"] == expected_key
         assert isinstance(result["expires_at"], datetime)
-
-    def test_returns_obstore_dict_async_session(self):
-        # aiobotocore returns coroutines from get_credentials /
-        # get_frozen_credentials; the provider must drive them. We use
-        # ``inspect.isawaitable`` so Tasks / Futures / custom awaitables
-        # work too, not just bare coroutines.
-        async def _frozen():
-            return MagicMock(access_key="AKIA_AIO", secret_key="s", token="t")
-
-        async def _creds():
-            return MagicMock(
-                get_frozen_credentials=MagicMock(return_value=_frozen()),
-                expiry_time=None,
-            )
-
-        session = MagicMock()
-        session.get_credentials = MagicMock(return_value=_creds())
-        result = asyncio.run(_S3FSSessionCredentialProvider(session)())
-        assert result["access_key_id"] == "AKIA_AIO"
-        assert result["token"] == "t"
 
     def test_caches_until_expiry(self):
         # Repeated calls within the TTL must not re-enter the session — obstore
@@ -386,22 +391,21 @@ class TestS3FSSessionCredentialProvider:
         fs = MagicMock(session=None, _session=None)
         assert _S3FSSessionCredentialProvider.from_fsspec_fs(fs) is None
 
-    def test_can_fetch_credentials_true(self):
-        provider = _S3FSSessionCredentialProvider(_sync_session("AKIA"))
-        assert provider.can_fetch_credentials() is True
-
     @pytest.mark.parametrize(
-        "session_factory",
+        "session_factory,expected",
         [
-            pytest.param(_raising_session, id="session-raises"),
+            pytest.param(lambda: _sync_session("AKIA"), True, id="success"),
+            pytest.param(_raising_session, False, id="session-raises"),
             pytest.param(
-                lambda: _sync_session(None, None, None), id="empty-access-key"
+                lambda: _sync_session(None, None, None),
+                False,
+                id="empty-access-key",
             ),
         ],
     )
-    def test_can_fetch_credentials_false(self, session_factory):
+    def test_can_fetch_credentials(self, session_factory, expected):
         provider = _S3FSSessionCredentialProvider(session_factory())
-        assert provider.can_fetch_credentials() is False
+        assert provider.can_fetch_credentials() is expected
 
 
 class TestExtractCredentialsFromFilesystemFsspecSession:
@@ -415,9 +419,7 @@ class TestExtractCredentialsFromFilesystemFsspecSession:
         wrapped = _wrap_s3fs(_sync_session("AKIA_STS"))
         result = _extract_credentials_from_filesystem(wrapped)
         assert result is not None
-        assert isinstance(
-            result["credential_provider"], _S3FSSessionCredentialProvider
-        )
+        assert isinstance(result["credential_provider"], _S3FSSessionCredentialProvider)
         # Static keys are NOT in kwargs — they come from the provider on demand.
         assert "access_key_id" not in result
         assert "secret_access_key" not in result
