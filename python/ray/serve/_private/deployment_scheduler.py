@@ -677,11 +677,12 @@ class DeploymentScheduler(ABC):
                 # Import ReplicaPlacementGroup inline here to avoid circular dependency with default_impl
                 from ray.serve._private.default_impl import ReplicaPlacementGroup
 
-                assert isinstance(
-                    pg_result, ReplicaPlacementGroup
-                ), "_create_placement_group_fn must return a ReplicaPlacementGroup."
-                pg = pg_result.placement_group
-                replica_pg = pg_result
+                if isinstance(pg_result, ReplicaPlacementGroup):
+                    placement_group = pg_result.placement_group
+                    replica_pg = pg_result
+                else:
+                    placement_group = pg_result
+                    replica_pg = None
             except Exception:
                 # We add a defensive exception here, so the controller can
                 # make progress even if the placement group isn't created.
@@ -694,7 +695,7 @@ class DeploymentScheduler(ABC):
                 )
                 return False
             scheduling_strategy = PlacementGroupSchedulingStrategy(
-                placement_group=pg,
+                placement_group=placement_group,
                 placement_group_capture_child_tasks=True,
             )
             target_labels = None
@@ -738,11 +739,14 @@ class DeploymentScheduler(ABC):
             )
 
             # Only clean up single-replica PGs. Gang PGs are managed elsewhere.
-            if (
-                scheduling_request.gang_placement_group is None
-                and replica_pg is not None
-            ):
-                replica_pg.shutdown()
+            if scheduling_request.gang_placement_group is None:
+                if replica_pg is not None:
+                    replica_pg.shutdown()
+                elif (
+                    placement_group is not None
+                    and scheduling_request.placement_group_bundles is not None
+                ):
+                    ray.util.remove_placement_group(placement_group)
 
             return False
 
