@@ -432,6 +432,14 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_allocation(op)
 
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return planned_grant - usage for the given operator, or None if the
+        operator has no designated allocation. Negative values mean the op is
+        consuming more than its planned grant."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_signed_headroom(op)
+
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
         return (
