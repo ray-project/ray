@@ -1728,19 +1728,30 @@ class SingletonThreadRouter(Router):
             selection = await cm.__aenter__()
             return selection, cm
 
+        async def exit_context(cm, exc_type, exc_val, exc_tb):
+            return await cm.__aexit__(exc_type, exc_val, exc_tb)
+
         future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
-        selection, context_manager = await asyncio.wrap_future(future)
+        try:
+            selection, context_manager = await asyncio.wrap_future(future)
+        except BaseException:
+            # Cancelled after __aenter__ reserved the slot but before we
+            # observed the result: exit the entered CM to release the slot.
+            if future.done() and not future.cancelled() and future.exception() is None:
+                entered_cm = future.result()[1]
+                exc_info = sys.exc_info()
+                cleanup = asyncio.run_coroutine_threadsafe(
+                    exit_context(entered_cm, *exc_info), self._asyncio_loop
+                )
+                await asyncio.shield(asyncio.wrap_future(cleanup))
+            raise
 
         try:
             yield selection
         finally:
-            # Exit context on router loop
-            async def exit_context(exc_type, exc_val, exc_tb):
-                return await context_manager.__aexit__(exc_type, exc_val, exc_tb)
-
             exc_info = sys.exc_info()
             future = asyncio.run_coroutine_threadsafe(
-                exit_context(*exc_info), self._asyncio_loop
+                exit_context(context_manager, *exc_info), self._asyncio_loop
             )
             await asyncio.wrap_future(future)
 

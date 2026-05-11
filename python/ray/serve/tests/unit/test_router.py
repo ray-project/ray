@@ -4,6 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
@@ -40,6 +41,7 @@ from ray.serve._private.request_router import (
     RunningReplica,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
@@ -2455,6 +2457,86 @@ class TestSingletonThreadRouter:
 
         dispatch_future.cancel()
         pending_coros[0].close()
+
+    @pytest.mark.asyncio
+    async def test_choose_replica_cancel_during_entry_releases_slot(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        """Cancellation between __aenter__ completing on the router loop and
+        wrap_future returning on the outer loop must still call __aexit__.
+
+        The race: the inner CM's __aenter__ runs on the router loop and
+        reserves a slot. The bridge's concurrent.futures.Future is set, but
+        the outer task is cancelled before observing the result. If the
+        bridge doesn't protect this gap, ``context_manager`` is unbound
+        when the bridge returns, __aexit__ never runs, and the slot is
+        leaked.
+        """
+        fake_router, _ = setup_router
+        thread_router = setup_singleton_thread_router
+        outer_loop = asyncio.get_running_loop()
+
+        fake_selection = ReplicaSelection(
+            replica_id="fake-replica",
+            node_ip="127.0.0.1",
+            port=None,
+            node_id="fake-node",
+            availability_zone=None,
+            _replica=None,
+            _deployment_id=None,
+            _request_metadata=None,
+            _method_name="",
+            _slot_token="",
+        )
+
+        exit_called = threading.Event()
+        outer_task_holder: List[asyncio.Task] = []
+
+        @asynccontextmanager
+        async def fake_choose_replica(*args, **kwargs):
+            # Wait so the outer task enters `await wrap_future(...)` before
+            # we finish entry; otherwise the router loop races past and the
+            # cancellation window never opens.
+            await asyncio.sleep(0.05)
+
+            def cancel_outer():
+                if outer_task_holder:
+                    outer_task_holder[0].cancel()
+
+            # Queue cancel_outer on the outer loop *before* we return.
+            # Returning fires the bridge's future, which then queues
+            # set_result on the outer loop -- behind cancel_outer (FIFO).
+            # So the outer task is cancelled before it sees the result.
+            outer_loop.call_soon_threadsafe(cancel_outer)
+            try:
+                yield fake_selection
+            finally:
+                exit_called.set()
+
+        monkeypatch.setattr(fake_router, "choose_replica", fake_choose_replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async def runner():
+            async with thread_router.choose_replica(request_metadata):
+                pass
+
+        task = asyncio.create_task(runner())
+        outer_task_holder.append(task)
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert exit_called.wait(timeout=2.0), (
+            "Slot leaked: __aexit__ was not called after outer task was "
+            "cancelled between __aenter__ completing and wrap_future returning."
+        )
 
     @pytest.mark.asyncio
     async def test_cancellation_propagation(
