@@ -296,7 +296,7 @@ def _generate_commit_checkpoint_transform(
     def commit_checkpoints(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
-        # [lance-ckpt / Bug 2-B fix] Eagerly consume upstream blocks FIRST.
+        # Eagerly consume upstream blocks FIRST.
         # This transform is wrapped with ``yield from`` by BlockMapTransformFn,
         # and is called lazily by the downstream ``collect_stats_fn``. When
         # the downstream first pulls us, our body starts executing before the
@@ -355,7 +355,7 @@ def _generate_non_atomic_write_checkpoint_transform(
     """
 
     def write_checkpoint(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        # [lance-ckpt / Bug 2 fix] Combine all blocks FIRST. This is critical:
+        # Combine all blocks FIRST. This is critical:
         # write_fn is a lazy generator wrapped by BlockMapTransformFn — its
         # body (which calls datasink.write() and sets
         # ctx.kwargs["_datasink_write_return"]) only runs when a downstream
@@ -363,7 +363,7 @@ def _generate_non_atomic_write_checkpoint_transform(
         # forces write_fn to actually execute. If we read the kwarg before
         # consuming blocks, write_return would still be None/stale and the
         # `.meta.pkl` metadata would never be written, breaking crash
-        # recovery for any non-atomic datasink (Iceberg, Lance, ...).
+        # recovery for any non-atomic datasink (Iceberg, ...).
         block_list, combined_block = _combine_blocks(blocks)
         ba = BlockAccessor.for_block(combined_block)
 
@@ -451,7 +451,6 @@ def _wrap_iceberg_on_write_complete(
     ``delete_checkpoint_on_success`` to ``False`` at plan time so the framework's
     auto-delete becomes a no-op, and manually delete the directory here only after
     the Iceberg commit has succeeded. See
-    ``plan/lance_test/bugfix_analysis/lance_ckpt_delete_before_commit_analysis.md``.
 
     Args:
         datasink: The IcebergDatasink to wrap.
