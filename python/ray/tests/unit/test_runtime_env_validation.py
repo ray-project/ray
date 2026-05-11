@@ -87,7 +87,7 @@ class TestValidateWorkingDir:
         ]:
             with pytest.raises(
                 ValueError,
-                match="Only .zip, .tar.gz, and .tgz files supported for remote URIs.",
+                match=r"Only \.zip, \.whl, \.tar\.gz, and \.tgz files supported for remote URIs\.",
             ):
                 parse_and_validate_working_dir(uri)
 
