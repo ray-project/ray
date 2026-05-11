@@ -79,9 +79,12 @@ defaults
     errorfile 502 {{ config.error_file_path }}
     errorfile 504 {{ config.error_file_path }}
     {%- endif %}
-    {%- if config.enable_hap_optimization %}
-    load-server-state-from-file global
-    {%- endif %}
+    # `load-server-state-from-file` is intentionally not emitted: with
+    # `server-template`, the slot ↔ replica mapping is owned by the
+    # proxy actor's in-memory pool. Loading a saved state file would
+    # restore the previous mapping inside HAProxy while the actor
+    # re-assigns slots first-free from a fresh pool, producing
+    # duplicate slots both pointing at the same replica.
     balance {{ config.balance_algorithm }}
 frontend prometheus
     bind :{{ config.metrics_port }}

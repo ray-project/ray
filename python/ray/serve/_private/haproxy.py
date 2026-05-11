@@ -331,9 +331,25 @@ class BackendConfig:
     # Size of this backend's `server-template` slot pool. The rendered
     # config emits `server-template srv 1-{slot_pool_size} ...` so the
     # backend can hold up to `slot_pool_size` replicas before the runtime
-    # API has to fall back to a reload to re-split. Set by HAProxyManager
-    # via `_compute_slot_split` on every config (re)generation.
+    # API has to fall back to a reload to re-split. In production this
+    # is set by HAProxyManager via `_compute_slot_split` on every config
+    # (re)generation. Defaults to a sensible non-zero value via
+    # `__post_init__` so direct-construction callers (typically tests)
+    # don't need to specify it -- a zero value would render an invalid
+    # `server-template srv 1-0` line.
     slot_pool_size: int = 0
+
+    def __post_init__(self) -> None:
+        # If the caller didn't set a slot pool size, derive a sensible
+        # default from the current server count. Production sets this
+        # explicitly post-init via `_compute_slot_split`; this default is
+        # for direct-construction callers (tests) so an unset value
+        # doesn't produce an invalid `server-template 1-0` line.
+        if self.slot_pool_size <= 0:
+            self.slot_pool_size = max(
+                len(self.servers) * 2,
+                RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND,
+            )
 
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
@@ -914,12 +930,15 @@ class HAProxyApi(ProxyApi):
             method binds those servers to slots without requiring the
             caller to make an extra runtime-API call.
 
-        Step 3 is best-effort: on failure HAProxy is up but slots are
-        unpopulated; the next broadcast will diff against
-        `backend_configs` (which already reflects desired state) and
-        find no work to do, leaving slots empty. To recover, callers
-        should observe a failed apply and retry. In practice failures
-        here are rare since we just restarted HAProxy.
+        On step-3 failure we wipe `_slot_pools` AND `backend_configs`
+        so the next broadcast goes through the first-time-setup path
+        (returns False, caller reloads, this method runs again with a
+        fresh HAProxy admin socket). Without this wipe, the actor's
+        cached state would say "slots are assigned" while HAProxy's
+        templated slots are still at the placeholder, and subsequent
+        diffs would find no work to do -- HAProxy would silently serve
+        nothing. Failures here are rare in practice since we just
+        restarted HAProxy.
         """
         new_pools: Dict[str, BackendSlotPool] = {}
         for name, bc in self.backend_configs.items():
@@ -940,6 +959,7 @@ class HAProxyApi(ProxyApi):
         if not self.backend_configs:
             return
         commands: List[str] = []
+        placed_count = 0
         for backend_name, bc in self.backend_configs.items():
             pool = self._slot_pools.get(backend_name)
             if pool is None or not bc.servers:
@@ -960,21 +980,36 @@ class HAProxyApi(ProxyApi):
                     f"addr {server.host} port {server.port}"
                 )
                 commands.append(f"set server {backend_name}/srv{slot} state ready")
+                placed_count += 1
         if not commands:
             return
         try:
             await self._send_runtime_commands(commands)
             logger.info(
                 "Slot population OK: %d servers placed across %d backends",
-                sum(len(bc.servers) for bc in self.backend_configs.values()),
+                placed_count,
                 len(self._slot_pools),
                 extra={"log_to_stderr": True},
             )
         except Exception as e:
-            logger.warning(
-                f"Slot population failed after reload: {e}. HAProxy is up "
-                f"but no replicas are routable until the next broadcast retry."
+            # On failure, the in-memory pool has assignments that HAProxy
+            # doesn't know about: the templated slots are still disabled
+            # at the placeholder address. The next broadcast with
+            # unchanged servers would see an empty diff and skip the
+            # work, leaving HAProxy serving nothing. Force recovery by
+            # wiping our cached state so the next broadcast goes through
+            # the first-time-setup path (returns False, caller reloads,
+            # this method runs again with a fresh HAProxy admin socket).
+            logger.error(
+                "Slot population failed after reload: %s. Wiping pool and "
+                "backend_configs to force a clean recovery on the next "
+                "broadcast.",
+                e,
+                extra={"log_to_stderr": True},
             )
+            self._slot_pools = {}
+            self.backend_configs = {}
+            return
         # Best-effort snapshot for live debugging.
         self._write_slot_mapping_for_debug()
 
@@ -1065,12 +1100,6 @@ class HAProxyApi(ProxyApi):
         )
         return proc
 
-    async def _save_server_state(self) -> None:
-        """Save the server state to the file."""
-        server_state = await self._send_socket_command("show servers state")
-        with open(self.cfg.server_state_file, "w") as f:
-            f.write(server_state)
-
     async def _terminate_old_procs(self) -> None:
         """SIGKILL any old HAProxy procs we're still tracking.
 
@@ -1152,24 +1181,14 @@ class HAProxyApi(ProxyApi):
             await self._wait_for_hap_availability(old_proc)
             phases.append(f"old_proc_check={time.monotonic() - t0:.2f}s")
 
-            # Save server state if optimization is enabled. Treat failures
-            # as non-fatal: the state file is purely an optimization (lets
-            # the new HAProxy preserve per-server connection counts across
-            # reload), and a stale or missing file just causes HAProxy to
-            # start counters from zero. A `show servers state` admin-socket
-            # timeout here under load used to abort the entire reload --
-            # which then cascaded since the next broadcast retried with
-            # the same overloaded socket.
-            if self.cfg.enable_hap_optimization:
-                t0 = time.monotonic()
-                try:
-                    await self._save_server_state()
-                    phases.append(f"save_state={time.monotonic() - t0:.2f}s")
-                except Exception as e:
-                    phases.append(f"save_state_skipped={time.monotonic() - t0:.2f}s")
-                    logger.warning(
-                        f"Skipping HAProxy server state save before reload: {e}"
-                    )
+            # Note: server-state file save/load is intentionally skipped.
+            # With `server-template`, every reload runs `_rebind_slot_pools`
+            # which re-assigns slots first-free from a fresh pool. Loading
+            # the state file in the new HAProxy would also restore the
+            # previous mapping; the two would collide and the same replica
+            # would end up bound to two slots (both routable, doubling
+            # traffic to it). We keep `-x` FD transfer for seamless
+            # listener migration since that's independent of slot state.
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
@@ -1981,6 +2000,16 @@ class HAProxyManager(ProxyActorInterface):
         self._coalesce_task: Optional[asyncio.Task] = None
         self._coalesce_pending = False
 
+        # Cached slot-pool split, keyed by backend name. Recomputed only
+        # when the set of backends changes or a backend's replica count
+        # exceeds its current allocation -- without this caching, the
+        # proportional split would shift on every broadcast (since
+        # changing any backend's replica count changes the ratios for
+        # all backends), every broadcast would see `slot_pool_size`
+        # differ in the diff, and every broadcast would trigger a
+        # reload, defeating the runtime-API path entirely.
+        self._current_split: Dict[str, int] = {}
+
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
@@ -2248,12 +2277,20 @@ class HAProxyManager(ProxyActorInterface):
     def _build_name_to_backend_configs(self) -> Dict[str, BackendConfig]:
         """Snapshot the current target groups + fallbacks into backend configs.
 
-        Also computes the per-backend slot pool size via `_compute_slot_split`
-        and stamps each BackendConfig with its share. Slot pool sizes are
-        part of the rendered config (they show up in `server-template
-        srv 1-N`), so a change in the split is treated as a structural
-        change by `_compute_backend_diff` -- which is what we want: when
-        the split shifts, we need a reload to update the template.
+        Stamps each BackendConfig with its slot-pool size from the
+        cached split. The split is recomputed only when:
+          - The set of backends changes (a backend is added or removed), or
+          - Any backend's current replica count exceeds its allocated
+            slot pool size (i.e. it has overflowed and needs more).
+
+        Without this caching, the proportional split would shift on
+        every replica-count change (since the ratios reallocate among
+        all backends). That would make `slot_pool_size` differ in the
+        diff on every broadcast, marking it as a structural change,
+        and forcing a reload on every broadcast -- defeating the entire
+        runtime-API path. With caching, the split is stable until a
+        backend overflows or the topology changes, both of which
+        already justify a reload.
         """
         backend_configs = []
         for target_group in self._target_groups:
@@ -2266,11 +2303,26 @@ class HAProxyManager(ProxyActorInterface):
             backend_config = self._create_backend_config(target_group, fallback_target)
             backend_configs.append(backend_config)
 
-        # Stamp each backend with its slot-pool size from the split.
         replica_counts = {bc.name: len(bc.servers) for bc in backend_configs}
-        split = _compute_slot_split(replica_counts)
+        backend_set_changed = set(replica_counts) != set(self._current_split)
+        any_overflow = any(
+            replica_counts[name] > self._current_split.get(name, 0)
+            for name in replica_counts
+        )
+        if backend_set_changed or any_overflow:
+            old_split = self._current_split
+            self._current_split = _compute_slot_split(replica_counts)
+            if self._current_split != old_split:
+                logger.info(
+                    "Slot split recomputed (set_changed=%s, overflow=%s): %s",
+                    backend_set_changed,
+                    any_overflow,
+                    self._current_split,
+                    extra={"log_to_stderr": True},
+                )
+
         for bc in backend_configs:
-            bc.slot_pool_size = split.get(bc.name, 0)
+            bc.slot_pool_size = self._current_split.get(bc.name, 0)
 
         return {bc.name: bc for bc in backend_configs}
 

@@ -314,7 +314,12 @@ defaults
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
     errorfile 502 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
-    load-server-state-from-file global
+    # `load-server-state-from-file` is intentionally not emitted: with
+    # `server-template`, the slot ↔ replica mapping is owned by the
+    # proxy actor's in-memory pool. Loading a saved state file would
+    # restore the previous mapping inside HAProxy while the actor
+    # re-assigns slots first-free from a fresh pool, producing
+    # duplicate slots both pointing at the same replica.
     balance random(2)
 frontend prometheus
     bind :9101
