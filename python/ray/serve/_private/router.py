@@ -580,7 +580,7 @@ class Router(ABC):
         *request_args,
         **request_kwargs,
     ) -> AsyncIterator[ReplicaSelection]:
-        pass
+        yield
 
     @abstractmethod
     def dispatch(

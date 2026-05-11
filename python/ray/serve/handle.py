@@ -1218,6 +1218,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         - If dispatch() is called, the slot is consumed normally.
         - If the context exits without dispatch (e.g., exception, early return), the slot is released.
 
+        The method name is determined at ``choose_replica`` time. Any method name on
+        the handle passed to ``dispatch`` is ignored.
+
         Args:
             *args: Arguments that may influence routing decisions
             **kwargs: Keyword arguments that may influence routing decisions.
@@ -1243,6 +1246,13 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         returns a `DeploymentResponseGenerator` instead.
         If the selected replica becomes unavailable before dispatch executes,
         ``ReplicaUnavailableError`` is propagated from the router dispatch path.
+
+        The returned response must be awaited before the ``choose_replica`` context
+        exits. The router fires ``on_request_completed`` exactly once per dispatched
+        request to decrement its queue-length cache. Exiting the context with an
+        unawaited response fires it twice — once during context cleanup, then again
+        when the deferred dispatch task eventually completes — leaving the cache
+        under-counted.
 
         Args:
             selection: A ReplicaSelection from choose_replica() context manager.
