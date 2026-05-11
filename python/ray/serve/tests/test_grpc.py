@@ -770,7 +770,9 @@ def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
     )
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_client_streaming(ray_instance, ray_shutdown):
     """Test gRPC client streaming (stream-unary) requests.
 
@@ -910,7 +912,9 @@ def test_grpc_client_streaming_not_found(ray_instance, ray_shutdown):
     assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_bidirectional_streaming(ray_instance, ray_shutdown):
     """Test gRPC bidirectional streaming (stream-stream) requests.
 
@@ -960,7 +964,9 @@ def test_grpc_bidirectional_streaming(ray_instance, ray_shutdown):
     assert responses[2].num_x2 == 40
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_client_streaming_with_grpc_context(ray_instance, ray_shutdown):
     """Test gRPC client streaming with gRPC context.
 
@@ -1020,7 +1026,9 @@ def test_grpc_client_streaming_with_grpc_context(ray_instance, ray_shutdown):
     assert ("custom-key", "custom-value") in rpc_error.trailing_metadata()
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_bidirectional_streaming_with_grpc_context(ray_instance, ray_shutdown):
     """Test gRPC bidirectional streaming with gRPC context.
 
@@ -1078,7 +1086,9 @@ def test_grpc_bidirectional_streaming_with_grpc_context(ray_instance, ray_shutdo
     assert ("bidi-key", "bidi-value") in rpc_error.trailing_metadata()
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
 def test_grpc_streaming_internal_error(ray_instance, ray_shutdown, streaming_type: str):
     """Test gRPC streaming request with internal error.
@@ -1131,7 +1141,9 @@ def test_grpc_streaming_internal_error(ray_instance, ray_shutdown, streaming_typ
     assert error_message in rpc_error.details()
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
 def test_grpc_streaming_timeout(ray_instance, ray_shutdown, streaming_type: str):
     """Test gRPC streaming request timeout.
@@ -1195,7 +1207,9 @@ def test_grpc_streaming_timeout(ray_instance, ray_shutdown, streaming_type: str)
     ray.get(signal_actor.send.remote(clear=True))
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_client_streaming_empty_stream(ray_instance, ray_shutdown):
     """Test gRPC client streaming with empty stream.
 
@@ -1239,7 +1253,9 @@ def test_grpc_client_streaming_empty_stream(ray_instance, ray_shutdown):
     assert response.num_x2 == 0
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_bidi_streaming_empty_stream(ray_instance, ray_shutdown):
     """Test gRPC bidirectional streaming with empty stream.
 
@@ -1281,7 +1297,9 @@ def test_grpc_bidi_streaming_empty_stream(ray_instance, ray_shutdown):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
 async def test_grpc_streaming_cancellation(
     ray_instance, ray_shutdown, streaming_type: str
@@ -1351,7 +1369,9 @@ async def test_grpc_streaming_cancellation(
     ray.get(cancelled_signal_actor.send.remote(clear=True))
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
 def test_grpc_streaming_context_with_exception(
     ray_instance, ray_shutdown, streaming_type: str
@@ -1418,7 +1438,9 @@ def test_grpc_streaming_context_with_exception(
     assert real_error_message in rpc_error.details()
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
 def test_grpc_streaming_backpressure(ray_instance, ray_shutdown, streaming_type: str):
     """Test gRPC streaming with slow consumer (backpressure).
@@ -1488,7 +1510,9 @@ def test_grpc_streaming_backpressure(ray_instance, ray_shutdown, streaming_type:
             assert response.num_x2 == i + 1
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
 def test_grpc_streaming_client_error_mid_stream(
     ray_instance, ray_shutdown, streaming_type: str
@@ -1556,7 +1580,9 @@ def test_grpc_streaming_client_error_mid_stream(
             list(stub.BidiStreaming(error_request_generator()))
 
 
-@pytest.mark.skipif(RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
+)
 def test_grpc_streaming_client_closes_channel_mid_stream(ray_instance, ray_shutdown):
     """Test gRPC streaming when client closes channel mid-stream.
 

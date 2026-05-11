@@ -617,7 +617,6 @@ class HAProxyConfig:
         else:
             routes_message = message
 
-
         return HealthRouteInfo(
             healthy=healthy,
             status=200 if healthy else 503,
