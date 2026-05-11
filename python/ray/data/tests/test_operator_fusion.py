@@ -43,8 +43,8 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
@@ -67,10 +67,10 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     # Test that a chain of different map operators are fused.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    map1 = MapRows(read_op, lambda x: x)
-    map2 = MapBatches(map1, lambda x: x)
-    map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, fn=lambda x: x)
+    map1 = MapRows(lambda x: x, input_dependencies=[read_op])
+    map2 = MapBatches(lambda x: x, input_dependencies=[map1])
+    map3 = FlatMap(lambda x: x, input_dependencies=[map2])
+    map4 = Filter(fn=lambda x: x, input_dependencies=[map3])
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -116,8 +116,12 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
             ray_remote_args={"resources": {"non-existent": 1}},
             parallelism=1,
         )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        op = MapBatches(
+            lambda x: x, input_dependencies=[read_op], ray_remote_args=up_remote_args
+        )
+        op = MapBatches(
+            lambda x: x, input_dependencies=[op], ray_remote_args=down_remote_args
+        )
         logical_plan = LogicalPlan(op, ctx)
 
         physical_plan, _ = planner.plan(logical_plan)
@@ -167,8 +171,12 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         read_op = get_parquet_read_logical_op(
             ray_remote_args={"resources": {"non-existent": 1}}
         )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        op = MapBatches(
+            lambda x: x, input_dependencies=[read_op], ray_remote_args=up_remote_args
+        )
+        op = MapBatches(
+            lambda x: x, input_dependencies=[op], ray_remote_args=down_remote_args
+        )
         logical_plan = LogicalPlan(op, ctx)
         physical_plan, _ = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -199,8 +207,10 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # the former comes before the latter.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x)
-    op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(lambda x: x, input_dependencies=[read_op])
+    op = MapBatches(
+        lambda x: x, input_dependencies=[op], compute=ray.data.ActorPoolStrategy()
+    )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -221,7 +231,9 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     # Test that reads fuse into an actor-based map operator.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(
+        lambda x: x, input_dependencies=[read_op], compute=ray.data.ActorPoolStrategy()
+    )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -242,8 +254,10 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, lambda x: x)
+    op = MapBatches(
+        lambda x: x, input_dependencies=[read_op], compute=ray.data.ActorPoolStrategy()
+    )
+    op = MapBatches(lambda x: x, input_dependencies=[op])
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -308,27 +322,27 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), fn=lambda x: False),
+            Filter(fn=lambda x: False, input_dependencies=[InputData([])]),
             False,
         ),
         (
             # No fusion (could drastically expand/reduce dataset)
-            FlatMap(InputData([]), lambda x: x),
+            FlatMap(lambda x: x, input_dependencies=[InputData([])]),
             False,
         ),
         (
             # Fusion
-            MapBatches(InputData([]), lambda x: x),
+            MapBatches(lambda x: x, input_dependencies=[InputData([])]),
             True,
         ),
         (
             # Fusion
-            MapRows(InputData([]), lambda x: x),
+            MapRows(lambda x: x, input_dependencies=[InputData([])]),
             True,
         ),
         (
             # Fusion
-            Project(InputData([]), exprs=[star()]),
+            Project(exprs=[star()], input_dependencies=[InputData([])]),
             True,
         ),
     ],
@@ -720,7 +734,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = MapBatches(read_op, lambda x: x)
+    op = MapBatches(lambda x: x, input_dependencies=[read_op])
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
 

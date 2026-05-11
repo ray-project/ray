@@ -79,6 +79,76 @@ compile_pip_dependencies() {
   )
 }
 
+compile_313_pip_dependencies() {
+  # Compile boundaries for the py3.13 dependency set. Uses the py313 override
+  # directories (python/requirements/py313/ and python/requirements/ml/py313/)
+  # where available, and falls back to the shared requirement files otherwise.
+  TARGET="${1-requirements_compiled_py3.13.txt}"
+
+  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
+    # Resolution currently does not work on aarch64 as some pinned packages
+    # are not available. Once they are reasonably upgraded we should be able
+    # to enable this here.
+    echo "Skipping for aarch64"
+    return 0
+  fi
+
+  (
+    # shellcheck disable=SC2262
+    alias pip="python -m pip"
+
+    cd "${WORKSPACE_DIR}"
+
+    echo "Target file: $TARGET"
+    pip install "pip-tools==7.4.1" "wheel==0.45.1"
+
+    # Required packages to lookup e.g. dragonfly-opt
+    HAS_TORCH=0
+    python -c "import torch" 2>/dev/null && HAS_TORCH=1
+    pip install --no-cache-dir numpy torch
+
+    pip-compile --verbose --resolver=backtracking \
+      --pip-args --no-deps --strip-extras --no-header \
+      --unsafe-package ray \
+      --unsafe-package pip \
+      --unsafe-package setuptools \
+      -o "python/$TARGET" \
+      python/requirements.txt \
+      python/requirements/lint-requirements.txt \
+      python/requirements/py313/test-requirements.txt \
+      python/requirements/cloud-requirements.txt \
+      python/requirements/docker/ray-docker-requirements.txt \
+      python/requirements/ml/py313/core-requirements.txt \
+      python/requirements/ml/py313/data-requirements.txt \
+      python/requirements/ml/py313/data-test-requirements.txt \
+      python/requirements/ml/py313/dl-cpu-requirements.txt \
+      python/requirements/ml/py313/ml-requirements.txt \
+      python/requirements/ml/py313/third_party.txt \
+      python/requirements/ml/py313/rllib-requirements.txt \
+      python/requirements/ml/py313/rllib-test-requirements.txt \
+      python/requirements/ml/py313/train-requirements.txt \
+      python/requirements/ml/py313/train-test-requirements.txt \
+      python/requirements/ml/py313/tune-requirements.txt \
+      python/requirements/ml/py313/tune-test-requirements.txt \
+      python/requirements/security-requirements.txt
+
+    # Delete local installation
+    sed -i "/@ file/d" "python/$TARGET"
+
+    # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+    # This is needed because we specify the requirements as torch==version, but
+    # the resolver adds the device-specific version tag. If this is not removed,
+    # pip install will complain about irresolvable constraints.
+    sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "python/$TARGET"
+
+    cat "python/$TARGET"
+
+    if [[ "$HAS_TORCH" == "0" ]]; then
+      pip uninstall -y torch
+    fi
+  )
+}
+
 test_cpp() {
   if [[ "${OSTYPE}" == darwin* ]]; then
     echo "use macos_ci.sh to run cpp tests"
@@ -204,7 +274,13 @@ install_ray() {
     # too high that can break CI, especially on MacOS.
     pip install -q cython==3.0.12
 
-    pip install -v -e . -c requirements_compiled.txt
+    # editable_mode=compat: force setuptools (>=64) to emit a legacy
+    # .egg-link / easy-install.pth editable install instead of a PEP 660
+    # .pth + MetaPathFinder. Static tools (mypy, pyright) walk sys.path and
+    # can't follow PEP 660 finders, so test_typing fails with
+    # `Module "ray" has no attribute "init"` under strict editables.
+    pip install -v -e . -c requirements_compiled.txt \
+      --config-settings editable_mode=compat
   )
   (
     # For runtime_env tests, wheels are needed
