@@ -769,6 +769,10 @@ class BackendSlotPool:
         """Return a copy of the replica → slot mapping (for diagnostics)."""
         return dict(self._replica_to_slot)
 
+    def assigned_slots(self) -> Set[int]:
+        """Return the set of slot numbers currently assigned to replicas."""
+        return set(self._replica_to_slot.values())
+
 
 def _compute_slot_split(
     backend_to_replica_count: Dict[str, int],
@@ -1452,23 +1456,52 @@ class HAProxyApi(ProxyApi):
         Returns only application backends configured in self.backend_configs,
         excluding HAProxy internal components (frontends, default_backend, stats).
         Also excludes BACKEND aggregate entries, returning only individual servers.
+
+        With server-template, `show stat` reports every templated slot
+        (e.g. srv1..srv4096) -- including placeholders at the disabled
+        address. Including those would inflate `total_servers` and skew
+        any caller that counts servers. We filter to:
+          - Slots actively assigned in our in-memory pool (i.e. bound
+            to a real replica).
+          - Slots with non-zero current sessions or queued requests
+            (recently released slots still draining; we want
+            `is_system_idle` to see those).
+          - The fallback server (named after the actor, not srv-prefixed).
         """
         try:
             stats_output = await self._send_socket_command("show stat")
             all_stats = self._parse_haproxy_csv_stats(stats_output)
 
-            # Filter to only return application backends (ones in backend_configs)
-            # Exclude HAProxy internal components like frontends, default_backend, stats
-            # Also exclude BACKEND aggregate entries, keep only individual servers
-            return {
-                backend_name: {
-                    server_name: stats
-                    for server_name, stats in servers.items()
-                    if server_name != "BACKEND"
-                }
-                for backend_name, servers in all_stats.items()
-                if backend_name in self.backend_configs
-            }
+            filtered: Dict[str, Dict[str, ServerStats]] = {}
+            for backend_name, servers in all_stats.items():
+                if backend_name not in self.backend_configs:
+                    continue
+                pool = self._slot_pools.get(backend_name)
+                active_slots: Set[int] = (
+                    pool.assigned_slots() if pool is not None else set()
+                )
+                kept: Dict[str, ServerStats] = {}
+                for server_name, stats in servers.items():
+                    if server_name == "BACKEND":
+                        continue
+                    if not server_name.startswith("srv"):
+                        # Non-template server (e.g. fallback). Keep unconditionally.
+                        kept[server_name] = stats
+                        continue
+                    try:
+                        slot_num = int(server_name[3:])
+                    except ValueError:
+                        # Unexpected naming; keep defensively.
+                        kept[server_name] = stats
+                        continue
+                    if slot_num in active_slots:
+                        kept[server_name] = stats
+                    elif stats.current_sessions > 0 or stats.queued > 0:
+                        # Released slot still draining in-flight work.
+                        kept[server_name] = stats
+                    # else: placeholder slot; skip
+                filtered[backend_name] = kept
+            return filtered
         except Exception as e:
             logger.error(f"Failed to get HAProxy stats: {e}")
             return {}
