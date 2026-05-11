@@ -1275,12 +1275,14 @@ class AsyncioRouter:
         finally:
             try:
                 await self._release_slot_and_refresh_cache(selection, replica)
-                # Every reservation must fire on_request_completed exactly once.
-                # When dispatch wires up the result's done-callback it fires there;
-                # otherwise (no dispatch, or dispatch raised before registering)
-                # fire it here.
+                # Every dispatched request must fire on_request_completed exactly
+                # once. When dispatch wires up the result's done-callback it fires
+                # there; otherwise (dispatch raised before registering the
+                # callback) fire it here. Skipped entirely when the caller exits
+                # without dispatch, since no request was sent to the replica.
                 if (
-                    not selection._completion_callback_registered
+                    selection._dispatched
+                    and not selection._completion_callback_registered
                     and self.request_router
                 ):
                     self.request_router.on_request_completed(

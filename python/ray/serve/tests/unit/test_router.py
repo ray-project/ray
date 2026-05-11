@@ -1424,6 +1424,23 @@ class TestChooseReplica:
         # After context exit, slot should be released
         assert slot_token not in replica._reserved_slots
 
+    async def test_choose_without_dispatch_does_not_fire_on_request_completed(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """on_request_completed shouldn't fire if the caller exits without dispatching."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        fake_request_router.set_replica_to_return(FakeReplica(r1_id))
+
+        async with router.choose_replica(dummy_request_metadata()):
+            pass  # Exit without dispatch.
+
+        assert fake_request_router.on_request_routed_called is False
+        assert fake_request_router.completed_requests == []
+
     async def test_choose_with_exception_releases_slot(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
