@@ -489,17 +489,6 @@ class HAProxyConfig:
 
     is_head: bool = False
 
-    def __post_init__(self) -> None:
-        # Thread isolation requires at least 2 threads: thread 1 is
-        # reserved for the admin/stats sockets, threads 2..nbthread serve
-        # data-plane traffic (see haproxy_templates.py). With nbthread<2
-        # the template would emit `thread 2-1` which HAProxy rejects.
-        if self.nbthread < 2:
-            raise ValueError(
-                f"nbthread must be >= 2 for admin/data-plane thread "
-                f"isolation (got {self.nbthread})."
-            )
-
     @property
     def transfer_socket_path(self) -> str:
         """Path of the dedicated FD-transfer admin socket.
@@ -1106,14 +1095,70 @@ class HAProxyApi(ProxyApi):
             raise
 
         wait_elapsed = time.monotonic() - wait_start
+
+        # Drain HAProxy stderr in the background. `-db` debug mode
+        # emits lines per backend-state change, per health-check fail,
+        # etc., and with many backends a busy proxy can fill the OS
+        # pipe buffer (64KB default on Linux) within seconds. With no
+        # active reader, HAProxy then blocks on its next stderr write
+        # -- which freezes the admin socket (same proc) and presents
+        # to the actor as a 60s timeout on `show info`. Drain to a
+        # per-pid log file so the buffer never fills.
+        stderr_log_path = self._stderr_log_path_for(proc.pid)
+        asyncio.create_task(self._drain_proc_stderr(proc, stderr_log_path))
+
         logger.info(
-            "HAProxy started (PID=%s): spawn=%.2fs wait=%.2fs args=%s",
+            "HAProxy started (PID=%s): spawn=%.2fs wait=%.2fs args=%s "
+            "(stderr -> %s)",
             proc.pid,
             spawn_elapsed,
             wait_elapsed,
             extra_args,
+            stderr_log_path,
         )
         return proc
+
+    def _stderr_log_path_for(self, pid: int) -> str:
+        """Deterministic per-pid stderr log path.
+
+        Co-located with the admin socket so callers (notably
+        `_wait_for_admin_socket_bound_by`) can reconstruct it from
+        the pid alone.
+        """
+        return f"{self.cfg.socket_path}.stderr.{pid}.log"
+
+    async def _drain_proc_stderr(
+        self,
+        proc: asyncio.subprocess.Process,
+        log_path: str,
+        max_bytes: int = 10_000_000,
+    ) -> None:
+        """Drain HAProxy stderr to a bounded per-pid log file."""
+        try:
+            with open(log_path, "wb") as f:
+                f.write(
+                    f"=== HAProxy stderr pid={proc.pid} "
+                    f"started_at={time.time():.3f} ===\n".encode()
+                )
+                f.flush()
+                while True:
+                    try:
+                        chunk = await proc.stderr.read(8192)
+                    except Exception:
+                        break
+                    if not chunk:
+                        break
+                    if f.tell() + len(chunk) > max_bytes:
+                        f.seek(0)
+                        f.truncate()
+                        f.write(
+                            f"=== truncated at {time.time():.3f}, "
+                            f"continuing pid={proc.pid} ===\n".encode()
+                        )
+                    f.write(chunk)
+                    f.flush()
+        except Exception as e:
+            logger.debug("HAProxy stderr drain for pid=%s ended: %s", proc.pid, e)
 
     async def _terminate_old_procs(self) -> None:
         """SIGKILL any old HAProxy procs we're still tracking.
@@ -1333,7 +1378,58 @@ class HAProxyApi(ProxyApi):
             timeout_s,
             last_seen_pid,
         )
+        self._dump_admin_socket_diagnostics(target_pid)
         return False
+
+    def _dump_admin_socket_diagnostics(self, target_pid: int) -> None:
+        """Best-effort snapshot when the admin-socket wait times out.
+
+        Captures filesystem state of the socket path, the new proc's
+        /proc/<pid>/status (Sleeping vs Running gives away a write
+        block from a deadlock), and a tail of recent HAProxy stderr.
+        All best-effort -- any sub-failure is swallowed so we never
+        replace a real warning with a traceback.
+        """
+        lines: List[str] = [f"Admin-socket diagnostics for pid={target_pid}:"]
+
+        sock_path = self.cfg.socket_path
+        try:
+            st = os.stat(sock_path)
+            lines.append(
+                f"  socket path {sock_path}: exists, size={st.st_size}, "
+                f"mtime={st.st_mtime:.3f}"
+            )
+        except FileNotFoundError:
+            lines.append(f"  socket path {sock_path}: MISSING")
+        except Exception as e:
+            lines.append(f"  socket path {sock_path}: stat failed: {e}")
+
+        try:
+            with open(f"/proc/{target_pid}/status") as f:
+                for line in f:
+                    if line.startswith(("State:", "Threads:", "VmRSS:")):
+                        lines.append(f"  /proc/{target_pid}: {line.rstrip()}")
+        except FileNotFoundError:
+            lines.append(f"  /proc/{target_pid}: dead (no proc entry)")
+        except Exception as e:
+            lines.append(f"  /proc/{target_pid}/status: read failed: {e}")
+
+        stderr_log = self._stderr_log_path_for(target_pid)
+        try:
+            with open(stderr_log, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 2048))
+                tail = f.read().decode("utf-8", errors="replace")
+            lines.append(f"  stderr tail ({stderr_log}, last 2KB of {size}B):")
+            for ln in tail.splitlines()[-20:]:
+                lines.append(f"    {ln}")
+        except FileNotFoundError:
+            lines.append(f"  stderr log {stderr_log}: not found")
+        except Exception as e:
+            lines.append(f"  stderr log {stderr_log}: read failed: {e}")
+
+        logger.warning("\n".join(lines))
 
     async def probe_http_listener(self) -> bool:
         """Probe the HAProxy HTTP listener via /-/healthz.

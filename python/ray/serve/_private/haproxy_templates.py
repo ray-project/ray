@@ -29,17 +29,12 @@ HAPROXY_CONFIG_TEMPLATE = """global
     # Keeping FD transfer on its own socket prevents the `_getsocks`
     # exchange from queueing behind add/del/disable/enable server commands
     # during a reload.
-    # `thread 1` pins admin work to a dedicated thread (see frontend
-    # binds below, which restrict data-plane traffic to thread 2+). When
-    # the data plane saturates threads 2..N, thread 1 stays free for
-    # runtime-API commands, preventing the cascade where slow admin
-    # responses trigger fallback reloads.
-    stats socket {{ config.transfer_socket_path }} mode 666 level admin expose-fd listeners thread 1
+    stats socket {{ config.transfer_socket_path }} mode 666 level admin expose-fd listeners
     # Runtime-API + stats socket. Used by the proxy actor for
     # `add server`, `del server`, `show stat`, etc. No `expose-fd
     # listeners` here — FD transfer is reserved for the dedicated socket
     # above so the two streams don't contend on the same connection slot.
-    stats socket {{ config.socket_path }} mode 666 level admin thread 1
+    stats socket {{ config.socket_path }} mode 666 level admin
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
@@ -92,12 +87,12 @@ defaults
     # duplicate slots both pointing at the same replica.
     balance {{ config.balance_algorithm }}
 frontend prometheus
-    bind :{{ config.metrics_port }} thread 2-{{ config.nbthread }}
+    bind :{{ config.metrics_port }}
     mode http
     http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
     no log
 frontend http_frontend
-    bind {{ config.frontend_host }}:{{ config.frontend_port }} thread 2-{{ config.nbthread }}
+    bind {{ config.frontend_host }}:{{ config.frontend_port }}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
@@ -173,7 +168,7 @@ backend {{ backend.name or 'unknown' }}
     {%- endif %}
 {%- endfor %}
 listen stats
-  bind *:{{ config.stats_port }} thread 2-{{ config.nbthread }}
+  bind *:{{ config.stats_port }}
   stats enable
   stats uri {{ config.stats_uri }}
   stats refresh 1s

@@ -276,17 +276,12 @@ global
     # Keeping FD transfer on its own socket prevents the `_getsocks`
     # exchange from queueing behind add/del/disable/enable server commands
     # during a reload.
-    # `thread 1` pins admin work to a dedicated thread (see frontend
-    # binds below, which restrict data-plane traffic to thread 2+). When
-    # the data plane saturates threads 2..N, thread 1 stays free for
-    # runtime-API commands, preventing the cascade where slow admin
-    # responses trigger fallback reloads.
-    stats socket {socket_path}.fd mode 666 level admin expose-fd listeners thread 1
+    stats socket {socket_path}.fd mode 666 level admin expose-fd listeners
     # Runtime-API + stats socket. Used by the proxy actor for
     # `add server`, `del server`, `show stat`, etc. No `expose-fd
     # listeners` here — FD transfer is reserved for the dedicated socket
     # above so the two streams don't contend on the same connection slot.
-    stats socket {socket_path} mode 666 level admin thread 1
+    stats socket {socket_path} mode 666 level admin
     stats timeout 30s
     maxconn 1000
     nbthread 2
@@ -327,12 +322,12 @@ defaults
     # duplicate slots both pointing at the same replica.
     balance random(2)
 frontend prometheus
-    bind :9101 thread 2-2
+    bind :9101
     mode http
     http-request use-service prometheus-exporter if {{ path /metrics }}
     no log
 frontend http_frontend
-    bind *:8000 thread 2-2
+    bind *:8000
     # Health check endpoint
     acl healthcheck path -i /-/healthz
     # Suppress logging for health checks
@@ -419,7 +414,7 @@ backend web_backend
     # config-generation time from the current replica count + headroom.
     server-template srv 1-4 0.0.0.0:1 check disabled
 listen stats
-  bind *:8080 thread 2-2
+  bind *:8080
   stats enable
   stats uri /mystats
   stats refresh 1s

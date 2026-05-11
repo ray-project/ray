@@ -801,11 +801,9 @@ RAY_SERVE_HAPROXY_RUNTIME_CHUNK_SIZE = int(
 # Connect/read timeout (seconds) for HAProxy admin-socket commands. The
 # CLI mux serializes admin operations behind HTTP worker dispatch, so a
 # batch of `add server` / `del server` / etc. commands can routinely take
-# more than a few seconds while HAProxy is serving heavy traffic. With
-# the admin socket pinned to its own thread (see haproxy_templates.py)
-# this should usually stay fast, but a generous ceiling keeps the
-# runtime-API path alive across rare slow windows instead of cascading
-# into a fallback reload.
+# more than a few seconds while HAProxy is serving heavy traffic. A
+# generous ceiling keeps the runtime-API path alive across slow windows
+# instead of cascading into a fallback reload.
 RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_HAPROXY_SOCKET_TIMEOUT_S", "60")
 )
