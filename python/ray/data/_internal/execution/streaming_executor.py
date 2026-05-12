@@ -13,6 +13,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.budget_scheduler import BudgetScheduler
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
@@ -107,6 +108,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology: Optional[Topology] = None
         self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
+        self._budget_scheduler: Optional[BudgetScheduler] = None
+        # Maps (op, task_index) to budget scheduler task ID.
+        self._budget_task_ids: Dict[Tuple[PhysicalOperator, int], int] = {}
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
@@ -202,6 +206,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager
         )
+        if self._data_context.use_budget_scheduler:
+            self._budget_scheduler = self._create_budget_scheduler()
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
@@ -439,6 +445,16 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             self._backpressure_policies,
             self._max_errored_blocks,
+            task_output_callback=(
+                self._on_budget_task_output
+                if self._budget_scheduler is not None
+                else None
+            ),
+            task_finished_callback=(
+                self._on_budget_task_finished
+                if self._budget_scheduler is not None
+                else None
+            ),
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
@@ -450,20 +466,39 @@ class StreamingExecutor(Executor, threading.Thread):
 
         i = 0
         while True:
-            op = select_operator_to_run(
-                topology,
-                self._resource_manager,
-                self._backpressure_policies,
-                # If consumer is idling (there's nothing for it to consume)
-                # enforce liveness, ie that at least a single task gets scheduled
-                ensure_liveness=self._consumer_idling(),
-                ranker=self._ranker,
-            )
+            if self._budget_scheduler is not None:
+                op = self._select_operator_budget(topology)
+            else:
+                op = select_operator_to_run(
+                    topology,
+                    self._resource_manager,
+                    self._backpressure_policies,
+                    # If consumer is idling (there's nothing for it to consume)
+                    # enforce liveness, ie that at least a single task gets scheduled
+                    ensure_liveness=self._consumer_idling(),
+                    ranker=self._ranker,
+                )
 
             if op is None:
                 break
 
+            if self._budget_scheduler is not None:
+                state = topology[op]
+                bundle = state.input_queues[0].peek()
+                input_bytes = bundle.size_bytes() if bundle is not None else 0
+                # Snapshot active task indices before dispatch.
+                pre_task_indices = {t.task_index() for t in op.get_active_tasks()}
+
             topology[op].dispatch_next_task()
+
+            # Notify the budget scheduler of the dispatch and record mapping.
+            if self._budget_scheduler is not None:
+                post_task_indices = {t.task_index() for t in op.get_active_tasks()}
+                new_indices = post_task_indices - pre_task_indices
+                assert len(new_indices) == 1
+                budget_id = self._budget_scheduler.dispatch_task(op, input_bytes)
+                for task_index in new_indices:
+                    self._budget_task_ids[(op, task_index)] = budget_id
 
             self._resource_manager.update_usages()
 
@@ -514,6 +549,49 @@ class StreamingExecutor(Executor, threading.Thread):
                         op_state, self._resource_manager
                     )
             self._progress_manager.refresh()
+
+    def _on_budget_task_output(
+        self, op: PhysicalOperator, task_index: int, output_bytes: int
+    ) -> None:
+        """Notify the budget scheduler that a task produced output."""
+        budget_id = self._budget_task_ids.get((op, task_index))
+        assert budget_id is not None
+        self._budget_scheduler.on_task_output(budget_id, output_bytes)
+
+    def _on_budget_task_finished(self, op: PhysicalOperator, task_index: int) -> None:
+        """Notify the budget scheduler that a task finished."""
+        budget_id = self._budget_task_ids.pop((op, task_index), None)
+        assert budget_id is not None
+        self._budget_scheduler.on_task_finished(budget_id)
+
+    def _create_budget_scheduler(self) -> BudgetScheduler:
+        """Create and initialize a BudgetScheduler from current resource limits."""
+        limits = self._resource_manager.get_global_limits()
+        max_bytes = int(limits.object_store_memory or 0)
+        available_cpus = limits.cpu or 1.0
+        scheduler = BudgetScheduler(
+            max_bytes=max_bytes,
+            available_cpus=available_cpus,
+        )
+        for op in self._topology:
+            if not isinstance(op, InputDataBuffer):
+                scheduler.register_operator(op)
+        return scheduler
+
+    def _select_operator_budget(self, topology: Topology) -> Optional[PhysicalOperator]:
+        """Select the next operator using the BudgetScheduler."""
+        ops_with_input: Dict[PhysicalOperator, int] = {}
+        for op, state in topology.items():
+            if isinstance(op, InputDataBuffer):
+                continue
+            if op.has_completed() or not op.can_add_input():
+                continue
+            if not state.has_pending_bundles():
+                continue
+            bundle = state.input_queues[0].peek()
+            if bundle is not None:
+                ops_with_input[op] = bundle.size_bytes()
+        return self._budget_scheduler.select_operator(ops_with_input)
 
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""

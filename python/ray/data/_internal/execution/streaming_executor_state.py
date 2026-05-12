@@ -7,7 +7,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -88,6 +88,10 @@ class OpBufferQueue:
                 given output split. When None, checks the default queue (index 0).
         """
         return self._get_queue_for(output_split_idx).has_next()
+
+    def peek(self) -> Optional[RefBundle]:
+        """Peek at the next RefBundle without removing it."""
+        return self._queues[0].peek_next()
 
     def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
@@ -295,6 +299,7 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
+        assert len(self.input_queues <= 1)
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
             if ref is not None:
@@ -400,6 +405,10 @@ def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
+    task_output_callback: Optional[
+        "Callable[[PhysicalOperator, int, int], None]"
+    ] = None,
+    task_finished_callback: Optional["Callable[[PhysicalOperator, int], None]"] = None,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -409,6 +418,10 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        task_output_callback: Optional callback invoked when a task produces
+            output. Called with (operator, task_index, output_bytes).
+        task_finished_callback: Optional callback invoked when a task finishes.
+            Called with (operator, task_index).
     Returns:
         The number of errored blocks.
     """
@@ -475,6 +488,12 @@ def process_completed_tasks(
                         bytes_read = task.on_data_ready(
                             remaining_output_budget.get(state, None)
                         )
+                        if bytes_read > 0 and task_output_callback is not None:
+                            task_output_callback(
+                                state.op, task.task_index(), bytes_read
+                            )
+                        if task.has_finished() and task_finished_callback is not None:
+                            task_finished_callback(state.op, task.task_index())
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
                             remaining_output_budget[state] = max(

@@ -75,6 +75,8 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
     "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
 )
 
+DEFAULT_USE_BUDGET_SCHEDULER = env_bool("RAY_DATA_USE_BUDGET_SCHEDULER", False)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -801,6 +803,8 @@ class DataContext:
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
     batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
+
+    use_budget_scheduler: bool = DEFAULT_USE_BUDGET_SCHEDULER
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
