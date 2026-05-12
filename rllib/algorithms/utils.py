@@ -201,8 +201,6 @@ def _get_learner_bundles(config):
     else:
         num_cpus_per_learner = 0
 
-    custom_per_learner = config.custom_resources_per_learner or {}
-
     # Each learner bundle includes the learner's own resources + enough
     # capacity for `n_agg` co-located aggregator actors (their resources
     # are claimed against the same bundle via
@@ -213,10 +211,9 @@ def _get_learner_bundles(config):
         bundle = {
             "CPU": num_cpus_per_learner + n_agg * cpus_per_agg,
             "GPU": config.num_gpus_per_learner,
-            **custom_per_learner,
         }
-        # Sum aggregator custom resources into the bundle (don't overwrite
-        # any learner-side custom resource with the same key).
+        # Add aggregator custom resources × `n_agg` so the bundle reserves
+        # enough capacity for all aggregators that share it.
         for k, v in agg_custom_resources_total.items():
             bundle[k] = bundle.get(k, 0) + v
         bundles.append(bundle)
@@ -246,3 +243,24 @@ def _get_main_process_bundle(config):
         }
 
     return bundle
+
+
+def get_learner_bundle_offset(config, eval_config, *, has_eval, has_offline_eval):
+    """Index in the trial's PG where learner bundles start.
+
+    Single source of truth for both ``Algorithm.default_resource_request``
+    (which builds the bundle list) and ``Algorithm.setup`` (which pins
+    aggregator actors to specific learner bundles via
+    ``PlacementGroupSchedulingStrategy(placement_group_bundle_index=...)``).
+
+    The PG bundle order produced by ``default_resource_request`` is:
+        [main_process, env_runners, eval_env_runners,
+         offline_eval_runners, learner_bundles]
+    so the offset = 1 (main) + len(env_runners) + len(eval_env_runners) +
+    len(offline_eval_runners). Callers pass ``has_eval`` /
+    ``has_offline_eval`` because deciding whether those sections exist
+    requires algo-specific predicates that don't live in ``utils``.
+    """
+    n_eval = eval_config.evaluation_num_env_runners or 0 if has_eval else 0
+    n_offline = eval_config.num_offline_eval_runners or 0 if has_offline_eval else 0
+    return 1 + (config.num_env_runners or 0) + n_eval + n_offline

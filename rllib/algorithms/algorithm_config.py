@@ -368,11 +368,11 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = "auto"
-        self.custom_resources_per_learner = {}
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.num_cpus_per_aggregator_actor = 1
         self.custom_resources_per_aggregator_actor = {}
+        self.colocate_aggregator_actors_with_learners = True
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -2264,11 +2264,11 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
-        custom_resources_per_learner: Optional[Dict[str, float]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         num_cpus_per_aggregator_actor: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_aggregator_actor: Optional[Dict[str, float]] = NotProvided,
+        colocate_aggregator_actors_with_learners: Optional[bool] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
@@ -2302,12 +2302,6 @@ class AlgorithmConfig(_Config):
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
                 the training on main process CPUs.
-            custom_resources_per_learner: Optional dict of custom Ray resource
-                requirements for each Learner worker (e.g.
-                ``{"my_label": 0.001}``). Do *not* put ``"CPU"`` or ``"GPU"`` in
-                here -- use ``num_cpus_per_learner`` /
-                ``num_gpus_per_learner`` instead. Useful for pinning Learners to
-                specific nodes via custom resource labels.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -2324,10 +2318,15 @@ class AlgorithmConfig(_Config):
                 here -- use ``num_cpus_per_aggregator_actor`` instead and note
                 that aggregator actors do not currently support GPUs. These are
                 hard requirements: if no node in the cluster can satisfy them,
-                the aggregator never schedules and the algorithm fails. When
-                running inside a Tune trial, aggregators are pinned to the
-                same placement-group bundle as their assigned learner, which
-                is what guarantees co-location.
+                the aggregator never schedules and the algorithm fails.
+            colocate_aggregator_actors_with_learners: If True (default), RLlib
+                pins each aggregator actor to the same node as its assigned
+                learner -- inside a Tune trial via the trial's placement-group
+                bundle, outside Tune via ``NodeAffinitySchedulingStrategy``.
+                Co-location avoids per-MABatch cross-node transfers between
+                the aggregator and its learner. If False, RLlib lets Ray's
+                default scheduler place each aggregator on any node with
+                free capacity (matches the pre-PG-bundle behavior).
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
                 `num_learners` < 2, then RLlib uses this GPU index for training. This is
                 an index into the available
@@ -2375,8 +2374,6 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
-        if custom_resources_per_learner is not NotProvided:
-            self.custom_resources_per_learner = custom_resources_per_learner
         if num_aggregator_actors_per_learner is not NotProvided:
             self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
         if max_requests_in_flight_per_aggregator_actor is not NotProvided:
@@ -2388,6 +2385,10 @@ class AlgorithmConfig(_Config):
         if custom_resources_per_aggregator_actor is not NotProvided:
             self.custom_resources_per_aggregator_actor = (
                 custom_resources_per_aggregator_actor
+            )
+        if colocate_aggregator_actors_with_learners is not NotProvided:
+            self.colocate_aggregator_actors_with_learners = (
+                colocate_aggregator_actors_with_learners
             )
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx

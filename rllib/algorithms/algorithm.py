@@ -48,6 +48,7 @@ from ray.rllib.algorithms.utils import (
     _get_learner_bundles,
     _get_main_process_bundle,
     _get_offline_eval_runner_bundles,
+    get_learner_bundle_offset,
 )
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -1070,33 +1071,18 @@ class Algorithm(Checkpointable, Trainable):
                 spaces=self.spaces,
                 inference_only=False,
             )
-            # Discover each Learner's node so we can describe placement in
-            # the post-placement warning below.
-            learner_node_ids = [
-                rc.get()
-                for rc in self.learner_group.foreach_learner(
-                    func=lambda _learner: ray.get_runtime_context().get_node_id()
-                )
-            ]
-            # Bundle index where learner bundles start in the trial PG --
-            # must mirror the ordering in `default_resource_request`:
-            # [main_process, env_runners, eval_env_runners,
-            #  offline_eval_runners, learner_bundles].
-            n_eval_env_runners = 0
-            if self._should_create_evaluation_env_runners(self.evaluation_config):
-                n_eval_env_runners = (
-                    self.evaluation_config.evaluation_num_env_runners or 0
-                )
-            n_offline_eval_runners = 0
-            if self._should_create_offline_evaluation_runners(self.evaluation_config):
-                n_offline_eval_runners = (
-                    self.evaluation_config.num_offline_eval_runners or 0
-                )
-            learner_bundle_offset = (
-                1
-                + (self.config.num_env_runners or 0)
-                + n_eval_env_runners
-                + n_offline_eval_runners
+            # Bundle index where learner bundles start in the trial PG.
+            # `get_learner_bundle_offset` is the shared source of truth
+            # with `default_resource_request` so the two can't drift.
+            learner_bundle_offset = get_learner_bundle_offset(
+                self.config,
+                self.evaluation_config,
+                has_eval=self._should_create_evaluation_env_runners(
+                    self.evaluation_config
+                ),
+                has_offline_eval=self._should_create_offline_evaluation_runners(
+                    self.evaluation_config
+                ),
             )
             trial_pg = ray.util.get_current_placement_group()
 
@@ -1112,9 +1098,38 @@ class Algorithm(Checkpointable, Trainable):
                     "resources"
                 ] = self.config.custom_resources_per_aggregator_actor
 
+            colocate = self.config.colocate_aggregator_actors_with_learners
+
+            # Co-location requires a placement group with bundles sized
+            # for the learner + aggregator. Tune trials always provide
+            # one; running Algorithm directly outside Tune does not. We
+            # only use PG-based scheduling (it survives actor restarts,
+            # which NodeAffinity does not). When the PG is missing,
+            # fall back to best-effort placement and warn the user --
+            # they can silence the warning by setting
+            # `colocate_aggregator_actors_with_learners=False`.
+            if colocate and trial_pg is None:
+                if log_once("aggregator_colocation_no_pg_fallback"):
+                    logger.warning(
+                        "`colocate_aggregator_actors_with_learners=True` "
+                        "(the default) but no Tune placement group is "
+                        "present (Algorithm is being built outside a Tune "
+                        "trial). Falling back to best-effort aggregator "
+                        "placement -- aggregators may not land on their "
+                        "Learner's node, incurring cross-node MABatch "
+                        "transfers. Launch this Algorithm via "
+                        "`tune.Tuner(...)` to get strict co-location, or "
+                        "set "
+                        "`colocate_aggregator_actors_with_learners=False` "
+                        "to silence this warning."
+                    )
+                colocate = False
+
+            # `num_learners == 0` still produces one (local) Learner.
+            n_learners = self.config.num_learners or 1
             agg_handles = []
             self._aggregator_actor_to_learner = {}
-            for learner_idx, _ in enumerate(learner_node_ids):
+            for learner_idx in range(n_learners):
                 for j in range(self.config.num_aggregator_actors_per_learner):
                     # Pick the PG bundle this aggregator should claim.
                     # `num_learners == 0`: aggregators have *their own*
@@ -1128,19 +1143,22 @@ class Algorithm(Checkpointable, Trainable):
                         bundle_idx = learner_bundle_offset + learner_idx
 
                     per_instance_options = dict(base_options)
-                    if trial_pg is not None:
-                        # The bundle is already on the learner's node by
-                        # construction, so co-location is implicit.
+                    if colocate:
+                        # Pin to the learner's PG bundle. The bundle is
+                        # already on the learner's node by construction,
+                        # so co-location is implicit and survives actor
+                        # restart (Ray re-places the bundle, not just
+                        # the actor).
                         per_instance_options[
                             "scheduling_strategy"
                         ] = PlacementGroupSchedulingStrategy(
                             placement_group=trial_pg,
                             placement_group_bundle_index=bundle_idx,
                         )
-                    # No PG (Algorithm built directly, outside Tune): no
-                    # scheduling hint -- Ray's default scheduling places
-                    # the actor on any node with capacity. Co-location
-                    # with the learner is best-effort in this case.
+                    # else: `colocate=False` -- no scheduling hint. Ray
+                    # falls back to its default behaviour (in a Tune
+                    # trial, that means inheriting the PG with any
+                    # bundle index; outside Tune, any node with capacity).
 
                     handle = agg_cls.options(**per_instance_options).remote(
                         self.config, rl_module_spec
@@ -1154,34 +1172,6 @@ class Algorithm(Checkpointable, Trainable):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-
-            # Verify placement: warn (don't fail) if an aggregator landed
-            # on a different node than its assigned Learner. With the PG
-            # bundle strategy above this shouldn't happen, but the no-PG
-            # path (Algorithm built outside Tune) can land aggregators
-            # anywhere with free CPU; each MABatch then incurs a
-            # cross-node transfer.
-            actual_node_ids = [
-                rc.get()
-                for rc in self._aggregator_actor_manager.foreach_actor(
-                    func=lambda _a: ray.get_runtime_context().get_node_id()
-                )
-            ]
-            for agg_idx, actual_node_id in enumerate(actual_node_ids):
-                expected_node_id = learner_node_ids[
-                    self._aggregator_actor_to_learner[agg_idx]
-                ]
-                if actual_node_id != expected_node_id:
-                    logger.warning(
-                        f"AggregatorActor #{agg_idx} did not co-locate with its "
-                        f"assigned Learner (expected node {expected_node_id}, got "
-                        f"{actual_node_id}). Each MABatch produced by this actor "
-                        "will be transferred cross-node to the Learner. Pass "
-                        "`custom_resources_per_aggregator_actor={..}` to reserve "
-                        "dedicated capacity on the Learner's node, or run the "
-                        "Algorithm inside a Tune trial (the trial's placement "
-                        "group pins aggregators to learner bundles by default)."
-                    )
 
         # Ray metrics
         self._set_up_metrics()
@@ -3432,6 +3422,31 @@ class Algorithm(Checkpointable, Trainable):
             + eval_env_runner_bundles
             + offline_eval_runner_bundles
             + learner_bundles
+        )
+
+        # Defensive: `Algorithm.setup` later pins aggregator actors to
+        # specific bundle indices in this PG via the offset computed by
+        # `get_learner_bundle_offset`. If the bundle layout above ever
+        # drifts from that helper's assumed layout, aggregator pinning
+        # would silently land on the wrong bundle. Catch it here.
+        expected_learner_bundle_start = get_learner_bundle_offset(
+            config,
+            eval_config,
+            has_eval=cls._should_create_evaluation_env_runners(eval_config),
+            has_offline_eval=cls._should_create_offline_evaluation_runners(eval_config),
+        )
+        actual_learner_bundle_start = (
+            1
+            + len(env_runner_bundles)
+            + len(eval_env_runner_bundles)
+            + len(offline_eval_runner_bundles)
+        )
+        assert expected_learner_bundle_start == actual_learner_bundle_start, (
+            f"Bundle layout drift: `get_learner_bundle_offset` returned "
+            f"{expected_learner_bundle_start} but `default_resource_request` "
+            f"places learner bundles at index {actual_learner_bundle_start}. "
+            "Update `get_learner_bundle_offset` to match the bundle order "
+            "produced here."
         )
 
         return PlacementGroupFactory(

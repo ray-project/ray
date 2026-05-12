@@ -78,6 +78,70 @@ class TestIMPALA(unittest.TestCase):
         finally:
             algo.stop()
 
+    def test_aggregator_colocation_warns_outside_tune(self):
+        """`colocate_aggregator_actors_with_learners=True` (the default)
+        builds cleanly outside a Tune trial, but logs a warning telling
+        the user co-location is best-effort and how to silence it.
+        Strict co-location is only achievable inside a Tune trial
+        (the trial's placement group is what pins aggregators to their
+        Learner's bundle), which is covered by the
+        `learning_tests_impala_cartpole_local` integration test.
+        """
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .learners(
+                num_learners=0,
+                num_aggregator_actors_per_learner=2,
+                # Default is True; passed explicitly to make the intent
+                # obvious.
+                colocate_aggregator_actors_with_learners=True,
+            )
+            .env_runners(num_env_runners=0)
+        )
+        with self.assertLogs("ray.rllib.algorithms.algorithm", level="WARNING") as cm:
+            algo = config.build()
+        try:
+            self.assertTrue(
+                any(
+                    "colocate_aggregator_actors_with_learners=False" in line
+                    for line in cm.output
+                ),
+                f"Expected fallback warning to mention the opt-out flag; "
+                f"got: {cm.output}",
+            )
+            # Aggregators should still come up; we just don't guarantee
+            # where they land.
+            self.assertEqual(len(algo._aggregator_actor_manager._actors), 2)
+        finally:
+            algo.stop()
+
+    def test_aggregator_colocation_disabled(self):
+        """`colocate_aggregator_actors_with_learners=False` keeps the
+        old behaviour: no scheduling hint, aggregators land wherever
+        Ray's default scheduler puts them. We only assert the algo
+        builds cleanly and the aggregator manager is wired up. We do
+        *not* assert on which node each aggregator lands -- that's the
+        whole point of the opt-out.
+        """
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .learners(
+                num_learners=0,
+                num_aggregator_actors_per_learner=2,
+                colocate_aggregator_actors_with_learners=False,
+            )
+            .env_runners(num_env_runners=0)
+        )
+        algo = config.build()
+        try:
+            mgr = algo._aggregator_actor_manager
+            self.assertIsNotNone(mgr)
+            self.assertEqual(len(mgr._actors), 2)
+        finally:
+            algo.stop()
+
     def test_local_learner_thread_stops_on_algo_stop(self):
         # Regression test: `algo.stop()` -> `LearnerGroup.shutdown()` ->
         # `IMPALALearner.shutdown()` must stop and join the local IMPALA
