@@ -7,6 +7,7 @@ import ray.rllib.algorithms.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import check
+from ray.util.debug import reset_log_once
 
 
 class TestIMPALA(unittest.TestCase):
@@ -78,69 +79,58 @@ class TestIMPALA(unittest.TestCase):
         finally:
             algo.stop()
 
-    def test_aggregator_colocation_warns_outside_tune(self):
-        """`colocate_aggregator_actors_with_learners=True` (the default)
-        builds cleanly outside a Tune trial, but logs a warning telling
-        the user co-location is best-effort and how to silence it.
-        Strict co-location is only achievable inside a Tune trial
-        (the trial's placement group is what pins aggregators to their
-        Learner's bundle), which is covered by the
-        `learning_tests_impala_cartpole_local` integration test.
-        """
-        config = (
-            impala.IMPALAConfig()
-            .environment("CartPole-v1")
-            .learners(
-                num_learners=0,
-                num_aggregator_actors_per_learner=2,
-                # Default is True; passed explicitly to make the intent
-                # obvious.
-                colocate_aggregator_actors_with_learners=True,
-            )
-            .env_runners(num_env_runners=0)
-        )
-        with self.assertLogs("ray.rllib.algorithms.algorithm", level="WARNING") as cm:
-            algo = config.build()
-        try:
-            self.assertTrue(
-                any(
-                    "colocate_aggregator_actors_with_learners=False" in line
-                    for line in cm.output
-                ),
-                f"Expected fallback warning to mention the opt-out flag; "
-                f"got: {cm.output}",
-            )
-            # Aggregators should still come up; we just don't guarantee
-            # where they land.
-            self.assertEqual(len(algo._aggregator_actor_manager._actors), 2)
-        finally:
-            algo.stop()
+    def test_aggregator_colocation_warns_only_when_enabled(self):
+        """Outside a Tune trial, ``colocate=True`` (the default) builds
+        cleanly but logs a warning pointing at the opt-out flag, while
+        ``colocate=False`` builds silently. Strict co-location itself
+        requires a Tune PG and is covered by the
+        ``learning_tests_impala_cartpole_local`` integration test.
 
-    def test_aggregator_colocation_disabled(self):
-        """`colocate_aggregator_actors_with_learners=False` keeps the
-        old behaviour: no scheduling hint, aggregators land wherever
-        Ray's default scheduler puts them. We only assert the algo
-        builds cleanly and the aggregator manager is wired up. We do
-        *not* assert on which node each aggregator lands -- that's the
-        whole point of the opt-out.
+        Parametrized over ``num_learners`` to exercise both
+        local-learner (``num_learners=0`` -> aggregators get their own
+        bundles) and remote-learner (``num_learners >= 1`` -> aggregator
+        CPU is baked into the learner's bundle) code paths.
         """
-        config = (
-            impala.IMPALAConfig()
-            .environment("CartPole-v1")
-            .learners(
-                num_learners=0,
-                num_aggregator_actors_per_learner=2,
-                colocate_aggregator_actors_with_learners=False,
+        n_agg = 2
+
+        def _config(colocate, num_learners):
+            return (
+                impala.IMPALAConfig()
+                .environment("CartPole-v1")
+                .learners(
+                    num_learners=num_learners,
+                    num_aggregator_actors_per_learner=n_agg,
+                    colocate_aggregator_actors_with_learners=colocate,
+                )
+                .env_runners(num_env_runners=0)
             )
-            .env_runners(num_env_runners=0)
-        )
-        algo = config.build()
-        try:
-            mgr = algo._aggregator_actor_manager
-            self.assertIsNotNone(mgr)
-            self.assertEqual(len(mgr._actors), 2)
-        finally:
-            algo.stop()
+
+        for num_learners in (0, 1, 2):
+            with self.subTest(num_learners=num_learners):
+                # The warning is gated by `log_once` so it only fires
+                # once per process; reset the cache so each subtest can
+                # observe the warning.
+                reset_log_once("aggregator_colocation_no_pg_fallback")
+                with self.assertLogs(
+                    "ray.rllib.algorithms.algorithm", level="WARNING"
+                ) as cm:
+                    _config(colocate=True, num_learners=num_learners).build()
+                self.assertTrue(
+                    any(
+                        "colocate_aggregator_actors_with_learners=False" in line
+                        for line in cm.output
+                    )
+                )
+
+                # `colocate=False` must still wire up the aggregator
+                # manager. Total aggregator actors = max(1, num_learners)
+                # * n_agg (the local-learner case still produces one
+                # logical learner).
+                algo = _config(colocate=False, num_learners=num_learners).build()
+                self.assertEqual(
+                    len(algo._aggregator_actor_manager._actors),
+                    max(1, num_learners) * n_agg,
+                )
 
     def test_local_learner_thread_stops_on_algo_stop(self):
         # Regression test: `algo.stop()` -> `LearnerGroup.shutdown()` ->

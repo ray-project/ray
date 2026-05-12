@@ -1128,7 +1128,6 @@ class Algorithm(Checkpointable, Trainable):
             # `num_learners == 0` still produces one (local) Learner.
             n_learners = self.config.num_learners or 1
             agg_handles = []
-            self._aggregator_actor_to_learner = {}
             for learner_idx in range(n_learners):
                 for j in range(self.config.num_aggregator_actors_per_learner):
                     # Pick the PG bundle this aggregator should claim.
@@ -1144,11 +1143,12 @@ class Algorithm(Checkpointable, Trainable):
 
                     per_instance_options = dict(base_options)
                     if colocate:
-                        # Pin to the learner's PG bundle. The bundle is
-                        # already on the learner's node by construction,
-                        # so co-location is implicit and survives actor
-                        # restart (Ray re-places the bundle, not just
-                        # the actor).
+                        # Pin to a learner-sized PG bundle. The bundle is
+                        # on a Learner's node by construction; *which*
+                        # logical Learner ends up there is determined
+                        # post-placement by Ray Train's worker sort, so
+                        # we resolve the aggregator->learner mapping
+                        # below by querying actual node IDs.
                         per_instance_options[
                             "scheduling_strategy"
                         ] = PlacementGroupSchedulingStrategy(
@@ -1163,7 +1163,6 @@ class Algorithm(Checkpointable, Trainable):
                     handle = agg_cls.options(**per_instance_options).remote(
                         self.config, rl_module_spec
                     )
-                    self._aggregator_actor_to_learner[len(agg_handles)] = learner_idx
                     agg_handles.append(handle)
 
             self._aggregator_actor_manager = FaultTolerantActorManager(
@@ -1172,6 +1171,42 @@ class Algorithm(Checkpointable, Trainable):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
+
+            # Resolve `aggregator -> learner` by *actual* node placement,
+            # not by the bundle index we asked for. Ray Train's
+            # `BackendExecutor.start` calls
+            # `WorkerGroup.sort_workers_by_node_id_and_gpu_id` after the
+            # learners are placed in their PG bundles, so the logical
+            # Learner at index `i` is not necessarily the one in bundle
+            # `learner_bundle_offset + i`. Without this re-derivation, an
+            # aggregator pinned to bundle X would route its batches to
+            # whichever Learner happens to share index X after the sort
+            # -- potentially on a different node, defeating co-location.
+            agg_node_ids = [
+                rc.get()
+                for rc in self._aggregator_actor_manager.foreach_actor(
+                    func=lambda _a: ray.get_runtime_context().get_node_id()
+                )
+            ]
+            learner_node_ids = [
+                rc.get()
+                for rc in self.learner_group.foreach_learner(
+                    func=lambda _l: ray.get_runtime_context().get_node_id()
+                )
+            ]
+            self._aggregator_actor_to_learner = {}
+            for agg_idx, agg_node in enumerate(agg_node_ids):
+                for learner_idx, learner_node in enumerate(learner_node_ids):
+                    if agg_node == learner_node:
+                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
+                        break
+                else:
+                    # No learner co-located with this aggregator (only
+                    # possible on the `colocate=False` fallback path).
+                    # Round-robin assignment is the best we can do.
+                    self._aggregator_actor_to_learner[agg_idx] = agg_idx % len(
+                        learner_node_ids
+                    )
 
         # Ray metrics
         self._set_up_metrics()

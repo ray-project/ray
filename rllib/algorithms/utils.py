@@ -261,6 +261,6 @@ def get_learner_bundle_offset(config, eval_config, *, has_eval, has_offline_eval
     ``has_offline_eval`` because deciding whether those sections exist
     requires algo-specific predicates that don't live in ``utils``.
     """
-    n_eval = eval_config.evaluation_num_env_runners or 0 if has_eval else 0
-    n_offline = eval_config.num_offline_eval_runners or 0 if has_offline_eval else 0
+    n_eval = (eval_config.evaluation_num_env_runners or 0) if has_eval else 0
+    n_offline = (eval_config.num_offline_eval_runners or 0) if has_offline_eval else 0
     return 1 + (config.num_env_runners or 0) + n_eval + n_offline

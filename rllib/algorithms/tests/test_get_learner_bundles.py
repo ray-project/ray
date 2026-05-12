@@ -1,23 +1,8 @@
-"""Pure-Python unit tests for `_get_learner_bundles` and
-`get_learner_bundle_offset`.
-
-These cover the bundle-resource math that `Algorithm.setup` relies on
-when pinning aggregator actors to specific PG bundle indices. The tests
-do not spin up Ray — they only inspect the dicts returned by the helper
-functions.
-"""
 import pytest
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.utils import (
-    _get_learner_bundles,
-    get_learner_bundle_offset,
-)
-
-# Silence unused-import warnings; `get_learner_bundle_offset` is exercised
-# transitively via the assertion inside `Algorithm.default_resource_request`.
-_ = get_learner_bundle_offset
+from ray.rllib.algorithms.utils import _get_learner_bundles
 
 
 def _config(**learners_kwargs):
