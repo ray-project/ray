@@ -272,7 +272,7 @@ def test_task_retry_non_matching_exception_not_retried(restore_data_context):
         ray.data.range(2, override_num_blocks=1).map_batches(udf).take_all()
 
 
-def test_task_retry_true_retries_any_exception(restore_data_context):
+def test_task_retry_true_retries_any_exception(shutdown_only, restore_data_context):
     ctx = DataContext.get_current()
     ctx.retried_map_errors = True
     ctx.max_map_retries = 3
