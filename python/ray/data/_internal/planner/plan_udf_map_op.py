@@ -877,11 +877,11 @@ def _generate_transform_fn_for_async_map(
                 output_queue.put(sentinel)
 
         # NOTE: Reordering is an async process. Keep a strong reference to
-        # the created task: ``asyncio.create_task`` only registers a weak
+        # the created task: ``loop.create_task`` only registers a weak
         # reference with the event loop, so without a strong reference the
         # task could be garbage collected mid-execution and the reordering
         # would silently stop.
-        reorder_task = asyncio.create_task(_reorder())
+        reorder_task = loop.create_task(_reorder())
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
