@@ -2359,6 +2359,15 @@ class AlgorithmConfig(_Config):
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
         if custom_resources_per_learner is not NotProvided:
+            if custom_resources_per_learner and (
+                "CPU" in custom_resources_per_learner
+                or "GPU" in custom_resources_per_learner
+            ):
+                raise ValueError(
+                    "Do not include 'CPU' or 'GPU' in "
+                    "`custom_resources_per_learner`. Use `num_cpus_per_learner` "
+                    "and `num_gpus_per_learner` instead."
+                )
             self.custom_resources_per_learner = custom_resources_per_learner
         if num_aggregator_actors_per_learner is not NotProvided:
             self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner

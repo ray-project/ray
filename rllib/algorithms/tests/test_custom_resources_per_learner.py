@@ -23,6 +23,13 @@ def test_round_trip():
     assert cfg.custom_resources_per_learner == {"my_label": 0.001, "other": 1}
 
 
+@pytest.mark.parametrize("reserved", ["CPU", "GPU"])
+def test_reserved_keys_rejected(reserved):
+    """`CPU`/`GPU` belong to `num_*_per_learner`, not custom resources."""
+    with pytest.raises(ValueError, match="CPU.*GPU"):
+        AlgorithmConfig().learners(custom_resources_per_learner={reserved: 1})
+
+
 @pytest.fixture
 def cluster():
     """3-node fake cluster:
