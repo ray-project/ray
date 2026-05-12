@@ -21,6 +21,7 @@ from ray.data.datatype import DataType
 from ray.data.stats import (
     DatasetSummary,
     _basic_aggregators,
+    _boolean_aggregators,
     _default_dtype_aggregators,
     _dtype_aggregators_for_dataset,
     _numerical_aggregators,
@@ -49,14 +50,15 @@ class TestDtypeAggregatorsForDataset:
                 {"num": "DataType(arrow:int64)", "str": "DataType(arrow:string)"},
                 11,  # 1 numerical * 8 + 1 string * 3
             ),
-            # Boolean treated as numerical
+            # Boolean uses a reduced set of aggregators because PyArrow has no
+            # std/quantile/zero-percentage kernels for bool inputs (#62235).
             (
                 [{"bool_col": True, "int_col": 1}],
                 {
                     "bool_col": "DataType(arrow:bool)",
                     "int_col": "DataType(arrow:int64)",
                 },
-                16,  # 2 columns * 8 aggregators each
+                13,  # 1 bool * 5 + 1 numerical * 8
             ),
         ],
     )
@@ -214,6 +216,25 @@ class TestIndividualAggregatorFunctions:
             ApproximateTopK,
         ]
 
+    def test_boolean_aggregators(self):
+        """Test _boolean_aggregators function.
+
+        Boolean columns must skip Std, ApproximateQuantile, and ZeroPercentage
+        because PyArrow has no kernels for subtract(bool, double),
+        quantile(bool), or equal(bool, int64). See #62235.
+        """
+        aggs = _boolean_aggregators("test_col")
+
+        assert len(aggs) == 5
+        assert all(agg.get_target_column() == "test_col" for agg in aggs)
+        assert [type(agg) for agg in aggs] == [
+            Count,
+            Mean,
+            Min,
+            Max,
+            MissingValuePercentage,
+        ]
+
 
 class TestDefaultDtypeAggregators:
     """Test suite for _default_dtype_aggregators function."""
@@ -260,13 +281,10 @@ class TestDefaultDtypeAggregators:
                     Mean,
                     Min,
                     Max,
-                    Std,
-                    ApproximateQuantile,
                     MissingValuePercentage,
-                    ZeroPercentage,
                 ],
                 False,
-            ),  # Numerical
+            ),  # Boolean (subset of numerical — see #62235)
             (
                 DataType.string,
                 [Count, MissingValuePercentage, ApproximateTopK],
@@ -410,6 +428,31 @@ class TestDatasetSummary:
         )
 
         assert rows_same(actual, expected)
+
+    def test_summary_on_boolean_column(self):
+        """Regression test for #62235.
+
+        ``ds.summary()`` previously crashed with ``ArrowNotImplementedError``
+        when a column was bool — Std/ApproximateQuantile/ZeroPercentage have
+        no PyArrow kernels for bool inputs. Boolean columns now use a reduced
+        aggregator set (count/mean/min/max/missing_pct) and ``summary()``
+        succeeds.
+        """
+        ds = ray.data.from_items(
+            [{"flag": True}, {"flag": False}, {"flag": True}]
+        )
+
+        # Should not raise ArrowNotImplementedError.
+        summary = ds.summary()
+        actual = summary.to_pandas()
+
+        # All the bool-safe stats are present.
+        bool_safe = {"count", "mean", "min", "max", "missing_pct"}
+        assert bool_safe.issubset(set(actual["statistic"]))
+
+        # std / approx_quantile / zero_pct rows must be absent for bool.
+        bool_omitted = {"std", "approx_quantile[0]", "zero_pct"}
+        assert not bool_omitted.intersection(set(actual["statistic"]))
 
     def test_get_column_stats(self):
         """Test get_column_stats method."""
