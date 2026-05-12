@@ -28,12 +28,15 @@ class ParquetScanner(ArrowFileScanner):
 
     target_block_size: Optional[int] = None
     include_paths: bool = False
+    include_row_hash: bool = False
 
     def read_schema(self) -> pa.Schema:
         """Return schema after column pruning and tensor check."""
         schema = super().read_schema()
         if self.include_paths and schema.get_field_index("path") == -1:
             schema = schema.append(pa.field("path", pa.string()))
+        if self.include_row_hash and schema.get_field_index("row_hash") == -1:
+            schema = schema.append(pa.field("row_hash", pa.uint64()))
 
         check_for_legacy_tensor_type(schema)
         return schema
@@ -54,5 +57,6 @@ class ParquetScanner(ArrowFileScanner):
             ignore_prefixes=self.ignore_prefixes,
             target_block_size=self.target_block_size,
             include_paths=self.include_paths,
+            include_row_hash=self.include_row_hash,
             schema=self.schema,
         )
