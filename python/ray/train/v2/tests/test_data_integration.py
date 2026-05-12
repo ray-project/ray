@@ -216,12 +216,23 @@ def test_unequal_split_no_rows_dropped(ray_start_4_cpus):
 
     ds = ray.data.range(NUM_ROWS)
 
+    @ray.remote
+    class RowCounter:
+        def __init__(self):
+            self._counts = []
+
+        def add(self, count):
+            self._counts.append(count)
+
+        def total(self):
+            return sum(self._counts)
+
+    counter = RowCounter.remote()
+
     def train_fn():
         ds_shard = ray.train.get_dataset_shard("eval")
         rows = list(ds_shard.iter_rows())
-        # With equal=False, no rows are dropped. Total across all workers == NUM_ROWS.
-        # This worker may have 5 or 6 rows (11 // 2 = 5, remainder 1).
-        assert len(rows) in (NUM_ROWS // NUM_WORKERS, NUM_ROWS // NUM_WORKERS + 1)
+        ray.get(counter.add.remote(len(rows)))
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_fn,
@@ -232,6 +243,11 @@ def test_unequal_split_no_rows_dropped(ray_start_4_cpus):
         ),
     )
     trainer.fit()
+
+    total = ray.get(counter.total.remote())
+    assert (
+        total == NUM_ROWS
+    ), f"Expected {NUM_ROWS} total rows across all workers, got {total}"
 
 
 @pytest.mark.parametrize("cache_random_preprocessing", [True, False])

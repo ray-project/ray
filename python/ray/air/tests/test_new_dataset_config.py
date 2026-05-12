@@ -183,17 +183,16 @@ def test_unequal_split_datasets_invalid():
             DataConfig(unequal_split_datasets=invalid_value)
 
 
-@pytest.mark.parametrize("use_unequal", [True, False])
-def test_configure_unequal_split(use_unequal):
+@pytest.mark.parametrize(
+    ("use_unequal", "dataset_name", "expected_equal"),
+    [(False, "train", True), (True, "eval", False)],
+)
+def test_configure_unequal_split(use_unequal, dataset_name, expected_equal):
     """Test that configure passes the correct equal flag to streaming_split."""
     if use_unequal:
-        # unequal_split_datasets=["eval"] means eval gets equal=False
         data_config = DataConfig(unequal_split_datasets=["eval"])
-        expected_equal = True  # train (default) uses equal=True
     else:
-        # No unequal datasets, all use equal=True
         data_config = DataConfig()
-        expected_equal = True
 
     mock_ds = MagicMock()
     mock_ds.streaming_split = MagicMock()
@@ -202,7 +201,7 @@ def test_configure_unequal_split(use_unequal):
     worker_handles = [MagicMock() for _ in range(world_size)]
     worker_node_ids = ["node" + str(i) for i in range(world_size)]
     data_config.configure(
-        datasets={"train": mock_ds},
+        datasets={dataset_name: mock_ds},
         world_size=world_size,
         worker_handles=worker_handles,
         worker_node_ids=worker_node_ids,
@@ -472,20 +471,27 @@ def test_unequal_split_e2e(ray_start_4_cpus):
     # With equal=True (default), 11 rows / 2 workers = 5 each (1 row dropped).
     # With equal=False, workers get 5 and 6 rows (0 rows dropped).
 
+    @ray.remote
+    class RowCounter:
+        def __init__(self):
+            self._counts = []
+
+        def add(self, count):
+            self._counts.append(count)
+
+        def total(self):
+            return sum(self._counts)
+
+    counter = RowCounter.remote()
+
     class VerifyUnequalSplit(DataParallelTrainer):
-        def __init__(self, expect_equal_split: bool, **kwargs):
+        def __init__(self, **kwargs):
             def train_loop_per_worker():
                 shard = train.get_dataset_shard("eval")
                 count = sum(
                     arr.size for batch in shard.iter_batches() for arr in batch.values()
                 )
-                if expect_equal_split:
-                    assert count == NUM_ROWS // NUM_WORKERS
-                else:
-                    assert count in (
-                        NUM_ROWS // NUM_WORKERS,
-                        NUM_ROWS // NUM_WORKERS + 1,
-                    )
+                ray.get(counter.add.remote(count))
 
             kwargs.pop("scaling_config", None)
             super().__init__(
@@ -496,11 +502,14 @@ def test_unequal_split_e2e(ray_start_4_cpus):
 
     # Test with unequal_split_datasets=["eval"] (no rows dropped)
     trainer = VerifyUnequalSplit(
-        expect_equal_split=False,
         datasets={"eval": ds},
         dataset_config=DataConfig(unequal_split_datasets=["eval"]),
     )
     trainer.fit()
+
+    assert (
+        ray.get(counter.total.remote()) == NUM_ROWS
+    ), f"Expected {NUM_ROWS} total rows, got {ray.get(counter.total.remote())}"
 
 
 if __name__ == "__main__":
