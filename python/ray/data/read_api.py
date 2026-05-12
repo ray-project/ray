@@ -1304,13 +1304,26 @@ def read_parquet(
         if columns is not None:
             # TODO(datasource-v2): remove `columns=` from `read_parquet` once
             # the projection-pushdown rule dispatches to `ReadFiles`. Callers
-            # should use `ray.data.read_parquet(path).select_columns([...])`
-            # — semantically equivalent on V1, and on V2 the pushdown rule
-            # will fold the projection into the scanner once it lands.
+            # should use `ray.data.read_parquet(path).select_columns([...])`.
+            #
+            # Caveat for the ``include_paths=True`` migration: V1
+            # ``columns=[...]`` implicitly retained the synthetic ``"path"``
+            # column (see ``ParquetDatasource.read_fragments`` /
+            # ``get_current_projection``), but ``select_columns([...])`` is
+            # literal and will drop ``"path"`` unless it's listed explicitly.
+            # Callers passing both must add ``"path"`` to their projection
+            # when migrating; the message below flags that case.
+            hint = (
+                " Note: when combined with `include_paths=True`, V1 implicitly"
+                " retained the `path` column — add `'path'` to your"
+                " `select_columns([...])` list to preserve it."
+                if include_paths
+                else ""
+            )
             raise NotImplementedError(
                 "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
                 "path. Use `ray.data.read_parquet(path).select_columns([...])` "
-                "instead."
+                "instead." + hint
             )
 
         from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
