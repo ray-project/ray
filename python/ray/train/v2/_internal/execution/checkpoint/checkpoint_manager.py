@@ -127,8 +127,8 @@ def _get_training_result_from_state(
         if state.checkpoint_filesystem_type != "local":
             logger.info(
                 "Restoring an out-of-band checkpoint on a different filesystem of %s at %s. "
-                "The checkpoint's Its filesystem may be missing configurations (e.g. credentials, region, endpoint overrides). "
-                "Update the checkpoint's filesystem with a fully configured filesystem if this causes a problem.",
+                "The checkpoint's filesystem may be missing configurations (e.g. credentials, region, endpoint overrides). "
+                "If this causes a problems, update the checkpoint's filesystem with a fully configured filesystem.",
                 state.checkpoint_filesystem_type,
                 state.checkpoint_dir_name,
             )
@@ -139,8 +139,7 @@ def _get_training_result_from_state(
             metrics=state.metrics,
         )
     raise ValueError(
-        f"Restoring an out-of-band checkpoint of {state.checkpoint_filesystem_type} "
-        f"at {state.checkpoint_dir_name} has an unknown filesystem. "
+        f"Restoring an unknown filesystem type: {state.checkpoint_filesystem_type} at {state.checkpoint_dir_name}. "
         f"The supported filesystems are {list(_TYPE_NAME_FS_CLS.keys())}."
     )
 
@@ -149,11 +148,7 @@ def _get_state_from_training_result(
     training_result: _TrainingResult,
     storage_context: StorageContext,
 ) -> _TrainingResultState:
-    """Get a Pydantic state object from a TrainingResult object.
-
-    In-band vs out-of-band is derived from the checkpoint's path/filesystem
-    relative to the storage path/filesystem.
-    """
+    """Get a Pydantic state object from a TrainingResult object."""
     if is_checkpoint_in_band(training_result.checkpoint, storage_context):
         return _TrainingResultState(
             checkpoint_dir_name=storage_context.extract_checkpoint_dir_name_from_path(
@@ -163,10 +158,11 @@ def _get_state_from_training_result(
             out_of_band=False,
         )
 
-    if training_result.checkpoint.filesystem is storage_context.storage_filesystem:
+    if training_result.checkpoint.filesystem == storage_context.storage_filesystem:
         fs_type = None
     else:
         fs_type = training_result.checkpoint.filesystem.type_name
+
         if fs_type != "local":
             logger.debug(
                 "Persisting out-of-band checkpoint reference (%s, %s). On resume, "
@@ -532,12 +528,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         This method will validate the checkpoint manager state by checking if
         the checkpoints specified in manager snapshot is compatible with the
-        checkpoint folders of the experiment storage filesystem.
-
-        For in-band checkpoints, a missing checkpoint raises.
-        For out-of-band checkpoints we warn and continue: the filesystem may
-        have been reconstructed without credentials, the user may have moved
-        the data, or it may live on a system the resuming process cannot reach.
+        checkpoint folders of the experiment storage filesystem. For out-of-band
+        checkpoints, only warnings logged for problems.
 
         Raises:
             CheckpointManagerInitializationError: If an in-band checkpoint
@@ -571,9 +563,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
             if is_out_of_band:
                 logger.warning(
-                    "Out-of-band checkpoint at %s no longer exists at the "
-                    "recorded location. It will remain referenced in the "
-                    "snapshot but cannot be loaded.",
+                    "Out-of-band checkpoint at %s couldn't be verified to "
+                    "exist at the recorded location. It will remain referenced "
+                    "in the snapshot but cannot be loaded currently.",
                     checkpoint,
                 )
                 continue

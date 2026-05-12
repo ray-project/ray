@@ -537,10 +537,7 @@ class StorageContext:
 
         If the checkpoint path is within the experiment directory, then return
         the checkpoint names (removing the experiment directory path from the
-        checkpoint path).
-        Otherwise, if the checkpoint path is outside the
-        experiment path from using a custom checkpoint upload fn or
-        CHECKPOINT_UPLOAD_MODE.NO_UPLOAD, return the whole checkpoint path.
+        checkpoint path). Otherwise, return the whole checkpoint path.
 
         Args:
             checkpoint_path: The checkpoint path
