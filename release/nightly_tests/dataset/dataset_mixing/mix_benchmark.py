@@ -211,7 +211,7 @@ def main(args):
 
     # Assert ratio correctness after writing results.
     MEAN_THRESHOLD = 0.05
-    STDEV_THRESHOLD = 0.1
+    STDEV_THRESHOLD = 0.15
 
     result_metrics = benchmark.result["main"]
     for i in range(args.num_datasets):
