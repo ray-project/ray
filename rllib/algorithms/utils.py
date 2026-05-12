@@ -211,6 +211,7 @@ def _get_learner_bundles(config):
         bundle = {
             "CPU": num_cpus_per_learner + n_agg * cpus_per_agg,
             "GPU": config.num_gpus_per_learner,
+            **config.custom_resources_per_learner,
         }
         # Add aggregator custom resources × `n_agg` so the bundle reserves
         # enough capacity for all aggregators that share it.
