@@ -1203,7 +1203,7 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
+    size = "medium",
     srcs = [
         "test_typing.py",
         "typing_files/check_typing_actor_async.py",
