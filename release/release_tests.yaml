@@ -878,7 +878,7 @@
 #######################
 
 - name: long_running_actor_deaths
-  python: "3.10"
+  python: "3.14"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -916,7 +916,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_actor_tasks
-  python: "3.10"
+  python: "3.14"
   group: Long running tests
   working_dir: long_running_tests
 
