@@ -563,9 +563,37 @@ extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
     }
 }
 
+// CPython 3.14 cross-fiber tstate-attach fix.
+//
+// Boost fibers cooperatively share their OS thread's Python state via
+// CPython's `_Thread_local` `current_fast_get`. The pre-callback above
+// Ensures+leaks +1 so the tstate stays pinned; subsequent fibers on the same
+// OS thread reuse it. The flow that breaks on 3.14:
+//
+//   fiber A's `with nogil: YieldCurrentFiber(event)` -> SaveThread Detaches
+//     (current_fast := NULL, GIL released), then yields.
+//   boost picks fiber B on the same OS thread. B's pre-callback Ensures ->
+//     Attaches (current_fast := tstate). B's user callback runs and returns.
+//     If B didn't end inside a `with nogil:`, current_fast is still set.
+//   AsyncIO Thread notifies the event. Fiber A resumes. Cython's `with nogil:`
+//     exit calls PyEval_RestoreThread -> _PyThreadState_Attach, which on 3.14
+//     fatals with "non-NULL old thread state" because current_fast is non-NULL.
+//
+// Detaching at fiber exit clears current_fast, so the next Attach (whether
+// from a sibling fiber's resumption or the next fiber's pre-callback) sees a
+// clean slate. SaveThread also releases the GIL, which lets AsyncIO Thread
+// make progress between fibers without waiting on the leaked counter.
+extern "C" void RayDetachPyGILStateOnCurrentFiber(void) {
+    if (PyThreadState_GetUnchecked() != nullptr) {
+        (void)PyEval_SaveThread();
+    }
+}
+
 static void RayInstallFiberPreCallback(void) {
     ray::core::FiberState::SetFiberPreCallback(
         &RayReanchorPyRecursionLimitsOnCurrentFiber);
+    ray::core::FiberState::SetFiberPostCallback(
+        &RayDetachPyGILStateOnCurrentFiber);
 }
 #else
 static void RayInstallFiberPreCallback(void) { /* no-op on Python < 3.14 */ }
@@ -574,7 +602,7 @@ static void RayInstallFiberPreCallback(void) { /* no-op on Python < 3.14 */ }
     void RayInstallFiberPreCallback()
 
 
-# Module-init: install the fiber pre-callback exactly once at import.
+# Module-init: install the fiber pre/post callbacks exactly once at import.
 RayInstallFiberPreCallback()
 
 
