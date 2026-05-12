@@ -94,15 +94,28 @@ class ClusterManager(abc.ABC):
         cluster_compute = cluster_compute.copy()
 
         if is_new_schema:
-            # Only annotate the top-level advanced_instance_config. Tagging
-            # head_node/worker_nodes here causes Anyscale to use the per-group
-            # spec (TagSpecifications-only) at instance launch and drop any
-            # IamInstanceProfile/NetworkInterfaces/etc. set at the cluster
-            # level, since per-group spec replaces (not merges with) the base.
+            # Top-level advanced_instance_config
             aws = cluster_compute.get("advanced_instance_config", {})
             cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
                 aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
             )
+            # head_node.advanced_instance_config
+            if "head_node" in cluster_compute:
+                head = cluster_compute["head_node"]
+                head_aws = head.get("advanced_instance_config", {})
+                head["advanced_instance_config"] = add_tags_to_aws_config(
+                    head_aws,
+                    extra_tags,
+                    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+                )
+            # worker_nodes[*].advanced_instance_config
+            for worker in cluster_compute.get("worker_nodes", []):
+                worker_aws = worker.get("advanced_instance_config", {})
+                worker["advanced_instance_config"] = add_tags_to_aws_config(
+                    worker_aws,
+                    extra_tags,
+                    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+                )
         else:
             if "aws" in cluster_compute:
                 raise ValueError(
