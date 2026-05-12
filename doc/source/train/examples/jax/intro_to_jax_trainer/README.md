@@ -655,8 +655,8 @@ Here is how you would modify the data loading section in `train_loop_per_worker`
 
     # In your training loop, you can use the yielded arrays directly.
     # They are already sharded and placed on the correct devices.
-    local_batch = next(train_batches)
-    global_x, global_y = local_batch["x"], local_batch["y"]
+    batch = next(train_batches)
+    global_x, global_y = batch["x"], batch["y"]
 ```
 
 > [!NOTE]
