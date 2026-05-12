@@ -105,3 +105,37 @@ def test_paths_and_filesystem_resolved(tmp_path):
     # the caller passed None.
     assert datasource.filesystem is not None
     assert len(datasource.paths) == 1
+
+
+def test_infer_schema_with_include_row_hash(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
+
+    datasource = ParquetDatasourceV2([str(file_path)], include_row_hash=True)
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+
+    assert "row_hash" in schema.names
+    assert schema.field("row_hash").type == pa.uint64()
+
+
+def test_infer_schema_with_include_row_hash_existing_column_promoted_to_uint64(
+    tmp_path,
+):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"val": [1, 2], "row_hash": [10, 20]}))
+
+    datasource = ParquetDatasourceV2([str(file_path)], include_row_hash=True)
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+
+    assert schema.field("row_hash").type == pa.uint64()
+
+
+def test_create_scanner_propagates_include_row_hash(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1]}))
+
+    datasource = ParquetDatasourceV2([str(file_path)], include_row_hash=True)
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+    scanner = datasource.create_scanner(schema)
+
+    assert scanner.include_row_hash is True

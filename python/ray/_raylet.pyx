@@ -504,6 +504,80 @@ cdef increase_recursion_limit():
         logger.debug("Increased Python recursion limit")
 
 
+# CPython 3.14 fiber-stack re-anchor hook.
+#
+# cp3.14's `_Py_ReachedRecursionLimit` compares the current frame address to
+# `_PyThreadStateImpl::c_stack_soft_limit`, which is anchored to the OS thread's
+# pthread stack at PyThreadState bind time. Ray's async actor dispatch runs the
+# user callback on a boost::fibers fixedsize_stack (a separate memory region
+# from the pthread stack), so the very first Python call inside the fiber trips
+# the guard and CPython aborts with a fatal "Unrecoverable stack overflow".
+#
+# Fix: install a hook on FiberState (see fiber.h) that runs inside every fiber
+# before the user callback. The hook rewrites c_stack_top / c_stack_soft_limit
+# / c_stack_hard_limit to bracket the current fiber-stack frame, using a 192
+# KiB budget out of the 256 KiB fiber stack.
+#
+# We access `_PyThreadStateImpl` fields by offset to avoid pulling in the
+# Py_BUILD_CORE-gated `internal/pycore_tstate.h` header. cp3.14 layout is:
+#     PyThreadState base;
+#     Py_ssize_t    refcount;
+#     uintptr_t     c_stack_top;
+#     uintptr_t     c_stack_soft_limit;
+#     uintptr_t     c_stack_hard_limit;
+# Revisit this offset when supporting 3.15.
+cdef extern from *:
+    """
+#if PY_VERSION_HEX >= 0x30E0000
+#include "ray/core_worker/task_execution/fiber.h"
+
+extern "C" void RayReanchorPyRecursionLimitsOnCurrentFiber(void) {
+    // Leak gilstate_counter by +1 once per OS thread. PyGILState_Release at
+    // counter==0 would destroy the auto-created tstate, and the user
+    // callback's own PyGILState_Ensure would then allocate a fresh tstate
+    // whose c_stack_* fields _Py_InitializeRecursionLimits re-anchors to the
+    // pthread stack -- overwriting our re-anchor. Leaking the counter pins
+    // the tstate alive; the GIL itself is still releasable via Ray's
+    // existing `with nogil:` blocks (which call PyEval_SaveThread directly
+    // and bypass gilstate_counter), so AsyncIO Thread can still acquire it.
+    static thread_local bool gil_leaked = false;
+
+    PyGILState_STATE g = PyGILState_Ensure();
+    PyThreadState *tstate = PyThreadState_Get();
+    uintptr_t *c_stack =
+        (uintptr_t *)((char *)tstate + sizeof(PyThreadState) + sizeof(Py_ssize_t));
+    uintptr_t here = (uintptr_t)__builtin_frame_address(0);
+    if (here <= c_stack[1] /* c_stack_soft_limit */) {
+        const uintptr_t budget = 192UL * 1024UL;
+        const uintptr_t margin = 4UL   * 1024UL;
+        c_stack[0] = here;                       // c_stack_top
+        c_stack[2] = here - budget;              // c_stack_hard_limit
+        c_stack[1] = here - (budget - margin);   // c_stack_soft_limit
+    }
+
+    if (gil_leaked) {
+        PyGILState_Release(g);
+    } else {
+        gil_leaked = true;
+        (void)g;
+    }
+}
+
+static void RayInstallFiberPreCallback(void) {
+    ray::core::FiberState::SetFiberPreCallback(
+        &RayReanchorPyRecursionLimitsOnCurrentFiber);
+}
+#else
+static void RayInstallFiberPreCallback(void) { /* no-op on Python < 3.14 */ }
+#endif
+    """
+    void RayInstallFiberPreCallback()
+
+
+# Module-init: install the fiber pre-callback exactly once at import.
+RayInstallFiberPreCallback()
+
+
 cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     """A helper function that converts a CObjectLocation to a Python dict.
 
