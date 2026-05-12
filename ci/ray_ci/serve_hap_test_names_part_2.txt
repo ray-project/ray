@@ -12,7 +12,6 @@
 //python/ray/serve/tests:test_consistent_hash_router
 //python/ray/serve/tests:test_constructor_failure
 //python/ray/serve/tests:test_controller
-//python/ray/serve/tests:test_controller_benchmark
 //python/ray/serve/tests:test_controller_crashes
 //python/ray/serve/tests:test_custom_autoscaling_metrics
 //python/ray/serve/tests:test_deployment_actors
