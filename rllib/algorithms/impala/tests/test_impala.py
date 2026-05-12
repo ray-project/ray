@@ -4,6 +4,7 @@ import pytest
 
 import ray
 import ray.rllib.algorithms.impala as impala
+from ray.cluster_utils import Cluster
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import check
@@ -131,6 +132,123 @@ class TestIMPALA(unittest.TestCase):
                     len(algo._aggregator_actor_manager._actors),
                     max(1, num_learners) * n_agg,
                 )
+
+    def test_aggregators_actually_colocate_with_learners_e2e(self):
+        """End-to-end IMPALA build on a 2-node fake cluster (run via
+        ``tune.Tuner`` so the trial PG is set up the same way as in
+        production): every AggregatorActor must land on the same node
+        as the Learner it's assigned to.
+
+        Complements ``compute_aggregator_bundle_indices`` unit tests by
+        verifying the whole wiring -- helper called, decision honoured
+        by Ray's scheduler, actors actually co-located in a multi-node
+        setup.
+
+        Cluster: 2 nodes x 6 CPU. Sizing matters: with
+        ``num_cpus_per_learner=3`` and ``num_aggregator_actors_per_learner=2``,
+        each learner bundle is 3 + 2 = 5 CPU and the PG is
+        ``[main=1, lb_0=5, lb_1=5] = 11 CPU``. On 2 x 6 CPU nodes PACK
+        fits ``main + lb_0`` (6 CPU) on one node and ``lb_1`` (5 CPU) on
+        the other -- so the two learner bundles land on different nodes.
+        Each Learner takes 3 of a bundle's 5 CPU, so Ray Train can't
+        pile a second Learner into the same bundle (only 2 CPU left, not
+        enough for a 3-CPU Learner). This setup forces the cross-node
+        scenario that the production GPU path triggers naturally.
+        """
+        from ray import tune
+
+        ray.shutdown()
+        cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 6})
+        cluster.add_node(num_cpus=6)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+
+        # Detached actor used as a side-channel: the
+        # `on_algorithm_init` callback captures placement and ships it
+        # here so the test can assert outside the trial process.
+        @ray.remote(num_cpus=0)
+        class _Sink:
+            def __init__(self):
+                self.payload = None
+
+            def set(self, payload):
+                self.payload = payload
+
+            def get(self):
+                return self.payload
+
+        sink = _Sink.options(name="agg_colocation_sink", lifetime="detached").remote()
+
+        def on_algorithm_init(*, algorithm, **kwargs):
+            # Bound timeouts on `foreach_*` so a hung actor surfaces as
+            # a None result rather than blocking the trial forever.
+            mgr = algorithm._aggregator_actor_manager
+            learner_nodes = [
+                rc.get()
+                for rc in algorithm.learner_group.foreach_learner(
+                    func=lambda _l: ray.get_runtime_context().get_node_id(),
+                    timeout_seconds=10,
+                )
+            ]
+            agg_nodes = [
+                rc.get()
+                for rc in mgr.foreach_actor(
+                    func=lambda _a: ray.get_runtime_context().get_node_id(),
+                    timeout_seconds=10,
+                )
+            ]
+            mapping = dict(algorithm._aggregator_actor_to_learner)
+            ray.get(
+                ray.get_actor("agg_colocation_sink").set.remote(
+                    (learner_nodes, agg_nodes, mapping)
+                )
+            )
+
+        try:
+            config = (
+                impala.IMPALAConfig()
+                .environment("CartPole-v1")
+                .learners(
+                    num_learners=2,
+                    num_cpus_per_learner=3,
+                    num_aggregator_actors_per_learner=2,
+                    colocate_aggregator_actors_with_learners=True,
+                )
+                .env_runners(num_env_runners=0)
+                .callbacks(on_algorithm_init=on_algorithm_init)
+            )
+
+            tune.Tuner(
+                config.algo_class,
+                param_space=config,
+                run_config=tune.RunConfig(stop={"training_iteration": 1}, verbose=0),
+            ).fit()
+
+            payload = ray.get(sink.get.remote())
+            self.assertIsNotNone(payload, "on_algorithm_init never fired")
+            learner_nodes, agg_nodes, mapping = payload
+
+            self.assertEqual(
+                len(set(learner_nodes)),
+                2,
+                f"learners didn't spread: {learner_nodes}",
+            )
+            self.assertEqual(len(agg_nodes), 4)
+            for agg_idx, agg_node in enumerate(agg_nodes):
+                expected_node = learner_nodes[mapping[agg_idx]]
+                self.assertEqual(
+                    agg_node,
+                    expected_node,
+                    f"Aggregator #{agg_idx} on {agg_node}; expected "
+                    f"{expected_node} (Learner {mapping[agg_idx]}).",
+                )
+        finally:
+            try:
+                ray.kill(sink)
+            except Exception:
+                pass
+            ray.shutdown()
+            cluster.shutdown()
 
     def test_local_learner_thread_stops_on_algo_stop(self):
         # Regression test: `algo.stop()` -> `LearnerGroup.shutdown()` ->

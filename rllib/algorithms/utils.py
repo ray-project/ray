@@ -245,6 +245,81 @@ def _get_main_process_bundle(config):
     return bundle
 
 
+def compute_aggregator_bundle_indices(
+    *,
+    num_learners: int,
+    num_aggregator_actors_per_learner: int,
+    learner_bundle_offset: int,
+    learner_node_ids: list,
+    bundles_to_node: dict,
+):
+    """Map each logical Learner index to the PG bundle indices its
+    aggregators should claim.
+
+    This is the bridge between Ray Train's post-placement, post-sort
+    Learner ordering and ``Algorithm.setup``'s aggregator scheduling.
+    Ray Train calls ``WorkerGroup.sort_workers_by_node_id_and_gpu_id``
+    after placing workers in PG bundles, so the Learner at logical
+    index ``i`` is *not* necessarily the one in bundle
+    ``learner_bundle_offset + i``. This helper queries each Learner's
+    actual node and picks a co-located bundle for its aggregators.
+
+    Args:
+        num_learners: ``config.num_learners`` (0 means a local Learner).
+        num_aggregator_actors_per_learner: per-Learner aggregator count.
+        learner_bundle_offset: index of the first learner-related bundle
+            in the trial PG (output of ``get_learner_bundle_offset``).
+        learner_node_ids: actual node IDs of each logical Learner. For
+            ``num_learners == 0`` this is a one-element list with the
+            trial driver's node.
+        bundles_to_node: ``bundle_idx -> node_id`` from
+            ``ray.util.placement_group_table(pg)["bundles_to_node_id"]``.
+
+    Returns:
+        Dict ``{learner_idx: [bundle_idx, bundle_idx, ...]}`` of length
+        ``num_aggregator_actors_per_learner`` per entry. Entries are
+        omitted (or shorter than the per-Learner count) if no bundle
+        could be found on the Learner's node -- the caller falls back to
+        unhinted scheduling for those aggregators.
+    """
+    if num_aggregator_actors_per_learner == 0:
+        return {}
+
+    out: dict = {}
+    if num_learners == 0:
+        # `_get_learner_bundles` places `num_aggregator_actors_per_learner`
+        # dedicated aggregator bundles starting at `learner_bundle_offset`.
+        # The single logical Learner is local; pick its node from index 0.
+        local_node = learner_node_ids[0]
+        candidate_bundles = list(
+            range(
+                learner_bundle_offset,
+                learner_bundle_offset + num_aggregator_actors_per_learner,
+            )
+        )
+        out[0] = [b for b in candidate_bundles if bundles_to_node.get(b) == local_node]
+        return out
+
+    # `num_learners > 0`: aggregator CPU is baked into each Learner's
+    # bundle (one bundle per Learner). Build a per-node pool of those
+    # bundles and pop one per logical Learner by node match.
+    from collections import defaultdict
+
+    node_to_unused: dict = defaultdict(list)
+    for b in range(learner_bundle_offset, learner_bundle_offset + num_learners):
+        node_id = bundles_to_node.get(b)
+        if node_id is not None:
+            node_to_unused[node_id].append(b)
+
+    for learner_idx, learner_node in enumerate(learner_node_ids):
+        pool = node_to_unused.get(learner_node, [])
+        if pool:
+            # All `num_aggregator_actors_per_learner` aggregators for
+            # this Learner share the Learner's bundle.
+            out[learner_idx] = [pool.pop(0)] * num_aggregator_actors_per_learner
+    return out
+
+
 def get_learner_bundle_offset(config, eval_config, *, has_eval, has_offline_eval):
     """Index in the trial's PG where learner bundles start.
 

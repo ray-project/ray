@@ -2,7 +2,10 @@ import pytest
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.utils import _get_learner_bundles
+from ray.rllib.algorithms.utils import (
+    _get_learner_bundles,
+    compute_aggregator_bundle_indices,
+)
 
 
 def _config(**learners_kwargs):
@@ -130,6 +133,104 @@ def test_get_learner_bundle_offset_matches_actual_bundle_layout(
     # produces no learner bundle).
     expected_total = 1 + num_env_runners + (2 if has_eval else 0)
     assert len(bundles) == expected_total, f"Got {len(bundles)} bundles: {bundles}"
+
+
+# --- compute_aggregator_bundle_indices -----------------------------------
+# These tests fix the load-bearing co-location decision: given each
+# Learner's actual node (post-Ray-Train-sort) and the trial PG's
+# bundle-to-node table, pick the right bundle index per aggregator.
+# Verifying placement end-to-end would need a multi-node fake cluster
+# *and* Ray Train cooperating with our bundle pinning, which is brittle
+# in a unit test. Testing the decision function directly nails down the
+# correctness invariant without that overhead.
+
+
+def test_compute_aggregator_bundle_indices_no_aggregators():
+    """`num_aggregator_actors_per_learner=0` → empty mapping."""
+    out = compute_aggregator_bundle_indices(
+        num_learners=2,
+        num_aggregator_actors_per_learner=0,
+        learner_bundle_offset=1,
+        learner_node_ids=["A", "B"],
+        bundles_to_node={0: "A", 1: "A", 2: "B"},
+    )
+    assert out == {}
+
+
+def test_compute_aggregator_bundle_indices_local_learner_same_node():
+    """`num_learners=0`: aggregator bundles on the local Learner's
+    (driver's) node are picked."""
+    out = compute_aggregator_bundle_indices(
+        num_learners=0,
+        num_aggregator_actors_per_learner=2,
+        learner_bundle_offset=1,
+        learner_node_ids=["A"],
+        # Bundle 0 = main_process (on A); bundles 1,2 = aggregator
+        # bundles, both also on A under PACK.
+        bundles_to_node={0: "A", 1: "A", 2: "A"},
+    )
+    assert out == {0: [1, 2]}
+
+
+def test_compute_aggregator_bundle_indices_local_learner_split_nodes():
+    """`num_learners=0`: only bundles co-located with the driver are
+    picked; bundles that drifted to another node are dropped."""
+    out = compute_aggregator_bundle_indices(
+        num_learners=0,
+        num_aggregator_actors_per_learner=2,
+        learner_bundle_offset=1,
+        learner_node_ids=["A"],
+        # Aggregator bundle 2 ended up on node B -> not co-located.
+        bundles_to_node={0: "A", 1: "A", 2: "B"},
+    )
+    assert out == {0: [1]}
+
+
+def test_compute_aggregator_bundle_indices_two_learners_one_node_each():
+    """`num_learners=2` with one Learner per node: aggregators for each
+    Learner pin to the bundle on the Learner's node, *regardless of the
+    Learner's logical index*. This is the post-sort scenario."""
+    # Bundle layout: 0=main, 1=learner_bundle_A, 2=learner_bundle_B.
+    # Ray Train sorted: logical learner 0 ended up on node B, logical
+    # learner 1 on node A (reversed from bundle order). The helper must
+    # pick bundle 2 for learner 0 and bundle 1 for learner 1.
+    out = compute_aggregator_bundle_indices(
+        num_learners=2,
+        num_aggregator_actors_per_learner=2,
+        learner_bundle_offset=1,
+        learner_node_ids=["B", "A"],
+        bundles_to_node={0: "A", 1: "A", 2: "B"},
+    )
+    assert out == {0: [2, 2], 1: [1, 1]}
+
+
+def test_compute_aggregator_bundle_indices_two_learners_same_node():
+    """Two Learners on the same node consume distinct learner bundles
+    from the per-node pool."""
+    out = compute_aggregator_bundle_indices(
+        num_learners=2,
+        num_aggregator_actors_per_learner=1,
+        learner_bundle_offset=1,
+        learner_node_ids=["A", "A"],
+        bundles_to_node={0: "A", 1: "A", 2: "A"},
+    )
+    # Each Learner gets a different learner-bundle.
+    assert out == {0: [1], 1: [2]}
+
+
+def test_compute_aggregator_bundle_indices_no_bundle_on_learner_node():
+    """If no learner-bundle is on a Learner's actual node (e.g. PG
+    layout diverged from expectations), that Learner is omitted from
+    the result — the caller falls back to unhinted scheduling."""
+    out = compute_aggregator_bundle_indices(
+        num_learners=2,
+        num_aggregator_actors_per_learner=2,
+        learner_bundle_offset=1,
+        learner_node_ids=["A", "Z"],  # "Z" matches no bundle.
+        bundles_to_node={0: "A", 1: "A", 2: "B"},
+    )
+    # Learner 0 on A -> bundle 1; Learner 1 on Z -> no match -> dropped.
+    assert out == {0: [1, 1]}
 
 
 if __name__ == "__main__":

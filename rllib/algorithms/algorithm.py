@@ -48,6 +48,7 @@ from ray.rllib.algorithms.utils import (
     _get_learner_bundles,
     _get_main_process_bundle,
     _get_offline_eval_runner_bundles,
+    compute_aggregator_bundle_indices,
     get_learner_bundle_offset,
 )
 from ray.rllib.callbacks.utils import make_callback
@@ -1127,42 +1128,54 @@ class Algorithm(Checkpointable, Trainable):
 
             # `num_learners == 0` still produces one (local) Learner.
             n_learners = self.config.num_learners or 1
-            agg_handles = []
-            for learner_idx in range(n_learners):
-                for j in range(self.config.num_aggregator_actors_per_learner):
-                    # Pick the PG bundle this aggregator should claim.
-                    # `num_learners == 0`: aggregators have *their own*
-                    # dedicated bundles (see `_get_learner_bundles`).
-                    # `num_learners >  0`: aggregator's CPU is baked into
-                    # the corresponding learner's bundle; share that
-                    # bundle to land on the learner's node.
-                    if self.config.num_learners == 0:
-                        bundle_idx = learner_bundle_offset + j
-                    else:
-                        bundle_idx = learner_bundle_offset + learner_idx
+            n_agg_per_learner = self.config.num_aggregator_actors_per_learner
 
+            # Resolve `learner_idx -> bundle index list` *after* the
+            # LearnerGroup has placed its workers. The bridge between
+            # Ray Train's sorted Learner order and our aggregator
+            # pinning is in `compute_aggregator_bundle_indices`.
+            learner_idx_to_bundles = {}
+            if colocate:
+                learner_node_ids = [
+                    rc.get()
+                    for rc in self.learner_group.foreach_learner(
+                        func=lambda _l: ray.get_runtime_context().get_node_id()
+                    )
+                ]
+                bundles_to_node = ray.util.placement_group_table(trial_pg).get(
+                    "bundles_to_node_id", {}
+                )
+                learner_idx_to_bundles = compute_aggregator_bundle_indices(
+                    num_learners=self.config.num_learners,
+                    num_aggregator_actors_per_learner=n_agg_per_learner,
+                    learner_bundle_offset=learner_bundle_offset,
+                    learner_node_ids=learner_node_ids,
+                    bundles_to_node=bundles_to_node,
+                )
+
+            agg_handles = []
+            self._aggregator_actor_to_learner = {}
+            for learner_idx in range(n_learners):
+                bundle_indices = learner_idx_to_bundles.get(learner_idx, [])
+                for j in range(n_agg_per_learner):
                     per_instance_options = dict(base_options)
-                    if colocate:
-                        # Pin to a learner-sized PG bundle. The bundle is
-                        # on a Learner's node by construction; *which*
-                        # logical Learner ends up there is determined
-                        # post-placement by Ray Train's worker sort, so
-                        # we resolve the aggregator->learner mapping
-                        # below by querying actual node IDs.
+                    if colocate and j < len(bundle_indices):
+                        # Pin to a bundle on the Learner's actual node.
                         per_instance_options[
                             "scheduling_strategy"
                         ] = PlacementGroupSchedulingStrategy(
                             placement_group=trial_pg,
-                            placement_group_bundle_index=bundle_idx,
+                            placement_group_bundle_index=bundle_indices[j],
                         )
-                    # else: `colocate=False` -- no scheduling hint. Ray
-                    # falls back to its default behaviour (in a Tune
-                    # trial, that means inheriting the PG with any
-                    # bundle index; outside Tune, any node with capacity).
+                    # else: `colocate=False` (or no matching bundle on the
+                    # Learner's node, which can only happen if PG layout
+                    # diverges from what we computed). No scheduling
+                    # hint -- Ray's default behaviour applies.
 
                     handle = agg_cls.options(**per_instance_options).remote(
                         self.config, rl_module_spec
                     )
+                    self._aggregator_actor_to_learner[len(agg_handles)] = learner_idx
                     agg_handles.append(handle)
 
             self._aggregator_actor_manager = FaultTolerantActorManager(
@@ -1171,42 +1184,6 @@ class Algorithm(Checkpointable, Trainable):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-
-            # Resolve `aggregator -> learner` by *actual* node placement,
-            # not by the bundle index we asked for. Ray Train's
-            # `BackendExecutor.start` calls
-            # `WorkerGroup.sort_workers_by_node_id_and_gpu_id` after the
-            # learners are placed in their PG bundles, so the logical
-            # Learner at index `i` is not necessarily the one in bundle
-            # `learner_bundle_offset + i`. Without this re-derivation, an
-            # aggregator pinned to bundle X would route its batches to
-            # whichever Learner happens to share index X after the sort
-            # -- potentially on a different node, defeating co-location.
-            agg_node_ids = [
-                rc.get()
-                for rc in self._aggregator_actor_manager.foreach_actor(
-                    func=lambda _a: ray.get_runtime_context().get_node_id()
-                )
-            ]
-            learner_node_ids = [
-                rc.get()
-                for rc in self.learner_group.foreach_learner(
-                    func=lambda _l: ray.get_runtime_context().get_node_id()
-                )
-            ]
-            self._aggregator_actor_to_learner = {}
-            for agg_idx, agg_node in enumerate(agg_node_ids):
-                for learner_idx, learner_node in enumerate(learner_node_ids):
-                    if agg_node == learner_node:
-                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
-                        break
-                else:
-                    # No learner co-located with this aggregator (only
-                    # possible on the `colocate=False` fallback path).
-                    # Round-robin assignment is the best we can do.
-                    self._aggregator_actor_to_learner[agg_idx] = agg_idx % len(
-                        learner_node_ids
-                    )
 
         # Ray metrics
         self._set_up_metrics()
