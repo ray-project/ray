@@ -66,7 +66,6 @@ defaults
     {% if config.timeout_queue_s is not none %}timeout queue {{ config.timeout_queue_s }}s{% endif %}
     log global
     option httplog
-    option abortonclose
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay

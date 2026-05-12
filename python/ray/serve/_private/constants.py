@@ -733,16 +733,12 @@ RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
 )
 
 # HAProxy timeout configurations (in seconds, None = no timeout)
-RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))
-    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S")
-    else None
+RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S", "3600")
 )
 
-RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))
-    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
-    else None
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S", "5")
 )
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
@@ -829,7 +825,7 @@ RAY_SERVE_HAPROXY_TOTAL_SLOTS = int(
 # If N_backends * MIN_SLOTS exceeds TOTAL_SLOTS the split degrades to an
 # equal share of (TOTAL_SLOTS // N_backends) per backend.
 RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND = int(
-    os.environ.get("RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND", "16")
+    os.environ.get("RAY_SERVE_HAPROXY_MIN_SLOTS_PER_BACKEND", "32")
 )
 
 # Headroom multiplier applied when allocating slots. A backend with N
