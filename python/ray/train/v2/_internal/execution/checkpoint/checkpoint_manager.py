@@ -384,7 +384,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         validated_checkpoint_dir_names = [
             self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
-            if checkpoint.filesystem == self._storage_context.storage_filesystem
+            if is_checkpoint_in_band(checkpoint, self._storage_context)
             else checkpoint.path
             for checkpoint in self._validated_checkpoints
         ]
