@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from io import BytesIO
 import ipaddress
+import socket
 import urllib.parse
 import PIL
 from PIL import Image
@@ -44,6 +45,10 @@ class Model:
         if parsed.scheme not in ("http", "https"):
             return
         hostname = parsed.hostname or ""
+        if not hostname:
+            return
+
+        # Reject literal private/loopback/link-local/reserved IP addresses
         try:
             addr = ipaddress.ip_address(hostname)
             if (
@@ -54,11 +59,33 @@ class Model:
             ):
                 return
         except ValueError:
-            if hostname.lower() in ("localhost", "metadata.google.internal"):
-                return
+            pass  # Not a literal IP; validated via DNS resolution below
+
+        # Resolve the hostname and validate every returned IP to prevent SSRF
+        # via DNS rebinding or domains that resolve to internal addresses
+        # (e.g. attacker-controlled domains, nip.io-style services, etc.)
+        try:
+            resolved = socket.getaddrinfo(hostname, None)
+            for result in resolved:
+                ip_str = result[4][0]
+                addr = ipaddress.ip_address(ip_str)
+                if (
+                    addr.is_private
+                    or addr.is_loopback
+                    or addr.is_link_local
+                    or addr.is_reserved
+                ):
+                    return
+        except (socket.gaierror, ValueError):
+            # Reject unresolvable hostnames rather than allowing them through
+            return
 
         try:
-            image_bytes = requests.get(uri, timeout=5).content
+            # Disable redirect following to prevent SSRF bypass via a redirect
+            # from an external URL to an internal resource
+            image_bytes = requests.get(
+                uri, timeout=5, allow_redirects=False
+            ).content
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.ChunkedEncodingError,
