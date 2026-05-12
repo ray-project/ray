@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import sys
 import threading
 import time
 import weakref
@@ -565,6 +566,26 @@ class Router(ABC):
     @abstractmethod
     def assign_request(
         self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        yield
+
+    @abstractmethod
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
@@ -1681,6 +1702,98 @@ class SingletonThreadRouter(Router):
             A concurrent.futures.Future resolving to the ReplicaResult representing
             the assigned request.
         """
+        return self._wrap_asyncio_call_in_future(
+            self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            )
+        )
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Bridge async context manager to router event loop.
+
+        This ensures choose_replica runs on the singleton router loop,
+        maintaining thread safety for all state modifications.
+        """
+        # Enter context on router loop
+        async def enter_context():
+            cm = self._asyncio_router.choose_replica(
+                request_meta, *request_args, **request_kwargs
+            )
+            selection = await cm.__aenter__()
+            return selection, cm
+
+        async def exit_context(cm, exc_type, exc_val, exc_tb):
+            return await cm.__aexit__(exc_type, exc_val, exc_tb)
+
+        future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
+        try:
+            selection, context_manager = await asyncio.wrap_future(future)
+        except BaseException:
+            # Cancelled after __aenter__ reserved the slot but before we
+            # observed the result: exit the entered CM to release the slot.
+            if future.done() and not future.cancelled() and future.exception() is None:
+                entered_cm = future.result()[1]
+                exc_info = sys.exc_info()
+                cleanup = asyncio.run_coroutine_threadsafe(
+                    exit_context(entered_cm, *exc_info), self._asyncio_loop
+                )
+                await asyncio.shield(asyncio.wrap_future(cleanup))
+            raise
+
+        try:
+            yield selection
+        finally:
+            exc_info = sys.exc_info()
+            future = asyncio.run_coroutine_threadsafe(
+                exit_context(context_manager, *exc_info), self._asyncio_loop
+            )
+            # Shielded so a cancel landing during cleanup doesn't propagate
+            # through wrap_future and abort __aexit__ on the router loop.
+            await asyncio.shield(asyncio.wrap_future(future))
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Dispatch request to a previously selected replica."""
+        try:
+            selection._mark_dispatched()
+        except Exception as exc:
+            future = concurrent.futures.Future()
+            future.set_exception(exc)
+            return future
+
+        return self._wrap_asyncio_call_in_future(
+            self._asyncio_router._dispatch_to_marked_selection(
+                selection, request_meta, *request_args, **request_kwargs
+            )
+        )
+
+    def _wrap_asyncio_call_in_future(
+        self,
+        coro: Coroutine,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Wrap an async call in a concurrent.futures.Future for cross-thread execution.
+
+        This is a helper method to execute AsyncioRouter's async methods on the dedicated asyncio event loop thread.
+
+        Args:
+            coro: The coroutine to execute (e.g., _asyncio_router.assign_request(...))
+
+        Returns:
+            A concurrent.futures.Future that resolves to the ReplicaResult.
+        """
+        # Extract operation name from coroutine for logging
+        operation_name = coro.__name__
 
         def asyncio_future_callback(
             asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
@@ -1701,19 +1814,15 @@ class SingletonThreadRouter(Router):
             ):
                 result: ReplicaResult = asyncio_future.result()
                 logger.info(
-                    "Asyncio task completed despite cancellation attempt. "
-                    "Attempting to cancel the request that was assigned to a replica."
+                    f"Asyncio task completed despite cancellation attempt during {operation_name}. "
+                    "Attempting to cancel the request."
                 )
                 result.cancel()
 
         concurrent_future = concurrent.futures.Future()
 
         def create_task_and_setup():
-            task = self._asyncio_loop.create_task(
-                self._asyncio_router.assign_request(
-                    request_meta, *request_args, **request_kwargs
-                )
-            )
+            task = self._asyncio_loop.create_task(coro)
 
             # Set up your cancellation callback
             task.add_done_callback(
@@ -1863,6 +1972,43 @@ class CurrentLoopRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
+        )
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Delegate to AsyncioRouter's choose_replica."""
+        async with self._asyncio_router.choose_replica(
+            request_meta, *request_args, **request_kwargs
+        ) as selection:
+            yield selection
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> asyncio.Future[ReplicaResult]:
+        """Dispatch request to a previously selected replica.
+
+        Returns an asyncio.Future wrapping the async dispatch call.
+        """
+        try:
+            selection._mark_dispatched()
+        except Exception as exc:
+            future = self._asyncio_loop.create_future()
+            future.set_exception(exc)
+            return future
+
+        return self._asyncio_loop.create_task(
+            self._asyncio_router._dispatch_to_marked_selection(
+                selection, request_meta, *request_args, **request_kwargs
+            )
         )
 
     async def broadcast(
