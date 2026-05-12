@@ -90,12 +90,32 @@ class AbstractMap(AbstractOneToOne):
     def set_per_block_limit(self, per_block_limit: int):
         object.__setattr__(self, "per_block_limit", per_block_limit)
 
+    def _get_args(self) -> Dict[str, Any]:
+        args = super()._get_args()
+        for key in [
+            "can_modify_num_rows",
+            "min_rows_per_bundled_input",
+            "ray_remote_args",
+            "ray_remote_args_fn",
+            "compute",
+            "per_block_limit",
+        ]:
+            args[f"_{key}"] = getattr(self, key)
+        return args
+
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
     to physical MapOperator.
     """
+
+    fn: UserDefinedFunction
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
 
     def __init__(
         self,

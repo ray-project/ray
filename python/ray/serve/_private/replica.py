@@ -33,7 +33,6 @@ import grpc
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
-from starlette.applications import Starlette
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
@@ -187,6 +186,8 @@ from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
 
 def _wrap_grpc_call(f):
@@ -1056,12 +1057,14 @@ class Replica:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        is_ingress_request_router: bool = False,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
         self._ingress = ingress
+        self._is_ingress_request_router = is_ingress_request_router
         self._route_prefix = route_prefix
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
@@ -1179,13 +1182,41 @@ class Replica:
         self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
 
         self._num_queued_requests = 0
+        self._reserved_slots: Set[str] = set()
 
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
     def get_num_ongoing_requests(self) -> int:
-        return self._metrics_manager.get_num_ongoing_requests()
+        return self._metrics_manager.get_num_ongoing_requests() + len(
+            self._reserved_slots
+        )
+
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve replica capacity for a future dispatch call."""
+        if request_metadata.is_direct_ingress:
+            raise RuntimeError(
+                "Slot reservation is not supported for direct-ingress requests."
+            )
+
+        if not self._can_accept_request(request_metadata):
+            return False, self.get_num_ongoing_requests()
+
+        await self._semaphore.acquire()
+        self._reserved_slots.add(slot_token)
+        return True, self.get_num_ongoing_requests()
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release replica capacity reserved by choose_replica()."""
+        if slot_token not in self._reserved_slots:
+            return False, self.get_num_ongoing_requests()
+
+        self._reserved_slots.remove(slot_token)
+        self._semaphore.release()
+        return True, self.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -1862,12 +1893,25 @@ class Replica:
 
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
-        async with self._semaphore:
+        reserved_slot_token = request_metadata._reserved_slot_token
+        if reserved_slot_token:
+            if reserved_slot_token not in self._reserved_slots:
+                raise RuntimeError(
+                    "Request tried to consume an unknown reserved slot "
+                    f"{reserved_slot_token}."
+                )
+            self._reserved_slots.remove(reserved_slot_token)
+        else:
+            await self._semaphore.acquire()
+
+        try:
             try:
                 self._metrics_manager.inc_num_ongoing_requests(request_metadata)
                 yield
             finally:
                 self._metrics_manager.dec_num_ongoing_requests(request_metadata)
+        finally:
+            self._semaphore.release()
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
@@ -1880,7 +1924,7 @@ class Replica:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            num_ongoing_requests = self.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
@@ -1971,7 +2015,7 @@ class Replica:
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress:
+        if not self._ingress and not self._is_ingress_request_router:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -2023,15 +2067,20 @@ class Replica:
 
             raise RuntimeError(err_msg)
 
-        # Fetch configs
-        self._http_options, self._grpc_options = ray.get(
-            [
-                self._controller_handle.get_http_config.remote(),
-                self._controller_handle.get_grpc_config.remote(),
-            ]
-        )
+        if self._ingress:
+            self._http_options, self._grpc_options = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_grpc_config.remote(),
+                ]
+            )
+        else:
+            self._http_options = ray.get(
+                self._controller_handle.get_http_config.remote()
+            )
+            self._grpc_options = None
 
-        grpc_enabled = is_grpc_enabled(self._grpc_options)
+        grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
 
         # Allocate and start HTTP server
         async def start_http_server(port):
@@ -2056,7 +2105,8 @@ class Replica:
             protocol=RequestProtocol.HTTP,
         )
 
-        # Allocate and start gRPC server if enabled
+        # Allocate and start gRPC server for ingress replicas if enabled.
+        # Ingress request router replicas only need HTTP for /internal/route.
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
@@ -2526,8 +2576,12 @@ class Replica:
             return
 
         # If the HTTP path does not match the deployment route prefix,
-        # it is invalid and we should not serve it.
-        if not route.startswith(self._route_prefix):
+        # it is invalid and we should not serve it. Ingress request router
+        # peer deployments (e.g. LLMRouter) have no route prefix; fall
+        # back to "" so any path (including the empty-path ASGI edge case)
+        # matches and downstream user code dispatches.
+        route_prefix = self._route_prefix or ""
+        if not route.startswith(route_prefix):
             for msg in convert_object_to_asgi_messages(
                 f"Path '{route}' not found. "
                 "Ping http://.../-/routes for available routes.",
@@ -2713,6 +2767,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        is_ingress_request_router: bool = False,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2729,6 +2784,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            is_ingress_request_router=is_ingress_request_router,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -2743,6 +2799,16 @@ class ReplicaActor:
         not be blocked by user code.
         """
         return self._replica_impl.get_num_ongoing_requests()
+
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve capacity for a future choose_replica/dispatch request."""
+        return await self._replica_impl.reserve_slot(request_metadata, slot_token)
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release capacity reserved by choose_replica()."""
+        return self._replica_impl.release_slot(slot_token)
 
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
@@ -2766,6 +2832,20 @@ class ReplicaActor:
             ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
+
+    async def was_initialized(self) -> bool:
+        """Whether this replica's user callable has finished initializing.
+
+        Used by the controller during recovery to detect actors that were
+        created but never received their initial
+        ``initialize_and_get_metadata(rank=...)`` call (e.g., because the
+        previous controller crashed mid-startup). Such an actor has neither a
+        rank nor a fully-initialized user callable, and recovering it would
+        silently complete its initialization with ``rank=None``, breaking
+        rank tracking. The controller can call this method first and skip /
+        kill the actor when it returns False.
+        """
+        return self._replica_impl._user_callable_initialized
 
     def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         return self._replica_impl.list_outbound_deployments()
@@ -3205,17 +3285,37 @@ class UserCallableWrapper:
     async def _initialize_asgi_callable(self) -> None:
         self._callable: ASGIAppReplicaWrapper
 
-        app: Starlette = self._callable.app
+        build_asgi_app = getattr(self._callable, SERVE_BUILD_ASGI_APP_METHOD, None)
+        is_late_bound = not hasattr(self._callable, "_asgi_app")
+        if is_late_bound and build_asgi_app is None:
+            raise TypeError(
+                f"ASGI app was not provided to the wrapper and "
+                f"`{SERVE_BUILD_ASGI_APP_METHOD}` is not defined on the deployment."
+            )
+        if build_asgi_app is not None:
+            app, _ = await self._call_func_or_gen(
+                build_asgi_app,
+                run_sync_methods_in_threadpool_override=False,
+            )
+            if app is None:
+                raise TypeError(
+                    f"`{SERVE_BUILD_ASGI_APP_METHOD}` must return an ASGI app."
+                )
+            self._callable._set_asgi_app(app)
 
-        # The reason we need to do this is because BackPressureError is a serve internal exception
-        # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-        # With same reasoning, we are not handling TimeoutError because it's a generic exception
-        # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
-        def handle_exception(_: Request, exc: Exception):
-            return self.handle_exception(exc)
+        app: ASGIApp = self._callable.app
 
-        for exc in self.service_unavailable_exceptions:
-            app.add_exception_handler(exc, handle_exception)
+        if hasattr(app, "add_exception_handler"):
+            # The reason we need to do this is because BackPressureError is a serve
+            # internal exception and FastAPI doesn't know how to handle it, so it
+            # treats it as a 500 error. With same reasoning, we are not handling
+            # TimeoutError because it's a generic exception the FastAPI knows how
+            # to handle. See https://www.starlette.io/exceptions/
+            def handle_exception(_: Request, exc: Exception):
+                return self.handle_exception(exc)
+
+            for exc in self.service_unavailable_exceptions:
+                app.add_exception_handler(exc, handle_exception)
 
         await self._callable._run_asgi_lifespan_startup()
 

@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
@@ -793,7 +793,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
           &workers_to_kill,
       const NodeID &node_id,
-      const SystemMemorySnapshot &system_memory_snapshot,
+      const MemoryUsageSnapshot &system_memory_snapshot,
       const std::string &object_store_memory_usage,
       const ProcessesMemorySnapshot &process_memory_snapshot,
       float usage_threshold) const;
