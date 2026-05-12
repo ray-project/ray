@@ -6,13 +6,13 @@ backpressure system with a single, simpler mechanism.
 
 Key ideas:
 - A single global budget (max_bytes) caps total estimated in-flight memory.
-- Each operator tracks an expected *peak concurrent bytes* per task (EMA).
-  Peak concurrent bytes = max(produced_bytes - consumed_bytes) over the
-  task's lifetime. This accounts for downstream consuming outputs while
-  the task is still running, giving a tighter budget than total output bytes.
+- Each operator tracks an expected *peak ratio* (peak_concurrent_bytes /
+  input_bytes) per task via an EMA. On dispatch, the expected peak is
+  ratio * input_bytes. For source operators, use input_bytes=1 and set
+  the initial ratio to the target partition size.
 - On dispatch, the scheduler pre-allocates the expected peak for that task.
 - If actual peak exceeds the estimate, allocated_bytes is ratcheted up.
-- On task completion, the EMA is updated with the observed peak.
+- On task completion, the EMA is updated with the observed peak ratio.
 - Backpressure is applied when the budget is exhausted.
 """
 
@@ -68,8 +68,8 @@ class TaskState:
 class OpSchedulingState:
     """Per-operator scheduling state."""
 
-    # EMA of peak concurrent bytes observed per task.
-    expected_peak_bytes: float = 0.0
+    # EMA of peak ratio (peak_concurrent_bytes / input_bytes) per task.
+    expected_peak_ratio: float = 1.0
     # Total bytes buffered in this operator's output queue.
     buffered_output_bytes: int = 0
 
@@ -117,17 +117,18 @@ class BudgetScheduler:
     def register_operator(
         self,
         op: Operator,
-        initial_peak_bytes: float = 0.0,
+        initial_peak_ratio: float = 1.0,
     ) -> None:
         """Register an operator with the scheduler.
 
         Args:
             op: The physical operator.
-            initial_peak_bytes: Initial expected peak concurrent bytes per
-                task. Use target_block_size or file-metadata estimate.
+            initial_peak_ratio: Initial expected ratio of peak concurrent
+                bytes to input bytes. For source operators (input_bytes=1),
+                set this to the target partition size.
         """
         self.op_states[op] = OpSchedulingState(
-            expected_peak_bytes=initial_peak_bytes,
+            expected_peak_ratio=initial_peak_ratio,
         )
 
     def get_op_state(self, op: Operator) -> OpSchedulingState:
@@ -167,7 +168,7 @@ class BudgetScheduler:
         best_key = None
 
         for op, input_bytes in ops_with_input.items():
-            if not self._can_dispatch(op):
+            if not self._can_dispatch(op, input_bytes):
                 continue
 
             state = self.op_states.get(op)
@@ -184,7 +185,7 @@ class BudgetScheduler:
 
         return best_op
 
-    def _can_dispatch(self, op: Operator) -> bool:
+    def _can_dispatch(self, op: Operator, input_bytes: int) -> bool:
         """Check if dispatching a task for this operator would stay in budget."""
         state = self.op_states.get(op)
         if state is None:
@@ -196,7 +197,8 @@ class BudgetScheduler:
             return False
 
         # Check if adding this task's expected peak would exceed budget.
-        if self.allocated_bytes + state.expected_peak_bytes > self.max_bytes:
+        expected_peak = state.expected_peak_ratio * input_bytes
+        if self.allocated_bytes + expected_peak > self.max_bytes:
             return False
 
         return True
@@ -233,7 +235,7 @@ class BudgetScheduler:
             A unique task_id for tracking this task.
         """
         state = self.op_states[op]
-        expected_peak = int(state.expected_peak_bytes)
+        expected_peak = int(state.expected_peak_ratio * input_bytes)
 
         task_id = self._next_task_id
         self._next_task_id += 1
@@ -340,11 +342,11 @@ class BudgetScheduler:
 
         op_state = self.op_states[task.op]
 
-        # Update the EMA for this operator's expected peak bytes.
-        actual_peak = task.peak_concurrent_bytes
-        op_state.expected_peak_bytes = (
-            self.ema_alpha * actual_peak
-            + (1 - self.ema_alpha) * op_state.expected_peak_bytes
+        # Update the EMA for this operator's expected peak ratio.
+        actual_ratio = task.peak_concurrent_bytes / task.input_bytes
+        op_state.expected_peak_ratio = (
+            self.ema_alpha * actual_ratio
+            + (1 - self.ema_alpha) * op_state.expected_peak_ratio
         )
 
         # Reduce allocation from peak-based charge down to current concurrent bytes.

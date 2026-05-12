@@ -7,6 +7,8 @@ Tests are organized by lifecycle phase:
 4. Task output, peak tracking, and backpressure
 5. Task completion and EMA updates
 6. End-to-end pipeline simulations
+
+TODO: Simplify tests...
 """
 
 import importlib.util
@@ -86,18 +88,18 @@ class TestInitialization:
         assert s.task_states == {}
         assert s.op_states == {}
 
-    def test_register_operator_default_peak(self):
+    def test_register_operator_default_ratio(self):
         s = make_scheduler()
         op = make_mock_op()
         s.register_operator(op)
-        assert s.op_states[op].expected_peak_bytes == 0.0
+        assert s.op_states[op].expected_peak_ratio == 1.0
         assert s.op_states[op].buffered_output_bytes == 0
 
-    def test_register_operator_custom_peak(self):
+    def test_register_operator_custom_ratio(self):
         s = make_scheduler()
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=256.0)
-        assert s.op_states[op].expected_peak_bytes == 256.0
+        s.register_operator(op, initial_peak_ratio=2.5)
+        assert s.op_states[op].expected_peak_ratio == 2.5
 
     def test_register_multiple_operators(self):
         s = make_scheduler()
@@ -127,15 +129,16 @@ class TestOperatorSelection:
         """No op is dispatchable if adding expected peak exceeds budget."""
         s = make_scheduler(max_bytes=100, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=200.0)
-        # 0 + 200 > 100 -> rejected
+        # ratio=2.0, input=100 -> expected_peak=200 > 100
+        s.register_operator(op, initial_peak_ratio=2.0)
         assert s.select_operator({op: 100}) is None
 
     def test_select_none_when_allocated_full(self):
         """No op is dispatchable if already at budget."""
         s = make_scheduler(max_bytes=100, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=50.0)
+        # ratio=0.5, input=100 -> expected_peak=50
+        s.register_operator(op, initial_peak_ratio=0.5)
         s.allocated_bytes = 60
         # 60 + 50 > 100 -> rejected
         assert s.select_operator({op: 100}) is None
@@ -144,7 +147,8 @@ class TestOperatorSelection:
         """Op is dispatchable if expected peak fits within remaining budget."""
         s = make_scheduler(max_bytes=100, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=50.0)
+        # ratio=0.5, input=100 -> expected_peak=50
+        s.register_operator(op, initial_peak_ratio=0.5)
         s.allocated_bytes = 40
         # 40 + 50 <= 100 -> OK
         assert s.select_operator({op: 100}) is op
@@ -178,17 +182,27 @@ class TestOperatorSelection:
         s = make_scheduler(max_bytes=500, available_cpus=4)
         op_cheap = make_mock_op("cheap")
         op_expensive = make_mock_op("expensive")
-        s.register_operator(op_cheap, initial_peak_bytes=100.0)
-        s.register_operator(op_expensive, initial_peak_bytes=600.0)
+        # cheap: ratio=1.0, input=100 -> peak=100
+        s.register_operator(op_cheap, initial_peak_ratio=1.0)
+        # expensive: ratio=6.0, input=100 -> peak=600
+        s.register_operator(op_expensive, initial_peak_ratio=6.0)
         s.allocated_bytes = 0
-        # cheap: 0 + 100 <= 500 -> OK
-        # expensive: 0 + 600 > 500 -> rejected
         assert s.select_operator({op_cheap: 100, op_expensive: 100}) is op_cheap
 
     def test_select_skips_unregistered_op(self):
         s = make_scheduler(max_bytes=1000, available_cpus=4)
         op = make_mock_op()
         assert s.select_operator({op: 100}) is None
+
+    def test_select_scales_with_input_size(self):
+        """Expected peak scales with input_bytes via ratio."""
+        s = make_scheduler(max_bytes=500, available_cpus=4)
+        op = make_mock_op()
+        s.register_operator(op, initial_peak_ratio=2.0)
+        # Small input: ratio=2.0, input=100 -> peak=200 <= 500
+        assert s.select_operator({op: 100}) is op
+        # Large input: ratio=2.0, input=300 -> peak=600 > 500
+        assert s.select_operator({op: 300}) is None
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +214,8 @@ class TestTaskDispatch:
     def test_dispatch_basic(self):
         s = make_scheduler(max_bytes=1000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=150.0)
+        # ratio=1.5, input=100 -> expected_peak=150
+        s.register_operator(op, initial_peak_ratio=1.5)
 
         tid = s.dispatch_task(op, input_bytes=100, num_cpus=1.0)
 
@@ -215,19 +230,32 @@ class TestTaskDispatch:
         assert s.allocated_bytes == 150
         assert s.available_cpus == 3.0
 
-    def test_dispatch_zero_peak(self):
-        """Op with 0 expected peak allocates nothing."""
-        s = make_scheduler(max_bytes=1000, available_cpus=4)
+    def test_dispatch_scales_with_input(self):
+        """Expected peak is ratio * input_bytes."""
+        s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=0.0)
+        s.register_operator(op, initial_peak_ratio=2.0)
 
-        s.dispatch_task(op, input_bytes=100)
-        assert s.allocated_bytes == 0
+        tid1 = s.dispatch_task(op, input_bytes=100)  # expected_peak=200
+        tid2 = s.dispatch_task(op, input_bytes=300)  # expected_peak=600
+        assert s.task_states[tid1].expected_peak_bytes == 200
+        assert s.task_states[tid2].expected_peak_bytes == 600
+        assert s.allocated_bytes == 800
+
+    def test_dispatch_source_with_unit_input(self):
+        """Source ops use input_bytes=1 with ratio=target_partition_size."""
+        s = make_scheduler(max_bytes=10000, available_cpus=4)
+        source = make_mock_op("source")
+        s.register_operator(source, initial_peak_ratio=256.0)
+
+        tid = s.dispatch_task(source, input_bytes=1)
+        assert s.task_states[tid].expected_peak_bytes == 256
+        assert s.allocated_bytes == 256
 
     def test_dispatch_multiple_tasks_increments_ids(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
+        s.register_operator(op, initial_peak_ratio=1.0)
 
         tid1 = s.dispatch_task(op, input_bytes=100)
         tid2 = s.dispatch_task(op, input_bytes=100)
@@ -251,8 +279,10 @@ class TestTaskDispatch:
         s = make_scheduler(max_bytes=1000, available_cpus=4)
         op_a = make_mock_op("a")
         op_b = make_mock_op("b")
-        s.register_operator(op_a, initial_peak_bytes=200.0)
-        s.register_operator(op_b, initial_peak_bytes=50.0)
+        # op_a: ratio=2.0, input=100 -> peak=200
+        s.register_operator(op_a, initial_peak_ratio=2.0)
+        # op_b: ratio=0.5, input=100 -> peak=50
+        s.register_operator(op_b, initial_peak_ratio=0.5)
 
         s.dispatch_task(op_a, input_bytes=100)
         s.dispatch_task(op_b, input_bytes=100)
@@ -264,11 +294,11 @@ class TestTaskDispatch:
         """Dispatching a task consumes buffered output from input operators."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=100.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=100.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
         # Source produces output.
-        tid0 = s.dispatch_task(source, input_bytes=0)
+        tid0 = s.dispatch_task(source, input_bytes=1)
         s.on_task_output(tid0, output_bytes=200)
         assert s.op_states[source].buffered_output_bytes == 200
 
@@ -280,8 +310,8 @@ class TestTaskDispatch:
         """Consuming more than buffered clamps to 0."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=100.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=100.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
         # Source has 50 buffered but mapper claims 100.
         s.op_states[source].buffered_output_bytes = 50
@@ -292,10 +322,10 @@ class TestTaskDispatch:
         """Dispatching with input_task_ids updates consumed_bytes on producers."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=200.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=200.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid0 = s.dispatch_task(source, input_bytes=0)
+        tid0 = s.dispatch_task(source, input_bytes=1)
         s.on_task_output(tid0, output_bytes=200)
 
         # Dispatch mapper, indicating it consumes output from tid0.
@@ -307,11 +337,11 @@ class TestTaskDispatch:
         """Input bytes are split across multiple producing tasks."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=100.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=100.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid0 = s.dispatch_task(source, input_bytes=0)
-        tid1 = s.dispatch_task(source, input_bytes=0)
+        tid0 = s.dispatch_task(source, input_bytes=1)
+        tid1 = s.dispatch_task(source, input_bytes=1)
         s.on_task_output(tid0, output_bytes=100)
         s.on_task_output(tid1, output_bytes=100)
 
@@ -321,29 +351,29 @@ class TestTaskDispatch:
         assert s.task_states[tid1].consumed_bytes == 100
 
     def test_dispatch_skips_finished_producing_tasks(self):
-        """If a producing task has already finished, it's not in task_states."""
+        """If a producing task is finished and fully consumed, it's cleaned up."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=100.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=100.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid0 = s.dispatch_task(source, input_bytes=0)
+        tid0 = s.dispatch_task(source, input_bytes=1)
         s.on_task_output(tid0, output_bytes=100)
         s.on_task_finished(tid0)
 
-        # Dispatching mapper with a finished task_id is a no-op for that task.
+        # Dispatching mapper consumes from finished tid0 and cleans it up.
         s.dispatch_task(mapper, input_bytes=100, input_task_ids=[tid0])
-        # No error, source buffered output still consumed.
+        assert tid0 not in s.task_states
         assert s.op_states[source].buffered_output_bytes == 0
 
     def test_dispatch_no_input_deps_no_consumption(self):
         """Source operator with no input_dependencies doesn't consume anything."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op("source", input_deps=[])
-        s.register_operator(op, initial_peak_bytes=100.0)
+        s.register_operator(op, initial_peak_ratio=100.0)
 
         # Even with input_bytes > 0, no crash if no input_dependencies.
-        s.dispatch_task(op, input_bytes=100)
+        s.dispatch_task(op, input_bytes=1)
         # No error
 
 
@@ -356,8 +386,8 @@ class TestTaskOutput:
     def test_output_updates_produced_and_peak(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=200.0)
-        tid = s.dispatch_task(op, input_bytes=100)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=100)  # expected_peak=200
 
         s.on_task_output(tid, output_bytes=80)
         task = s.task_states[tid]
@@ -372,8 +402,8 @@ class TestTaskOutput:
         """No extra charge when peak stays within expected."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=200.0)
-        tid = s.dispatch_task(op, input_bytes=100)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=100)  # expected_peak=200
         assert s.allocated_bytes == 200
 
         s.on_task_output(tid, output_bytes=150)
@@ -383,8 +413,8 @@ class TestTaskOutput:
         """Excess beyond expected peak is charged to allocated_bytes."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
         assert s.allocated_bytes == 100
 
         # Produce 150 bytes with nothing consumed -> peak = 150.
@@ -396,8 +426,8 @@ class TestTaskOutput:
         """Excess is charged incrementally as peak grows."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
 
         s.on_task_output(tid, output_bytes=120)  # peak=120, excess=20
         assert s.allocated_bytes == 120
@@ -409,10 +439,10 @@ class TestTaskOutput:
         """If downstream dispatches (consuming output) between outputs, peak doesn't grow."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=200.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=200.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid0 = s.dispatch_task(source, input_bytes=0)
+        tid0 = s.dispatch_task(source, input_bytes=1)
         s.on_task_output(tid0, output_bytes=100)
         assert s.task_states[tid0].peak_concurrent_bytes == 100
 
@@ -438,8 +468,8 @@ class TestTaskOutput:
         """Backpressure when budget exceeded and peak >= expected."""
         s = make_scheduler(max_bytes=200, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
         # allocated = 100
 
         # Force budget to be full.
@@ -453,8 +483,8 @@ class TestTaskOutput:
     def test_no_backpressure_under_budget(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
 
         s.on_task_output(tid, output_bytes=500)
         bp = s.on_task_output(tid, output_bytes=500)
@@ -464,8 +494,8 @@ class TestTaskOutput:
         """No backpressure if peak < expected, even when at budget."""
         s = make_scheduler(max_bytes=200, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=200.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=4.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=200
         # allocated = 200 (at budget)
 
         bp = s.on_task_output(tid, output_bytes=100)
@@ -483,27 +513,28 @@ class TestTaskOutput:
 
 
 class TestTaskCompletion:
-    def test_completion_updates_ema(self):
+    def test_completion_updates_ema_ratio(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4, ema_alpha=0.5)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
 
         # Produce 300 bytes, nothing consumed -> peak = 300.
+        # actual_ratio = 300 / 50 = 6.0
         s.on_task_output(tid, output_bytes=300)
         s.on_task_finished(tid)
 
-        # EMA: 0.5 * 300 + 0.5 * 100 = 200
-        assert s.op_states[op].expected_peak_bytes == pytest.approx(200.0)
+        # EMA: 0.5 * 6.0 + 0.5 * 2.0 = 4.0
+        assert s.op_states[op].expected_peak_ratio == pytest.approx(4.0)
 
     def test_completion_ema_with_consumption(self):
         """Peak reflects consumption that happened via dispatch."""
         s = make_scheduler(max_bytes=10000, available_cpus=4, ema_alpha=0.5)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=100.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=100.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid0 = s.dispatch_task(source, input_bytes=0)
+        tid0 = s.dispatch_task(source, input_bytes=1)
         # Produce 200, then downstream dispatch consumes 150, then produce 100.
         s.on_task_output(tid0, output_bytes=200)  # peak=200
         s.dispatch_task(mapper, input_bytes=150, input_task_ids=[tid0])  # consumed=150
@@ -512,15 +543,16 @@ class TestTaskCompletion:
         )  # concurrent=200+100-150=150, peak still 200
         s.on_task_finished(tid0)
 
+        # actual_ratio = 200 / 1 = 200.0
         # EMA: 0.5 * 200 + 0.5 * 100 = 150
-        assert s.op_states[source].expected_peak_bytes == pytest.approx(150.0)
+        assert s.op_states[source].expected_peak_ratio == pytest.approx(150.0)
 
     def test_completion_reduces_allocation_to_concurrent(self):
         """Task completion reduces allocated_bytes to concurrent_bytes."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
         assert s.allocated_bytes == 100
 
         # Peak stays within expected.
@@ -537,8 +569,8 @@ class TestTaskCompletion:
         """When peak exceeded expected, allocation reduces to concurrent_bytes."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
-        tid = s.dispatch_task(op, input_bytes=50)
+        s.register_operator(op, initial_peak_ratio=2.0)
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100
         assert s.allocated_bytes == 100
 
         s.on_task_output(tid, output_bytes=250)  # peak=250, excess=150
@@ -562,10 +594,10 @@ class TestTaskCompletion:
         """Task state is removed only when all outputs are consumed."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=100.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=100.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid = s.dispatch_task(source, input_bytes=0)
+        tid = s.dispatch_task(source, input_bytes=1)
         s.on_task_output(tid, output_bytes=100)
         s.on_task_finished(tid)
         # Still has 100 unconsumed bytes.
@@ -590,30 +622,30 @@ class TestTaskCompletion:
         s = make_scheduler()
         s.on_task_finished(999)
 
-    def test_ema_converges_over_multiple_tasks(self):
-        """EMA should converge toward the actual peak over many tasks."""
+    def test_ema_ratio_converges_over_multiple_tasks(self):
+        """EMA ratio converges toward the actual peak ratio."""
         s = make_scheduler(max_bytes=100000, available_cpus=100, ema_alpha=0.3)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=50.0)
+        s.register_operator(op, initial_peak_ratio=0.5)
 
-        # 20 tasks each with actual peak = 300.
+        # 20 tasks, each: input=100, peak=300 -> actual_ratio=3.0
         for _ in range(20):
             tid = s.dispatch_task(op, input_bytes=100)
             s.on_task_output(tid, output_bytes=300)
             s.on_task_finished(tid)
 
-        assert s.op_states[op].expected_peak_bytes == pytest.approx(300.0, abs=1.0)
+        assert s.op_states[op].expected_peak_ratio == pytest.approx(3.0, abs=0.01)
 
-    def test_ema_converges_with_consumption(self):
-        """EMA converges when tasks have concurrent consumption via dispatch."""
+    def test_ema_ratio_converges_with_consumption(self):
+        """EMA ratio converges when tasks have concurrent consumption via dispatch."""
         s = make_scheduler(max_bytes=100000, available_cpus=100, ema_alpha=0.3)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=500.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=500.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        # 20 tasks: produce 200, downstream dispatches consuming 150, produce 100 -> peak=200.
+        # 20 tasks: input=1, produce 200, dispatch consumes 150, produce 100 -> peak=200, ratio=200.
         for _ in range(20):
-            tid = s.dispatch_task(source, input_bytes=0)
+            tid = s.dispatch_task(source, input_bytes=1)
             s.on_task_output(tid, output_bytes=200)
             s.dispatch_task(mapper, input_bytes=150, input_task_ids=[tid])
             s.on_task_output(
@@ -621,7 +653,7 @@ class TestTaskCompletion:
             )  # concurrent=200+100-150=150, peak=200
             s.on_task_finished(tid)
 
-        assert s.op_states[source].expected_peak_bytes == pytest.approx(200.0, abs=1.0)
+        assert s.op_states[source].expected_peak_ratio == pytest.approx(200.0, abs=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -674,22 +706,29 @@ class TestBackpressure:
 
 class TestPipelineSimulation:
     def test_simple_passthrough_pipeline(self):
-        """source -> map -> sink, peak-based budget returns to 0."""
+        """source -> map -> sink, budget reflects unconsumed output."""
         s = make_scheduler(max_bytes=5000, available_cpus=2)
         source, mapper, sink = make_linear_pipeline(3, ["source", "map", "sink"])
-        for op in [source, mapper, sink]:
-            s.register_operator(op, initial_peak_bytes=200.0)
+        # Add a final consumer after sink.
+        consumer = make_mock_op("consumer", input_deps=[sink])
+        s.register_operator(source, initial_peak_ratio=100.0)
+        for op in [mapper, sink, consumer]:
+            s.register_operator(op, initial_peak_ratio=1.0)
 
-        # Source produces data.
-        tid0 = s.dispatch_task(source, input_bytes=0, num_cpus=1.0)
+        # Source produces data (input_bytes=1 for source).
+        tid0 = s.dispatch_task(source, input_bytes=1, num_cpus=1.0)
         s.on_task_output(tid0, output_bytes=100)
         s.on_task_finished(tid0)
+        # Source finished with 100 unconsumed bytes.
+        assert s.allocated_bytes == 100
+        assert tid0 in s.task_states
 
         # Map consumes source output (dispatch consumes from source).
         tid1 = s.dispatch_task(
             mapper, input_bytes=100, num_cpus=1.0, input_task_ids=[tid0]
         )
         assert s.op_states[source].buffered_output_bytes == 0
+        assert tid0 not in s.task_states  # Fully consumed, cleaned up.
         s.on_task_output(tid1, output_bytes=100)
         s.on_task_finished(tid1)
 
@@ -698,21 +737,28 @@ class TestPipelineSimulation:
             sink, input_bytes=100, num_cpus=1.0, input_task_ids=[tid1]
         )
         assert s.op_states[mapper].buffered_output_bytes == 0
+        assert tid1 not in s.task_states
         s.on_task_output(tid2, output_bytes=100)
         s.on_task_finished(tid2)
 
-        assert s.allocated_bytes == 0
-        assert s.available_cpus == 2.0
-        assert len(s.task_states) == 0
+        # Sink has 100 unconsumed bytes remaining.
+        assert s.allocated_bytes == 100
+        assert tid2 in s.task_states
+
+        # Final consumer consumes sink output.
+        s.dispatch_task(consumer, input_bytes=100, num_cpus=1.0, input_task_ids=[tid2])
+        assert tid2 not in s.task_states
+        # Only consumer's expected_peak (100) allocation remains.
+        assert s.available_cpus == 1.0
 
     def test_pipelined_consumption_reduces_peak(self):
         """Downstream dispatching during execution keeps peak low."""
         s = make_scheduler(max_bytes=10000, available_cpus=10, ema_alpha=1.0)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=500.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=500.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        tid = s.dispatch_task(source, input_bytes=0)
+        tid = s.dispatch_task(source, input_bytes=1)
 
         # Produce 5 blocks of 100, with downstream dispatching between each.
         # Without consumption: peak would be 500.
@@ -724,16 +770,16 @@ class TestPipelineSimulation:
 
         assert s.task_states[tid].peak_concurrent_bytes == 100
         s.on_task_finished(tid)
-        # EMA alpha=1.0 -> expected_peak = actual peak = 100
-        assert s.op_states[source].expected_peak_bytes == pytest.approx(100.0)
+        # EMA alpha=1.0 -> ratio = 100 / 1 = 100.0
+        assert s.op_states[source].expected_peak_ratio == pytest.approx(100.0)
 
     def test_fan_out_triggers_backpressure(self):
         """High expansion with no consumption triggers backpressure."""
         s = make_scheduler(max_bytes=300, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
+        s.register_operator(op, initial_peak_ratio=2.0)
 
-        tid = s.dispatch_task(op, input_bytes=50)  # allocated = 100
+        tid = s.dispatch_task(op, input_bytes=50)  # expected_peak=100, allocated=100
 
         s.on_task_output(tid, output_bytes=100)  # peak=100, at expected
         s.on_task_output(tid, output_bytes=100)  # peak=200, excess=100, allocated=200
@@ -745,26 +791,26 @@ class TestPipelineSimulation:
         """After observing low peaks (due to consumption), budget gets tighter."""
         s = make_scheduler(max_bytes=10000, available_cpus=10, ema_alpha=0.5)
         source, mapper = make_linear_pipeline(2, ["source", "mapper"])
-        s.register_operator(source, initial_peak_bytes=500.0)
-        s.register_operator(mapper, initial_peak_bytes=100.0)
+        s.register_operator(source, initial_peak_ratio=500.0)
+        s.register_operator(mapper, initial_peak_ratio=1.0)
 
-        # First task: pipelined consumption keeps peak at 100.
-        tid = s.dispatch_task(source, input_bytes=0)
+        # First task: pipelined consumption keeps peak at 100. ratio=100/1=100.
+        tid = s.dispatch_task(source, input_bytes=1)
         for i in range(5):
             s.on_task_output(tid, output_bytes=100)
             s.dispatch_task(mapper, input_bytes=100, input_task_ids=[tid])
         s.on_task_finished(tid)
         # EMA: 0.5 * 100 + 0.5 * 500 = 300
-        assert s.op_states[source].expected_peak_bytes == pytest.approx(300.0)
+        assert s.op_states[source].expected_peak_ratio == pytest.approx(300.0)
 
         # Second task: same behavior.
-        tid = s.dispatch_task(source, input_bytes=0)
+        tid = s.dispatch_task(source, input_bytes=1)
         for i in range(5):
             s.on_task_output(tid, output_bytes=100)
             s.dispatch_task(mapper, input_bytes=100, input_task_ids=[tid])
         s.on_task_finished(tid)
         # EMA: 0.5 * 100 + 0.5 * 300 = 200
-        assert s.op_states[source].expected_peak_bytes == pytest.approx(200.0)
+        assert s.op_states[source].expected_peak_ratio == pytest.approx(200.0)
 
     def test_selection_drains_downstream_first(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4)
@@ -786,14 +832,16 @@ class TestPipelineSimulation:
         assert s.select_operator(inputs) is source
 
     def test_budget_invariant_after_full_lifecycle(self):
-        """After all tasks complete, budget returns to 0."""
+        """After all outputs are consumed, budget returns to 0."""
         s = make_scheduler(max_bytes=50000, available_cpus=4, ema_alpha=0.3)
         reader, processor = make_linear_pipeline(2, ["reader", "processor"])
-        s.register_operator(reader, initial_peak_bytes=200.0)
-        s.register_operator(processor, initial_peak_bytes=200.0)
+        consumer = make_mock_op("consumer", input_deps=[processor])
+        s.register_operator(reader, initial_peak_ratio=200.0)
+        s.register_operator(processor, initial_peak_ratio=1.0)
+        s.register_operator(consumer, initial_peak_ratio=0.0)
 
         for i in range(5):
-            rt = s.dispatch_task(reader, input_bytes=0, num_cpus=1.0)
+            rt = s.dispatch_task(reader, input_bytes=1, num_cpus=1.0)
             s.on_task_output(rt, output_bytes=200)
             s.on_task_finished(rt)
 
@@ -803,6 +851,12 @@ class TestPipelineSimulation:
             s.on_task_output(pt, output_bytes=180)
             s.on_task_finished(pt)
 
+            # Consume processor output.
+            ct = s.dispatch_task(
+                consumer, input_bytes=180, num_cpus=0, input_task_ids=[pt]
+            )
+            s.on_task_finished(ct)
+
         assert s.allocated_bytes == 0
         assert s.available_cpus == 4.0
         assert len(s.task_states) == 0
@@ -810,7 +864,9 @@ class TestPipelineSimulation:
     def test_concurrent_tasks_share_budget(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
-        s.register_operator(op, initial_peak_bytes=100.0)
+        consumer = make_mock_op("consumer", input_deps=[op])
+        s.register_operator(op, initial_peak_ratio=1.0)
+        s.register_operator(consumer, initial_peak_ratio=0.0)
 
         tids = [s.dispatch_task(op, input_bytes=100, num_cpus=1.0) for _ in range(4)]
         assert s.available_cpus == 0.0
@@ -821,8 +877,37 @@ class TestPipelineSimulation:
             s.on_task_finished(tid)
 
         assert s.available_cpus == 4.0
+        # 4 tasks * 80 unconsumed bytes each
+        assert s.allocated_bytes == 320
+        assert len(s.task_states) == 4
+
+        # Consume all outputs.
+        for tid in tids:
+            s.dispatch_task(consumer, input_bytes=80, num_cpus=0, input_task_ids=[tid])
+            s.on_task_finished(s._next_task_id - 1)
+
         assert s.allocated_bytes == 0
         assert len(s.task_states) == 0
+
+    def test_ratio_adapts_to_different_input_sizes(self):
+        """Ratio-based budgeting correctly scales with varying input sizes."""
+        s = make_scheduler(max_bytes=100000, available_cpus=10, ema_alpha=1.0)
+        op = make_mock_op()
+        s.register_operator(op, initial_peak_ratio=2.0)
+
+        # Task with input=100, output=200 -> ratio=2.0
+        tid = s.dispatch_task(op, input_bytes=100)
+        assert s.task_states[tid].expected_peak_bytes == 200
+        s.on_task_output(tid, output_bytes=200)
+        s.on_task_finished(tid)
+        assert s.op_states[op].expected_peak_ratio == pytest.approx(2.0)
+
+        # Now dispatch with larger input. Expected peak scales: 2.0 * 500 = 1000.
+        tid = s.dispatch_task(op, input_bytes=500)
+        assert s.task_states[tid].expected_peak_bytes == 1000
+        s.on_task_output(tid, output_bytes=1000)
+        s.on_task_finished(tid)
+        assert s.op_states[op].expected_peak_ratio == pytest.approx(2.0)
 
 
 if __name__ == "__main__":
