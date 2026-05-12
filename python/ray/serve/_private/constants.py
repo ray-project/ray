@@ -716,7 +716,16 @@ RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
 
 # HAProxy hard stop after timeout
 RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
-    os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "600")
+    os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "1800")
+)
+
+# Idle keep-alive timeout for HAProxy's client-side connections. Distinct
+# from `HTTPOptions.keep_alive_timeout_s` (which is the uvicorn keep-alive
+# on the *replica* side). Lower values force idle clients to rotate off
+# old HAProxy procs faster after a reload, reducing the chance that a
+# long-running request lands on a near-hard-stop-deadline proc.
+RAY_SERVE_HAPROXY_TIMEOUT_HTTP_KEEP_ALIVE_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_HTTP_KEEP_ALIVE_S", "60")
 )
 
 # HAProxy metrics export port

@@ -192,6 +192,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
             timeout_server_s=30,
             timeout_http_request_s=10,
             timeout_queue_s=1,
+            timeout_http_keep_alive_s=55,
             stats_port=8080,
             stats_uri="/mystats",
             health_check_fall=3,
@@ -201,7 +202,6 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
             http_options=HTTPOptions(
                 host="0.0.0.0",
                 port=8000,
-                keep_alive_timeout_s=55,
             ),
             has_received_routes=True,
             has_received_servers=True,

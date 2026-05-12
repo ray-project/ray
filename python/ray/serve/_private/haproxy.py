@@ -58,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
+    RAY_SERVE_HAPROXY_TIMEOUT_HTTP_KEEP_ALIVE_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_TOTAL_SLOTS,
     SERVE_CONTROLLER_NAME,
@@ -446,6 +447,12 @@ class HAProxyConfig:
     timeout_client_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S
     timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S
     timeout_http_request_s: Optional[int] = None
+    # HAProxy's idle keep-alive timeout for client connections. Decoupled
+    # from `http_options.keep_alive_timeout_s`, which controls the
+    # *replica*'s uvicorn keep-alive on the other side of HAProxy.
+    timeout_http_keep_alive_s: Optional[
+        int
+    ] = RAY_SERVE_HAPROXY_TIMEOUT_HTTP_KEEP_ALIVE_S
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
     # Number of connection-level retries per request. Used in the `defaults`
     # block; combined with `option redispatch` (set per-backend) each retry
@@ -511,10 +518,6 @@ class HAProxyConfig:
     @property
     def frontend_port(self) -> int:
         return self.http_options.port
-
-    @property
-    def timeout_http_keep_alive_s(self) -> int:
-        return self.http_options.keep_alive_timeout_s
 
     def build_health_route_info(self, backends: List[BackendConfig]) -> HealthRouteInfo:
         if not self.has_received_routes:
