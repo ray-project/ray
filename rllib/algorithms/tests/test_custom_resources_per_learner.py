@@ -1,12 +1,11 @@
-import gymnasium as gym
 import pytest
 
 import ray
 import ray._common
 from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.utils import _get_learner_bundles
-from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 
 EXPECTED_PER_NODE_OBJECT_STORE_MEMORY = 10**8
 HEAD_REDIS_PORT = 6379
@@ -87,23 +86,28 @@ def cluster():
     cluster.shutdown()
 
 
-def test_learners_pinned_to_node_with_custom_resource(cluster):
-    """4 learners requesting PINNED_RESOURCE must all land on the pinned node,
-    even though head+decoy together have 8 free CPUs that would otherwise
-    absorb them.
+def test_algorithm_pins_learners_to_node_with_custom_resource(cluster):
+    """End-to-end: a built Algorithm places its learners on the node exposing
+    PINNED_RESOURCE, even though head+decoy together have 8 free CPUs that
+    would otherwise absorb them.
     """
-    config = BaseTestingAlgorithmConfig().learners(
-        num_learners=4,
-        num_cpus_per_learner=1,
-        custom_resources_per_learner={PINNED_RESOURCE: 1},
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .env_runners(num_env_runners=0)
+        .learners(
+            num_learners=2,
+            num_cpus_per_learner=1,
+            custom_resources_per_learner={PINNED_RESOURCE: 1},
+        )
     )
-    learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+    algo = config.build()
 
-    refs = learner_group.foreach_learner(
+    refs = algo.learner_group.foreach_learner(
         lambda _: ray.get_runtime_context().get_node_id()
     )
     node_ids = [r.get() for r in refs]
-    assert len(node_ids) == 4
+    assert len(node_ids) == 2
     assert all(nid == cluster["pinned"].node_id for nid in node_ids)
 
 
