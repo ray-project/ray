@@ -13,7 +13,7 @@ import ray
 import ray.data
 import ray.train
 from ray.data import MixStoppingCondition
-from ray.train import Checkpoint, ScalingConfig
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 IMAGENET_TRAIN_PATH = (
@@ -196,6 +196,7 @@ def main(args):
                 placement_strategy="SPREAD",
             ),
             datasets={"train": mixed},
+            run_config=RunConfig(storage_path="/mnt/cluster_storage"),
         )
 
         result = trainer.fit()

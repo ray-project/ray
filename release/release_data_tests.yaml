@@ -343,28 +343,28 @@
     - __suffix__: 8ds_equal
       run:
         script: >
-          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 8
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
           --max-rows-per-worker 50000
 
     - __suffix__: 8ds_power_law
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8
-          --weights 128 64 32 16 8 4 2 1 --num-workers 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 16
           --max-rows-per-worker 50000
 
     - __suffix__: 8ds_equal_random_mix
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 1
-          --random-mix --max-rows-per-worker 50000
+          --random-mix --max-rows-per-worker 200000
 
     - __suffix__: 8ds_power_law_random_mix
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8
           --weights 128 64 32 16 8 4 2 1 --num-workers 1
-          --random-mix --max-rows-per-worker 50000
+          --random-mix --max-rows-per-worker 200000
 
 ################
 # Training tests
