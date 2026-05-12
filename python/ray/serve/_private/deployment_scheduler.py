@@ -665,7 +665,6 @@ class DeploymentScheduler(ABC):
             # - The user provided an accelerator_config that derives its own
             #   bundles from structured fields (e.g. TPUAcceleratorConfig
             #   derives bundles from topology via slice_placement_group).
-            replica_pg = None
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
                 if scheduling_request.placement_group_strategy
