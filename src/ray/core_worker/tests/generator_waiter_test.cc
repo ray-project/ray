@@ -205,6 +205,20 @@ TEST(GeneratorWaiterTest, OnReportForTaskAdvancesByDeltaIgnoresStale) {
   ASSERT_EQ(waiter->TotalObjectConsumed(), 3);
 }
 
+TEST(GeneratorWaiterTest, OnReportForTaskClampsTotalToPerTaskGenerated) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      10, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
+  ASSERT_EQ(md.per_task_generated, 2);
+
+  waiter->OnReportForTask(md, 3);
+  ASSERT_EQ(md.per_task_consumed, 2);
+  ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
+}
+
 TEST(GeneratorWaiterTest, TeardownReclaimsOutstandingAndIgnoresLateReports) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
       2, []() { return Status::OK(); });
@@ -239,6 +253,21 @@ TEST(GeneratorWaiterTest, TeardownReclaimsOutstandingAndIgnoresLateReports) {
   waiter->OnReportForTask(md, 5);
   ASSERT_EQ(waiter->TotalObjectConsumed(), consumed_before);
   ASSERT_EQ(md.per_task_consumed, 0);
+}
+
+TEST(GeneratorWaiterTest, TeardownTaskIdempotent) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      2, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2);
+
+  waiter->TeardownTask(md);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 0);
+
+  waiter->TeardownTask(md);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 0);
 }
 
 TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {

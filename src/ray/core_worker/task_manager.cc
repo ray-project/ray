@@ -663,17 +663,25 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     // Threshold is per-stream only (see TaskSpecification::
     // EffectiveStreamingGeneratorOwnerBackpressureThreshold). Actor-wide sharing is
     // enforced separately on the worker before each yield.
-    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
+    //
+    // When threshold is 1, we must flush on every successful read if any deferred
+    // report replies remain: unconsumed may stay >= 1 until all queued callbacks are
+    // drained (e.g. several in-flight reports before reads catch up).
+    if (backpressure_threshold != -1) {
       auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end()) {
-        for (const auto &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                         << " should resume. total_generated: " << total_generated
-                         << ". total_consumed: " << total_consumed
-                         << ". threshold: " << backpressure_threshold;
-          execution_signal(Status::OK(), total_consumed);
+      if (it != ref_stream_execution_signal_callbacks_.end() && !it->second.empty()) {
+        const bool below_threshold = total_unconsumed < backpressure_threshold;
+        const bool flush_owner_tight = backpressure_threshold == 1;
+        if (below_threshold || flush_owner_tight) {
+          for (const auto &execution_signal : it->second) {
+            RAY_LOG(DEBUG) << "The task for a stream " << generator_id
+                           << " should resume. total_generated: " << total_generated
+                           << ". total_consumed: " << total_consumed
+                           << ". threshold: " << backpressure_threshold;
+            execution_signal(Status::OK(), total_consumed);
+          }
+          it->second.clear();
         }
-        it->second.clear();
       }
     }
   }
@@ -861,14 +869,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Otherwise, follow the regular backpressure logic.
-  // NOTE, here we check `item_index - last_consumed_index >= backpressure_threshold`,
-  // instead of the number of unconsumed items, because we may receive the
-  // `HandleReportGeneratorItemReturns` requests out of order.
-  // Threshold is for this stream only; concurrent generator tasks on the same actor
-  // share a cap on the executor (ReserveActorWideSlot), not in TaskManager state if actor
-  // wide cap is set.
+  // Defer when either (a) index gap >= threshold (out-of-order reports), or (b)
+  // unconsumed >= threshold. (b) matches owner EffectiveStreamingGenerator...=1 for
+  // actor-wide streaming cap so each insert can defer; (a) alone can miss that case when
+  // last_consumed tracks the sequential read cursor oddly.
   if (backpressure_threshold != -1 &&
-      (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
+      ((item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold ||
+       (total_generated - total_consumed) >= backpressure_threshold)) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed

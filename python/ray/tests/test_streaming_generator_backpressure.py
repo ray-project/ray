@@ -361,9 +361,7 @@ def _dual_stream_actor_class(
         )
         class _A:
             def gen(self, reporter, tag: str):
-                print("gen", tag)
                 for i in range(5):
-                    print(tag, " yield", i)
                     ray.get(reporter.report.remote(tag, i))
                     yield i
 

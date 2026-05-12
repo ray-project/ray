@@ -132,11 +132,14 @@ void ActorWideGeneratorBackpressureWaiter::OnReportForTask(
   if (!metadata.task_alive) {
     return;
   }
-  int64_t delta = total - metadata.per_task_consumed;
+  // per_task_generated counts ReserveActorWideSlot admissions only; reported
+  // totals may not line up (e.g. substitute values on RPC failure).
+  const int64_t clamped_total = std::min(total, metadata.per_task_generated);
+  int64_t delta = clamped_total - metadata.per_task_consumed;
   if (delta <= 0) {
     return;
   }
-  metadata.per_task_consumed = total;
+  metadata.per_task_consumed = clamped_total;
   total_objects_consumed_ += delta;
   if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
     backpressure_cond_var_.SignalAll();
@@ -146,6 +149,9 @@ void ActorWideGeneratorBackpressureWaiter::OnReportForTask(
 void ActorWideGeneratorBackpressureWaiter::TeardownTask(
     ActorTaskBackpressureMetadata &metadata) {
   absl::MutexLock lock(&mutex_);
+  if (!metadata.task_alive) {
+    return;
+  }
   metadata.task_alive = false;
   int64_t outstanding = metadata.per_task_generated - metadata.per_task_consumed;
   if (outstanding > 0) {
