@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -42,7 +43,6 @@ from ray.serve.schema import (
     Target,
 )
 from ray.util import metrics
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -164,7 +164,7 @@ class ActorProxyWrapper(ProxyWrapper):
         except ValueError:
             addr = build_address(http_options.host, http_options.port)
             logger.info(
-                f"Starting proxy on node '{node_id}' listening on '{addr}'.",
+                f"Starting proxy '{name}' on node '{node_id}' listening on '{addr}'.",
                 extra={"log_to_stderr": False},
             )
 
@@ -175,7 +175,7 @@ class ActorProxyWrapper(ProxyWrapper):
             lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
             enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
         ).remote(
             http_options,
@@ -452,7 +452,7 @@ class ProxyState:
 
     def update_actor_details(self, **kwargs) -> None:
         """Updates _actor_details with passed in kwargs."""
-        details_kwargs = self._actor_details.dict()
+        details_kwargs = self._actor_details.model_dump()
         details_kwargs.update(kwargs)
         self._actor_details = ProxyDetails(**details_kwargs)
 
@@ -872,7 +872,6 @@ class ProxyStateManager:
             and self._running_native_proxies
             and self._fallback_proxy_state is None
         ):
-            logger.info(f"Starting fallback proxy on head node '{node_id}'.")
             name = self._generate_actor_name(node_id=f"fallback-{node_id}")
 
             http_options = deepcopy(self._http_options)
@@ -990,21 +989,47 @@ def _try_set_exception(fut: asyncio.Future, e: Exception):
         fut.set_exception(e)
 
 
+def _propagate_concurrent_future_state(
+    source_fut: concurrent.futures.Future, dest_fut: asyncio.Future
+):
+    if dest_fut.done():
+        return
+
+    if source_fut.cancelled():
+        dest_fut.cancel()
+        return
+
+    exception = source_fut.exception()
+    if exception is not None:
+        dest_fut.set_exception(exception)
+        return
+
+    dest_fut.set_result(source_fut.result())
+
+
 def wrap_as_future(ref: ObjectRef, timeout_s: Optional[float] = None) -> asyncio.Future:
     loop = asyncio.get_running_loop()
+    source_fut = ref.future()
 
-    aio_fut = asyncio.wrap_future(ref.future())
+    if timeout_s is None:
+        return asyncio.wrap_future(source_fut)
 
-    if timeout_s is not None:
-        assert timeout_s >= 0, "Timeout value should be non-negative"
-        # Schedule handler to complete future exceptionally
-        timeout_handler = loop.call_later(
-            max(timeout_s, 0),
-            _try_set_exception,
-            aio_fut,
-            TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+    result_fut = loop.create_future()
+    source_fut.add_done_callback(
+        lambda fut: loop.call_soon_threadsafe(
+            _propagate_concurrent_future_state, fut, result_fut
         )
-        # Cancel timeout handler upon completion of the future
-        aio_fut.add_done_callback(lambda _: timeout_handler.cancel())
+    )
 
-    return aio_fut
+    assert timeout_s >= 0, "Timeout value should be non-negative"
+    # Apply timeout to an outer future so the wrapped future is only completed
+    # by asyncio's chaining callback.
+    timeout_handler = loop.call_later(
+        max(timeout_s, 0),
+        _try_set_exception,
+        result_fut,
+        TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+    )
+    result_fut.add_done_callback(lambda _: timeout_handler.cancel())
+
+    return result_fut

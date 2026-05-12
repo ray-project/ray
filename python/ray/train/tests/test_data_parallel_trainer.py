@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray import train, tune
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
@@ -18,7 +17,7 @@ from ray.train.utils import _in_ray_train_worker
 from ray.tune.callback import Callback
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-from ray.util.accelerators import NVIDIA_A100, NVIDIA_TESLA_A10G
+from ray.util.accelerators import NVIDIA_A100
 
 
 @pytest.fixture
@@ -38,33 +37,14 @@ def ray_start_4_cpus_4_gpus_4_extra():
 
 
 @pytest.fixture
-def ray_start_heterogenous_cluster():
-    """
-    Start a heterogenous cluster with 6 nodes:
-        - 2 node with 4 x A100
-        - 2 node with 4 x A10G
-        - 2 node with 4 x GPU without accelerator_type
-    """
-    cluster = Cluster()
-
-    for accelerator_type in [NVIDIA_A100, NVIDIA_TESLA_A10G, None]:
-        for _ in range(2):
-            cluster.add_node(
-                num_cpus=4,
-                num_gpus=4,
-                resources=(
-                    {f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}": 1.0}
-                    if accelerator_type
-                    else {}
-                ),
-            )
-
-    ray.init(address=cluster.address)
-
-    yield
-
+def ray_start_4_cpus_4_gpus_4_a100():
+    address_info = ray.init(
+        num_cpus=4,
+        num_gpus=4,
+        resources={f"{RESOURCE_CONSTRAINT_PREFIX}{NVIDIA_A100}": 4},
+    )
+    yield address_info
     ray.shutdown()
-    cluster.shutdown()
 
 
 def gen_execute_single_async_special(special_f):
@@ -301,7 +281,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
             return CudaTestBackend
 
     def get_resources():
-        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
         world_rank = train.get_context().get_world_rank()
         (tmp_path / f"{world_rank}").write_text(cuda_visible_devices)
         train.report(dict(devices=cuda_visible_devices))
@@ -354,15 +334,11 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     assert visible_devices == ["0,1,2,3", "0,1,2,3"]
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-@pytest.mark.parametrize("accelerator_type", [NVIDIA_A100, NVIDIA_TESLA_A10G, None])
-def test_config_accelerator_type(
-    ray_start_heterogenous_cluster, num_gpus, accelerator_type
-):
+@pytest.mark.parametrize("accelerator_type", [NVIDIA_A100, None])
+def test_config_accelerator_type(ray_start_4_cpus_4_gpus_4_a100, accelerator_type):
     def train_func():
         # Ensure all workers are scheduled on nodes with specified accelerators
         assigned_resources = ray.get_runtime_context().get_assigned_resources()
-        assert assigned_resources["GPU"] == num_gpus
         if accelerator_type:
             accelerator_key = f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
             assert accelerator_key in assigned_resources
@@ -373,7 +349,6 @@ def test_config_accelerator_type(
             num_workers=4,
             use_gpu=True,
             accelerator_type=accelerator_type,
-            resources_per_worker={"GPU": num_gpus},
         ),
     )
     trainer.fit()

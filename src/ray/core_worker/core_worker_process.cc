@@ -248,7 +248,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
-                                        options.node_ip_address == "127.0.0.1");
+                                        IsLocalhost(options.node_ip_address));
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -573,7 +573,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_placement_time_ms_histogram_);
+      *scheduler_placement_time_percentile_ms_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -826,8 +826,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
-  scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
+  scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

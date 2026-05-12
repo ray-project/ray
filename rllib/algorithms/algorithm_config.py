@@ -79,7 +79,6 @@ from ray.rllib.utils.typing import (
     RLModuleSpecType,
     SampleBatchType,
 )
-from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
@@ -264,6 +263,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus = 0  # @OldAPIStack
         self._fake_gpus = False  # @OldAPIStack
         self.num_cpus_for_main_process = 1
+        self.custom_resources_for_main_process = {}
 
         # `self.framework()`
         self.framework_str = "torch"
@@ -520,6 +520,20 @@ class AlgorithmConfig(_Config):
         self.evaluation_auto_duration_min_env_steps_per_sample = 100
         self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
+        # How long to wait for at least one remote eval EnvRunner to recover
+        # when all *configured* remote eval EnvRunners are unhealthy at the
+        # start of an evaluation step. Default 0: don't wait.
+        self.evaluation_unhealthy_workers_timeout_s = 0.0
+        # Raise `RuntimeError` from `evaluate()` once this many consecutive
+        # evaluation iterations have been skipped because all configured
+        # remote eval EnvRunners are unhealthy. The N-th consecutive skip
+        # raises (so `1` raises on the first skip; `5` raises on the fifth,
+        # tolerating 4 prior skips). Tune escalates the error per the
+        # trial's `max_failures` setting. The counter resets to 0 whenever
+        # an evaluation step actually runs on the remote workers. `None`
+        # (default) tolerates an unbounded number of consecutive skips.
+        # Applies regardless of `evaluation_parallel_to_training`.
+        self.evaluation_error_after_n_consecutive_skips = None
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
@@ -576,8 +590,6 @@ class AlgorithmConfig(_Config):
         self.checkpoint_trainable_policies_only = False
 
         # `self.debugging()`
-        self.logger_creator = None
-        self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
@@ -968,7 +980,6 @@ class AlgorithmConfig(_Config):
     def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
         use_copy: bool = True,
     ) -> "Algorithm":
         """Builds an Algorithm from this AlgorithmConfig (or a copy thereof).
@@ -979,8 +990,6 @@ class AlgorithmConfig(_Config):
                 "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             use_copy: Whether to deepcopy `self` and pass the copy to the Algorithm
                 (instead of `self`) as config. This is useful in case you would like to
                 recycle the same AlgorithmConfig over and over, e.g. in a test case, in
@@ -993,8 +1002,6 @@ class AlgorithmConfig(_Config):
             self.env = env
             if self.evaluation_config is not None:
                 self.evaluation_config["env"] = env
-        if logger_creator is not None:
-            self.logger_creator = logger_creator
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
@@ -1002,7 +1009,6 @@ class AlgorithmConfig(_Config):
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),
-            logger_creator=self.logger_creator,
         )
 
     def build_env_to_module_connector(
@@ -1455,6 +1461,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_cpus_for_main_process: Optional[int] = NotProvided,
+        custom_resources_for_main_process: Optional[dict] = NotProvided,
         num_gpus: Optional[Union[float, int]] = NotProvided,  # @OldAPIStack
         _fake_gpus: Optional[bool] = NotProvided,  # @OldAPIStack
         placement_strategy: Optional[str] = NotProvided,
@@ -1475,6 +1482,8 @@ class AlgorithmConfig(_Config):
                 process that runs `Algorithm.training_step()`.
                 Note: This is only relevant when running RLlib through Tune. Otherwise,
                 `Algorithm.training_step()` runs in the main program (driver).
+            custom_resources_for_main_process: Any custom Ray resources to allocate for the
+                main `Algorithm` process.
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
@@ -1568,6 +1577,8 @@ class AlgorithmConfig(_Config):
 
         if num_cpus_for_main_process is not NotProvided:
             self.num_cpus_for_main_process = num_cpus_for_main_process
+        if custom_resources_for_main_process is not NotProvided:
+            self.custom_resources_for_main_process = custom_resources_for_main_process
         if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:
@@ -2747,6 +2758,8 @@ class AlgorithmConfig(_Config):
         evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_unhealthy_workers_timeout_s: Optional[float] = NotProvided,
+        evaluation_error_after_n_consecutive_skips: Optional[int] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -2830,6 +2843,26 @@ class AlgorithmConfig(_Config):
                 reports a good evaluation `episode_return_mean`, be aware that these
                 results were achieved on the weights trained in iteration 41, so you
                 should probably pick the iteration 41 checkpoint instead.
+            evaluation_unhealthy_workers_timeout_s: How long (in seconds) to
+                wait for at least one remote eval EnvRunner to recover when
+                all *configured* remote eval EnvRunners are unhealthy at the
+                start of an evaluation step. Default 0: don't wait. Pair
+                with `evaluation_error_after_n_consecutive_skips` to escalate
+                if recovery never arrives. Applies regardless of
+                `evaluation_parallel_to_training`.
+            evaluation_error_after_n_consecutive_skips: Raise
+                `RuntimeError` from `evaluate()` once this many consecutive
+                evaluation iterations have been skipped because all
+                configured remote eval EnvRunners are unhealthy. The N-th
+                consecutive skip raises: `1` raises on the first skip
+                (strict); `5` raises on the fifth, tolerating 4 prior
+                skips. Tune escalates the error per the trial's
+                `max_failures` setting. The counter resets to 0 whenever
+                an evaluation step actually runs on the remote workers.
+                `None` (default) tolerates an unbounded number of
+                consecutive skips. Has no effect if
+                `evaluation_num_env_runners=0` (in which case local eval is
+                the user's intentional choice).
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
@@ -3003,6 +3036,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_unhealthy_workers_timeout_s is not NotProvided:
+            self.evaluation_unhealthy_workers_timeout_s = (
+                evaluation_unhealthy_workers_timeout_s
+            )
+        if evaluation_error_after_n_consecutive_skips is not NotProvided:
+            self.evaluation_error_after_n_consecutive_skips = (
+                evaluation_error_after_n_consecutive_skips
+            )
         if evaluation_force_reset_envs_before_iteration is not NotProvided:
             self.evaluation_force_reset_envs_before_iteration = (
                 evaluation_force_reset_envs_before_iteration
@@ -3781,8 +3822,6 @@ class AlgorithmConfig(_Config):
     def debugging(
         self,
         *,
-        logger_creator: Optional[Callable[[], Logger]] = NotProvided,
-        logger_config: Optional[dict] = NotProvided,
         log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
@@ -3791,10 +3830,6 @@ class AlgorithmConfig(_Config):
         """Sets the config's debugging settings.
 
         Args:
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-            logger_config: Define logger-specific configuration to be used inside Logger
-                Default value None allows overwriting with nested dicts.
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 also periodically prints out summaries of relevant internal dataflow
@@ -3809,10 +3844,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if logger_creator is not NotProvided:
-            self.logger_creator = logger_creator
-        if logger_config is not NotProvided:
-            self.logger_config = logger_config
         if log_level is not NotProvided:
             self.log_level = log_level
         if log_sys_usage is not NotProvided:

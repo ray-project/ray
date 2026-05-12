@@ -18,7 +18,7 @@ as how to set your autoscaling config.
 To define what the steady state of your deployments should be, set values for
 `target_ongoing_requests` and `max_ongoing_requests`.
 
-#### **[`target_ongoing_requests`](../api/doc/ray.serve.config.AutoscalingConfig.target_ongoing_requests.rst) [default=2]**
+#### **[`target_ongoing_requests`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=2]**
 :::{note}
 The default for `target_ongoing_requests` changed from 1.0 to 2.0 in Ray 2.32.0.
 You can continue to set it manually to override the default.
@@ -80,7 +80,7 @@ might be assigned to the existing replicas before the new replicas are started.
 To use autoscaling, you need to define the minimum and maximum number of
 resources allowed for your system.
 
-* **[`min_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.min_replicas.rst) [default=1]**: This is the minimum number of replicas for the
+* **[`min_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=1]**: This is the minimum number of replicas for the
 deployment. If you want to ensure your system can deal with a certain level of
 traffic at all times, set `min_replicas` to a positive number. On the other
 hand, if you anticipate periods of no traffic and want to scale to zero to save
@@ -89,12 +89,12 @@ tail latencies; when you start sending traffic, the deployment scales up, and
 there will be a cold start time as Serve waits for replicas to be started to
 serve the request.
 
-* **[`max_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.max_replicas.rst) [default=1]**: This is the maximum number of replicas for the
+* **[`max_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=1]**: This is the maximum number of replicas for the
 deployment. This should be greater than `min_replicas`. Ray Serve Autoscaling
 relies on the Ray Autoscaler to scale up more nodes when the currently available
 cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
 
-* **[`initial_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.initial_replicas.rst)**: This is the number of replicas that are started
+* **[`initial_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst)**: This is the number of replicas that are started
 initially for the deployment. This defaults to the value for `min_replicas`.
 
 
@@ -107,7 +107,7 @@ state, however, your system is reacting to traffic shifts. How you want your
 system to react to changes in traffic determines how you want to set the
 remaining autoscaling configurations.
 
-* **[`upscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.upscale_delay_s.rst) [default=30s]**: This defines how long Serve waits before
+* **[`upscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=30s]**: This defines how long Serve waits before
 scaling up the number of replicas in your deployment. In other words, this
 parameter controls the frequency of upscale decisions. If the replicas are
 *consistently* serving more requests than desired for an `upscale_delay_s`
@@ -121,7 +121,7 @@ providing more granular control over when replicas are removed. This is particul
 useful when you want different behavior for scaling down to zero versus scaling
 down to a non-zero number of replicas.
 
-* **[`downscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.downscale_delay_s.rst) [default=600s]**: This defines how long Serve waits before
+* **[`downscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=600s]**: This defines how long Serve waits before
 scaling down the number of replicas in your deployment. If the replicas are
 *consistently* serving fewer requests than desired for a `downscale_delay_s`
 number of seconds, Serve scales down the number of replicas based on
@@ -131,7 +131,7 @@ your application initializes slowly, you can increase `downscale_delay_s` to
 make downscaling happen more infrequently and avoid reinitialization costs when
 the application needs to upscale again.
 
-* **[`downscale_to_zero_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.downscale_to_zero_delay_s.rst) [Optional]**: This defines how long Serve waits
+* **[`downscale_to_zero_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [Optional]**: This defines how long Serve waits
 before scaling from one replica down to zero (only applies when `min_replicas = 0`).
 If not specified, the 1→0 transition uses the `downscale_delay_s` value. This is
 useful when you want more conservative scale-to-zero behavior. For example, you
@@ -139,27 +139,27 @@ might set `downscale_delay_s = 300` for regular downscaling but
 `downscale_to_zero_delay_s = 1800` to wait 30 minutes before scaling to zero,
 avoiding cold starts for brief periods of inactivity.
 
-* **[`upscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.upscale_smoothing_factor.rst) [default_value=1.0] (DEPRECATED)**: This parameter
+* **[`upscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0] (DEPRECATED)**: This parameter
 is renamed to `upscaling_factor`. `upscale_smoothing_factor` will be removed in
 a future release.
 
-* **[`downscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.downscale_smoothing_factor.rst) [default_value=1.0] (DEPRECATED)**: This
+* **[`downscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0] (DEPRECATED)**: This
 parameter is renamed to `downscaling_factor`. `downscale_smoothing_factor` will
 be removed in a future release.
 
-* **[`upscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.upscaling_factor.rst) [default_value=1.0]**: The multiplicative factor to amplify
+* **[`upscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: The multiplicative factor to amplify
 or moderate each upscaling decision. For example, when the application has high
 traffic volume in a short period of time, you can increase `upscaling_factor` to
 scale up the resource quickly. This parameter is like a "gain" factor to amplify
 the response of the autoscaling algorithm.
 
-* **[`downscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.downscaling_factor.rst) [default_value=1.0]**: The multiplicative factor to
+* **[`downscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: The multiplicative factor to
 amplify or moderate each downscaling decision. For example, if you want your
 application to be less sensitive to drops in traffic and scale down more
 conservatively, you can decrease `downscaling_factor` to slow down the pace of
 downscaling.
 
-* **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) [default_value=10]**: In future this deployment level
+* **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=10]**: In future this deployment level
 config will be removed in favor of cross-application level global config.
   
 This controls how often each replica and handle sends reports on current ongoing requests to the autoscaler.
@@ -167,10 +167,10 @@ This controls how often each replica and handle sends reports on current ongoing
 If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds.
 ::
 
-* **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) [default_value=30]**: This is the window over which the
+* **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
 
-* **[`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.aggregation_function.rst) [default_value="mean"]**: This controls how metrics are
+* **[`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value="mean"]**: This controls how metrics are
 aggregated over the `look_back_period_s` time window. The aggregation function
 determines how Ray Serve combines multiple metric measurements into a single
 value for autoscaling decisions. Supported values:
@@ -212,7 +212,7 @@ with its own timing parameters:
 
 Replicas and deployment handles continuously record autoscaling metrics:
 - **What**: Number of ongoing requests (queued + running)
-- **Frequency**: Every 10s (configurable via [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst))
+- **Frequency**: Every 10s (configurable via [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst))
 - **Storage**: Metrics are stored locally as a timeseries
 
 #### Stage 2: Metric pushing
@@ -220,8 +220,8 @@ Replicas and deployment handles continuously record autoscaling metrics:
 Periodically, replicas and handles push their metrics to the controller:
 - **Frequency**: Every 10s (configurable via `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`)
 - **Data sent**: Both raw timeseries data and pre-aggregated metrics
-  - **Raw timeseries**: Data points are clipped to the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) window before sending (only recent measurements within the window are sent)
-  - **Pre-aggregated metrics**: A simple average computed over the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) window at the replica/handle
+  - **Raw timeseries**: Data points are clipped to the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) window before sending (only recent measurements within the window are sent)
+  - **Pre-aggregated metrics**: A simple average computed over the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) window at the replica/handle
 - **Controller usage**: The controller decides which data to use based on the `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER` setting (see Stage 3 below)
 
 #### Stage 3: Metric aggregation
@@ -230,19 +230,19 @@ The controller aggregates metrics to compute total ongoing requests across all r
 Ray Serve supports two aggregation modes (controlled by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`):
 
 **Simple mode (default - `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER=0`):**
-- **Input**: Pre-aggregated simple averages from replicas/handles (already clipped to [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst))
+- **Input**: Pre-aggregated simple averages from replicas/handles (already clipped to [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst))
 - **Method**: Sums the pre-aggregated values from all sources. Each component computes a simple average (arithmetic mean) before sending.
 - **Output**: Single value representing total ongoing requests
 - **Characteristics**: Lightweight and works well for most workloads. However, because it uses simple averages rather than time-weighted averages, it can be less accurate when replicas have different metric reporting intervals or when metrics arrive at different times.
 
 **Aggregate mode (experimental - `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER=1`):**
-- **Input**: Raw timeseries data from replicas/handles (already clipped to [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst))
-- **Method**: Time-weighted aggregation using the [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.aggregation_function.rst) (mean, max, or min). Uses an instantaneous merge approach that treats metrics as right-continuous step functions.
+- **Input**: Raw timeseries data from replicas/handles (already clipped to [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst))
+- **Method**: Time-weighted aggregation using the [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (mean, max, or min). Uses an instantaneous merge approach that treats metrics as right-continuous step functions.
 - **Output**: Single value representing total ongoing requests
 - **Characteristics**: Provides more mathematically accurate aggregation, especially when replicas report metrics at different intervals or you need precise time-weighted averages. The trade-off is increased controller overhead.
 
 :::{note}
-The [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.aggregation_function.rst) parameter only applies in aggregate mode. In simple mode, the aggregation is always a sum of the pre-computed simple averages.
+The [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameter only applies in aggregate mode. In simple mode, the aggregation is always a sum of the pre-computed simple averages.
 :::
 
 :::{note}
@@ -267,7 +267,7 @@ The timing parameters interact in important ways:
 - With default values: Each push contains 1 data points (10s ÷ 10s)
 
 **Push interval vs look-back period:**
-- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be > push interval (10s)
+- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (30s) should be > push interval (10s)
 - If look-back is too short, you won't have enough data for stable decisions
 - If look-back is too long, autoscaling becomes less responsive
 
@@ -304,7 +304,7 @@ and a warning is logged.
 
 * **`RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`** (default: 10.0s): Minimum timeout
 for handle metrics collection. The system uses the maximum of this value and
-`2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to determine when to drop stale handle metrics.
+`2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to determine when to drop stale handle metrics.
 
 #### Advanced feature flags
 
@@ -561,8 +561,8 @@ autoscaler to react more quickly to changes, especially bursts, of traffic.
 autoscaler scales up more aggressively than normal. This setting can allow your
 deployment to be more sensitive to bursts of traffic.
 
-* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst).
-Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to be less than
+* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst).
+Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to be less than
 or equal to `upscale_delay_s`, otherwise upscaling is delayed because the
 autoscaler doesn't receive fresh information often enough.
 
@@ -699,7 +699,7 @@ The `record_autoscaling_stats()` method can be either synchronous or asynchronou
 In your policy, access custom metrics via:
 
 * **`ctx.raw_metrics[metric_name]`** — A mapping of replica IDs to lists of raw metric values.
-  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) (the metric recording interval).
+  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (the metric recording interval).
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 

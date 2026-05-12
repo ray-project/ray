@@ -21,7 +21,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_node_manager.h"
@@ -141,8 +141,8 @@ class LeaseStatusTracker {
   /// \param node_id Id of a node where prepare request is sent.
   /// \param bundle Bundle specification the node is supposed to prepare.
   /// \return False if the prepare phase was already started. True otherwise.
-  bool MarkPreparePhaseStarted(const NodeID &node_id,
-                               const std::shared_ptr<const BundleSpecification> &bundle);
+  bool MarkPrepareRequestPending(
+      const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle);
 
   /// Indicate the tracker that all prepare requests are returned.
   ///
@@ -459,9 +459,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Create scheduling options.
-  SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
-                                            rpc::PlacementStrategy strategy,
-                                            NodeID soft_target_node_id);
+  SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
+                                            rpc::PlacementStrategy strategy);
 
   /// Try to release bundle resource to cluster resource manager.
   ///

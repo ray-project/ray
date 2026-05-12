@@ -26,6 +26,7 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
     const std::string &node_id,
     const int64_t system_reserved_cpu_weight,
     const int64_t system_reserved_memory_bytes,
+    const int64_t object_store_memory_bytes,
     const std::string &system_pids) {
   if (enable_resource_isolation) {
     // TODO(54703): Add link to OSS documentation when ready.

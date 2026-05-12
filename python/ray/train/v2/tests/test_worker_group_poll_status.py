@@ -86,6 +86,30 @@ File "/tmp/ray/session_<NUM>-<NUM>-<NUM>_<NUM>-<NUM>-<NUM>_<NUM>_<NUM>/runtime_r
     )
 
 
+def test_failing_replica_group_indices():
+    """Test that failing_replica_group_indices maps worker failures to replica groups."""
+    statuses = {
+        0: WorkerStatus(running=True),
+        1: WorkerStatus(running=True),
+        2: WorkerStatus(running=True),
+        3: WorkerStatus(running=False, error=RuntimeError("Worker 3 failed")),
+    }
+    poll_status = WorkerGroupPollStatus(
+        worker_statuses=statuses,
+        worker_rank_to_replica_group_rank={0: 0, 1: 0, 2: 1, 3: 1},
+    )
+    assert poll_status.failing_replica_group_indices == {1}
+
+
+def test_failing_replica_group_indices_no_mapping():
+    """Test that failing_replica_group_indices returns empty set when no mapping."""
+    statuses = {
+        0: WorkerStatus(running=False, error=RuntimeError("fail")),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.failing_replica_group_indices == set()
+
+
 if __name__ == "__main__":
     import sys
 

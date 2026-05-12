@@ -110,6 +110,7 @@ ray_cc_library(
         ":metrics",
         ":runtime_env_agent_client",
         ":worker_interface",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:constants",
         "//src/ray/common:lease",
         "//src/ray/common:protobuf_utils",
@@ -137,7 +138,7 @@ ray_cc_library(
     hdrs = ["runtime_env_agent_client.h"],
     visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
@@ -172,7 +173,7 @@ ray_cc_library(
     deps = [
         ":local_object_manager_interface",
         ":worker_pool",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -189,7 +190,7 @@ ray_cc_library(
     name = "worker_killing_policy_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "worker_killing_policy_group_by_owner_factory.cc",
+            "worker_killing_policy_factory.cc",
         ],
         "//conditions:default": [
             "noop_worker_killing_policy_factory.cc",
@@ -201,9 +202,13 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":worker_killing_policy_interface",
+        "//src/ray/common:ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
+            ":worker_killing_policy_by_time",
             ":worker_killing_policy_group_by_owner",
+            "//src/ray/common:memory_monitor_utils",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",
@@ -235,6 +240,27 @@ ray_cc_library(
     deps = [
         ":worker_killing_policy_interface",
         "//src/ray/common:lease",
+        "//src/ray/common:memory_monitor_utils",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "worker_killing_policy_by_time",
+    srcs = [
+        "worker_killing_policy_by_time.cc",
+    ],
+    hdrs = [
+        "worker_killing_policy_by_time.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_killing_policy_interface",
+        "//src/ray/common:lease",
+        "//src/ray/common:memory_monitor_utils",
+        "//src/ray/util:compat",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )
@@ -339,7 +365,7 @@ ray_cc_binary(
         ":local_object_manager_interface",
         ":metrics",
         ":raylet_lib",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:lease",
         "//src/ray/common:metrics",
         "//src/ray/common:ray_config",
@@ -357,6 +383,7 @@ ray_cc_binary(
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:clock",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
         "//src/ray/util:process",

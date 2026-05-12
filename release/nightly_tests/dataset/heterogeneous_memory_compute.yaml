@@ -1,0 +1,30 @@
+# Heterogeneous cluster for testing memory management with mixed node types.
+# CPU nodes have small memory; GPU nodes have large memory.
+# GPU nodes use logical GPU resources only (no real GPUs needed).
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # CPU workers: small memory nodes for CPU-bound tasks.
+    # m5.2xlarge: 8 vCPUs, 32 GiB memory (~12 GiB object store).
+    - instance_type: m5.2xlarge
+      min_nodes: 10
+      max_nodes: 10
+      market_type: ON_DEMAND
+
+    # "GPU" workers: large memory nodes with logical GPU resources, no CPUs.
+    # r5.4xlarge: 16 vCPUs, 128 GiB memory (~48 GiB object store).
+    # We override resources to expose only GPU (no CPU) so that only GPU tasks
+    # are scheduled here.
+    - instance_type: r5.4xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+        CPU: 0
+        GPU: 4

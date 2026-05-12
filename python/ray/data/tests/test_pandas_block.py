@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 import ray.data
@@ -15,7 +16,8 @@ from ray.data._internal.pandas_block import (
     PandasBlockColumnAccessor,
 )
 from ray.data._internal.util import is_null
-from ray.data.extensions.object_extension import _object_extension_type_allowed
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
 np.random.seed(42)
@@ -201,24 +203,20 @@ def test_pandas_block_timestamp_ns(ray_start_regular_shared):
         ), "Timestamp mismatch in PandasBlockBuilder output"
 
 
-@pytest.mark.skipif(
-    _object_extension_type_allowed(), reason="Objects can be put into Arrow"
-)
-def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
-    # If the UDF returns a column with dict, this throws
-    # an error during block construction because we cannot cast dicts
-    # to a supported arrow type. This test checks that the block
-    # construction falls back to pandas and still succeeds.
+def test_dict_and_none_use_arrow_block(ray_start_regular_shared, restore_data_context):
+    # Dicts are represented as Arrow struct types, so the block should remain Arrow
+    # even if object-extension fallback is disabled.
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+
     def fn(batch):
         batch["data_dict"] = [{"data": 0} for _ in range(len(batch["id"]))]
         return batch
 
     ds = ray.data.range(10).map_batches(fn)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
-    # TODO: Once we support converting dict to a supported arrow type,
-    # the block type should be Arrow.
-    assert isinstance(block, pd.DataFrame)
+    block = ray.get(next(ds.iter_internal_ref_bundles()).block_refs[0])
+    assert isinstance(block, pa.Table)
+    assert block.schema.field("data_dict").type == pa.struct([("data", pa.int64())])
 
     def fn2(batch):
         batch["data_none"] = [None for _ in range(len(batch["id"]))]
@@ -226,8 +224,8 @@ def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
-    block = ray.get(ds2.get_internal_block_refs()[0])
-    assert isinstance(block, pd.DataFrame)
+    block = ray.get(next(ds2.iter_internal_ref_bundles()).block_refs[0])
+    assert isinstance(block, pa.Table)
 
 
 class TestSizeBytes:
@@ -441,6 +439,10 @@ class TestSizeBytes:
         true_size = block.memory_usage(index=True, deep=True).sum()
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
+    @pytest.mark.skipif(
+        get_pyarrow_version() < parse_version("10.0.1"),
+        reason="ArrowDtype requires pyarrow>=10.0.1",
+    )
     def test_arrow(ray_start_regular_shared):
         data = [
             random.choice(["alligator", "crocodile", "flamingo"]) for _ in range(50_000)

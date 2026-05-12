@@ -129,6 +129,7 @@ Ray Train Configuration
     ~train.CheckpointConfig
     ~train.DataConfig
     ~train.FailureConfig
+    ~train.LoggingConfig
     ~train.RunConfig
     ~train.ScalingConfig
     ~train.ValidationConfig
@@ -181,6 +182,7 @@ Ray Train Output
     :toctree: doc/
 
     ~train.ReportedCheckpoint
+    ~train.ReportedCheckpointStatus
     ~train.Result
 
 Ray Train Errors

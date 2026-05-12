@@ -250,6 +250,11 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
         ray::LabelSelector(label_selector).ToStringMap();
   }
 
+  const auto &fallback_strategy = task_spec_->GetMessage().fallback_strategy();
+  if (fallback_strategy.options_size() > 0) {
+    definition_event_data.mutable_fallback_strategy()->CopyFrom(fallback_strategy);
+  }
+
   // Specific fields
   if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
     definition_event_data.mutable_actor_func()->CopyFrom(
@@ -429,15 +434,24 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
-  // Populate Ray event base fields
-  auto &ray_event = ray_events_tuple.task_profile_event.emplace();
-  PopulateRpcRayEventBaseFields(ray_event, timestamp);
+  // Populate Ray event base fields only if not already populated
+  rpc::events::RayEvent *ray_event_ptr;
+  if (!ray_events_tuple.task_profile_event) {
+    auto &ray_event = ray_events_tuple.task_profile_event.emplace();
+    PopulateRpcRayEventBaseFields(ray_event, timestamp);
+    ray_event_ptr = &ray_event;
 
-  // Populate the task profile event
-  auto *task_profile_events = ray_event.mutable_task_profile_events();
-  task_profile_events->set_task_id(task_id_.Binary());
-  task_profile_events->set_job_id(job_id_.Binary());
-  task_profile_events->set_attempt_number(attempt_number_);
+    // Populate the task profile event base fields
+    auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
+    task_profile_events->set_task_id(task_id_.Binary());
+    task_profile_events->set_job_id(job_id_.Binary());
+    task_profile_events->set_attempt_number(attempt_number_);
+  } else {
+    ray_event_ptr = &ray_events_tuple.task_profile_event.value();
+  }
+
+  // Add this profile event to the events list
+  auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
   auto profile_events = task_profile_events->mutable_profile_events();
   profile_events->set_component_type(component_type_);
   profile_events->set_component_id(component_id_);

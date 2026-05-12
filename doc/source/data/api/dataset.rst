@@ -15,6 +15,14 @@ Compute Strategy API
   ActorPoolStrategy
   TaskPoolStrategy
 
+Mixing API
+----------
+.. currentmodule:: ray.data
+
+.. autoclass:: MixStoppingCondition
+    :members:
+    :undoc-members:
+
 Schema
 ------
 .. currentmodule:: ray.data
@@ -46,6 +54,7 @@ Developer API
   block.BlockExecStats
   block.BlockMetadata
   block.BlockAccessor
+  RandomSeedConfig
 
 Deprecated API
 --------------

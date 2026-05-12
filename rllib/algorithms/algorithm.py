@@ -7,8 +7,6 @@ import json
 import logging
 import os
 import pathlib
-import re
-import tempfile
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -186,11 +184,9 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
-from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry, get_trainable_cls
 from ray.tune.resources import Resources
 from ray.tune.result import TRAINING_ITERATION
@@ -406,15 +402,12 @@ class Algorithm(Checkpointable, Trainable):
         self,
         config: Optional[AlgorithmConfig] = None,
         env=None,  # deprecated arg
-        logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
     ):
         """Initializes an Algorithm instance.
 
         Args:
             config: Algorithm-specific configuration object.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
         # Translate possible dict into an AlgorithmConfig object, as well as,
@@ -475,9 +468,6 @@ class Algorithm(Checkpointable, Trainable):
         self._env_id, self.env_creator = self._get_env_id_and_creator(
             config.env, config
         )
-        env_descr = (
-            self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
-        )
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -491,42 +481,6 @@ class Algorithm(Checkpointable, Trainable):
         self.metrics: MetricsLogger = MetricsLogger(
             root=True, stats_cls_lookup=config.stats_cls_lookup
         )
-
-        # Create a default logger creator if no logger_creator is specified
-        if logger_creator is None:
-            # Default logdir prefix containing the agent's name and the
-            # env id.
-            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
-            logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
-
-            if not os.path.exists(DEFAULT_STORAGE_PATH):
-                # Possible race condition if dir is created several times on
-                # rollout workers
-                os.makedirs(DEFAULT_STORAGE_PATH, exist_ok=True)
-            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH)
-
-            # Allow users to more precisely configure the created logger
-            # via "logger_config.type".
-            if config.logger_config and "type" in config.logger_config:
-
-                def default_logger_creator(config):
-                    """Creates a custom logger with the default prefix."""
-                    cfg = config["logger_config"].copy()
-                    cls = cfg.pop("type")
-                    # Provide default for logdir, in case the user does
-                    # not specify this in the "logger_config" dict.
-                    logdir_ = cfg.pop("logdir", logdir)
-                    return from_config(cls=cls, _args=[cfg], logdir=logdir_)
-
-            # If no `type` given, use tune's UnifiedLogger as last resort.
-            else:
-
-                def default_logger_creator(config):
-                    """Creates a Unified logger with the default prefix."""
-                    return UnifiedLogger(config, logdir, loggers=None)
-
-            logger_creator = default_logger_creator
 
         # Metrics-related properties.
         self._timers = defaultdict(_Timer)
@@ -582,7 +536,6 @@ class Algorithm(Checkpointable, Trainable):
 
         super().__init__(
             config=config,
-            logger_creator=logger_creator,
             **kwargs,
         )
 
@@ -1508,8 +1461,13 @@ class Algorithm(Checkpointable, Trainable):
                     kwargs=dict(algorithm=self, metrics_logger=self.metrics),
                 )
 
+            eval_results: ResultDict = {}
             env_steps = agent_steps = 0
             batches = []
+
+            # If *all* configured remote eval EnvRunners are unhealthy,
+            # optionally wait for recovery before deciding to skip / raise.
+            self._maybe_wait_for_eval_env_runner_recovery()
 
             # We will use a user provided evaluation function.
             if self.config.custom_evaluation_function:
@@ -1521,7 +1479,7 @@ class Algorithm(Checkpointable, Trainable):
                     ) = self._evaluate_with_custom_eval_function()
                 else:
                     eval_results = self.config.custom_evaluation_function()
-            # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
+            # No eval EnvRunnerGroup -> Run on (training) local EnvRunner.
             elif self.eval_env_runner_group is None and self.env_runner:
                 (
                     eval_results,
@@ -1529,16 +1487,20 @@ class Algorithm(Checkpointable, Trainable):
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.env_runner)
-            # There is only a local eval EnvRunner -> Run on that.
-            elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
+            # 0 remote eval EnvRunners configured -> Run on the local eval EnvRunner.
+            elif self.eval_env_runner_group.num_remote_env_runners() == 0:
                 (
                     eval_results,
                     env_steps,
                     agent_steps,
                     batches,
                 ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
-            # There are healthy remote evaluation workers -> Run on these.
+            # Healthy remote evaluation workers -> Run on these.
             elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+                # A successful eval iteration resets the consecutive-skip
+                # counter; this is what tells the algorithm "the failure
+                # was transient".
+                self._counters["num_consecutive_eval_no_workers_iterations"] = 0
                 # Running in automatic duration mode (parallel with training step).
                 if self.config.evaluation_duration == "auto":
                     assert parallel_train_future is not None
@@ -1556,13 +1518,29 @@ class Algorithm(Checkpointable, Trainable):
                         agent_steps,
                         batches,
                     ) = self._evaluate_with_fixed_duration()
-            # Can't find a good way to run this evaluation -> Wait for next iteration.
+            # No healthy remote eval EnvRunners. Increment the consecutive-
+            # skip counter; raise if it exceeds the configured threshold,
+            # otherwise skip evaluation for this iteration.
             else:
-                eval_results = {}
+                counter_key = "num_consecutive_eval_no_workers_iterations"
+                self._counters[counter_key] += 1
+                threshold = self.config.evaluation_error_after_n_consecutive_skips
+                if threshold is not None and self._counters[counter_key] >= threshold:
+                    n_skips = self._counters[counter_key]
+                    raise RuntimeError(
+                        "All evaluation EnvRunners have been unhealthy for "
+                        f"{n_skips} consecutive evaluation iterations "
+                        f"(threshold: {threshold}). Set "
+                        "`evaluation_error_after_n_consecutive_skips` to "
+                        "None to skip indefinitely instead, or to a higher "
+                        "number for more tolerance, and/or "
+                        "`evaluation_unhealthy_workers_timeout_s` > 0 to "
+                        "wait for recovery within each iteration."
+                    )
 
             if self.config.enable_env_runner_and_connector_v2:
                 if log_once("no_eval_results") and not self.metrics.peek(
-                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS), default={}
                 ):
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
@@ -1630,15 +1608,15 @@ class Algorithm(Checkpointable, Trainable):
                 env_steps,
                 agent_steps,
             ) = self.config.custom_evaluation_function(self, self.eval_env_runner_group)
-            if not env_steps or not agent_steps:
+            if not isinstance(env_steps, int) or not isinstance(agent_steps, int):
                 raise ValueError(
                     "Custom eval function must return "
                     "`Tuple[ResultDict, int, int]` with `int, int` being "
-                    f"`env_steps` and `agent_steps`! Got {env_steps}, {agent_steps}."
+                    f"`env_steps` and `agent_steps`! Got {env_steps} ({type(env_steps)}), {agent_steps} ({type(agent_steps)})."
                 )
         else:
             eval_results = self.config.custom_evaluation_function()
-        if not eval_results or not isinstance(eval_results, dict):
+        if not isinstance(eval_results, dict):
             raise ValueError(
                 "Custom eval function must return "
                 f"dict of metrics! Got {eval_results}."
@@ -1662,6 +1640,111 @@ class Algorithm(Checkpointable, Trainable):
             [results],
             key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
         )
+
+    def _maybe_wait_for_eval_env_runner_recovery(self) -> None:
+        """Poll for at least one healthy eval EnvRunner if the user asked to.
+
+        When *all* configured remote eval EnvRunners are unhealthy, wait up
+        to `evaluation_unhealthy_workers_timeout_s` seconds for at least one
+        to come back before deciding to skip evaluation or raise (per
+        `evaluation_error_after_n_consecutive_skips`). If any worker
+        recovers during the wait, re-syncs current weights *and*
+        connector states / observation filters to it: the corresponding
+        syncs at the start of `evaluate()` were made before the wait and
+        skipped workers that were unhealthy then.
+        """
+        timeout_s = self.config.evaluation_unhealthy_workers_timeout_s
+        if not timeout_s or timeout_s <= 0:
+            return
+        if self.eval_env_runner_group is None:
+            return
+        # Only relevant when remote workers were *configured* but are all
+        # unhealthy. `num_remote_env_runners() == 0` means the user asked
+        # for local-only eval; nothing to wait for.
+        if self.eval_env_runner_group.num_remote_env_runners() == 0:
+            return
+        if self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+            return
+
+        start = time.monotonic()
+        deadline = start + timeout_s
+        # Heartbeat every 60s so long waits show up in logs without spamming.
+        next_log = start + 60.0
+        logger.warning(
+            "All %d remote eval EnvRunner(s) are unhealthy; waiting up to "
+            "%.0fs for at least one to recover before "
+            "deciding to skip evaluation or raise (controlled by "
+            "`evaluation_error_after_n_consecutive_skips`).",
+            self.eval_env_runner_group.num_remote_env_runners(),
+            timeout_s,
+        )
+        while (
+            self.eval_env_runner_group.num_healthy_remote_workers() == 0
+            and time.monotonic() < deadline
+        ):
+            # Actively ping unhealthy actors so the ActorManager can mark
+            # them healthy if Ray Core has restarted them since the last
+            # call. Without this poke, `num_healthy_remote_workers()`
+            # would stay stuck at 0 even after recovery. Cap the per-probe
+            # timeout to remaining wait time so a hanging actor can't push
+            # us past `evaluation_unhealthy_workers_timeout_s`.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            self.eval_env_runner_group.probe_unhealthy_env_runners(
+                timeout_seconds=min(remaining, 1.0),
+            )
+            time.sleep(0.1)
+            now = time.monotonic()
+            if now >= next_log:
+                logger.warning(
+                    "Still 0/%d eval EnvRunners healthy after %.0fs "
+                    "(timeout %.0fs).",
+                    self.eval_env_runner_group.num_remote_env_runners(),
+                    now - start,
+                    timeout_s,
+                )
+                next_log = now + 60.0
+
+        # If any workers recovered during the wait, push current weights
+        # *and* connector/filter state to them. The sync block at the
+        # start of `evaluate()` ran before this wait and only targeted
+        # workers that were healthy *then*; freshly-recovered workers
+        # were skipped. Without re-syncing, they would run eval with
+        # default/empty model weights *and* default/empty observation
+        # filters (or stale connector states on the v2 stack) -- both
+        # silently producing wrong eval metrics for one iteration.
+        if self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+            weights_src = (
+                self.learner_group
+                if self.config.enable_env_runner_and_connector_v2
+                else self.env_runner
+            )
+            self.eval_env_runner_group.sync_weights(
+                from_worker_or_learner_group=weights_src,
+                inference_only=True,
+            )
+            if self.config.enable_env_runner_and_connector_v2:
+                if self.evaluation_config.broadcast_env_runner_states:
+                    self.eval_env_runner_group.sync_env_runner_states(
+                        config=self.evaluation_config,
+                        from_worker=self.env_runner,
+                        env_steps_sampled=self.metrics.peek(
+                            (
+                                ENV_RUNNER_RESULTS,
+                                NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                            ),
+                            default=0,
+                        ),
+                        env_to_module=self.env_to_module_connector,
+                        module_to_env=self.module_to_env_connector,
+                    )
+            else:
+                self._sync_filters_if_needed(
+                    central_worker=self.env_runner_group.local_env_runner,
+                    workers=self.eval_env_runner_group,
+                    config=self.evaluation_config,
+                )
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
@@ -3405,6 +3488,7 @@ class Algorithm(Checkpointable, Trainable):
                     if not config.enable_rl_module_and_learner
                     else 0
                 ),
+                **config.custom_resources_for_main_process,
             }
 
         env_runner_bundles = _get_env_runner_bundles(config)

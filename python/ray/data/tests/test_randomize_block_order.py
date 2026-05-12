@@ -7,6 +7,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import RandomizeBlocks
 from ray.data._internal.planner import create_planner
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.context import DataContext
 from ray.data.tests.test_util import get_parquet_read_logical_op
 
@@ -17,11 +18,12 @@ def test_randomize_blocks_operator(ray_start_regular_shared):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomizeBlocks(
-        read_op,
-        seed=0,
+        seed_config=RandomSeedConfig(seed=0),
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "RandomizeBlockOrder"
     assert isinstance(physical_op, AllToAllOperator)

@@ -50,10 +50,10 @@ class TestRayDockerContainer(RayCITestBase):
             )
 
             # Run with specific python version and ray-llm image
-            v = "3.11"
+            v = "3.12"
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
-            cuda = "cu12.8.1-cudnn"
+            cuda = "cu13.0.0-cudnn"
             container = RayDockerContainer(v, cuda, "ray-llm")
             container.run()
             cmd = self.cmds[-1]
@@ -61,8 +61,8 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                f"rayproject/ray-llm:{sha}-{pv}-cu128 "
-                f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
+                f"rayproject/ray-llm:{sha}-{pv}-cu130 "
+                f"ray-llm:{sha}-{pv}-cu130_pip-freeze.txt"
             )
 
             # Run with non-default python version and ray-ml image
@@ -128,10 +128,10 @@ class TestRayDockerContainer(RayCITestBase):
 
             # Run with specific python version and ray-llm image
             self.cmds = []
-            v = "3.11"
+            v = "3.12"
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
-            cuda = "cu12.8.1-cudnn"
+            cuda = "cu13.0.0-cudnn"
             container = RayDockerContainer(v, cuda, "ray-llm")
             container.run()
             assert len(self.cmds) == 6
@@ -139,8 +139,8 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                f"rayproject/ray-llm:{sha}-{pv}-cu128 "
-                f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
+                f"rayproject/ray-llm:{sha}-{pv}-cu130 "
+                f"ray-llm:{sha}-{pv}-cu130_pip-freeze.txt"
             )
             assert (
                 self.cmds[1]
@@ -213,8 +213,8 @@ class TestRayDockerContainer(RayCITestBase):
 
             # Run with specific python version and ray-llm image
             self.cmds = []
-            v = "3.11"
-            cuda = "cu12.8.1-cudnn"
+            v = "3.12"
+            cuda = "cu13.0.0-cudnn"
             cv = self.get_cpp_version(v)
             pv = self.get_python_version(v)
             container = RayDockerContainer(v, cuda, "ray-llm")
@@ -224,8 +224,8 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                f"rayproject/ray-llm:{sha}-{pv}-cu128 "
-                f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
+                f"rayproject/ray-llm:{sha}-{pv}-cu130 "
+                f"ray-llm:{sha}-{pv}-cu130_pip-freeze.txt"
             )
 
             # Run with non-default python version and ray-ml image
@@ -358,32 +358,32 @@ class TestRayDockerContainer(RayCITestBase):
                 "rayproject/ray:nightly-extra",
             ]
 
-        v = "3.11"
+        v = "3.12"
         pv = self.get_python_version(v)
-        container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray-llm")
+        container = RayDockerContainer(v, "cu13.0.0-cudnn", "ray-llm")
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
             assert container._get_image_names() == [
-                f"rayproject/ray-llm:{sha}-{pv}-cu128",
-                f"rayproject/ray-llm:{rayci_build_id}-{pv}-cu128",
+                f"rayproject/ray-llm:{sha}-{pv}-cu130",
+                f"rayproject/ray-llm:{rayci_build_id}-{pv}-cu130",
             ]
 
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
             assert container._get_image_names() == [
-                f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-{pv}-cu128",
-                f"rayproject/ray-llm:nightly-{pv}-cu128",
+                f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-{pv}-cu130",
+                f"rayproject/ray-llm:nightly-{pv}-cu130",
             ]
 
-        container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray-llm-extra")
+        container = RayDockerContainer(v, "cu13.0.0-cudnn", "ray-llm-extra")
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
             assert container._get_image_names() == [
-                f"rayproject/ray-llm:{sha}-extra-{pv}-cu128",
-                f"rayproject/ray-llm:{rayci_build_id}-extra-{pv}-cu128",
+                f"rayproject/ray-llm:{sha}-extra-{pv}-cu130",
+                f"rayproject/ray-llm:{rayci_build_id}-extra-{pv}-cu130",
             ]
 
         with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
             assert container._get_image_names() == [
-                f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-extra-{pv}-cu128",
-                f"rayproject/ray-llm:nightly-extra-{pv}-cu128",
+                f"rayproject/ray-llm:nightly.{formatted_date}.{sha}-extra-{pv}-cu130",
+                f"rayproject/ray-llm:nightly-extra-{pv}-cu130",
             ]
 
         v = self.get_non_default_python()
