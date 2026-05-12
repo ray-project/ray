@@ -801,32 +801,6 @@ def get_table_block_metadata_schema(
     return BlockMetadataWithSchema.from_block(table, block_exec_stats=stats.build())
 
 
-def unify_block_metadata_schema(
-    block_metadata_with_schemas: List["BlockMetadataWithSchema"],
-) -> Optional["Schema"]:
-    """For the input list of BlockMetadata, return a unified schema of the
-    corresponding blocks. If the metadata have no valid schema, returns None.
-
-    Args:
-        block_metadata_with_schemas: List of BlockMetadata to unify
-
-    Returns:
-        A unified schema of the input list of schemas, or None if no valid schemas
-        are provided.
-    """
-    # Some blocks could be empty, in which case we cannot get their schema.
-    # TODO(ekl) validate schema is the same across different blocks.
-
-    # First check if there are blocks with computed schemas, then unify
-    # valid schemas from all such blocks.
-
-    schemas_to_unify = []
-    for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-            schemas_to_unify.append(m.schema)
-    return unify_schemas_with_validation(schemas_to_unify)
-
-
 def unify_schemas_with_validation(
     schemas_to_unify: Iterable["Schema"],
 ) -> Optional["Schema"]:
@@ -850,12 +824,44 @@ def unify_schemas_with_validation(
 def unify_ref_bundles_schema(
     ref_bundles: List["RefBundle"],
 ) -> Optional["Schema"]:
-    schemas_to_unify = []
+    """Return the unified schema across ``ref_bundles``, or ``None`` if none
+    carries a schema.
+
+    Empty PyArrow tables retain their full schema, so they remain candidates
+    when every input is PyArrow (``unify_schemas`` merges them). For
+    non-Arrow inputs ``unify_schemas_with_validation`` falls back to "return
+    the first schema"; in that path we prefer (a) a non-empty candidate, and
+    if all candidates have zero rows, (b) the first schemaful candidate
+    (column names non-empty). This keeps a leading schemaless empty block
+    from masking later column metadata.
+    """
+    try:
+        import pyarrow as pa
+    except ImportError:
+        pa = None
+
+    candidates = []  # list of (schema, num_rows)
+    has_non_pyarrow = False
     for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
-            schemas_to_unify.append(bundle.schema)
+        if bundle.schema is None:
+            continue
+        if pa is None or not isinstance(bundle.schema, pa.Schema):
+            has_non_pyarrow = True
+        candidates.append((bundle.schema, bundle.num_rows()))
+
+    if not candidates:
+        return None
+
+    if has_non_pyarrow:
+        non_empty = [s for s, n in candidates if not (n is not None and n == 0)]
+        if non_empty:
+            schemas_to_unify = non_empty
+        else:
+            schemaful = [s for s, _ in candidates if getattr(s, "names", None)]
+            schemas_to_unify = [schemaful[0]] if schemaful else [candidates[0][0]]
+    else:
+        schemas_to_unify = [s for s, _ in candidates]
+
     return unify_schemas_with_validation(schemas_to_unify)
 
 

@@ -788,6 +788,19 @@ class ParquetDatasource(Datasource):
             include_paths=self._include_paths,
             include_row_hash=self._include_row_hash,
         )
+        column_renames = self.get_column_renames()
+        if column_renames and self._block_udf is None:
+            import pyarrow as pa
+
+            # Read batches are renamed before being yielded, so the metadata
+            # schema attached to the ReadTask must use the same final names.
+            target_schema = pa.schema(
+                [
+                    field.with_name(column_renames.get(field.name, field.name))
+                    for field in target_schema
+                ],
+                metadata=target_schema.metadata,
+            )
 
         read_tasks = []
         filter_expr = (

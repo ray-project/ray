@@ -9,7 +9,7 @@ from typing_extensions import Hashable
 import ray
 from ray._common.retry import matches_error
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
@@ -32,7 +32,9 @@ from ray.data._internal.util import (
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
+    unify_ref_bundles_schema,
 )
+from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -137,6 +139,97 @@ def test_cached_remote_fn():
     gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
 
     assert cpu_only_foo != gpu_only_foo
+
+
+def _make_bundle(block) -> RefBundle:
+    accessor = BlockAccessor.for_block(block)
+    block_ref = ray.put(block)
+    return RefBundle(
+        [(block_ref, accessor.get_metadata())],
+        owns_blocks=False,
+        schema=accessor.schema(),
+    )
+
+
+def test_unify_ref_bundles_schema_empty_pandas_then_non_empty_arrow(
+    ray_start_regular_shared,
+):
+    """Empty Pandas schema must not mask a later non-empty Arrow schema."""
+    empty_pandas = pd.DataFrame(
+        {"a": pd.Series(dtype="int32"), "b": pd.Series(dtype="object")}
+    )
+    non_empty_arrow = pa.table({"x": [1, 2, 3], "y": ["p", "q", "r"]})
+
+    unified = unify_ref_bundles_schema(
+        [_make_bundle(empty_pandas), _make_bundle(non_empty_arrow)]
+    )
+
+    assert unified is not None
+    assert sorted(unified.names) == ["x", "y"]
+
+
+def test_unify_ref_bundles_schema_all_empty_pandas_preserves_columns(
+    ray_start_regular_shared,
+):
+    """When every input is empty, the empty Pandas schema is preserved."""
+    empty_pandas = pd.DataFrame(
+        {"a": pd.Series(dtype="int32"), "b": pd.Series(dtype="float64")}
+    )
+
+    unified = unify_ref_bundles_schema([_make_bundle(empty_pandas)])
+
+    assert unified is not None
+    assert sorted(unified.names) == ["a", "b"]
+
+
+def test_unify_ref_bundles_schema_all_empty_leading_schemaless_pandas(
+    ray_start_regular_shared,
+):
+    """All-empty pandas inputs: a leading schemaless empty block must not
+    mask later column metadata."""
+    schemaless_empty = pd.DataFrame()
+    schemaful_empty = pd.DataFrame(
+        {"one": pd.Series(dtype="int64"), "two": pd.Series(dtype="object")}
+    )
+
+    unified = unify_ref_bundles_schema(
+        [_make_bundle(schemaless_empty), _make_bundle(schemaful_empty)]
+    )
+
+    assert unified is not None
+    assert sorted(unified.names) == ["one", "two"]
+
+
+def test_unify_ref_bundles_schema_all_arrow_unifies_empty_and_non_empty(
+    ray_start_regular_shared,
+):
+    """All-Arrow inputs are merged via unify_schemas regardless of emptiness."""
+    schema = pa.schema([("x", pa.int32())])
+    empty_arrow = pa.table([pa.array([], pa.int32())], schema=schema)
+    non_empty_arrow = pa.table([pa.array([1, 2], pa.int32())], schema=schema)
+
+    unified = unify_ref_bundles_schema(
+        [_make_bundle(empty_arrow), _make_bundle(non_empty_arrow)]
+    )
+
+    assert unified is not None
+    assert unified.names == ["x"]
+
+
+def test_unify_ref_bundles_schema_empty_arrow_then_non_empty_pandas(
+    ray_start_regular_shared,
+):
+    """Empty Arrow schema must not mask a later non-empty Pandas schema in the
+    mixed-format fallback path."""
+    empty_arrow = pa.table([pa.array([], pa.int32())], names=["a"])
+    non_empty_pandas = pd.DataFrame({"x": [1, 2, 3]})
+
+    unified = unify_ref_bundles_schema(
+        [_make_bundle(empty_arrow), _make_bundle(non_empty_pandas)]
+    )
+
+    assert unified is not None
+    assert list(unified.names) == ["x"]
 
 
 def test_null_sentinel():

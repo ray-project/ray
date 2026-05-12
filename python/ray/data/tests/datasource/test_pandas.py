@@ -108,6 +108,42 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
+@pytest.mark.parametrize(
+    "empty_df",
+    [pd.DataFrame(), pd.DataFrame(columns=["one", "two"])],
+)
+def test_from_pandas_refs_empty_leading_partition_schema(
+    ray_start_regular_shared, empty_df
+):
+    ctx = ray.data.context.DataContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = True
+    try:
+        df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        ds = ray.data.from_pandas_refs([ray.put(empty_df), ray.put(df)])
+        assert sorted(ds.columns()) == ["one", "two"]
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
+
+
+def test_from_pandas_refs_all_empty_preserves_columns(ray_start_regular_shared):
+    ctx = ray.data.context.DataContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = True
+    try:
+        empty_df = pd.DataFrame(
+            {"one": pd.Series(dtype="int32"), "two": pd.Series(dtype="float64")}
+        )
+        ds = ray.data.from_pandas_refs([ray.put(empty_df)])
+        assert sorted(ds.columns()) == ["one", "two"]
+        # to_pandas() must preserve the typed columns, not collapse to object dtype.
+        result_df = ds.to_pandas()
+        assert result_df["one"].dtype == np.int32
+        assert result_df["two"].dtype == np.float64
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
+
+
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})

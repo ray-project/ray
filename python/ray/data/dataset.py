@@ -6729,6 +6729,19 @@ class Dataset:
                     "ds.to_pandas(limit=None) to disable limits."
                 )
 
+        # Read the logical schema directly from the DAG. Do not fall back to
+        # ``self.schema()`` here: after prior consumption, the schema cache can
+        # describe a pushed-down read/input schema instead of this dataset's
+        # output schema (for example after ``rename_columns``). Using such a
+        # stale schema for reconciliation would add old column names back into
+        # the pandas result.
+        logical_base_schema = self._logical_plan.dag.infer_schema()
+        unified_schema = (
+            Schema(logical_base_schema, data_context=self.context)
+            if logical_base_schema is not None
+            else None
+        )
+
         builder = PandasBlockBuilder()
         for batch in self.iter_batches(batch_format="pandas", batch_size=None):
             builder.add_block(batch)
@@ -6737,7 +6750,61 @@ class Dataset:
         # `PandasBlockBuilder` creates a dataframe with internal extension types like
         # 'TensorDtype'. We use the `to_pandas` method to convert these extension
         # types to regular types.
-        return BlockAccessor.for_block(block).to_pandas()
+        result = BlockAccessor.for_block(block).to_pandas()
+
+        # Reconcile `result` against the dataset's unified schema. Zero-row
+        # blocks aren't yielded into PandasBlockBuilder, so columns that only
+        # appear on empty source blocks would otherwise be missing from the
+        # output even though `ds.schema()` reports them. Backfill any missing
+        # columns through BlockAccessor.to_pandas() so the same types_mapper
+        # and tensor-extension casting used for non-empty outputs apply here.
+        if unified_schema is not None and unified_schema.names:
+            schema_names = list(unified_schema.names)
+            result_columns = list(result.columns)
+            # Some optimized reads report the source-file schema even though
+            # the blocks have already been renamed. In that case, the schema is
+            # not authoritative for this result, so don't synthesize columns.
+            schema_covers_result = all(name in schema_names for name in result_columns)
+        else:
+            schema_covers_result = False
+
+        if schema_covers_result:
+            missing = [name for name in schema_names if name not in result_columns]
+            if missing:
+                import pandas as pd
+                import pyarrow as pa
+
+                missing_set = set(missing)
+                base = unified_schema.base_schema
+                if isinstance(base, pa.Schema):
+                    missing_fields = [
+                        base.field(name) for name in base.names if name in missing_set
+                    ]
+                    typed_empty_block = pa.schema(missing_fields).empty_table()
+                else:
+                    typed_empty_block = pd.DataFrame(
+                        {
+                            name: pd.Series(dtype=dtype)
+                            for name, dtype in zip(base.names, base.types)
+                            if name in missing_set
+                        }
+                    )
+                typed_empty_df = BlockAccessor.for_block(typed_empty_block).to_pandas()
+                # Stretch the typed-empty frame to `result`'s row count;
+                # pandas preserves the dtype for nullable/ArrowDtype columns
+                # and upcasts non-nullable numeric columns to float64 to fit
+                # NaN, matching its standard outer-join concat semantics.
+                backfill = typed_empty_df.reindex(range(len(result)))
+                backfill.index = result.index
+                result = pd.concat([result, backfill], axis=1)
+                # Order to schema first, but never drop columns that already
+                # exist in result (defensive guard against a stale or partial
+                # schema slipping through and losing real data).
+                ordered_cols = schema_names + [
+                    c for c in result.columns if c not in schema_names
+                ]
+                result = result.reindex(columns=ordered_cols)
+        return result
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI

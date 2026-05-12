@@ -118,6 +118,75 @@ def test_from_arrow_refs(ray_start_regular_shared, sample_dataframes):
     assert "FromArrow" in ds.stats()
 
 
+def test_from_arrow_refs_empty_table_preserves_schema(ray_start_regular_shared):
+    schema = pa.schema([("apples", pa.int32()), ("name", pa.string())])
+    empty_table = pa.table(
+        [pa.array([], pa.int32()), pa.array([], pa.string())], schema=schema
+    )
+    non_empty_table = pa.table(
+        [pa.array([1, 2], pa.int32()), pa.array(["a", "b"], pa.string())],
+        schema=schema,
+    )
+    ds_empty = ray.data.from_arrow_refs([ray.put(empty_table)])
+    ds_non_empty = ray.data.from_arrow_refs([ray.put(non_empty_table)])
+
+    empty_df = ds_empty.to_pandas()
+    non_empty_df = ds_non_empty.to_pandas()
+
+    assert list(empty_df.columns) == ["apples", "name"]
+    assert len(empty_df) == 0
+    # Empty and non-empty datasets must produce the same dtypes — i.e. the empty
+    # path must go through BlockAccessor.to_pandas() (types_mapper / tensor
+    # extension casting) the same way non-empty datasets do.
+    assert empty_df.dtypes.to_dict() == non_empty_df.dtypes.to_dict()
+
+
+def test_from_arrow_refs_to_pandas_backfills_columns_from_empty_blocks(
+    ray_start_regular_shared,
+):
+    """If a column appears only on an empty source block, to_pandas() must
+    still expose it, matching the logical unified schema.
+
+    Note: this test deliberately calls ``to_pandas()`` first (without a prior
+    ``ds.schema()`` or ``ds.columns()`` call) to verify the logical unified
+    schema is captured before execution caches the post-execution physical
+    schema; otherwise the reconciliation would have a stale subset schema.
+    """
+    empty_a = pa.table([pa.array([], pa.int32())], names=["a"])
+    non_empty_b = pa.table([pa.array([1, 2, 3], pa.int64())], names=["b"])
+
+    ds = ray.data.from_arrow_refs([ray.put(empty_a), ray.put(non_empty_b)])
+
+    result_df = ds.to_pandas()
+    assert sorted(result_df.columns) == ["a", "b"]
+    assert len(result_df) == 3
+    # The 'b' column has its real values; 'a' is backfilled as missing.
+    assert result_df["b"].tolist() == [1, 2, 3]
+    assert result_df["a"].isna().all()
+
+
+def test_from_arrow_refs_to_pandas_backfill_survives_cache_poisoning(
+    ray_start_regular_shared,
+):
+    """A second to_pandas() must still preserve the empty-block column even
+    after the first call populates the schema cache with the post-execution
+    (subset) schema. Reads the logical schema from the DAG to bypass that
+    cached value.
+    """
+    empty_a = pa.table([pa.array([], pa.int32())], names=["a"])
+    non_empty_b = pa.table([pa.array([1, 2, 3], pa.int64())], names=["b"])
+
+    ds = ray.data.from_arrow_refs([ray.put(empty_a), ray.put(non_empty_b)])
+
+    first = ds.to_pandas()
+    second = ds.to_pandas()
+
+    assert sorted(first.columns) == ["a", "b"]
+    assert sorted(second.columns) == ["a", "b"]
+    assert second["b"].tolist() == [1, 2, 3]
+    assert second["a"].isna().all()
+
+
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})
