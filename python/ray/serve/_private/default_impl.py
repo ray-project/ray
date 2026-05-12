@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -160,7 +160,9 @@ def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCach
     return DefaultClusterNodeInfoCache(gcs_client)
 
 
-CreatePlacementGroupFn = Callable[[CreatePlacementGroupRequest], PlacementGroup]
+CreatePlacementGroupFn = Callable[
+    [CreatePlacementGroupRequest], Union[PlacementGroup, ReplicaPlacementGroup]
+]
 
 
 def _default_create_placement_group(

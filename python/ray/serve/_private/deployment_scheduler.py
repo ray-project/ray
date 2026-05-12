@@ -899,7 +899,7 @@ class DeploymentScheduler(ABC):
             )
 
             try:
-                pg = self._create_placement_group_fn(
+                pg_result = self._create_placement_group_fn(
                     CreatePlacementGroupRequest(
                         bundles=bundles,
                         strategy=request.gang_placement_strategy,
@@ -909,6 +909,18 @@ class DeploymentScheduler(ABC):
                         fallback_strategy=fallback_strategy,
                     )
                 )
+
+                # Unwrap the ReplicaPlacementGroup to get the underyling PlacementGroup.
+                # Gang scheduling currently does not support accelerator_config (since it's
+                # handled by the specific accelerator backend), so we don't need the
+                # wrapper. Inline import here is required to avoid circular dependencies.
+                from ray.serve._private.default_impl import ReplicaPlacementGroup
+
+                if isinstance(pg_result, ReplicaPlacementGroup):
+                    pg = pg_result.placement_group
+                else:
+                    pg = pg_result
+
                 gang_pgs.append(pg)
                 gang_ids.append(gang_id)
                 gang_pg_names.append(pg_name)
