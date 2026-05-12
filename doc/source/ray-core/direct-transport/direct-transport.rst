@@ -261,6 +261,8 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
 
+For workloads that transfer the same tensors repeatedly, such as weight syncs between a trainer and an inference engine, see :ref:`nixl-rdt-performance-tuning` for advanced APIs that keep memory registration off the hot path.
+
 
 Summary
 -------
@@ -352,3 +354,4 @@ Learn more details about Ray Direct Transport from the following links.
     :maxdepth: 1
 
     custom-tensor-transport
+    nixl-rdt-performance-tuning
