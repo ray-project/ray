@@ -1214,8 +1214,8 @@ py_test(
     # (https://github.com/python/mypy/issues/17189)
     tags = [
         "exclusive",
+        "medium_size_python_tests_shard_0",
         "no_windows",
-        "small_size_python_tests",
         "team:core",
     ],
     deps = [
