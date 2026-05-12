@@ -8,7 +8,7 @@ driver aggregates them in ``LakehouseDatasink.on_write_complete``.
 """
 
 from dataclasses import dataclass, field
-from typing import Generic, List, Optional, TypeVar
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 import pyarrow as pa
 
@@ -29,6 +29,11 @@ class LakehouseWriteTaskResult(Generic[FileAction]):
         written_paths: Best-effort list of relative paths written by this task,
             used by ``on_write_failed`` to clean up orphans.
         task_id: Worker task index (for logging / debugging).
+        task_metadata: Adapter-defined free-form metadata produced by this
+            task. The framework concatenates these across tasks and forwards
+            the list to ``adapter.gather_task_metadata`` before ``commit``,
+            giving adapters a channel for worker→driver state such as
+            Delta's per-write app-transaction UUID.
     """
 
     file_actions: List[FileAction] = field(default_factory=list)
@@ -36,3 +41,4 @@ class LakehouseWriteTaskResult(Generic[FileAction]):
     upsert_keys: Optional[pa.Table] = None
     written_paths: List[str] = field(default_factory=list)
     task_id: Optional[int] = None
+    task_metadata: Dict[str, Any] = field(default_factory=dict)

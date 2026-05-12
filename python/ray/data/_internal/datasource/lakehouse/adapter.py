@@ -23,7 +23,7 @@ in the design plan:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Generic, List, Optional, Set, Tuple, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
 
 import pyarrow as pa
 
@@ -126,9 +126,27 @@ class LakehouseAdapter(Generic[FileAction], ABC):
         """
         return ([], [])
 
+    def task_metadata(self) -> Dict[str, Any]:
+        """Adapter-defined free-form metadata to ship back to the driver.
+
+        Called by the framework once per task after ``finalize_task`` and
+        embedded in the ``LakehouseWriteTaskResult.task_metadata`` field.
+        Default: empty dict.
+        """
+        return {}
+
     # ------------------------------------------------------------------
     # Driver side, after every worker finishes.
     # ------------------------------------------------------------------
+    def gather_task_metadata(self, task_metadata: List[Dict[str, Any]]) -> None:
+        """Receive the per-task metadata dicts produced by ``task_metadata``.
+
+        Called once on the driver before ``reconcile_schema``. Adapters can
+        merge whatever they need (e.g. a shared write UUID, total row counts).
+        Default: no-op.
+        """
+        return None
+
     def reconcile_schema(self, unified_schema: Optional[pa.Schema]) -> None:
         """Driver-side schema reconciliation.
 

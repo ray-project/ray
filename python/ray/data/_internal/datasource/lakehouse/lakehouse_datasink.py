@@ -10,7 +10,7 @@ that supporting a new lakehouse format reduces to implementing a new adapter.
 """
 
 import logging
-from typing import Any, Generic, Iterable, List, Optional, TypeVar
+from typing import Any, Dict, Generic, Iterable, List, Optional, TypeVar
 
 import pyarrow as pa
 
@@ -185,6 +185,7 @@ class LakehouseDatasink(
             upsert_keys=upsert_keys,
             written_paths=written_paths,
             task_id=getattr(ctx, "task_idx", None),
+            task_metadata=dict(self._adapter.task_metadata() or {}),
         )
 
     def on_write_complete(
@@ -197,6 +198,7 @@ class LakehouseDatasink(
         all_actions: List[FileAction] = []
         all_schemas: List[pa.Schema] = []
         all_key_chunks: List[pa.Table] = []
+        all_task_metadata: List[Dict[str, Any]] = []
         seen_paths = set()
 
         for r in write_result.write_returns or []:
@@ -213,11 +215,16 @@ class LakehouseDatasink(
                 all_schemas.extend(r.emitted_schemas)
             if r.upsert_keys is not None:
                 all_key_chunks.append(r.upsert_keys)
+            if r.task_metadata:
+                all_task_metadata.append(r.task_metadata)
 
         unified_schema = (
             _unify_schemas(all_schemas) if all_schemas else self._declared_schema
         )
         upsert_keys = _concat_tables(all_key_chunks)
+
+        # Hand the adapter every task's metadata before commit.
+        self._adapter.gather_task_metadata(all_task_metadata)
 
         # Step 7 — schema reconciliation + delete-predicate construction.
         self._adapter.reconcile_schema(unified_schema)

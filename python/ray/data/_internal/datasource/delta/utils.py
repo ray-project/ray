@@ -13,7 +13,6 @@ import math
 import os
 import posixpath
 import urllib.parse
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 import pyarrow as pa
@@ -22,30 +21,11 @@ import pyarrow.fs as pa_fs
 
 if TYPE_CHECKING:
     from deltalake import DeltaTable
-    from deltalake.transaction import AddAction, CommitProperties, Transaction
+    from deltalake.transaction import CommitProperties, Transaction
 
 UPSERT_JOIN_COLS = "join_cols"
 MAX_PARTITION_PATH_LENGTH = 200
 MAX_PARTITION_COLUMNS = 10
-
-
-@dataclass
-class DeltaWriteResult:
-    """Result from writing blocks to Delta Lake storage.
-
-    Attributes:
-        add_actions: File metadata for Delta transaction log.
-        upsert_keys: Key columns for upsert operations.
-        schemas: Schemas from written blocks.
-        written_files: List of full file paths written by this worker.
-        write_uuid: Unique identifier for this write operation (for app_transactions).
-    """
-
-    add_actions: List["AddAction"] = field(default_factory=list)
-    upsert_keys: Optional[pa.Table] = None
-    schemas: List[pa.Schema] = field(default_factory=list)
-    written_files: List[str] = field(default_factory=list)
-    write_uuid: Optional[str] = None
 
 
 def join_delta_path(base: str, relative: str) -> str:
@@ -626,6 +606,7 @@ def create_filesystem_from_storage_options(
         # Set GOOGLE_APPLICATION_CREDENTIALS env var if service_account path is provided
         if service_account:
             import os
+
             # Set environment variable for PyArrow to pick up
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account
         # Only create filesystem if explicit credentials are provided
