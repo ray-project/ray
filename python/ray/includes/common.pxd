@@ -420,7 +420,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             CLabelSelector label_selector,
-            c_vector[CFallbackOption] fallback_strategy)
+            c_vector[CFallbackOption] fallback_strategy,
+            int64_t actor_generator_backpressure_num_objects)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

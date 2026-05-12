@@ -825,6 +825,12 @@ message ActorCreationTaskSpec {
   bool allow_out_of_order_execution = 13;
   // The max number of pending actor calls.
   int32 max_pending_calls = 14;
+  // The maximum number of objects across all streaming-generator tasks
+  // running on this actor that can be unconsumed before producers block.
+  // Set to -1 (default) to disable the actor-wide cap; in that case
+  // backpressure remains purely per-task via
+  // TaskSpec.generator_backpressure_num_objects.
+  int64 actor_generator_backpressure_num_objects = 15;
 }
 
 // Task spec of an actor task.
@@ -835,6 +841,9 @@ message ActorTaskSpec {
   bytes actor_creation_dummy_object_id = 4;
   // Per-concurrency-group sequence number for ordering tasks within each group.
   uint64 concurrency_group_sequence_number = 5;
+  // Actor-wide streaming generator cap copied from the actor handle at submit
+  // time (unset or <=0 means no actor-wide owner threshold for this task).
+  optional int64 actor_generator_backpressure_num_objects = 6;
 }
 
 // Represents a task, including task spec.

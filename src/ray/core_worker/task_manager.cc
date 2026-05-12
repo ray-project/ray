@@ -635,12 +635,13 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  auto backpressure_threshold = 0;
+  int64_t backpressure_threshold = -1;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(generator_id.TaskId());
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      backpressure_threshold =
+          it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
     }
   }
 
@@ -659,6 +660,9 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     auto total_generated = stream_it->second.TotalNumObjectWritten();
     auto total_consumed = stream_it->second.TotalNumObjectConsumed();
     auto total_unconsumed = total_generated - total_consumed;
+    // Threshold is per-stream only (see TaskSpecification::
+    // EffectiveStreamingGeneratorOwnerBackpressureThreshold). Actor-wide sharing is
+    // enforced separately on the worker before each yield.
     if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
       auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
       if (it != ref_stream_execution_signal_callbacks_.end()) {
@@ -792,7 +796,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      backpressure_threshold =
+          it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
       if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
@@ -859,6 +864,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // NOTE, here we check `item_index - last_consumed_index >= backpressure_threshold`,
   // instead of the number of unconsumed items, because we may receive the
   // `HandleReportGeneratorItemReturns` requests out of order.
+  // Threshold is for this stream only; concurrent generator tasks on the same actor
+  // share a cap on the executor (ReserveActorWideSlot), not in TaskManager state if actor
+  // wide cap is set.
   if (backpressure_threshold != -1 &&
       (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
     RAY_LOG(DEBUG) << "Stream " << generator_id

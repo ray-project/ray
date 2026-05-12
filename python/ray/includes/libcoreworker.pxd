@@ -99,11 +99,21 @@ cdef extern from "ray/core_worker/context.h" nogil:
         CActorID GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
-    cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
-        CGeneratorBackpressureWaiter(
+    cdef cppclass CTaskGeneratorBackpressureWaiter "ray::core::TaskGeneratorBackpressureWaiter":  # noqa
+        CTaskGeneratorBackpressureWaiter(
                 int64_t generator_backpressure_num_objects,
                 (CRayStatus() nogil) check_signals)
         CRayStatus WaitAllObjectsReported()
+
+    cdef cppclass CActorWideGeneratorBackpressureWaiter "ray::core::ActorWideGeneratorBackpressureWaiter":  # noqa
+        pass
+
+    cdef cppclass CActorTaskBackpressureMetadata "ray::core::ActorTaskBackpressureMetadata":  # noqa
+        CActorTaskBackpressureMetadata(
+                shared_ptr[CActorWideGeneratorBackpressureWaiter] actor_waiter)
+        CRayStatus ReserveSlot()
+        void OnReport(int64_t total)
+        void Teardown()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
@@ -117,6 +127,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool EnableTaskEvents() const
         c_bool AllowOutOfOrderExecution() const
         c_bool EnableTensorTransport() const
+        int64_t ActorGeneratorBackpressureNumObjects() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()
@@ -320,7 +331,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CAddress &caller_address,
             int64_t item_index,
             uint64_t attempt_number,
-            shared_ptr[CGeneratorBackpressureWaiter] waiter)
+            shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
+            shared_ptr[CActorTaskBackpressureMetadata] actor_metadata)
+        shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 
         # Param output contains the usage string if successful.
         # Returns an error status if unable to communicate with the plasma store.

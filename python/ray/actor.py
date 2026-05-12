@@ -1049,6 +1049,8 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
+        if _generator_backpressure_num_objects is None:
+            _generator_backpressure_num_objects = -1
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
@@ -2051,6 +2053,12 @@ class ActorClass(Generic[T]):
                 "out-of-order execution."
             )
 
+        actor_generator_backpressure_num_objects = actor_options.get(
+            "_actor_generator_backpressure_num_objects"
+        )
+        if actor_generator_backpressure_num_objects is None:
+            actor_generator_backpressure_num_objects = -1
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -2076,6 +2084,9 @@ class ActorClass(Generic[T]):
             fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
+            actor_generator_backpressure_num_objects=(
+                actor_generator_backpressure_num_objects
+            ),
         )
 
         if _actor_launch_hook:
@@ -2103,6 +2114,9 @@ class ActorClass(Generic[T]):
             worker.current_cluster_and_job,
             original_handle=True,
             allow_out_of_order_execution=allow_out_of_order_execution,
+            actor_generator_backpressure_num_objects=(
+                actor_generator_backpressure_num_objects
+            ),
         )
 
         if meta.enable_tensor_transport:
@@ -2202,6 +2216,7 @@ class ActorHandle(Generic[T]):
         original_handle=False,
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
+        actor_generator_backpressure_num_objects: int = -1,
     ):
         """Initialize an ActorHandle.
 
@@ -2229,6 +2244,10 @@ class ActorHandle(Generic[T]):
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
             allow_out_of_order_execution: Whether the actor can execute tasks out of order.
+            actor_generator_backpressure_num_objects: Actor-wide cap on unconsumed
+                streaming generator objects across concurrent generator tasks; ``-1`` means
+                disabled. Mirrors ``_actor_generator_backpressure_num_objects`` on actor
+                creation.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -2237,6 +2256,9 @@ class ActorHandle(Generic[T]):
         self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
         self._ray_allow_out_of_order_execution = allow_out_of_order_execution
+        self._ray_actor_generator_backpressure_num_objects = (
+            actor_generator_backpressure_num_objects
+        )
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
@@ -2290,7 +2312,7 @@ class ActorHandle(Generic[T]):
                 retry_exceptions=self._ray_method_retry_exceptions.get(method_name),
                 is_generator=self._ray_method_is_generator.get(method_name),
                 generator_backpressure_num_objects=self._ray_method_generator_backpressure_num_objects.get(
-                    method_name
+                    method_name, -1
                 ),
                 enable_task_events=self._ray_method_enable_task_events.get(
                     method_name, self._ray_enable_task_events

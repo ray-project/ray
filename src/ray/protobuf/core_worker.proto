@@ -76,6 +76,8 @@ message ActorHandle {
   bool enable_tensor_transport = 16;
 
   bool is_detached = 17;
+
+  optional int64 actor_generator_backpressure_num_objects = 18;
 }
 
 message PushTaskRequest {

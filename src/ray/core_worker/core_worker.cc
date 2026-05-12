@@ -2123,7 +2123,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_tensor_transport,
       actor_creation_options.enable_task_events,
       actor_creation_options.labels,
-      is_detached);
+      is_detached,
+      actor_creation_options.actor_generator_backpressure_num_objects);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   ActorID root_detached_actor_id;
@@ -2132,21 +2133,23 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   } else if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
   }
-  builder.SetActorCreationTaskSpec(actor_id,
-                                   serialized_actor_handle,
-                                   actor_creation_options.scheduling_strategy,
-                                   actor_creation_options.max_restarts,
-                                   actor_creation_options.max_task_retries,
-                                   actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.max_concurrency,
-                                   is_detached,
-                                   actor_name,
-                                   ray_namespace,
-                                   actor_creation_options.is_asyncio,
-                                   actor_creation_options.concurrency_groups,
-                                   extension_data,
-                                   actor_creation_options.allow_out_of_order_execution,
-                                   root_detached_actor_id);
+  builder.SetActorCreationTaskSpec(
+      actor_id,
+      serialized_actor_handle,
+      actor_creation_options.scheduling_strategy,
+      actor_creation_options.max_restarts,
+      actor_creation_options.max_task_retries,
+      actor_creation_options.dynamic_worker_options,
+      actor_creation_options.max_concurrency,
+      is_detached,
+      actor_name,
+      ray_namespace,
+      actor_creation_options.is_asyncio,
+      actor_creation_options.concurrency_groups,
+      extension_data,
+      actor_creation_options.allow_out_of_order_execution,
+      root_detached_actor_id,
+      actor_creation_options.actor_generator_backpressure_num_objects);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorRefDeletedRequest.
@@ -2888,6 +2891,15 @@ Status CoreWorker::ExecuteTask(
                                           /*add_local_ref=*/false,
                                           /*is_self=*/true);
     }
+    int64_t actor_generator_bp = task_spec.ActorGeneratorBackpressureNumObjects();
+    if (actor_generator_bp > 0) {
+      // Shared waiter for all streaming-generator tasks on this actor.
+      // check_signals matches what the per-task waiter uses (set in
+      // CoreWorkerOptions from _raylet.pyx), so KeyboardInterrupt /
+      // SystemExit propagate through ReserveSlot's wait loop.
+      actor_generator_waiter_ = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+          actor_generator_bp, options_.check_signals);
+    }
     RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
   } else if (task_spec.IsActorTask()) {
     task_type = TaskType::ACTOR_TASK;
@@ -3160,7 +3172,8 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const rpc::Address &owner_address,
     int64_t item_index,
     uint64_t attempt_number,
-    const std::shared_ptr<GeneratorBackpressureWaiter> &waiter) {
+    const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
+    const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata) {
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
@@ -3191,7 +3204,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
 
   client->ReportGeneratorItemReturns(
       std::move(request),
-      [waiter, generator_id, return_id, item_index](
+      [waiter, actor_metadata, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
@@ -3211,6 +3224,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
               << status;
         }
         waiter->HandleObjectReported(num_objects_consumed);
+        // Mirror the report onto the actor-wide waiter (delta-based).
+        if (actor_metadata) {
+          actor_metadata->OnReport(num_objects_consumed);
+        }
       });
 
   // Backpressure if needed. See task_manager.h and search "backpressure" for protocol

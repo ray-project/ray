@@ -240,6 +240,21 @@ _actor_only_options = {
     "namespace": Option((str, type(None))),
     "get_if_exists": Option(bool, default_value=False),
     "allow_out_of_order_execution": Option((bool, type(None))),
+    # Actor-wide cap on the number of unconsumed streaming-generator
+    # objects across all generator tasks running on the actor. Coexists
+    # with the per-method `_generator_backpressure_num_objects`: both
+    # apply, and the producer blocks on whichever is tighter. -1 (or
+    # None / unset) disables the actor-wide cap.
+    "_actor_generator_backpressure_num_objects": Option(
+        (int, type(None)),
+        lambda x: None
+        if (x is None or x > 0 or x == -1)
+        else (
+            "_actor_generator_backpressure_num_objects must be > 0 to cap the "
+            "actor's total unconsumed generator objects, or -1 to disable. "
+            f"Got {x}."
+        ),
+    ),
 }
 
 # Priority is important here because during dictionary update, same key with higher

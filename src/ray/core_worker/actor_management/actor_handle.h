@@ -51,7 +51,8 @@ class ActorHandle {
               bool enable_tensor_transport = false,
               std::optional<bool> enable_task_events = absl::nullopt,
               const std::unordered_map<std::string, std::string> &labels = {},
-              bool is_detached = false);
+              bool is_detached = false,
+              int64_t actor_generator_backpressure_num_objects = -1);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -78,6 +79,13 @@ class ActorHandle {
   };
 
   std::string ExtensionData() const { return inner_.extension_data(); }
+
+  int64_t ActorGeneratorBackpressureNumObjects() const {
+    if (inner_.has_actor_generator_backpressure_num_objects()) {
+      return inner_.actor_generator_backpressure_num_objects();
+    }
+    return -1;
+  }
 
   /// Set the actor task spec fields.
   ///

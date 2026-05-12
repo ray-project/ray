@@ -20,19 +20,17 @@
 namespace ray {
 namespace core {
 
-GeneratorBackpressureWaiter::GeneratorBackpressureWaiter(
+TaskGeneratorBackpressureWaiter::TaskGeneratorBackpressureWaiter(
     int64_t generator_backpressure_num_objects, std::function<Status()> check_signals)
     : backpressure_threshold_(generator_backpressure_num_objects),
       check_signals_(std::move(check_signals)) {
-  // 0 makes no sense, and it is not supported.
   RAY_CHECK_NE(generator_backpressure_num_objects, 0);
   RAY_CHECK(check_signals_ != nullptr);
 }
 
-Status GeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
+Status TaskGeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
   if (backpressure_threshold_ < 0) {
     RAY_CHECK_EQ(backpressure_threshold_, -1);
-    // Backpressure disabled if backpressure_threshold_ == -1.
     return Status::OK();
   }
 
@@ -56,7 +54,7 @@ Status GeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
   return return_status;
 }
 
-Status GeneratorBackpressureWaiter::WaitAllObjectsReported() {
+Status TaskGeneratorBackpressureWaiter::WaitAllObjectsReported() {
   absl::MutexLock lock(&mutex_);
   auto return_status = Status::OK();
   while (num_object_reports_in_flight_ > 0) {
@@ -69,13 +67,14 @@ Status GeneratorBackpressureWaiter::WaitAllObjectsReported() {
   return return_status;
 }
 
-void GeneratorBackpressureWaiter::IncrementObjectGenerated() {
+void TaskGeneratorBackpressureWaiter::IncrementObjectGenerated() {
   absl::MutexLock lock(&mutex_);
   total_objects_generated_ += 1;
   num_object_reports_in_flight_++;
 }
 
-void GeneratorBackpressureWaiter::HandleObjectReported(int64_t total_objects_consumed) {
+void TaskGeneratorBackpressureWaiter::HandleObjectReported(
+    int64_t total_objects_consumed) {
   absl::MutexLock lock(&mutex_);
   num_object_reports_in_flight_--;
   if (num_object_reports_in_flight_ < 0) {
@@ -88,22 +87,94 @@ void GeneratorBackpressureWaiter::HandleObjectReported(int64_t total_objects_con
     all_objects_reported_cond_var_.SignalAll();
   }
 
-  total_objects_consumed_ = std::max(total_objects_consumed, total_objects_consumed_);
+  total_objects_consumed_ = std::max(total_objects_consumed_, total_objects_consumed);
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed < backpressure_threshold_) {
     backpressure_cond_var_.SignalAll();
   }
 }
 
-int64_t GeneratorBackpressureWaiter::TotalObjectConsumed() const {
+int64_t TaskGeneratorBackpressureWaiter::TotalObjectConsumed() const {
   absl::MutexLock lock(&mutex_);
   return total_objects_consumed_;
 }
 
-int64_t GeneratorBackpressureWaiter::TotalObjectGenerated() const {
+int64_t TaskGeneratorBackpressureWaiter::TotalObjectGenerated() const {
   absl::MutexLock lock(&mutex_);
   return total_objects_generated_;
 }
+
+ActorWideGeneratorBackpressureWaiter::ActorWideGeneratorBackpressureWaiter(
+    int64_t actor_cap, std::function<Status()> check_signals)
+    : backpressure_threshold_(actor_cap), check_signals_(std::move(check_signals)) {
+  RAY_CHECK_GT(backpressure_threshold_, 0);
+  RAY_CHECK(check_signals_ != nullptr);
+}
+
+Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
+    ActorTaskBackpressureMetadata &metadata) {
+  absl::MutexLock lock(&mutex_);
+  while (total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
+    backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
+    auto status = check_signals_();
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  total_objects_generated_ += 1;
+  metadata.per_task_generated += 1;
+  return Status::OK();
+}
+
+void ActorWideGeneratorBackpressureWaiter::OnReportForTask(
+    ActorTaskBackpressureMetadata &metadata, int64_t total) {
+  absl::MutexLock lock(&mutex_);
+  if (!metadata.task_alive) {
+    return;
+  }
+  int64_t delta = total - metadata.per_task_consumed;
+  if (delta <= 0) {
+    return;
+  }
+  metadata.per_task_consumed = total;
+  total_objects_consumed_ += delta;
+  if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
+    backpressure_cond_var_.SignalAll();
+  }
+}
+
+void ActorWideGeneratorBackpressureWaiter::TeardownTask(
+    ActorTaskBackpressureMetadata &metadata) {
+  absl::MutexLock lock(&mutex_);
+  metadata.task_alive = false;
+  int64_t outstanding = metadata.per_task_generated - metadata.per_task_consumed;
+  if (outstanding > 0) {
+    total_objects_generated_ -= outstanding;
+    if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
+      backpressure_cond_var_.SignalAll();
+    }
+  }
+}
+
+int64_t ActorWideGeneratorBackpressureWaiter::TotalObjectConsumed() const {
+  absl::MutexLock lock(&mutex_);
+  return total_objects_consumed_;
+}
+
+int64_t ActorWideGeneratorBackpressureWaiter::TotalObjectGenerated() const {
+  absl::MutexLock lock(&mutex_);
+  return total_objects_generated_;
+}
+
+Status ActorTaskBackpressureMetadata::ReserveSlot() {
+  return actor_waiter->ReserveActorWideSlot(*this);
+}
+
+void ActorTaskBackpressureMetadata::OnReport(int64_t total) {
+  actor_waiter->OnReportForTask(*this, total);
+}
+
+void ActorTaskBackpressureMetadata::Teardown() { actor_waiter->TeardownTask(*this); }
 
 }  // namespace core
 }  // namespace ray

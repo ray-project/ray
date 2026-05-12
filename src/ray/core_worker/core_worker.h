@@ -789,13 +789,19 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// 0 means it is the first attempt.
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
+  /// \param[in] actor_metadata Actor-task bookkeeping for the actor-wide
+  /// streaming-generator cap (`_actor_generator_backpressure_num_objects`).
+  /// nullptr when the actor option is disabled or this is not an actor
+  /// task. When non-null, its OnReport is called from the RPC reply
+  /// alongside `waiter->HandleObjectReported`.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
       const ObjectID &generator_id,
       const rpc::Address &owner_address,
       int64_t item_index,
       uint64_t attempt_number,
-      const std::shared_ptr<GeneratorBackpressureWaiter> &waiter);
+      const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
+      const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -1034,6 +1040,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ActorID GetActorId() const {
     absl::MutexLock lock(&mutex_);
     return actor_id_;
+  }
+
+  /// Returns the actor-wide streaming-generator backpressure waiter, or
+  /// nullptr if the option was disabled / this worker is not an actor.
+  /// Each streaming-generator task on the actor shares this waiter via an
+  /// ActorTaskBackpressureMetadata to enforce a single cap across all
+  /// concurrent generator tasks. Thread-safe; the waiter is set once
+  /// during actor creation and never reassigned.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> GetActorGeneratorWaiter() const {
+    return actor_generator_waiter_;
   }
 
   std::string GetActorName() const;
@@ -1848,6 +1864,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
+
+  /// Actor-wide streaming-generator backpressure waiter. Shared across all
+  /// generator tasks running on this actor. nullptr when the actor was
+  /// created without `_actor_generator_backpressure_num_objects` (or with
+  /// -1, meaning disabled). Constructed lazily when the actor creation
+  /// task spec is executed.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_generator_waiter_;
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

@@ -38,7 +38,8 @@ rpc::ActorHandle CreateInnerActorHandle(
     bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    bool is_detached) {
+    bool is_detached,
+    int64_t actor_generator_backpressure_num_objects) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -58,6 +59,10 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
   inner.mutable_labels()->insert(labels.begin(), labels.end());
   inner.set_is_detached(is_detached);
+  if (actor_generator_backpressure_num_objects > 0) {
+    inner.set_actor_generator_backpressure_num_objects(
+        actor_generator_backpressure_num_objects);
+  }
   return inner;
 }
 
@@ -92,8 +97,15 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
   inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
   inner.mutable_labels()->insert(task_spec.labels().begin(), task_spec.labels().end());
   inner.set_is_detached(task_spec.actor_creation_task_spec().is_detached());
+  int64_t actor_generator_backpressure_num_objects =
+      task_spec.actor_creation_task_spec().actor_generator_backpressure_num_objects();
+  if (actor_generator_backpressure_num_objects > 0) {
+    inner.set_actor_generator_backpressure_num_objects(
+        actor_generator_backpressure_num_objects);
+  }
   return inner;
 }
+
 }  // namespace
 
 ActorHandle::ActorHandle(
@@ -113,7 +125,8 @@ ActorHandle::ActorHandle(
     bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    bool is_detached)
+    bool is_detached,
+    int64_t actor_generator_backpressure_num_objects)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -130,7 +143,8 @@ ActorHandle::ActorHandle(
                                          enable_tensor_transport,
                                          enable_task_events,
                                          labels,
-                                         is_detached)) {}
+                                         is_detached,
+                                         actor_generator_backpressure_num_objects)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -152,13 +166,18 @@ void ActorHandle::SetActorTaskSpec(
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
+  int64_t actor_generator_bp = -1;
+  if (inner_.has_actor_generator_backpressure_num_objects()) {
+    actor_generator_bp = inner_.actor_generator_backpressure_num_objects();
+  }
   builder.SetActorTaskSpec(GetActorID(),
                            actor_creation_dummy_object_id,
                            max_retries,
                            retry_exceptions,
                            serialized_retry_exception_allowlist,
                            concurrency_group_counters_[concurrency_group_name]++,
-                           tensor_transport);
+                           tensor_transport,
+                           actor_generator_bp);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {

@@ -193,6 +193,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int64_t GeneratorBackpressureNumObjects() const;
 
+  /// Per-stream upper bound used on the task owner to defer
+  /// ReportGeneratorItemReturns callbacks (TaskManager tracks counts per generator
+  /// only, not actor-wide).
+  ///
+  /// When actor_task_spec.actor_generator_backpressure_num_objects (>0) is set,
+  /// always returns 1 so every yield can defer until a read flushes report replies with
+  /// updated total_consumed (we do it for every read as
+  /// actor_generator_backpressure_num_objects is a global cap for all streams on the
+  /// actor)
+  int64_t EffectiveStreamingGeneratorOwnerBackpressureThreshold() const;
+
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
@@ -326,6 +337,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID ActorCreationDummyObjectId() const;
 
   int MaxActorConcurrency() const;
+
+  // Actor-wide cap on unconsumed streaming-generator objects across all
+  // generator tasks running on this actor. -1 means disabled. Valid only
+  // on an actor creation task spec.
+  int64_t ActorGeneratorBackpressureNumObjects() const;
 
   bool IsAsyncioActor() const;
 

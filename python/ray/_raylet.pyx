@@ -163,7 +163,9 @@ from ray.includes.libcoreworker cimport (
     CTaskOptions,
     ResourceMappingType,
     CFiberEvent,
-    CGeneratorBackpressureWaiter,
+    CTaskGeneratorBackpressureWaiter,
+    CActorWideGeneratorBackpressureWaiter,
+    CActorTaskBackpressureMetadata,
     CReaderRefInfo,
 )
 from ray.includes.stream_redirection cimport (
@@ -1099,7 +1101,18 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns
         c_bool *is_retryable_error
         c_string *application_error
-        shared_ptr[CGeneratorBackpressureWaiter] waiter
+        shared_ptr[CTaskGeneratorBackpressureWaiter] waiter
+        # Per-task accounting for the actor-wide cap. NULL when the actor
+        # option `_actor_generator_backpressure_num_objects` is disabled
+        # (or this is a non-actor task).
+        shared_ptr[CActorTaskBackpressureMetadata] actor_backpressure_metadata
+
+    def __dealloc__(self):
+        # On any task exit (success, exception, ray.cancel, worker death),
+        # release the task's outstanding contribution to the actor-wide
+        # generator cap so subsequent tasks see the full budget.
+        if self.actor_backpressure_metadata.get() != NULL:
+            self.actor_backpressure_metadata.get().Teardown()
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1154,10 +1167,18 @@ cdef class StreamingGeneratorExecutionContext:
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
 
-        self.waiter = make_shared[CGeneratorBackpressureWaiter](
+        self.waiter = make_shared[CTaskGeneratorBackpressureWaiter](
             generator_backpressure_num_objects,
             check_signals
         )
+
+        cdef shared_ptr[CActorWideGeneratorBackpressureWaiter] actor_waiter = (
+            CCoreWorkerProcess.GetCoreWorker().GetActorGeneratorWaiter())
+        # actor_waiter is null if the actor was created without
+        # `_actor_generator_backpressure_num_objects > 0`. or this is a non-actor task.
+        if actor_waiter.get() != NULL:
+            self.actor_backpressure_metadata = (
+                make_shared[CActorTaskBackpressureMetadata](actor_waiter))
 
         return self
 
@@ -1225,7 +1246,8 @@ cdef report_streaming_generator_output(
             context.caller_address,
             generator_index,
             context.attempt_number,
-            context.waiter))
+            context.waiter,
+            context.actor_backpressure_metadata))
 
 
     return StreamingGeneratorStats(
@@ -1296,7 +1318,17 @@ cdef report_streaming_generator_exception(
             context.caller_address,
             generator_index,
             context.attempt_number,
-            context.waiter))
+            context.waiter,
+            context.actor_backpressure_metadata))
+
+def _reserve_actor_generator_slot(
+        StreamingGeneratorExecutionContext context):
+    """Block (with the GIL released) until the actor-wide generator backpressure budget admits another object."""
+    cdef CRayStatus status
+    with nogil:
+        status = context.actor_backpressure_metadata.get().ReserveSlot()
+    check_status(status)
+
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
@@ -1329,6 +1361,11 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
         while True:
             try:
+                # Actor-wide backpressure pre-check. Block (releasing the
+                # GIL) until the actor's shared budget admits another
+                # object. No-op when the actor option is disabled.
+                if context.actor_backpressure_metadata.get() != NULL:
+                    _reserve_actor_generator_slot(context)
                 # Send object serialization duration to the generator and retrieve
                 # next output
                 output = gen.send(stats)
@@ -1396,6 +1433,17 @@ async def execute_streaming_generator_async(
 
         while True:
             try:
+                # Actor-wide backpressure pre-check. Dispatched to the
+                # executor (not awaited on the event loop directly) because
+                # ReserveSlot blocks with nogil while waiting for budget,
+                # and we don't want to block the asyncio loop. Returns OK
+                # immediately when the actor option is disabled.
+                if context.actor_backpressure_metadata.get() != NULL:
+                    await loop.run_in_executor(
+                        executor,
+                        _reserve_actor_generator_slot,
+                        context,
+                    )
                 output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
@@ -3608,6 +3656,7 @@ cdef class CoreWorker:
                      c_bool allow_out_of_order_execution,
                      c_bool enable_tensor_transport,
                      fallback_strategy,
+                     int64_t actor_generator_backpressure_num_objects=-1,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3668,7 +3717,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_fallback_strategy),
+                        c_fallback_strategy,
+                        actor_generator_backpressure_num_objects),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3995,6 +4045,9 @@ cdef class CoreWorker:
         enable_task_events = dereference(c_actor_handle).EnableTaskEvents()
         allow_out_of_order_execution = dereference(c_actor_handle).AllowOutOfOrderExecution()
         enable_tensor_transport = dereference(c_actor_handle).EnableTensorTransport()
+        cdef int64_t actor_generator_bp = dereference(
+            c_actor_handle
+        ).ActorGeneratorBackpressureNumObjects()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4024,7 +4077,10 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_cluster_and_job,
                                          weak_ref=weak_ref,
-                                         allow_out_of_order_execution=allow_out_of_order_execution)
+                                         allow_out_of_order_execution=allow_out_of_order_execution,
+                                         actor_generator_backpressure_num_objects=int(
+                                             actor_generator_bp
+                                         ))
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4044,7 +4100,9 @@ cdef class CoreWorker:
                                          worker.current_cluster_and_job,
                                          weak_ref=weak_ref,
                                          allow_out_of_order_execution=allow_out_of_order_execution,
-                                         )
+                                         actor_generator_backpressure_num_objects=int(
+                                             actor_generator_bp
+                                         ))
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
                                               ObjectRef
