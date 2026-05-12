@@ -6009,7 +6009,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=CD_API_GROUP)
     def iter_jax_batches(
         self,
         *,
