@@ -94,27 +94,40 @@ class ClusterManager(abc.ABC):
         cluster_compute = cluster_compute.copy()
 
         if is_new_schema:
-            # Always tag the top-level advanced_instance_config. Per-group
-            # advanced_instance_config is only tagged when the user has
-            # already set one — never auto-created. Anyscale replaces (does
-            # not merge with) the base spec when a per-group spec is present,
-            # so auto-creating a TagSpecifications-only per-group spec would
-            # drop any IamInstanceProfile/NetworkInterfaces/etc. set at the
-            # cluster level. When a per-group spec already exists, the base
-            # is dropped regardless, so the per-group spec must carry the
-            # billing tags itself.
-            aws = cluster_compute.get("advanced_instance_config", {})
-            cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
-                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
-            )
+            # Anyscale picks an effective advanced_instance_config per node
+            # group: when a per-group spec is set, it replaces (does not
+            # merge with) the cluster-level base. So billing tags must land
+            # wherever the effective spec actually comes from. Rules:
+            #   - No advanced_instance_config anywhere -> tag base only
+            #     (auto-create base spec to hold tags).
+            #   - Base only -> tag base only.
+            #   - Per-group only (head and/or workers, no base) -> tag those
+            #     per-group specs only. Do NOT auto-create a base spec; that
+            #     would tag a base that no node group uses and could
+            #     confuse readers.
+            #   - Base AND per-group -> tag everywhere. Both are
+            #     load-bearing: the base covers node groups without an
+            #     override, the per-group covers node groups with one.
             head = cluster_compute.get("head_node")
-            if isinstance(head, dict) and "advanced_instance_config" in head:
+            workers = cluster_compute.get("worker_nodes", []) or []
+            has_head_aic = isinstance(head, dict) and "advanced_instance_config" in head
+            has_worker_aic = any(
+                isinstance(w, dict) and "advanced_instance_config" in w for w in workers
+            )
+            has_base_aic = "advanced_instance_config" in cluster_compute
+            should_tag_base = has_base_aic or not (has_head_aic or has_worker_aic)
+            if should_tag_base:
+                aws = cluster_compute.get("advanced_instance_config", {})
+                cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
+                    aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+                )
+            if has_head_aic:
                 head["advanced_instance_config"] = add_tags_to_aws_config(
                     head["advanced_instance_config"],
                     extra_tags,
                     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
                 )
-            for worker in cluster_compute.get("worker_nodes", []) or []:
+            for worker in workers:
                 if isinstance(worker, dict) and "advanced_instance_config" in worker:
                     worker["advanced_instance_config"] = add_tags_to_aws_config(
                         worker["advanced_instance_config"],
