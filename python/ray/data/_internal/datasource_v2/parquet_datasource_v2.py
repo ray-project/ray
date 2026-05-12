@@ -31,6 +31,7 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     ParquetInMemorySizeEstimator,
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
+from ray.data._internal.util import _is_local_scheme
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -67,11 +68,19 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         file_extensions: Optional[List[str]] = None,
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
+        include_row_hash: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
+        # Capture the ``local://`` check against the *original* paths;
+        # ``_resolve_paths_and_filesystem`` below strips the scheme, so
+        # introspecting ``self._paths`` after construction can't tell a
+        # plain local path from a ``local://`` one. ``_supports_distributed_reads``
+        # is exposed by the base-class ``supports_distributed_reads``
+        # property and consumed by ``_read_datasource_v2``.
+        self._supports_distributed_reads = not _is_local_scheme(paths)
         resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
             paths, filesystem
         )
@@ -81,6 +90,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._file_extensions = file_extensions or ParquetDatasource._FILE_EXTENSIONS
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        self._include_row_hash = include_row_hash
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
         # User-supplied schema override. When set, ``infer_schema`` returns
@@ -237,6 +247,16 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         if self._include_paths and schema.get_field_index("path") == -1:
             schema = schema.append(pa.field("path", pa.string()))
 
+        if self._include_row_hash:
+            # ``row_hash`` is synthesized post-read as ``uint64``. Replace
+            # the field type when the file already has a ``row_hash``
+            # column (matches V1 ``_derive_schema``); otherwise append.
+            idx = schema.get_field_index("row_hash")
+            if idx == -1:
+                schema = schema.append(pa.field("row_hash", pa.uint64()))
+            elif schema.field(idx).type != pa.uint64():
+                schema = schema.set(idx, pa.field("row_hash", pa.uint64()))
+
         check_for_legacy_tensor_type(schema)
         return schema
 
@@ -261,6 +281,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             filesystem=filesystem or self._filesystem,
             partitioning=partitioning,
             include_paths=self._include_paths,
+            include_row_hash=self._include_row_hash,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
             target_block_size=DataContext.get_current().target_max_block_size,

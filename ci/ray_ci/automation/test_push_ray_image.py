@@ -68,17 +68,17 @@ class TestWandaImageName:
             ),
             (
                 RayType.RAY_LLM,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-llm-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-llm-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
                 RayType.RAY_LLM_EXTRA,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-llm-extra-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-llm-extra-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
         ],
     )
