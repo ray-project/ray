@@ -75,9 +75,11 @@ def main(args):
     shuffle_buffer_size = 64 * local_batch_size
 
     datasets = [_create_dataset(i) for i in range(args.num_datasets)]
+    datasets = [
+        ds.repartition(target_num_rows_per_block=target_block_size) for ds in datasets
+    ]
     first, *rest = datasets
     mixed = first.mix(*rest, weights=weights, stopping_condition=stopping)
-    mixed = mixed.repartition(target_num_rows_per_block=target_block_size)
 
     if args.random_mix:
         mixed = mixed.map_batches(
@@ -88,7 +90,6 @@ def main(args):
 
     def benchmark_fn():
         def train_fn(config):
-
             num_ds = config["num_datasets"]
             batch_size = config["batch_size"]
             max_rows = config.get("max_rows_per_worker")
@@ -99,7 +100,26 @@ def main(args):
 
             local_rows = 0
             num_batches = 0
-            ratio_history = [[] for _ in range(num_ds)]
+            count_history = [[] for _ in range(num_ds)]
+            batch_size_history = []
+
+            def compute_global_ratio_mean_stdev():
+                # All-reduce batch sizes once (same across all datasets).
+                batch_size_sums = torch.tensor(batch_size_history, dtype=torch.double)
+                dist.all_reduce(batch_size_sums, op=dist.ReduceOp.SUM)
+
+                ratio_means = []
+                ratio_stdevs = []
+                for i in range(num_ds):
+                    count_sums = torch.tensor(count_history[i], dtype=torch.double)
+                    dist.all_reduce(count_sums, op=dist.ReduceOp.SUM)
+
+                    ratios = count_sums.numpy() / batch_size_sums.numpy()
+                    ratio_means.append(np.mean(ratios))
+                    ratio_stdevs.append(np.std(ratios))
+
+                return ratio_means, ratio_stdevs
+
             start = time.perf_counter()
 
             for batch in shard.iter_batches(batch_size=batch_size):
@@ -108,51 +128,27 @@ def main(args):
                 local_rows += batch_size_actual
 
                 indices, counts = np.unique(batch["ds_index"], return_counts=True)
+                batch_size_history.append(batch_size_actual)
                 for i in range(num_ds):
                     mask = indices == i
-                    ratio = (
-                        float(counts[mask][0]) / batch_size_actual
-                        if mask.any()
-                        else 0.0
-                    )
-                    ratio_history[i].append(ratio)
+                    count_history[i].append(counts[mask][0] if mask.any() else 0)
 
-                if is_rank_0 and num_batches % print_every == 0:
-                    elapsed = time.perf_counter() - start
-                    means = [np.mean(ratio_history[i]) for i in range(num_ds)]
-                    stds = [np.std(ratio_history[i]) for i in range(num_ds)]
-                    avg_str = ", ".join(
-                        f"ds{i}: {means[i]:.3f}±{stds[i]:.3f}" for i in range(num_ds)
-                    )
-                    latest_str = ", ".join(
-                        f"ds{i}: {ratio_history[i][-1]:.3f}" for i in range(num_ds)
-                    )
-                    print(
-                        f"[Rank 0] Batch {num_batches}: "
-                        f"{local_rows} rows, "
-                        f"{local_rows / elapsed:.0f} rows/s, "
-                        f"latest={{{latest_str}}}, "
-                        f"avg={{{avg_str}}}"
-                    )
+                if num_batches % print_every == 0:
+                    ratio_means, ratio_stdevs = compute_global_ratio_mean_stdev()
+
+                    if is_rank_0:
+                        avg_str = ", ".join(
+                            f"ds{i}: {ratio_means[i]:.3f}±{ratio_stdevs[i]:.3f}"
+                            for i in range(num_ds)
+                        )
+                        print(f"[Global] Batch {num_batches}: avg={avg_str}")
 
                 if max_rows is not None and local_rows >= max_rows:
                     break
 
             elapsed = time.perf_counter() - start
 
-            # Aggregate across workers with a single all_reduce per tensor.
-            # Ratio stats: sum and sum-of-squares for global mean/std.
-            ratio_sums = torch.zeros(num_ds, dtype=torch.double)
-            ratio_sq_sums = torch.zeros(num_ds, dtype=torch.double)
-            for i in range(num_ds):
-                arr = np.array(ratio_history[i])
-                ratio_sums[i] = arr.sum()
-                ratio_sq_sums[i] = (arr * arr).sum()
-            n_batches_tensor = torch.tensor([num_batches], dtype=torch.long)
-
-            dist.all_reduce(ratio_sums, op=dist.ReduceOp.SUM)
-            dist.all_reduce(ratio_sq_sums, op=dist.ReduceOp.SUM)
-            dist.all_reduce(n_batches_tensor, op=dist.ReduceOp.SUM)
+            ratio_means, ratio_stdevs = compute_global_ratio_mean_stdev()
 
             # Throughput: total rows / max elapsed across workers.
             local_rows_tensor = torch.tensor([local_rows], dtype=torch.long)
@@ -164,7 +160,6 @@ def main(args):
             global_tput = (
                 total_rows / max_elapsed.item() if max_elapsed.item() > 0 else 0
             )
-            total_n = n_batches_tensor.item()
 
             metrics = {
                 "global_rows": total_rows,
@@ -172,10 +167,8 @@ def main(args):
                 "num_batches": num_batches,
             }
             for i in range(num_ds):
-                mean = ratio_sums[i].item() / total_n
-                var = ratio_sq_sums[i].item() / total_n - mean * mean
-                metrics[f"ratio_mean_ds{i}"] = mean
-                metrics[f"ratio_std_ds{i}"] = max(0.0, var) ** 0.5
+                metrics[f"ratio_mean_ds{i}"] = ratio_means[i]
+                metrics[f"ratio_std_ds{i}"] = ratio_stdevs[i]
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 ray.train.report(
