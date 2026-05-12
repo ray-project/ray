@@ -3537,11 +3537,11 @@ class AutoscalingTest(unittest.TestCase):
             request_resources(bundles="bar")
         with self.assertRaises(TypeError):
             request_resources(bundles=["foo"])
-        # Float bundle values are accepted (regression test for #63241).
-        # The call gets past type validation and fails only because Ray is
-        # not initialized in this unit test, which confirms no TypeError.
-        with self.assertRaises(RuntimeError):
-            request_resources(bundles=[{"CPU": 0.1}])
+        # Non-numerical bundle values are rejected.
+        with self.assertRaises(TypeError):
+            request_resources(bundles=[{"foo": "bar"}])
+        with self.assertRaises(TypeError):
+            request_resources(bundles=[{"foo": 1}, {"bar": "baz"}])
 
     def test_autoscaler_status_log(self):
         self._test_autoscaler_status_log(status_log_enabled_env=1)

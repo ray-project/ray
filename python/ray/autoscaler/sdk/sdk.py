@@ -263,9 +263,17 @@ def request_resources(
         if isinstance(bundles, List):
             for bundle in bundles:
                 if isinstance(bundle, Dict):
-                    for key in bundle.keys():
+                    for key, value in bundle.items():
                         if not isinstance(key, str):
                             raise TypeError("each bundle key should be str.")
+                        # bool is a subclass of int; reject it explicitly so
+                        # `{"CPU": True}` doesn't silently mean `{"CPU": 1}`.
+                        if isinstance(value, bool) or not isinstance(
+                            value, (int, float)
+                        ):
+                            raise TypeError(
+                                "each bundle value should be a number (int or float)."
+                            )
                 else:
                     raise TypeError("each bundle should be a Dict.")
         else:
