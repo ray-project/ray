@@ -1528,16 +1528,20 @@ class ActorReplicaWrapper:
             # it was just killed above.
             if stopped:
                 try:
-                    # 1. Gang PGs are shared and managed by the DeploymentStateManager.
-                    # We do nothing active here to avoid shutting them down prematurely.
+                    # Teardown shared gang placement group. The first replica in the
+                    # gang to stop deletes it. Subsequent replicas catch ValueError.
                     if self._gang_placement_group is not None:
-                        pass
+                        try:
+                            ray.util.remove_placement_group(self._gang_placement_group)
+                        except ValueError:
+                            # Already removed by another replica in this gang.
+                            pass
 
-                    # 2. Replicas with accelerator/wrapper PGs handle their own shutdown.
+                    # Replicas with accelerator/wrapper PGs handle their own shutdown.
                     elif self._replica_pg is not None:
                         self._replica_pg.shutdown()
 
-                    # 3. Standard single-replica placement groups.
+                    # Standard single-replica placement groups.
                     elif self._placement_group is not None:
                         try:
                             ray.util.remove_placement_group(self._placement_group)
@@ -1552,7 +1556,7 @@ class ActorReplicaWrapper:
                         f"Unexpected error shutting down placement groups for {self._replica_id}."
                     )
                 finally:
-                    # Always clear references to prevent memory leaks and dangling state.
+                    # Clear references to prevent memory leaks and dangling state.
                     self._gang_placement_group = None
                     self._replica_pg = None
                     self._placement_group = None
