@@ -989,6 +989,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return Whether the task has been canceled.
   bool IsTaskCanceled(const TaskID &task_id) const;
 
+  /// True when this thread is running a task that was marked canceled (ray.cancel on
+  /// sync actor workers). Safe from periodic / io threads: no-op without job + task.
+  bool ShouldInterruptTaskForCancellation() const;
+
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///

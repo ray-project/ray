@@ -2524,6 +2524,17 @@ bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
+bool CoreWorker::ShouldInterruptTaskForCancellation() const {
+  if (worker_context_->GetCurrentJobID().IsNil()) {
+    return false;
+  }
+  const TaskID &task_id = worker_context_->GetCurrentTaskID();
+  if (task_id.IsNil()) {
+    return false;
+  }
+  return IsTaskCanceled(task_id);
+}
+
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   absl::flat_hash_set<TaskID> unknown_child_task_ids;
   auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);

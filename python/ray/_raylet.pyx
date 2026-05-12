@@ -2466,6 +2466,13 @@ cdef CRayStatus check_signals() nogil:
         # By default, if signals raise an exception, Python just prints them.
         # To keep the same behavior, we don't handle any other exceptions.
 
+        # ray.cancel marks running sync actor tasks canceled without sending an OS
+        # signal to worker threads (CancelActorTaskOnExecutor for non-async actors).
+        # Unblock nogil backpressure waits. Uses job/task guards so periodic io threads
+        # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
+        if CCoreWorkerProcess.GetCoreWorker().ShouldInterruptTaskForCancellation():
+            return CRayStatus.Interrupted(b"")
+
     return CRayStatus.OK()
 
 
