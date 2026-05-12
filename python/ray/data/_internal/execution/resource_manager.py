@@ -970,18 +970,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         pg = self._op_planned_grants.get(op)
         if pg is None:
             return None
-        h = pg.subtract(self._resource_manager.get_op_usage(op))
-        # Zero out untracked dimensions (pg.X == 0) — actors can declare resources
-        # (e.g. memory) that the allocator doesn't track, which would otherwise
-        # produce false negative headroom and trigger spurious autoscaler downscaling.
-        return ExecutionResources(
-            cpu=h.cpu if pg.cpu > 0 else 0,
-            gpu=h.gpu if pg.gpu > 0 else 0,
-            object_store_memory=h.object_store_memory
-            if pg.object_store_memory > 0
-            else 0,
-            memory=h.memory if pg.memory > 0 else 0,
-        )
+        return pg.subtract(self._resource_manager.get_op_usage(op))
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         budget = self.get_budget(op)
