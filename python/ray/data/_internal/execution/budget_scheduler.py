@@ -55,6 +55,8 @@ class TaskState:
     backpressured: bool = False
     # Number of CPUs allocated to this task.
     num_cpus: float = 1.0
+    # Whether the task has finished executing (but may still have unconsumed output).
+    finished: bool = False
 
     @property
     def concurrent_bytes(self) -> int:
@@ -263,7 +265,14 @@ class BudgetScheduler:
                 task = self.task_states.get(producing_tid)
                 if task is not None:
                     extra = remainder if i == 0 else 0
-                    task.consumed_bytes += per_task_bytes + extra
+                    consumed = per_task_bytes + extra
+                    task.consumed_bytes += consumed
+                    # For finished tasks, allocated_bytes tracks concurrent_bytes,
+                    # so reduce it as outputs are consumed.
+                    if task.finished:
+                        self.allocated_bytes -= consumed
+                        if task.concurrent_bytes == 0:
+                            del self.task_states[producing_tid]
 
         return task_id
 
@@ -317,8 +326,10 @@ class BudgetScheduler:
     def on_task_finished(self, task_id: int) -> None:
         """Record that a task has finished.
 
-        Updates the EMA with observed peak concurrent bytes and corrects
-        the budget.
+        Updates the EMA with observed peak concurrent bytes. Reduces
+        allocated_bytes to reflect the task's current concurrent_bytes
+        (unconsumed output still in-flight). The task state is kept until
+        all outputs are consumed.
 
         Args:
             task_id: The finished task.
@@ -336,16 +347,19 @@ class BudgetScheduler:
             + (1 - self.ema_alpha) * op_state.expected_peak_bytes
         )
 
-        # Remove this task's allocation from the budget.
-        # We allocated max(expected_peak, actual_peak) total.
+        # Reduce allocation from peak-based charge down to current concurrent bytes.
+        # The task was charged max(expected_peak, actual_peak) while running;
+        # now it only needs concurrent_bytes in the budget.
         charged = max(task.expected_peak_bytes, task.peak_concurrent_bytes)
-        self.allocated_bytes -= charged
+        self.allocated_bytes -= charged - task.concurrent_bytes
 
         # Release CPU.
         self.available_cpus += task.num_cpus
 
-        # Clean up task state.
-        del self.task_states[task_id]
+        # Mark as finished. Clean up if fully consumed.
+        task.finished = True
+        if task.concurrent_bytes == 0:
+            del self.task_states[task_id]
 
     def is_backpressured(self, op: Operator) -> bool:
         """Check if all running tasks for an operator are backpressured."""

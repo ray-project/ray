@@ -515,8 +515,8 @@ class TestTaskCompletion:
         # EMA: 0.5 * 200 + 0.5 * 100 = 150
         assert s.op_states[source].expected_peak_bytes == pytest.approx(150.0)
 
-    def test_completion_removes_allocation(self):
-        """Task completion removes the charged amount from allocated_bytes."""
+    def test_completion_reduces_allocation_to_concurrent(self):
+        """Task completion reduces allocated_bytes to concurrent_bytes."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
         s.register_operator(op, initial_peak_bytes=100.0)
@@ -527,11 +527,14 @@ class TestTaskCompletion:
         s.on_task_output(tid, output_bytes=80)
         assert s.allocated_bytes == 100  # No excess
         s.on_task_finished(tid)
-        # Charged = max(expected=100, actual_peak=80) = 100
-        assert s.allocated_bytes == 0
+        # concurrent_bytes = 80 (nothing consumed), so allocated = 80
+        assert s.allocated_bytes == 80
+        # Task state remains until outputs are consumed.
+        assert tid in s.task_states
+        assert s.task_states[tid].finished is True
 
-    def test_completion_removes_excess_allocation(self):
-        """When peak exceeded expected, the full charged amount is removed."""
+    def test_completion_reduces_excess_to_concurrent(self):
+        """When peak exceeded expected, allocation reduces to concurrent_bytes."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
         s.register_operator(op, initial_peak_bytes=100.0)
@@ -541,8 +544,10 @@ class TestTaskCompletion:
         s.on_task_output(tid, output_bytes=250)  # peak=250, excess=150
         assert s.allocated_bytes == 250  # 100 + 150
         s.on_task_finished(tid)
-        # Charged = max(100, 250) = 250
-        assert s.allocated_bytes == 0
+        # concurrent_bytes = 250, so allocated stays at 250
+        assert s.allocated_bytes == 250
+        assert tid in s.task_states
+        assert s.task_states[tid].finished is True
 
     def test_completion_releases_cpus(self):
         s = make_scheduler(max_bytes=10000, available_cpus=4)
@@ -553,7 +558,26 @@ class TestTaskCompletion:
         s.on_task_finished(tid)
         assert s.available_cpus == 4.0
 
-    def test_completion_removes_task_state(self):
+    def test_completion_removes_task_state_when_fully_consumed(self):
+        """Task state is removed only when all outputs are consumed."""
+        s = make_scheduler(max_bytes=10000, available_cpus=4)
+        source, mapper = make_linear_pipeline(2, ["source", "mapper"])
+        s.register_operator(source, initial_peak_bytes=100.0)
+        s.register_operator(mapper, initial_peak_bytes=100.0)
+
+        tid = s.dispatch_task(source, input_bytes=0)
+        s.on_task_output(tid, output_bytes=100)
+        s.on_task_finished(tid)
+        # Still has 100 unconsumed bytes.
+        assert tid in s.task_states
+
+        # Downstream consumes all output.
+        s.dispatch_task(mapper, input_bytes=100, input_task_ids=[tid])
+        assert tid not in s.task_states
+        assert s.allocated_bytes == 100  # Only mapper's allocation remains
+
+    def test_completion_removes_task_state_when_no_output(self):
+        """Task with no output is removed immediately on finish."""
         s = make_scheduler(max_bytes=10000, available_cpus=4)
         op = make_mock_op()
         s.register_operator(op)
