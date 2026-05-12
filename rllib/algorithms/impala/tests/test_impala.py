@@ -144,22 +144,24 @@ class TestIMPALA(unittest.TestCase):
         by Ray's scheduler, actors actually co-located in a multi-node
         setup.
 
-        Cluster: 2 nodes x 6 CPU. Sizing matters: with
-        ``num_cpus_per_learner=3`` and ``num_aggregator_actors_per_learner=2``,
-        each learner bundle is 3 + 2 = 5 CPU and the PG is
-        ``[main=1, lb_0=5, lb_1=5] = 11 CPU``. On 2 x 6 CPU nodes PACK
-        fits ``main + lb_0`` (6 CPU) on one node and ``lb_1`` (5 CPU) on
-        the other -- so the two learner bundles land on different nodes.
-        Each Learner takes 3 of a bundle's 5 CPU, so Ray Train can't
-        pile a second Learner into the same bundle (only 2 CPU left, not
-        enough for a 3-CPU Learner). This setup forces the cross-node
-        scenario that the production GPU path triggers naturally.
+        Cluster: 2 nodes x 4 CPU. Each node advertises 1 unit of a
+        custom ``learner_slot`` resource. We then declare
+        ``custom_resources_per_learner={"learner_slot": 1}`` so each
+        Learner bundle must reserve 1 ``learner_slot``. With only 1
+        such slot per node, the PG is forced to place each of the two
+        learner bundles on different nodes (no node can hold both).
+        This is the cross-node scenario the test asserts on, using the
+        same mechanism a production user would (custom resources to
+        pin workloads to specific nodes).
         """
         from ray import tune
 
         ray.shutdown()
-        cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 6})
-        cluster.add_node(num_cpus=6)
+        cluster = Cluster(
+            initialize_head=True,
+            head_node_args={"num_cpus": 4, "resources": {"learner_slot": 1}},
+        )
+        cluster.add_node(num_cpus=4, resources={"learner_slot": 1})
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
@@ -210,8 +212,8 @@ class TestIMPALA(unittest.TestCase):
                 .environment("CartPole-v1")
                 .learners(
                     num_learners=2,
-                    num_cpus_per_learner=3,
                     num_aggregator_actors_per_learner=2,
+                    custom_resources_per_learner={"learner_slot": 1},
                     colocate_aggregator_actors_with_learners=True,
                 )
                 .env_runners(num_env_runners=0)
