@@ -209,6 +209,31 @@ def test_configure_locality(enable_shard_locality):
     )
 
 
+def test_unequal_split_no_rows_dropped(ray_start_4_cpus):
+    """Test that unequal_split_datasets preserves all rows (no dropping)."""
+    NUM_ROWS = 11
+    NUM_WORKERS = 2
+
+    ds = ray.data.range(NUM_ROWS)
+
+    def train_fn():
+        ds_shard = ray.train.get_dataset_shard("eval")
+        rows = list(ds_shard.iter_rows())
+        # With equal=False, no rows are dropped. Total across all workers == NUM_ROWS.
+        # This worker may have 5 or 6 rows (11 // 2 = 5, remainder 1).
+        assert len(rows) in (NUM_ROWS // NUM_WORKERS, NUM_ROWS // NUM_WORKERS + 1)
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+        datasets={"eval": ds},
+        dataset_config=ray.train.DataConfig(
+            unequal_split_datasets=["eval"],
+        ),
+    )
+    trainer.fit()
+
+
 @pytest.mark.parametrize("cache_random_preprocessing", [True, False])
 def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
     """Random preprocessing should change per-epoch."""

@@ -76,6 +76,7 @@ def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
 
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,
+        unequal_split_datasets=data_config._unequal_split_datasets,
         data_execution_options=DataExecutionOptions(
             default=execution_options_to_model(exec_options.default_factory()),
             per_dataset_execution_options=per_dataset_execution_options,

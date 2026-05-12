@@ -323,6 +323,12 @@ class DataConfig(BaseModel):
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names."
     )
+    unequal_split_datasets: List[str] = Field(
+        default_factory=list,
+        description="Datasets that should use unequal splitting (equal=False). "
+        "By default, all datasets use equal splitting (equal=True) for backward compatibility. "
+        "List datasets here that should NOT drop rows during splitting.",
+    )
     execution_options: Optional[Dict] = Field(
         default=None,
         deprecated="DEPRECATED: Use data_execution_options instead.",

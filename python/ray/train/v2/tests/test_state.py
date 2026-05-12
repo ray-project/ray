@@ -941,6 +941,14 @@ def test_construct_data_config_defaults_and_split_variants():
     result = construct_data_config(DataConfig(enable_shard_locality=False))
     assert result.enable_shard_locality is False
 
+    # unequal_split_datasets default (empty list, all datasets use equal=True)
+    default = construct_data_config(DataConfig())
+    assert default.unequal_split_datasets == []
+
+    # unequal_split_datasets specific list
+    result = construct_data_config(DataConfig(unequal_split_datasets=["eval"]))
+    assert result.unequal_split_datasets == ["eval"]
+
 
 def test_construct_data_config_single_execution_options():
     """A single ExecutionOptions lands in data_execution_options.default and
