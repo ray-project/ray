@@ -341,10 +341,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
         top_level_aic = cluster_manager.cluster_compute["advanced_instance_config"]
         self.assertIn("TagSpecifications", top_level_aic)
 
-        # head_node and worker_nodes must NOT be annotated. Populating
-        # per-group advanced_instance_config causes Anyscale to use it
-        # (TagSpecifications only) and drop the cluster-level IamInstanceProfile
-        # and other fields, since per-group spec replaces (not merges with) base.
+        # head_node and worker_nodes must NOT be auto-annotated when the
+        # input compute config has no per-group advanced_instance_config.
+        # Creating one (with TagSpecifications only) would cause Anyscale to
+        # use the per-group spec and drop the cluster-level
+        # IamInstanceProfile and other fields, since per-group spec replaces
+        # (not merges with) the base.
         self.assertNotIn(
             "advanced_instance_config",
             cluster_manager.cluster_compute.get("head_node", {}),
@@ -363,6 +365,32 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
             self.assertEqual(len(resource_tags), 1)
             self.assertIn({"Key": "foo", "Value": "bar"}, resource_tags[0]["Tags"])
+
+        # When the input compute config already has per-group
+        # advanced_instance_config, those per-group specs MUST be annotated
+        # too. Anyscale replaces the base spec with the per-group spec when
+        # one is present, so without annotation the billing tags would be
+        # lost on that node group.
+        cluster_compute_with_per_group = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
+        cluster_compute_with_per_group["head_node"]["advanced_instance_config"] = {
+            "IamInstanceProfile": {"Name": "head-profile"},
+        }
+        cluster_compute_with_per_group["worker_nodes"][0][
+            "advanced_instance_config"
+        ] = {"IamInstanceProfile": {"Name": "worker-profile"}}
+        cluster_manager.set_cluster_compute(
+            cluster_compute_with_per_group, extra_tags={"foo": "bar"}
+        )
+        head_aic = cluster_manager.cluster_compute["head_node"][
+            "advanced_instance_config"
+        ]
+        self.assertEqual(head_aic["IamInstanceProfile"], {"Name": "head-profile"})
+        self.assertIn("TagSpecifications", head_aic)
+        worker_aic = cluster_manager.cluster_compute["worker_nodes"][0][
+            "advanced_instance_config"
+        ]
+        self.assertEqual(worker_aic["IamInstanceProfile"], {"Name": "worker-profile"})
+        self.assertIn("TagSpecifications", worker_aic)
 
         # Test merging with already existing tags
         cluster_compute_with_tags = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)

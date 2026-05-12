@@ -94,15 +94,33 @@ class ClusterManager(abc.ABC):
         cluster_compute = cluster_compute.copy()
 
         if is_new_schema:
-            # Only annotate the top-level advanced_instance_config. Tagging
-            # head_node/worker_nodes here causes Anyscale to use the per-group
-            # spec (TagSpecifications-only) at instance launch and drop any
-            # IamInstanceProfile/NetworkInterfaces/etc. set at the cluster
-            # level, since per-group spec replaces (not merges with) the base.
+            # Always tag the top-level advanced_instance_config. Per-group
+            # advanced_instance_config is only tagged when the user has
+            # already set one — never auto-created. Anyscale replaces (does
+            # not merge with) the base spec when a per-group spec is present,
+            # so auto-creating a TagSpecifications-only per-group spec would
+            # drop any IamInstanceProfile/NetworkInterfaces/etc. set at the
+            # cluster level. When a per-group spec already exists, the base
+            # is dropped regardless, so the per-group spec must carry the
+            # billing tags itself.
             aws = cluster_compute.get("advanced_instance_config", {})
             cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
                 aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
             )
+            head = cluster_compute.get("head_node")
+            if isinstance(head, dict) and "advanced_instance_config" in head:
+                head["advanced_instance_config"] = add_tags_to_aws_config(
+                    head["advanced_instance_config"],
+                    extra_tags,
+                    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+                )
+            for worker in cluster_compute.get("worker_nodes", []) or []:
+                if isinstance(worker, dict) and "advanced_instance_config" in worker:
+                    worker["advanced_instance_config"] = add_tags_to_aws_config(
+                        worker["advanced_instance_config"],
+                        extra_tags,
+                        RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+                    )
         else:
             if "aws" in cluster_compute:
                 raise ValueError(
