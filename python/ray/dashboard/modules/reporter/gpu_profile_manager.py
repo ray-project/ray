@@ -74,13 +74,13 @@ class GpuProfilingManager:
 
         self._dynolog_daemon_process: Optional[subprocess.Popen] = None
 
-        if not self.node_has_gpus():
-            logger.warning(
-                "[GpuProfilingManager] No GPUs found on this node, GPU profiling will not be setup."
-            )
         if not self._dynolog_bin or not self._dyno_bin:
             logger.warning(
                 "[GpuProfilingManager] `dynolog` is not installed, GPU profiling will not be available."
+            )
+        elif not self.node_has_gpus():
+            logger.warning(
+                "[GpuProfilingManager] No GPUs found on this node, GPU profiling will not be setup."
             )
 
         self._profile_dir_path.mkdir(parents=True, exist_ok=True)
@@ -107,6 +107,7 @@ class GpuProfilingManager:
             subprocess.check_output(
                 ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                 stderr=subprocess.DEVNULL,
+                timeout=2,
             )
             return True
         except Exception:
