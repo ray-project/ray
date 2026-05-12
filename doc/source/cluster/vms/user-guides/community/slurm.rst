@@ -125,170 +125,6 @@ After the training job is completed, the Ray cluster will be stopped automatical
 
 .. note:: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
 
-.. _ray-slurm-docker-init:
-
-Running inside Docker containers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If your Slurm compute nodes run the job inside a Docker container, make
-sure PID 1 inside the container is a real init process — ``tini``,
-``dumb-init``, or whatever Docker injects when you pass ``--init``
-(currently ``tini``). Otherwise the Ray processes that ``ray stop``
-terminates remain as zombies in the kernel's process table, and
-``ray stop`` reports ``Stopped only 0 out of N`` with every remaining
-process showing ``status='zombie'``.
-
-Symptom
-^^^^^^^
-
-When the container's PID 1 is not a reaper, ``ray symmetric-run`` (or a
-manual ``ray stop``) prints a warning like this at teardown:
-
-.. code-block:: text
-
-   WARN scripts.py:1392 -- Stopped only 0 out of 6 Ray processes within the grace period 16 seconds. Set `-v` to see more details. Remaining processes [psutil.Process(pid=2226, name='raylet', status='zombie'), psutil.Process(pid=2225, name='python3.12', status='zombie'), psutil.Process(pid=1761, name='python3.12', status='zombie'), psutil.Process(pid=1759, name='python3.12', status='zombie'), psutil.Process(pid=1760, name='python3.12', status='zombie'), psutil.Process(pid=1709, name='gcs_server', status='zombie')] will be forcefully terminated.
-   WARN scripts.py:1399 -- You can also use `--force` to forcefully terminate processes or set higher `--grace-period` to wait longer time for proper termination.
-
-What this actually means:
-
-* The Ray processes already exited in response to the ``SIGTERM`` that
-  ``ray stop`` sent — they are zombies, not still running. Per Linux
-  `wait(2) <https://man7.org/linux/man-pages/man2/wait.2.html>`__,
-  *"a child that terminates, but has not been waited for, becomes a
-  zombie"* and *"as long as a zombie is not removed from the system via a
-  wait, it will consume a slot in the kernel process table"*. Because the
-  container's PID 1 (e.g. ``slurmd``) never calls ``waitpid(2)``, the
-  zombies stay in that table.
-* ``ray stop`` waits for termination via
-  `psutil.wait_procs <https://github.com/giampaolo/psutil/blob/master/psutil/__init__.py>`__,
-  which on POSIX uses
-  `psutil._psposix.wait_pid_posix
-  <https://github.com/giampaolo/psutil/blob/master/psutil/_psposix.py>`__.
-  For PIDs that aren't children of the caller it falls back to polling
-  whether ``/proc/<pid>`` still exists. ``/proc/<pid>`` exists for a
-  zombie, so the wait times out and the zombies land in the ``alive``
-  list. ``ray stop`` then counts them as "not stopped".
-* The "forcefully terminated" line in the warning refers to ``ray stop``
-  sending ``SIGKILL`` after the grace period — see the ``proc.kill()``
-  loop in
-  `python/ray/scripts/scripts.py <https://github.com/ray-project/ray/blob/master/python/ray/scripts/scripts.py>`__
-  (``ray stop`` implementation). This does not change a zombie's state:
-  a zombie has no executing context, and only ``waitpid`` by its parent
-  removes it from the process table (``wait(2)``).
-
-Why this matters
-^^^^^^^^^^^^^^^^
-
-When ``ray symmetric-run`` finishes, it calls ``ray stop``, which sends
-``SIGTERM`` to each Ray process and then waits for them to exit. After a
-process exits, the kernel marks it as a zombie and delivers ``SIGCHLD``
-to its current parent (see
-`signal(7) <https://man7.org/linux/man-pages/man7/signal.7.html>`__:
-*"Child stopped, terminated, or continued"*). The parent must then call
-``waitpid`` (`wait(2) <https://man7.org/linux/man-pages/man2/wait.2.html>`__)
-to reap the zombie.
-
-* On a typical modern Linux distribution, PID 1 is ``systemd``, which
-  reaps orphaned children. Zombies disappear immediately and
-  ``psutil.wait_procs`` reports them as ``gone``.
-* Inside a containerized Slurm compute node where PID 1 is ``slurmd``,
-  ``slurmd`` registers handlers for ``SIGINT``, ``SIGTERM``, ``SIGQUIT``,
-  ``SIGHUP``, ``SIGUSR2``, ``SIGPIPE``, and ``SIGPROF`` — but not
-  ``SIGCHLD`` — and so does not reap re-parented orphan processes. (The
-  official `slurmd(8) <https://slurm.schedmd.com/slurmd.html>`__ SIGNALS
-  section likewise omits ``SIGCHLD``; ``slurmd.c`` source references are
-  linked in the discussion comment cited under "References" below.) The
-  dead Ray processes stay in the process table with ``status='zombie'``,
-  ``psutil.wait_procs`` returns them in the ``alive`` list, and
-  ``ray stop`` reports ``Stopped only 0 out of N``.
-
-This is a deployment-layer issue (a container without a real init), not
-a Ray bug and not a Slurm bug.
-
-How to fix it
-^^^^^^^^^^^^^
-
-Give the container a real init that reaps zombies (calls ``waitpid`` on
-exit). Pick the option that matches how you launch the container:
-
-* **Plain Docker** — pass ``--init`` to ``docker run``. Docker injects
-  ``tini`` as PID 1 for you. See
-  `docker run --init <https://docs.docker.com/reference/cli/docker/container/run/#init>`__.
-* **Docker Compose** — set ``init: true`` on the service in your
-  ``docker-compose.yaml``. Same effect as ``docker run --init``. See
-  `Compose: init <https://docs.docker.com/reference/compose-file/services/#init>`__.
-* **Bake it into the image** — install
-  `tini <https://github.com/krallin/tini>`__ (or
-  `dumb-init <https://github.com/Yelp/dumb-init>`__) in the
-  ``Dockerfile`` and use it as the ``ENTRYPOINT``. ``tini`` exists, in
-  its own words, *"to protect you from software that accidentally
-  creates zombie processes, which can (over time!) starve your entire
-  system for PIDs"* — by reaping them. ``dumb-init`` does the same and
-  additionally addresses Linux's special signal-handling rules for
-  PID 1. This is the path Docker recommends for containers running
-  multiple processes: see
-  `Run multiple services in a container <https://docs.docker.com/engine/containers/multi-service_container/>`__.
-
-Example — a ``docker-compose.yaml`` snippet for a containerized Slurm
-compute node. The line that fixes the zombie problem is ``init: true``:
-
-.. code-block:: yaml
-   :caption: docker-compose.yaml
-
-   services:
-     c1:
-       image: slurm-docker-cluster:25.11.2
-       init: true            # PID 1 becomes tini, which reaps zombies
-       command: ["slurmd"]
-
-After this change, the Ray processes are properly reaped on teardown,
-so ``psutil.wait_procs`` no longer classifies them as alive and
-``ray stop`` prints its success message instead of the warning above:
-
-.. code-block:: text
-
-   SUCCESS scripts.py:1488 -- Stopped all 6 Ray processes.
-
-References
-^^^^^^^^^^
-
-Linux process and signal semantics:
-
-* `wait(2) <https://man7.org/linux/man-pages/man2/wait.2.html>`__ —
-  zombie definition, ``waitpid``, and PID 1 reaping orphans.
-* `signal(7) <https://man7.org/linux/man-pages/man7/signal.7.html>`__ —
-  ``SIGCHLD`` semantics.
-
-Container init runtimes:
-
-* `tini <https://github.com/krallin/tini>`__ — the minimal init that
-  Docker bundles for ``--init``.
-* `dumb-init <https://github.com/Yelp/dumb-init>`__ — alternative
-  minimal init, same purpose.
-* `Docker: Run multiple services in a container
-  <https://docs.docker.com/engine/containers/multi-service_container/>`__
-  — Docker's guidance on running an init in the container.
-
-Tooling used by ``ray stop``:
-
-* `psutil.wait_procs source
-  <https://github.com/giampaolo/psutil/blob/master/psutil/__init__.py>`__
-  — the function ``ray stop`` uses to wait for termination.
-* `python/ray/scripts/scripts.py
-  <https://github.com/ray-project/ray/blob/master/python/ray/scripts/scripts.py>`__
-  — ``ray stop`` implementation, including the warning text and the
-  post-grace-period ``SIGKILL`` escalation.
-
-Discussion specific to this issue:
-
-* `ray-project/ray#62591 (root-cause analysis)
-  <https://github.com/ray-project/ray/pull/62591#issuecomment-4396615458>`__
-  — comparison of ``systemd`` vs. ``slurmd`` PID 1 behavior, with linked
-  ``slurmd.c`` source references.
-* `ray-project/ray#62591 (init fix confirmation)
-  <https://github.com/ray-project/ray/pull/62591#issuecomment-4403602546>`__
-  — confirms ``init: true`` resolves the issue.
-
 .. _slurm-network-ray:
 
 SLURM networking caveats
@@ -426,3 +262,20 @@ Here are some community-contributed templates for using SLURM with Ray:
 .. _`YASPI`: https://github.com/albanie/yaspi
 
 .. _`Convenient python interface`: https://github.com/pengzhenghao/use-ray-with-slurm
+
+
+Troubleshooting
+---------------
+
+.. _ray-slurm-docker-init:
+
+Zombie processes in Docker containers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Running Ray on Slurm inside a Docker container can produce zombie processes. See `this comment
+<https://github.com/ray-project/ray/pull/62591#issuecomment-4396615458>`_ for details.
+
+Two recommended fixes:
+
+1. Use ``docker run --init`` (`Docker CLI docs <https://docs.docker.com/reference/cli/docker/container/run/#init>`_).
+2. Set ``init: true`` in ``docker-compose.yaml`` (`Docker Compose docs <https://docs.docker.com/reference/compose-file/services/#init>`_).
