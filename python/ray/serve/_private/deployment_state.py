@@ -1547,6 +1547,10 @@ class ActorReplicaWrapper:
                             logger.debug(
                                 f"Placement group for {self._replica_id} was already removed."
                             )
+                except Exception:
+                    logger.exception(
+                        f"Unexpected error shutting down placement groups for {self._replica_id}."
+                    )
                 finally:
                     # Always clear references to prevent memory leaks and dangling state.
                     self._gang_placement_group = None
