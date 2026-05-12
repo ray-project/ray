@@ -19,6 +19,7 @@ shows you how to achieve several tasks.
     iterating-over-data
     joining-data
     shuffling-data
+    mixing-data
     saving-data
     working-with-images
     working-with-text
@@ -29,4 +30,5 @@ shows you how to achieve several tasks.
     execution-configurations
     batch_inference
     performance-tips
+    scaling-collation-functions
     custom-datasource-example

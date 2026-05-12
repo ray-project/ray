@@ -33,8 +33,8 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/time/clock.h"
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
@@ -224,7 +224,7 @@ NodeManager::NodeManager(
       runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+                           IsLocalhost(config.node_manager_address)),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -244,9 +244,9 @@ NodeManager::NodeManager(
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
-      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
-                                                   config.enable_resource_isolation,
-                                                   *cgroup_manager)),
+      memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                                    config.enable_resource_isolation,
+                                                    *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
@@ -3046,13 +3046,34 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
+bool NodeManager::MarkKillWorkerInProgress() {
+  absl::MutexLock lock(&worker_killing_in_progress_mutex_);
+  if (worker_killing_in_progress_) {
+    return false;
+  }
+  worker_killing_in_progress_ = true;
+  for (auto &monitor : memory_monitors_) {
+    monitor->Disable();
+  }
+  return true;
+}
+
+void NodeManager::ReleaseKillWorkerInProgress() {
+  absl::MutexLock lock(&worker_killing_in_progress_mutex_);
+  worker_killing_in_progress_ = false;
+  for (auto &monitor : memory_monitors_) {
+    monitor->Enable();
+  }
+}
+
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](SystemMemorySnapshot system_memory_snapshot) {
+  return [this]() {
+    if (!MarkKillWorkerInProgress()) {
+      return;
+    }
     io_service_.post(
-        [this, system_memory = std::move(system_memory_snapshot)]() {
-          ProcessesMemorySnapshot process_memory_snapshot =
-              MemoryMonitorUtils::TakePerProcessMemorySnapshot();
+        [this]() {
           std::vector<std::shared_ptr<WorkerInterface>> workers =
               worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                    /* filter_io_workers */ true);
@@ -3062,20 +3083,41 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                    "killing."
                 << "This could be due to worker memory leak and"
                 << "idle worker are occupying most of the memory.";
-            memory_monitor_->Enable();
+            ReleaseKillWorkerInProgress();
             return;
           }
+          ProcessesMemorySnapshot process_memory_snapshot =
+              MemoryMonitorUtils::TakePerProcessMemorySnapshot();
+          MemoryUsageSnapshot memory_usage_snapshot =
+              MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+                  MemoryMonitorInterface::kDefaultCgroupPath);
+          if (initial_config_.enable_resource_isolation) {
+            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
+                user_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+                        cgroup_manager_->GetUserCgroupPath(),
+                        cgroup_manager_->GetSystemCgroupPath());
+            if (user_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            } else {
+              RAY_LOG(ERROR) << absl::StrFormat(
+                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Falling back to host system memory snapshot.",
+                  user_slice_memory_snapshot_or.message());
+            }
+          }
+
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
               workers_to_kill_and_should_retry =
                   worker_killing_policy_->SelectWorkersToKill(
-                      workers, process_memory_snapshot, system_memory);
+                      workers, process_memory_snapshot, memory_usage_snapshot);
           if (workers_to_kill_and_should_retry.empty()) {
-            memory_monitor_->Enable();
+            ReleaseKillWorkerInProgress();
             return;
           }
 
           // Compute the memory usage threshold
-          int64_t total_memory_bytes = system_memory.total_bytes;
+          int64_t total_memory_bytes = memory_usage_snapshot.total_bytes;
           int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
               total_memory_bytes,
               RayConfig::instance().memory_usage_threshold(),
@@ -3089,7 +3131,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           std::string oom_kill_details = CreateOomKillMessageDetails(
               workers_to_kill_and_should_retry,
               self_node_id_,
-              system_memory,
+              memory_usage_snapshot,
               store_client_->GetMemoryUsage().value_or("Not available"),
               process_memory_snapshot,
               computed_threshold_fraction);
@@ -3150,7 +3192,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                    {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
             }
           }
-          memory_monitor_->Enable();
+          ReleaseKillWorkerInProgress();
         },
         "NodeManager.KillWorkersCallback");
   };
@@ -3159,7 +3201,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
 std::string NodeManager::CreateOomKillMessageDetails(
     const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill,
     const NodeID &node_id,
-    const SystemMemorySnapshot &system_memory_snapshot,
+    const MemoryUsageSnapshot &memory_usage_snapshot,
     const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {
@@ -3167,13 +3209,12 @@ std::string NodeManager::CreateOomKillMessageDetails(
     return "";
   }
 
-  float usage_fraction = static_cast<float>(system_memory_snapshot.used_bytes) /
-                         system_memory_snapshot.total_bytes;
+  float usage_fraction = static_cast<float>(memory_usage_snapshot.used_bytes) /
+                         memory_usage_snapshot.total_bytes;
   std::string used_bytes_gb = absl::StrFormat(
-      "%.2f", static_cast<float>(system_memory_snapshot.used_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(memory_usage_snapshot.used_bytes) / 1024 / 1024 / 1024);
   std::string total_bytes_gb = absl::StrFormat(
-      "%.2f",
-      static_cast<float>(system_memory_snapshot.total_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(memory_usage_snapshot.total_bytes) / 1024 / 1024 / 1024);
 
   const auto &first_worker = workers_to_kill.front().first;
   std::string node_ip = first_worker->IpAddress();

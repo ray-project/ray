@@ -60,7 +60,7 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",

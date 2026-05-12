@@ -103,7 +103,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot,
-      const SystemMemorySnapshot &system_memory_snapshot) override;
+      const MemoryUsageSnapshot &system_memory_snapshot) override;
 
  private:
   /**
