@@ -264,9 +264,16 @@ def request_resources(
             for bundle in bundles:
                 if isinstance(bundle, Dict):
                     for key in bundle.keys():
-                        if not (isinstance(key, str) and isinstance(bundle[key], int)):
+                        # ``bool`` is a subclass of ``int``; reject it explicitly
+                        # since it's never a meaningful resource quantity.
+                        if not (
+                            isinstance(key, str)
+                            and isinstance(bundle[key], (int, float))
+                            and not isinstance(bundle[key], bool)
+                        ):
                             raise TypeError(
-                                "each bundle key should be str and value as int."
+                                "each bundle key should be str and value should "
+                                "be int or float."
                             )
                 else:
                     raise TypeError("each bundle should be a Dict.")
