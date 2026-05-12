@@ -9,7 +9,7 @@ from ray.util.annotations import DeveloperAPI
 class ItemStats(StatsBase):
     """A Stats object that tracks a single item.
 
-    Note the follwing limitation: That, when calling `ItemStats.merge()`, we replace the current item.
+    Note the following limitation: when calling `ItemStats.merge()`, we replace the current item.
     This is because there can only be a single item tracked by definition.
 
     This class will check if the logged item is a GPU tensor.
@@ -105,4 +105,4 @@ class ItemStats(StatsBase):
         return [item]
 
     def __repr__(self) -> str:
-        return f"ItemStats({self.peek()}"
+        return f"ItemStats({self.peek()})"

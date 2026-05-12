@@ -156,7 +156,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
 
             return await self._send_http_request(filtered_json, num_filtered_out)
         except Exception as e:
-            logger.error("Failed to send events to external service. Error: %s", e)
+            logger.error("Failed to send events to external service. Error: %r", e)
             return PublishStats(
                 is_publish_successful=False,
                 num_events_published=0,

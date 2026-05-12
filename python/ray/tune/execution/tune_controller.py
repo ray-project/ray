@@ -7,7 +7,6 @@ import traceback
 import warnings
 from collections import defaultdict, deque
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -33,10 +32,8 @@ from ray.tune.execution.insufficient_resources_manager import (
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Experiment, Trial
 from ray.tune.experiment.trial import (
-    _change_working_directory,
     _get_trainable_kwargs,
     _Location,
-    _noop_logger_creator,
     _TrialInfo,
 )
 from ray.tune.result import (
@@ -57,7 +54,10 @@ from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -446,7 +446,7 @@ class TuneController:
             f"{Path(newest_state_path).name}"
         )
         with self._storage.storage_filesystem.open_input_stream(newest_state_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         self.__setstate__(experiment_state["runner_data"])
 
@@ -1004,17 +1004,16 @@ class TuneController:
         trial.set_location(_Location())
         trainable_kwargs = _get_trainable_kwargs(trial=trial)
 
-        with _change_working_directory(trial):
-            tracked_actor = self._actor_manager.add_actor(
-                cls=_actor_cls,
-                resource_request=trial.placement_group_factory,
-                kwargs=trainable_kwargs,
-                on_start=self._actor_started,
-                on_stop=self._actor_stopped,
-                on_error=self._actor_failed,
-            )
-            self._trial_to_actor[trial] = tracked_actor
-            self._actor_to_trial[tracked_actor] = trial
+        tracked_actor = self._actor_manager.add_actor(
+            cls=_actor_cls,
+            resource_request=trial.placement_group_factory,
+            kwargs=trainable_kwargs,
+            on_start=self._actor_started,
+            on_stop=self._actor_stopped,
+            on_error=self._actor_failed,
+        )
+        self._trial_to_actor[trial] = tracked_actor
+        self._actor_to_trial[tracked_actor] = trial
 
         logger.debug(
             f"Scheduled new ACTOR for trial {trial}: {tracked_actor}. "
@@ -1255,18 +1254,17 @@ class TuneController:
 
         logger.debug(f"Future {method_name.upper()} SCHEDULED for trial {trial}")
 
-        with _change_working_directory(trial):
-            future = self._actor_manager.schedule_actor_task(
-                tracked_actor=tracked_actor,
-                method_name=method_name,
-                args=args,
-                kwargs=kwargs,
-                on_result=_on_result,
-                on_error=_on_error,
-                _return_future=_return_future,
-            )
-            if _return_future:
-                return future
+        future = self._actor_manager.schedule_actor_task(
+            tracked_actor=tracked_actor,
+            method_name=method_name,
+            args=args,
+            kwargs=kwargs,
+            on_result=_on_result,
+            on_error=_on_error,
+            _return_future=_return_future,
+        )
+        if _return_future:
+            return future
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set
@@ -1911,17 +1909,12 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(
-            _noop_logger_creator, logdir=trial.storage.trial_working_directory
-        )
-
         self._resetting_trials.add(trial)
         self._schedule_trial_task(
             trial=trial,
             method_name="reset",
             args=(extra_config,),
             kwargs={
-                "logger_creator": logger_creator,
                 "storage": trial.storage,
             },
             on_result=self._on_trial_reset,

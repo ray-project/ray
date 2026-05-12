@@ -39,8 +39,10 @@ GcsNodeManager::GcsNodeManager(
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
-    const std::string &session_name)
+    const std::string &session_name,
+    pubsub::ObservabilityPublisher *observability_publisher)
     : gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
@@ -168,10 +170,12 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
 
 void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::UnregisterNodeReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+                                          rpc::SendReplyCallback send_reply_callback,
+                                          const std::string &grpc_peer) {
   absl::MutexLock lock(&mutex_);
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id) << "HandleUnregisterNode() for node";
+  RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
+      << "HandleUnregisterNode() for node";
   auto node = RemoveNodeFromCache(
       node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
   if (!node) {
@@ -666,7 +670,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
       RAY_LOG(WARNING) << error_message.str();
       auto error_data = CreateErrorTableData(
           type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
-      gcs_publisher_->PublishError(node_id.Hex(), std::move(error_data));
+      observability_publisher_->PublishError(node_id.Hex(), std::move(error_data));
     }
 
     // Notify all listeners.

@@ -7,12 +7,8 @@ jupyter nbconvert "tune_pytorch_asha.ipynb" --to markdown --output "README.md"
 # Hyperparameter tuning with Ray Tune and PyTorch
 
 <div align="left">
-  <a target="_blank" href="https://console.anyscale.com/template-preview/tune_pytorch_asha">
-    <img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf">
-  </a>&nbsp;
-  <a href="https://github.com/ray-project/ray/tree/master/doc/source/tune/examples/tune_pytorch_asha" role="button">
-    <img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d">
-  </a>&nbsp;
+  <a target="_blank" href="https://console.anyscale.com/template-preview/tune_pytorch_asha"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+  <a href="https://github.com/ray-project/ray/tree/master/doc/source/tune/examples/tune_pytorch_asha" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
 </div>
 
 This notebook runs **hyperparameter tuning experiments** on a PyTorch CNN using **Ray Tune**, a scalable library for experiment management and search. The workload runs on the driver, but it sets the stage for the next tutorial where you combine **Ray Tune with Ray Train** for distributed training.  
@@ -115,13 +111,7 @@ import os, sys, subprocess
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 # Install Python dependencies 
-subprocess.check_call([
-    sys.executable, "-m", "pip", "install", "--no-cache-dir",
-    "torch==2.8.0",
-    "torchvision==0.23.0",
-    "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
-])
+!pip install -r requirements.txt
 ```
 
 

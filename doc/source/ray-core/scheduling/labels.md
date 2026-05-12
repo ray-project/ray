@@ -64,8 +64,8 @@ ray start --head --labels-files='./test-labels-file'
 # "test-label-2": "test-value-2"
 ```
 
-```{note} 
-You can't set labels using `ray.init()`. Local Ray clusters don't support labels.
+```{note}
+You can use `ray.init(labels={"key": "value"})` to set labels for the node in a local Ray cluster to test labels locally.
 ```
 
 (label-selectors)=
@@ -143,6 +143,54 @@ ray.util.placement_group(
     bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"}] * 2
 )
 ```
+
+## Specify label requirements for a local RayCluster
+
+The following test script showcases how users can use `ray.init(labels={"key": "value"})` to test labels locally.
+
+```python
+import ray
+
+# 1. Initialize Ray with a specific label for the local node
+print("Initializing Ray with labels={'env': 'dev', 'hardware': 'mock_gpu'}...")
+ray.init(labels={"env": "dev", "hardware": "mock_gpu"})
+
+@ray.remote
+def get_labels():
+    # Verify the labels are visible in the runtime context
+    return ray.get_runtime_context().get_node_labels()
+
+@ray.remote(label_selector={"hardware": "mock_gpu"})
+def matching_task():
+    return "Successfully scheduled on mock_gpu!"
+
+@ray.remote(label_selector={"hardware": "real_h100"})
+def non_matching_task():
+    return "This should not run!"
+
+try:
+    # Test 1: Verify node labels are set correctly
+    current_labels = ray.get(get_labels.remote())
+    print(f"Node labels detected: {current_labels}")
+    assert current_labels.get("hardware") == "mock_gpu"
+
+    # Test 2: Run a task with a matching label selector
+    print("Running task with matching label selector...")
+    result = ray.get(matching_task.remote())
+    print(f"Result: {result}")
+
+    # Test 3: Attempt to run a task with a non-matching label selector
+    print("Running task with non-matching label selector (expecting it to stay pending)...")
+    ref = non_matching_task.remote()
+    ready, not_ready = ray.wait([ref], timeout=5)
+    
+    if not ready and not_ready:
+        print("Success: Task with non-matching label stayed pending as expected.")
+
+finally:
+    ray.shutdown()
+```
+
 ## Using labels with autoscaler
 
 Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up nodes to fulfill label requirements, you need to create multiple worker groups for different label requirement combinations and specify all the corresponding labels in the `rayStartParams` field in the Ray cluster configuration. For example:

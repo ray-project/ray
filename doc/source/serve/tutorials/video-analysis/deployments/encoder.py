@@ -69,9 +69,8 @@ class VideoEncoder:
         with torch.no_grad():
             with torch.amp.autocast(device_type=self.device, enabled=self.device == "cuda"):
                 outputs = self.model.get_image_features(**inputs)
-
-                # L2 normalize on GPU (faster than CPU numpy)
-                frame_embeddings = torch.nn.functional.normalize(outputs, p=2, dim=1)
+                # get_image_features returns BaseModelOutputWithPooling; use pooler_output for embeddings
+                frame_embeddings = torch.nn.functional.normalize(outputs.pooler_output, p=2, dim=1)
         
         # Move to CPU and convert to numpy
         result = frame_embeddings.cpu().numpy().astype(np.float32)

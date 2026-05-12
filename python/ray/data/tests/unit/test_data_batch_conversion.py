@@ -177,6 +177,7 @@ def test_numpy_pandas(cast_tensor_columns):
     output_array = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
+
     np.testing.assert_equal(output_array, input_data)
 
 
@@ -231,6 +232,7 @@ def test_dict_pandas(cast_tensor_columns):
     output_array = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
+
     np.testing.assert_array_equal(output_array, input_data["x"])
 
 
@@ -258,6 +260,7 @@ def test_dict_pandas_multi_column(cast_tensor_columns):
     output_dict = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
+
     for k, v in output_dict.items():
         np.testing.assert_array_equal(v, array_dict[k])
 

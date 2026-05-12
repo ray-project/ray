@@ -82,7 +82,6 @@ def options_from_req(req: aiohttp.web.Request) -> ListApiOptions:
     if limit > RAY_MAX_LIMIT_FROM_API_SERVER:
         raise ValueError(
             f"Given limit {limit} exceeds the supported "
-            f"Given limit {limit} exceeds the supported "
             f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit, or set the "
             f"`RAY_MAX_LIMIT_FROM_API_SERVER` environment variable to a larger value."
         )

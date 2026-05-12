@@ -8,14 +8,14 @@ import torch
 
 import ray
 import ray.train.torch
-from ray.air._internal.torch_utils import (
-    arrow_batch_to_tensors,
-    convert_ndarray_batch_to_torch_tensor_batch,
-)
 from ray.data.iterator import (
     ArrowBatchCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
+)
+from ray.data.util.torch_utils import (
+    arrow_batch_to_tensors,
+    convert_ndarray_batch_to_torch_tensor_batch,
 )
 
 

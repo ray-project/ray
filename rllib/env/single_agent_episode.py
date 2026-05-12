@@ -18,6 +18,8 @@ from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
+_REWARDS_BOX_SPACE = gym.spaces.Box(float("-inf"), float("inf"), (), np.float32)
+
 
 @PublicAPI(stability="alpha")
 class SingleAgentEpisode:
@@ -312,7 +314,7 @@ class SingleAgentEpisode:
             self.rewards = InfiniteLookbackBuffer(
                 data=rewards,
                 lookback=len_lookback_buffer,
-                space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+                space=_REWARDS_BOX_SPACE,
             )
 
         # obs[-1] is the final observation in the episode.
@@ -456,9 +458,6 @@ class SingleAgentEpisode:
                     f"action_space: {self.action_space}!"
                 )
 
-        # Validate our data.
-        self.validate()
-
         # Step time stats.
         self._last_step_time = time.perf_counter()
         if self._start_time is None:
@@ -583,6 +582,8 @@ class SingleAgentEpisode:
         Returns:
              This `SingleAgentEpisode` object with the converted numpy data.
         """
+        # Check that the episode data is correct
+        self.validate()
 
         self.observations.finalize()
         if len(self) > 0:
@@ -616,7 +617,8 @@ class SingleAgentEpisode:
         assert not self.is_done
         # Make sure the timesteps match.
         assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
-        # Validate `other`.
+        # Validate both this and the other episode
+        self.validate()
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.

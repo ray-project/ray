@@ -55,6 +55,7 @@ def update_file_version(
     non_java_files = [
         "ci/ray_ci/utils.py",
         "python/ray/_version.py",
+        "rayci.env",
         "src/ray/common/constants.h",
     ]
     non_java_files.sort()

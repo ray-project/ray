@@ -33,6 +33,9 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
+from ray._raylet import GcsClient
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -193,7 +196,7 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-# TODO(qwang): Remove these hepler functions
+# TODO(qwang): Remove these helper functions
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
@@ -275,7 +278,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
         ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
+        False,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
@@ -494,7 +497,7 @@ def get_cgroup_used_memory(
 ):
     """
     The calculation logic is the same with `GetCGroupMemoryUsedBytes`
-    in `memory_monitor.cc` file.
+    in `memory_monitor_utils.cc` file.
     """
     inactive_file_bytes = -1
     active_file_bytes = -1
@@ -520,42 +523,133 @@ def get_cgroup_used_memory(
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
+def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
+    """
+    Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
+
+    Supports both cgroups v1 and v2. Total is capped at the host physical
+    memory.
+    """
+    mem_usage_v1_file = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    mem_stat_v1_file = "/sys/fs/cgroup/memory/memory.stat"
+    mem_limit_v1_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    mem_usage_v2_file = "/sys/fs/cgroup/memory.current"
+    mem_stat_v2_file = "/sys/fs/cgroup/memory.stat"
+    mem_limit_v2_file = "/sys/fs/cgroup/memory.max"
+
+    cgroup_used = None
+    cgroup_total = None
+    system_total = get_system_memory()
+
+    if os.path.exists(mem_usage_v1_file) and os.path.exists(mem_stat_v1_file):
+        cgroup_used = get_cgroup_used_memory(
+            mem_stat_v1_file,
+            mem_usage_v1_file,
+            "total_inactive_file",
+            "total_active_file",
+        )
+        try:
+            with open(mem_limit_v1_file, "r") as f:
+                cgroup_total = min(int(f.read().strip()), system_total)
+        except Exception as exception:
+            logger.warning(
+                f"Failed to obtain current container memory limit from {mem_limit_v1_file}: {repr(exception)}. "
+                "Falling back to system total memory."
+            )
+            cgroup_total = system_total
+    elif os.path.exists(mem_usage_v2_file) and os.path.exists(mem_stat_v2_file):
+        cgroup_used = get_cgroup_used_memory(
+            mem_stat_v2_file, mem_usage_v2_file, "inactive_file", "active_file"
+        )
+        try:
+            with open(mem_limit_v2_file, "r") as f:
+                max_val = f.read().strip()
+            if max_val.isnumeric():
+                cgroup_total = min(int(max_val), system_total)
+            else:
+                cgroup_total = system_total
+        except Exception as exception:
+            logger.warning(
+                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}. "
+                "Falling back to system total memory."
+            )
+            cgroup_total = system_total
+
+    if cgroup_used is not None and cgroup_total is not None:
+        return cgroup_used, cgroup_total
+    return None
+
+
+def resolve_object_store_memory(
+    available_memory_bytes: int,
+    object_store_memory: Optional[int] = None,
+) -> int:
+    """Resolve the object store memory size.
+
+    This function determines the appropriate object store memory size based on
+    the provided value or calculates a default based on available system memory.
+
+    Args:
+        available_memory_bytes: The memory available for this node.
+        object_store_memory: The user-specified object store memory size in bytes.
+            If None, a default size will be calculated.
+
+    Returns:
+        The resolved object store memory size in bytes.
+    """
+    # Derive default object store memory if not specified
+    if object_store_memory is None:
+        object_store_memory_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+
+        # Cap by shm size by default to avoid low performance, but don't
+        # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
+        if sys.platform == "linux" or sys.platform == "linux2":
+            # Multiple by 0.95 to give a bit of wiggle-room.
+            # https://github.com/ray-project/ray/pull/23034/files
+            shm_avail = get_shared_memory_bytes() * 0.95
+            shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
+
+            object_store_memory_cap = min(object_store_memory_cap, shm_cap)
+
+        object_store_memory = int(
+            available_memory_bytes
+            * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
+
+        # Set the object_store_memory size to 2GB on Mac
+        # to avoid degraded performance.
+        # (https://github.com/ray-project/ray/issues/20388)
+        if sys.platform == "darwin":
+            object_store_memory = min(
+                object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+            )
+
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if object_store_memory > object_store_memory_cap:
+            logger.debug(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    object_store_memory_cap // 1e9
+                )
+                + "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start."
+            )
+            object_store_memory = object_store_memory_cap
+
+    return object_store_memory
+
+
 def get_used_memory():
-    """Return the currently used system memory in bytes
+    """
+    Return the currently used system memory in bytes
+    If cgroup memory utilization files (e.g. memory.stat) are available,
+    we are in a container/cgroup. Use the cgroup memory usage instead.
 
     Returns:
         The total amount of used memory
     """
-    # Try to accurately figure out the memory usage if we are in a docker
-    # container.
-    docker_usage = None
-    # For cgroups v1:
-    memory_usage_filename_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-    memory_stat_filename_v1 = "/sys/fs/cgroup/memory/memory.stat"
-    # For cgroups v2:
-    memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
-    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename_v1) and os.path.exists(
-        memory_stat_filename_v1
-    ):
-        docker_usage = get_cgroup_used_memory(
-            memory_stat_filename_v1,
-            memory_usage_filename_v1,
-            "total_inactive_file",
-            "total_active_file",
-        )
-    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
-        memory_stat_filename_v2
-    ):
-        docker_usage = get_cgroup_used_memory(
-            memory_stat_filename_v2,
-            memory_usage_filename_v2,
-            "inactive_file",
-            "active_file",
-        )
-
-    if docker_usage is not None:
-        return docker_usage
+    cgroup_stats = get_cgroup_mem_stats()
+    if cgroup_stats is not None:
+        return cgroup_stats[0]
     return psutil.virtual_memory().used
 
 
@@ -638,7 +732,7 @@ def check_oversized_function(
 
 
 def is_main_thread():
-    return threading.current_thread().getName() == "MainThread"
+    return threading.current_thread().name == "MainThread"
 
 
 def detect_fate_sharing_support_win32():
@@ -1114,6 +1208,53 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     return result
 
 
+def get_all_node_info_until_retrieved(
+    gcs_client: GcsClient,
+    node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
+    state_filter: Optional[int] = None,
+    num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
+    timeout_per_retry: Optional[int | float] = None,
+) -> List[GcsNodeInfo]:
+    """
+    Get all node info from GCS with retry until the node info is found.
+
+    Raises:
+        Exception: If the node info is not found after the retries,
+                   Or the RPC error getting the node info from GCS.
+
+    Args:
+        gcs_client: The GCS client.
+        node_selectors: The attributes to filter the node info.
+        state_filter: The state to filter the node info.
+        num_retries: The number of retries.
+        timeout_per_retry: The timeout per request to get the node info.
+
+    Returns:
+        The list of node info matching the selectors and state filter.
+    """
+    node_infos = []
+    for _ in range(num_retries):
+        try:
+            node_infos = gcs_client.get_all_node_info(
+                timeout=timeout_per_retry,
+                node_selectors=node_selectors,
+                state_filter=state_filter,
+            ).values()
+        except Exception as e:
+            logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
+            node_infos = []
+
+        if node_infos:
+            break
+        time.sleep(2)
+
+    if not node_infos:
+        raise Exception(
+            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+        )
+    return node_infos
+
+
 def parse_resources_json(
     resources: str, cli_logger, cf, command_arg="--resources"
 ) -> Dict[str, float]:
@@ -1554,18 +1695,15 @@ def parse_pg_formatted_resources_to_original(
 def validate_actor_state_name(actor_state_name):
     if actor_state_name is None:
         return
-    actor_state_names = [
-        "DEPENDENCIES_UNREADY",
-        "PENDING_CREATION",
-        "ALIVE",
-        "RESTARTING",
-        "DEAD",
-    ]
-    if actor_state_name not in actor_state_names:
+
+    from ray._private.custom_types import ACTOR_STATUS
+
+    if actor_state_name not in ACTOR_STATUS:
+        quoted = [f'"{s}"' for s in ACTOR_STATUS]
+        states_str = ", ".join(quoted[:-1]) + f", or {quoted[-1]}"
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            'it must be one of the following: "DEPENDENCIES_UNREADY", '
-            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+            f"it must be one of the following: {states_str}"
         )
 
 

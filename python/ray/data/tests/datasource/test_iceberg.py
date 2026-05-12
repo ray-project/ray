@@ -118,6 +118,29 @@ def pyiceberg_table():
     table.delete(delete_filter=pyi_expr.GreaterThanOrEqual("col_a", 101))
 
 
+@pytest.fixture
+def fast_retry_config():
+    """Configure DataContext for fast retry testing."""
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    iceberg_config = ctx.iceberg_config
+    original_max_attempts = iceberg_config.write_file_max_attempts
+    original_max_backoff = iceberg_config.write_file_retry_max_backoff_s
+    original_errors = ctx.retried_io_errors
+
+    iceberg_config.write_file_max_attempts = 3
+    iceberg_config.write_file_retry_max_backoff_s = 1
+    ctx.retried_io_errors = list(original_errors) + ["TestTransientError"]
+
+    yield ctx
+
+    # Restore original settings
+    iceberg_config.write_file_max_attempts = original_max_attempts
+    iceberg_config.write_file_retry_max_backoff_s = original_max_backoff
+    ctx.retried_io_errors = original_errors
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
@@ -233,7 +256,8 @@ def test_read_basic():
 
     # Actually compare the tables now
     table_p = ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
-    assert orig_table_p.equals(table_p)
+    orig_table_p = orig_table_p.astype(table_p.dtypes.to_dict())
+    pd.testing.assert_frame_equal(orig_table_p, table_p)
 
 
 @pytest.mark.skipif(
@@ -264,7 +288,7 @@ def test_write_basic():
     table_p = (
         ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
     )
-    assert orig_table_p.equals(table_p)
+    assert rows_same(table_p, orig_table_p)
 
 
 @pytest.mark.skipif(
@@ -316,7 +340,7 @@ def test_predicate_pushdown():
 
     # Verify the filter is pushed down to the read operation
     # by checking the optimized logical plan
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Filter operator
@@ -362,7 +386,7 @@ def test_predicate_pushdown_with_initial_filter():
     filtered_ds = ds.filter(expr=col("col_c") >= 5)
 
     # Verify both filters are pushed down
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # No Filter operator should remain in the plan
@@ -406,7 +430,7 @@ def test_projection_pushdown():
     projected_ds = ds.select_columns(["col_a", "col_c"])
 
     # Verify the projection is pushed down to the read operation
-    logical_plan = projected_ds._plan._logical_plan
+    logical_plan = projected_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Project operator
@@ -489,7 +513,7 @@ def test_projection_and_predicate_pushdown(
         filtered_ds = projected_ds
 
     # Verify both optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down
@@ -627,7 +651,7 @@ def test_rename_select_filter_combinations(
         ds = ds.filter(expr=filter_expr)
 
     # Verify optimizations are applied
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down (when applicable)
@@ -708,7 +732,7 @@ def test_predicate_pushdown_complex_expression():
     result = filtered_ds.to_pandas()
 
     # Verify optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     assert not _has_operator_type(
@@ -762,6 +786,12 @@ def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
     if "col_c" in df.columns:
         # Use nullable Int32 to support NaN values
         df["col_c"] = df["col_c"].astype("Int32")
+    # Cast object/string columns to a nullable string dtype so ``None`` is
+    # represented as ``<NA>``, matching the Arrow-backed ``string[pyarrow]``
+    # produced by ``read_iceberg().to_pandas()``.
+    for column in df.columns:
+        if df[column].dtype == object:
+            df[column] = df[column].astype("string")
     return df
 
 
@@ -1565,6 +1595,64 @@ class TestSchemaEvolutionWithModes:
             }
         )
         assert rows_same(result, expected)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
+    """Test that transient errors during file writes trigger retries."""
+    from unittest.mock import patch
+
+    from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+    from ray.data._internal.execution.interfaces import TaskContext
+
+    # Create datasink and initialize it
+    datasink = IcebergDatasink(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    datasink.on_write_start()
+
+    # Track call count to simulate transient failures
+    call_count = {"count": 0}
+
+    # Import original function before patching
+    from pyiceberg.io.pyarrow import _dataframe_to_data_files
+
+    original_func = _dataframe_to_data_files
+
+    def flaky_dataframe_to_data_files(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] <= 2:
+            # Fail first 2 attempts with a retryable error
+            raise IOError("TestTransientError: simulated transient failure")
+        # Succeed on 3rd attempt
+        return original_func(*args, **kwargs)
+
+    # Create test data
+    data = pa.Table.from_pydict(
+        {"col_a": [200, 201], "col_b": ["x", "y"], "col_c": [5, 5]},
+        schema=_SCHEMA,
+    )
+
+    # Patch at pyiceberg module level and call write directly
+    with patch(
+        "pyiceberg.io.pyarrow._dataframe_to_data_files",
+        side_effect=flaky_dataframe_to_data_files,
+    ):
+        # Call write directly (bypassing Ray workers)
+        task_ctx = TaskContext(task_idx=0, op_name="Write")
+        result = datasink.write([data], task_ctx)
+
+    # Verify retries occurred (called 3 times: 2 failures + 1 success)
+    assert (
+        call_count["count"] == 3
+    ), f"Expected 3 calls (2 retries + 1 success), got {call_count['count']}"
+
+    # Verify write result has data files
+    assert len(result.data_files) > 0, "Expected data files in result"
 
 
 if __name__ == "__main__":

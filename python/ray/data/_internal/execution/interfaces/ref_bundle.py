@@ -1,5 +1,4 @@
 import itertools
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
@@ -7,12 +6,18 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    Schema,
+    _take_first_non_empty_schema,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-@dataclass
+@dataclass(frozen=True)
 class BlockSlice:
     """A slice of a block."""
 
@@ -26,7 +31,7 @@ class BlockSlice:
         return self.end_offset - self.start_offset
 
 
-@dataclass
+@dataclass(frozen=True)
 class RefBundle:
     """A group of data block references and their metadata.
 
@@ -58,7 +63,7 @@ class RefBundle:
     # a list with length equal to len(blocks). Individual entries can be None to
     # represent a full block (equivalent to BlockSlice(0, num_rows)).
     # Pass None during construction to initialize all slices as None (full blocks).
-    slices: Optional[List[Optional[BlockSlice]]] = None
+    slices: Optional[Tuple[Optional[BlockSlice], ...]] = None
 
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
@@ -73,12 +78,24 @@ class RefBundle:
     _cached_preferred_locations: Optional[Dict[NodeIdStr, int]] = None
 
     def __post_init__(self):
+        if self.schema is not None:
+            import pyarrow as pa
+
+            from ray.data._internal.pandas_block import PandasBlockSchema
+
+            assert isinstance(
+                self.schema, (pa.lib.Schema, PandasBlockSchema)
+            ), f"Schema must be a pyarrow or PandasBlockSchema, got {type(self.schema)}"
+
         if not isinstance(self.blocks, tuple):
             object.__setattr__(self, "blocks", tuple(self.blocks))
 
         if self.slices is None:
-            self.slices = [None] * len(self.blocks)
+            object.__setattr__(self, "slices", (None,) * len(self.blocks))
         else:
+            if not isinstance(self.slices, tuple):
+                object.__setattr__(self, "slices", tuple(self.slices))
+
             assert len(self.blocks) == len(
                 self.slices
             ), "Number of blocks and slices must match"
@@ -105,11 +122,6 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
-            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
-        object.__setattr__(self, key, value)
 
     @property
     def block_refs(self) -> List[ObjectRef[Block]]:
@@ -164,7 +176,7 @@ class RefBundle:
             elif metadata.num_rows != block_slice.num_rows:
                 # Partial block - estimate size based on rows
                 per_row = metadata.size_bytes / metadata.num_rows
-                total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
+                total += max(1, round(per_row * block_slice.num_rows))
             else:
                 total += metadata.size_bytes
         return total
@@ -197,7 +209,9 @@ class RefBundle:
                 for loc in obj_meta.locs:
                     preferred_locs[loc] += obj_meta.size
 
-            self._cached_preferred_locations = preferred_locs
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_preferred_locations", preferred_locs)
 
         return self._cached_preferred_locations
 
@@ -216,7 +230,9 @@ class RefBundle:
                 for ref in self.block_refs
             }
 
-            self._cached_object_meta = object_metas
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_object_meta", object_metas)
 
         return self._cached_object_meta
 
@@ -290,37 +306,85 @@ class RefBundle:
             blocks=tuple(consumed_blocks),
             schema=self.schema,
             owns_blocks=False,
-            slices=consumed_slices if consumed_slices else None,
+            slices=tuple(consumed_slices) if consumed_slices else None,
         )
 
         remaining_bundle = RefBundle(
             blocks=tuple(remaining_blocks),
             schema=self.schema,
             owns_blocks=False,
-            slices=remaining_slices if remaining_slices else None,
+            slices=tuple(remaining_slices) if remaining_slices else None,
         )
 
         return sliced_bundle, remaining_bundle
 
     @classmethod
-    def merge_ref_bundles(cls, bundles: List["RefBundle"]) -> "RefBundle":
-        assert bundles, "Cannot merge an empty list of RefBundles."
-        merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
-        merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
+    def merge_ref_bundles(cls, bundles: Iterable["RefBundle"]) -> "RefBundle":
+        """Merge multiple RefBundles into a single RefBundle.
+
+        Args:
+            bundles: An iterable of RefBundles to merge.
+
+        Returns:
+            A single RefBundle containing all blocks from the input bundles.
+            owns_blocks is True only if all input bundles own their blocks.
+            schema is the first non-empty schema found.
+        """
+
+        bundles = list(bundles)
+        if not bundles:
+            return cls(blocks=(), owns_blocks=True, schema=None)
+
+        merged_blocks = list(
+            itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
+        )
+        merged_slices = list(
+            itertools.chain.from_iterable(bundle.slices for bundle in bundles)
+        )
+        # Ray Data uses the `owns_blocks` flag to determine if the system can eagerly
+        # destroy blocks when they're no longer needed. To be safe, we only set this
+        # to True if all input bundles own their blocks.
+        owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+        # TODO: Reconcile the schemas rather than taking the first non-empty schema.
+        schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
         return cls(
             blocks=tuple(merged_blocks),
-            schema=bundles[0].schema,  # Assume all bundles have the same schema
-            owns_blocks=bundles[
-                0
-            ].owns_blocks,  # Assume all bundles have the same ownership
+            schema=schema,
+            owns_blocks=owns_blocks,
             slices=merged_slices,
         )
 
-    def __eq__(self, other) -> bool:
-        return self is other
+    def __eq__(self, other: "RefBundle"):
+        if self is other:
+            return True
+        elif not isinstance(other, RefBundle):
+            return False
+
+        return (
+            self.blocks == other.blocks
+            and self.slices == other.slices
+            # NOTE: We're establishing a requirement of schemas for `RefBundle`
+            #       to be exactly the same object for it to be considered equal.
+            #
+            #       This is necessary to avoid a full schema equality check that
+            #       is computationally intensive.
+            and self.schema is other.schema
+            and self.owns_blocks == other.owns_blocks
+            and self.output_split_idx == other.output_split_idx
+        )
 
     def __hash__(self) -> int:
-        return id(self)
+        return hash(
+            (
+                # Only hash block refs
+                *[b for b, _ in self.blocks],
+                *self.slices,
+                # Check out comment in ``__eq__``
+                id(self.schema),
+                self.owns_blocks,
+                self.output_split_idx,
+            )
+        )
 
     def __len__(self) -> int:
         return len(self.blocks)

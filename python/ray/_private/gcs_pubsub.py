@@ -18,6 +18,12 @@ from ray.core.generated import (
 
 logger = logging.getLogger(__name__)
 
+_OBSERVABILITY_PUBSUB_CHANNELS = (
+    pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
+    pubsub_pb2.RAY_LOG_CHANNEL,
+    pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
+)
+
 
 class _SubscriberBase:
     def __init__(self, worker_id: bytes = None):
@@ -97,8 +103,10 @@ class _AioSubscriber(_SubscriberBase):
             channel = gcs_utils.create_gcs_channel(address, aio=True)
         else:
             assert channel is not None, "One of address and channel must be specified"
-        # GRPC stub to GCS pubsub.
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+        if pubsub_channel_type in _OBSERVABILITY_PUBSUB_CHANNELS:
+            self._stub = gcs_service_pb2_grpc.ObservabilityPubSubServiceStub(channel)
+        else:
+            self._stub = gcs_service_pb2_grpc.ControlPlanePubSubGcsServiceStub(channel)
 
         # Type of the channel.
         self._channel = pubsub_channel_type
@@ -142,11 +150,11 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 self._last_batch_size = len(poll.result().pub_messages)
                 if poll.result().publisher_id != self._publisher_id:
-                    if self._publisher_id != "":
+                    if self._publisher_id != b"":
                         logger.debug(
-                            f"replied publisher_id {poll.result().publisher_id}"
+                            f"replied publisher_id {poll.result().publisher_id} "
                             f"different from {self._publisher_id}, this should "
-                            "only happens during gcs failover."
+                            "only happen during gcs failover."
                         )
                     self._publisher_id = poll.result().publisher_id
                     self._max_processed_sequence_id = 0

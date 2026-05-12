@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -39,9 +40,9 @@ TEST(ProcessSpawnPGTest, SpawnWithNewProcessGroupRequestedChildBecomesLeader) {
                                    /*env=*/{},
                                    /*new_process_group=*/true);
   ASSERT_FALSE(ec) << ec.message();
-  ASSERT_TRUE(proc.IsValid());
+  ASSERT_TRUE(proc->IsValid());
 
-  pid_t pid = proc.GetId();
+  pid_t pid = proc->GetId();
   ASSERT_GT(pid, 0);
   // Child should be leader of its own process group.
 #if defined(__APPLE__)
@@ -71,7 +72,7 @@ TEST(ProcessSpawnPGTest, SpawnWithNewProcessGroupRequestedChildBecomesLeader) {
   }
   ASSERT_TRUE(ok) << "child did not become its own PG leader in time";
 #endif
-  proc.Kill();
+  proc->Kill();
 }
 
 TEST(ProcessSpawnPGTest, SpawnWithoutNewProcessGroupChildInheritsParentGroup) {
@@ -83,15 +84,15 @@ TEST(ProcessSpawnPGTest, SpawnWithoutNewProcessGroupChildInheritsParentGroup) {
                                    /*env=*/{},
                                    /*new_process_group=*/false);
   ASSERT_FALSE(ec) << ec.message();
-  ASSERT_TRUE(proc.IsValid());
+  ASSERT_TRUE(proc->IsValid());
 
-  pid_t pid = proc.GetId();
+  pid_t pid = proc->GetId();
   ASSERT_GT(pid, 0);
   // Child should inherit our process group
   pid_t my_pgid = getpgid(0);
   pid_t child_pgid = getpgid(pid);
   ASSERT_EQ(child_pgid, my_pgid);
-  proc.Kill();
+  proc->Kill();
 }
 
 }  // namespace

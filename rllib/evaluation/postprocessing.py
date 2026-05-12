@@ -1,7 +1,6 @@
 from typing import Dict, Optional
 
 import numpy as np
-import scipy.signal
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -325,4 +324,7 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
                2.0 + 0.9*3.0,
                3.0])
     """
+    # Import scipy here to avoid import error when framework is tensorflow.
+    import scipy
+
     return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

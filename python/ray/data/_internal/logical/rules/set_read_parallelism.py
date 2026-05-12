@@ -6,7 +6,7 @@ from ray import available_resources as ray_available_resources
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
-from ray.data._internal.logical.operators import Read
+from ray.data._internal.logical.operators import Read, ReadFiles
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.datasource.datasource import Datasource, Reader
@@ -106,13 +106,47 @@ class SetReadParallelismRule(Rule):
             if isinstance(op, InputDataBuffer):
                 continue
             logical_op = plan.op_map[op]
-            if isinstance(logical_op, Read):
-                self._apply(op, logical_op)
+            if isinstance(logical_op, ReadFiles):
+                self._apply_v2(plan, op, logical_op)
+            elif isinstance(logical_op, Read):
+                self._apply(plan, op, logical_op)
             ops += op.input_dependencies
 
         return plan
 
-    def _apply(self, op: PhysicalOperator, logical_op: Read):
+    def _apply_v2(
+        self, plan: PhysicalPlan, op: PhysicalOperator, logical_op: ReadFiles
+    ):
+        """Set parallelism for a ``ReadFiles`` op using sample-extrapolated size.
+
+        ``ReadFiles`` defers file listing to physical execution, so we don't
+        know the true file count here. The driver has already cached a
+        sample via ``_read_datasource_v2``; we use it plus
+        ``ParquetInMemorySizeEstimator`` to produce an upper-bound
+        in-memory size, then let ``_autodetect_parallelism`` pick a block
+        count. ``scanner.plan()`` rebalances at execution time, so this is
+        a planning-time approximation.
+        """
+        ctx = DataContext.get_current()
+        mem_size = logical_op.estimate_in_memory_size()
+
+        detected_parallelism, reason, _ = _autodetect_parallelism(
+            logical_op.parallelism,
+            op.target_max_block_size_override or ctx.target_max_block_size,
+            ctx,
+            datasource_or_legacy_reader=None,
+            mem_size=mem_size,
+        )
+
+        if logical_op.parallelism == -1:
+            assert reason != ""
+            logger.debug(
+                f"Using autodetected parallelism={detected_parallelism} "
+                f"for operator {logical_op.name} to satisfy {reason}."
+            )
+        plan.op_map[op] = logical_op.set_detected_parallelism(detected_parallelism)
+
+    def _apply(self, plan: PhysicalPlan, op: PhysicalOperator, logical_op: Read):
         estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
 
         (
@@ -121,20 +155,20 @@ class SetReadParallelismRule(Rule):
             estimated_num_blocks,
             k,
         ) = compute_additional_split_factor(
-            logical_op._datasource_or_legacy_reader,
-            logical_op._parallelism,
+            logical_op.datasource_or_legacy_reader,
+            logical_op.parallelism,
             estimated_in_mem_bytes,
             op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )
 
-        if logical_op._parallelism == -1:
+        if logical_op.parallelism == -1:
             assert reason != ""
             logger.debug(
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for operator {logical_op.name} to satisfy {reason}."
             )
-        logical_op.set_detected_parallelism(detected_parallelism)
+        plan.op_map[op] = logical_op.set_detected_parallelism(detected_parallelism)
 
         if k is not None:
             logger.debug(

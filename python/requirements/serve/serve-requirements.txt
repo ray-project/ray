@@ -1,0 +1,33 @@
+aiohttp
+anyio
+click
+fastapi
+gradio
+grpcio
+httpx
+numpy
+packaging
+pandas
+protobuf
+pydantic
+pymysql
+pytest
+pytest_asyncio
+PyYAML
+redis
+requests
+SQLAlchemy
+starlette
+typing_extensions
+# TODO(elliot-barn): might need to add vllm for tests
+# vllm
+websockets
+tensorflow
+tensorflow-probability
+torch
+torchvision
+transformers
+aioboto3
+tf_keras
+numexpr
+taskiq-redis

@@ -1,26 +1,29 @@
 group: base
 steps:
   - name: oss-ci-base_test-multipy
-    label: "wanda: oss-ci-base_test-py{{matrix}}"
+    label: "wanda: oss-ci-base_test-py{{array.python}}"
     wanda: ci/docker/base.test.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+        - "3.14"
     env:
-      PYTHON: "{{matrix}}"
+      PYTHON: "{{array.python}}"
 
   - name: oss-ci-base_build-multipy
-    label: "wanda: oss-ci-base_build-py{{matrix}}"
+    label: "wanda: oss-ci-base_build-py{{array.python}}"
     wanda: ci/docker/base.build.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
     env:
-      PYTHON: "{{matrix}}"
-    depends_on: oss-ci-base_test-multipy
+      PYTHON: "{{array.python}}"
+    depends_on: oss-ci-base_test-multipy($)
     tags: cibase
 
   - name: oss-ci-base_test-aarch64
@@ -35,25 +38,27 @@ steps:
     instance_type: builder-arm64
 
   - name: oss-ci-base_ml-multipy
-    label: "wanda: oss-ci-base_ml-py{{matrix}}"
+    label: "wanda: oss-ci-base_ml-py{{array.python}}"
     wanda: ci/docker/base.ml.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
     env:
-      PYTHON: "{{matrix}}"
-    depends_on: oss-ci-base_test-multipy
+      PYTHON: "{{array.python}}"
+    depends_on: oss-ci-base_test-multipy($)
 
   - name: oss-ci-base_gpu-multipy
-    label: "wanda: oss-ci-base_gpu-py{{matrix}}"
+    label: "wanda: oss-ci-base_gpu-py{{array.python}}"
     wanda: ci/docker/base.gpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
     env:
-      PYTHON: "{{matrix}}"
+      PYTHON: "{{array.python}}"
     tags: cibase
 
   - name: oss-ci-base_cu128-multipy
@@ -61,3 +66,13 @@ steps:
     wanda: ci/docker/base.cu128.wanda.yaml
     env:
       PYTHON: "3.11"
+
+  - name: oss-ci-base_cu130-multipy
+    label: "wanda: oss-ci-base_cu130-py{{array.python}}"
+    wanda: ci/docker/base.cu130.wanda.yaml
+    array:
+      python:
+        - "3.10"
+        - "3.12"
+    env:
+      PYTHON: "{{array.python}}"

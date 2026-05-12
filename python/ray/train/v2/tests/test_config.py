@@ -17,9 +17,23 @@ def test_scaling_config_validation():
 
     with pytest.raises(
         ValueError,
-        match="If `label_selector` is a list, it must be the same length as `num_workers`",
+        match=(
+            "If `label_selector` is a list, it must be the same length as "
+            "`max_workers`"
+        ),
     ):
         ScalingConfig(num_workers=2, label_selector=[{"subcluster": "my_subcluster"}])
+    with pytest.raises(
+        ValueError,
+        match=(
+            "If `label_selector` is a list, it must be the same length as "
+            "`max_workers`"
+        ),
+    ):
+        ScalingConfig(
+            num_workers=(2, 3),
+            label_selector=[{"subcluster": "a"}, {"subcluster": "b"}],
+        )
 
 
 def test_scaling_config_accelerator_type():
@@ -36,6 +50,17 @@ def test_scaling_config_accelerator_type():
     assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
+
+
+def test_scaling_config_tpu_min_workers_multiple():
+    with pytest.raises(ValueError, match="min_workers"):
+        ScalingConfig(
+            num_workers=(1, 2),
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            resources_per_worker={"TPU": 4},
+        )
 
 
 def test_storage_filesystem_repr():

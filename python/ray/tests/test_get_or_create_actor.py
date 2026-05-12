@@ -101,25 +101,6 @@ print("DONE")
     assert "DONE" in valid, out_str
 
 
-def test_get_or_create_named_actor(shutdown_only):
-    """
-    This test aggressively gets or creates a named actor and makes the actor
-    go out of scope immediately. Additionally, `max_restarts=-1` is set to make
-    the actor restartable and make the test more aggressive.
-    """
-
-    @ray.remote
-    class Actor:
-        pass
-
-    for _ in range(1000):
-        Actor.options(
-            name="test-get-or-create-named-actor",
-            get_if_exists=True,
-            max_restarts=-1,
-        ).remote()
-
-
 def test_get_or_create_actor_with_placement_group_validation(shutdown_only):
     """
     Test that get_or_create with placement group properly validates

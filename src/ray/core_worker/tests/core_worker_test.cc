@@ -28,11 +28,11 @@
 #include "absl/time/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/plasma/client.h"
-#include "ray/common/asio/fake_periodical_runner.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/actor_creator.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
@@ -710,6 +710,40 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[2].size(), 1U);
 }
 
+// Given 5 ids with 3 already local in plasma, Get() should send only the 2
+// remote ids to the raylet to pull from remote node.
+TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
+
+  auto fake_plasma = std::make_shared<plasma::FakePlasmaClient>();
+  fake_plasma->MarkLocal({ids[0], ids[2], ids[4]});
+
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/fake_plasma,
+      /*fetch_batch_size=*/10,
+      /*get_current_call_site=*/nullptr);
+
+  std::vector<rpc::Address> owner_addresses(ids.size());
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  // timeout=0 since this test verifies only what's sent to the raylet, not
+  // whether polling resolves the remote objects.
+  auto status = provider.Get(ids, owner_addresses, /*timeout_ms=*/0, &results);
+  EXPECT_TRUE(status.IsTimedOut());
+  EXPECT_EQ(results.size(), 3U);
+
+  ASSERT_EQ(fake_raylet->async_get_object_calls.size(), 1U);
+  absl::flat_hash_set<ObjectID> pulled(fake_raylet->async_get_object_calls[0].begin(),
+                                       fake_raylet->async_get_object_calls[0].end());
+  EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
+}
+
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
@@ -818,6 +852,93 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
 INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
                          CoreWorkerPubsubWorkerObjectEvictionChannelTest,
                          ::testing::Values(true, false));
+
+TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
+  // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
+  // type. The publisher was created with only:
+  // - WORKER_OBJECT_EVICTION
+  // - WORKER_REF_REMOVED_CHANNEL
+  // - WORKER_OBJECT_LOCATIONS_CHANNEL
+  // Using a channel type that was not registered should return InvalidArgument.
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  // Use GCS_ACTOR_CHANNEL which is not registered with the core worker's publisher.
+  command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  bool callback_invoked = false;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&callback_invoked, &received_status](
+          const Status &status, std::function<void()>, std::function<void()>) {
+        callback_invoked = true;
+        received_status = status;
+      });
+
+  ASSERT_TRUE(callback_invoked);
+  ASSERT_FALSE(received_status.ok());
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+  EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
+              std::string::npos);
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchMissingSubscribeOrUnsubscribeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
 
 class CoreWorkerPubsubWorkerRefRemovedChannelTest
     : public CoreWorkerTest,

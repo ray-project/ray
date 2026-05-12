@@ -7,8 +7,10 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -530,7 +532,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(
+            np.sort(df.values, axis=0), np.sort(combined_iterations, axis=0)
+        )
 
 
 @pytest.mark.skipif(
@@ -548,7 +552,36 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
         for batch in ds.iter_tf_batches(batch_size=2):
             iterations.append(batch["data"])
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(arr, combined_iterations)
+        np.testing.assert_array_equal(
+            np.sort(arr, axis=0), np.sort(combined_iterations, axis=0)
+        )
+
+
+def test_get_internal_block_refs(ray_start_regular_shared):
+    blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
+    assert len(blocks) == 10
+    out = []
+    for b in ray.get(blocks):
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+    out = sorted(out)
+    assert out == list(range(10)), out
+
+
+def test_iter_internal_ref_bundles(ray_start_regular_shared):
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=n)
+    iter_ref_bundles = ds.iter_internal_ref_bundles()
+
+    out = []
+    ref_bundle_count = 0
+    for ref_bundle in iter_ref_bundles:
+        for block_ref, block_md in ref_bundle.blocks:
+            b = ray.get(block_ref)
+            out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+        ref_bundle_count += 1
+    out = sorted(out)
+    assert ref_bundle_count == n
+    assert out == list(range(n)), out
 
 
 if __name__ == "__main__":

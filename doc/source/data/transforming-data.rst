@@ -212,7 +212,7 @@ In this case, your function would look like:
         # yield the same batch multiple times
         for _ in range(10):
             yield batch
-            
+
 Choosing the right batch format
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -225,7 +225,7 @@ For example, if the underlying block type is Arrow, specifying ``batch_format="n
 
 Ray Data also strives to minimize the amount of data conversions: for example, if your ``map_batches`` operation returns Pandas batches, then these batches are combined into blocks *without* conversion and propagated further as Pandas blocks. Most Ray Data datasources produce Arrow blocks, so using batch format ``pyarrow`` can avoid unnecessary data conversions.
 
-If you'd like to use a more ergonomic API for transformations but avoid performance overheads, you can consider using ``polars`` inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
+If you'd like to use a more ergonomic API for transformations but avoid performance overheads, you can consider using Polars inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
 
 .. testcode::
 
@@ -247,8 +247,9 @@ Increasing ``batch_size`` improves the performance of vectorized transformations
 as performance of model inference. However, if your batch size is too large, your
 program might run into out-of-memory (OOM) errors.
 
-If you encounter an OOM errors, try decreasing your ``batch_size``.
-
+Use ``batch_size="auto"`` to let Ray Data automatically determine an appropriate batch
+size based on the size of your data. For GPU workloads, you must specify an explicit
+integer batch size. If you encounter OOM errors with an explicit batch size, try decreasing it.
 
 .. _stateful_transforms:
 
@@ -365,7 +366,7 @@ You can read more about resources in Ray here: :ref:`resource-requirements`.
     :hide:
 
     import ray
-    
+
     ds = ray.data.range(1)
 
 .. testcode::

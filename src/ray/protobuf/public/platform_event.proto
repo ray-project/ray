@@ -1,0 +1,54 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+message Source {
+  enum Platform {
+    PLATFORM_UNSPECIFIED = 0;
+    KUBERNETES = 1;
+  }
+
+  // Platform that emitted the event.
+  Platform platform = 1;
+
+  // Component within the platform, e.g. "kubelet", "ray-operator".
+  string component = 2;
+
+  // Source-specific metadata, e.g. {"instance": "kubelet-xyzf", "namespace": "default"}.
+  map<string, string> metadata = 3;
+}
+
+message PlatformEvent {
+  // Component that emitted this event.
+  Source source = 1;
+
+  // Type of the resource this event is about, e.g. "Pod", "RayCluster", "Job".
+  string object_kind = 2;
+
+  // Name/identifier of the specific resource instance.
+  string object_name = 3;
+
+  // Human-readable description of the event.
+  string message = 4;
+
+  // Short, machine-readable identifier for why the event was generated,
+  // e.g. "Scheduled", "OOMKilled", "BackOff".
+  string reason = 5;
+
+  // Arbitrary key-value metadata for platform-specific extensions.
+  map<string, string> custom_fields = 6;
+}

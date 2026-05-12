@@ -16,7 +16,13 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
 from ray._common.network_utils import build_address, find_free_port
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    SignalActor,
+    fetch_prometheus_metric_timeseries,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
@@ -27,9 +33,6 @@ from ray._private.ray_constants import (
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
 )
 from ray._private.test_utils import (
-    PrometheusTimeseries,
-    fetch_prometheus_metric_timeseries,
-    fetch_prometheus_timeseries,
     get_log_batch,
     raw_metric_timeseries,
 )
@@ -64,6 +67,8 @@ _METRICS = [
     "ray_node_disk_usage",
     "ray_node_mem_used",
     "ray_node_mem_total",
+    "ray_node_mem_used_host",
+    "ray_node_mem_total_host",
     "ray_node_cpu_utilization",
     # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
     # , e.g. need to see how users currently depend on them.
@@ -164,6 +169,8 @@ _NODE_METRICS = [
     "ray_node_mem_used",
     "ray_node_mem_available",
     "ray_node_mem_total",
+    "ray_node_mem_total_host",
+    "ray_node_mem_used_host",
     "ray_node_disk_io_read",
     "ray_node_disk_io_write",
     "ray_node_disk_io_read_count",

@@ -14,6 +14,7 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
 )
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -121,6 +122,12 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 get_if_exists=True,
                 lifetime="detached",
             ).remote()
+
+            # Register the actor with the controller for cleanup on serve.shutdown()
+            controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+            ray.get(
+                controller._register_shutdown_cleanup_actor.remote(self._tree_actor)
+            )
         else:
             self._tree_actor = tree_actor
 

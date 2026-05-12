@@ -4,7 +4,7 @@ from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -192,6 +192,7 @@ class BatchIterator:
             batch_format=self._batch_format,
             collate_fn=self._collate_fn,
             num_threadpool_workers=num_threadpool_workers,
+            ensure_copy=self._ensure_copy,
         )
 
     def _finalize_batches(
@@ -312,11 +313,12 @@ def _format_in_threadpool(
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
+    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
     Args:
-        logical_batch_iterator: An iterator over logical batches.
+        batch_iter: An iterator over logical batches.
         stats: DatasetStats object to record timing and other statistics.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -326,6 +328,8 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
     """
 
     def threadpool_computations_format_collate(
@@ -333,7 +337,7 @@ def _format_in_threadpool(
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
-            batch_iter, batch_format=batch_format, stats=stats
+            batch_iter, batch_format=batch_format, stats=stats, ensure_copy=ensure_copy
         )
 
         # Step 4b: Apply the collate function if applicable.
@@ -341,7 +345,8 @@ def _format_in_threadpool(
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
-        yield from formatted_batch_iter
+
+        return formatted_batch_iter
 
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(
@@ -352,6 +357,7 @@ def _format_in_threadpool(
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
+
     return collated_iter
 
 

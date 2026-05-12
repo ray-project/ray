@@ -54,12 +54,15 @@ def compute_text_embeddings(
         # Get embeddings
         with torch.no_grad():
             outputs = model.get_text_features(**inputs)
-        
-        # L2 normalize
-        embeddings = outputs.cpu().numpy()
+
+        # Handle case where outputs is a model output object vs raw tensor
+        if hasattr(outputs, 'pooler_output'):
+            embeddings = outputs.pooler_output.cpu().numpy()
+        else:
+            embeddings = outputs.cpu().numpy()
         embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
         all_embeddings.append(embeddings)
-    
+
     return np.vstack(all_embeddings).astype(np.float32)
 
 

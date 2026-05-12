@@ -13,7 +13,8 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.tests.util import create_dummy_training_results
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
+from ray.train.v2.tests.util import create_dummy_training_reports
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -42,6 +43,20 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
             and tr1.checkpoint.filesystem == tr2.checkpoint.filesystem
         )
 
+    def _checkpoint_to_report_indices_equal(
+        cm1: CheckpointManager, cm2: CheckpointManager
+    ) -> bool:
+        # Do this because Checkpoint and Filesystem are not hashable.
+        cm1_dict = {
+            checkpoint.path: report_index
+            for checkpoint, report_index in cm1._checkpoint_to_report_index.items()
+        }
+        cm2_dict = {
+            checkpoint.path: report_index
+            for checkpoint, report_index in cm2._checkpoint_to_report_index.items()
+        }
+        return cm1_dict == cm2_dict
+
     if cm1._checkpoint_config != cm2._checkpoint_config:
         return False
     if not _training_results_equal(
@@ -57,6 +72,10 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
     for tr1, tr2 in zip(cm1.best_checkpoint_results, cm2.best_checkpoint_results):
         if not _training_results_equal(tr1, tr2):
             return False
+    if cm1._current_report_index != cm2._current_report_index:
+        return False
+    if not _checkpoint_to_report_indices_equal(cm1, cm2):
+        return False
     return True
 
 
@@ -71,6 +90,7 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         ),
     ],
 )
+@pytest.mark.asyncio
 async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
@@ -92,13 +112,18 @@ async def test_save_load_state_equivalence(
         storage_context=storage_context,
         checkpoint_config=checkpoint_config,
     )
-    training_results = create_dummy_training_results(
-        num_results=3, storage_context=storage_context
+    training_reports = create_dummy_training_reports(
+        num_results=2, storage_context=storage_context
+    ) + create_dummy_training_reports(
+        num_results=1,
+        storage_context=storage_context,
+        include_validation=True,
+        starting_checkpoint_index=2,
     )
 
     # Register the training results into checkpoint manager
-    for i, tr in enumerate(training_results):
-        checkpoint_manager.register_checkpoint(tr, False)
+    for i, tr in enumerate(training_reports):
+        checkpoint_manager.register_checkpoint(tr)
         assert checkpoint_manager._current_report_index == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
@@ -108,13 +133,20 @@ async def test_save_load_state_equivalence(
 
 
 @pytest.mark.parametrize(
-    "json_state",
+    "json_state,match",
     [
-        '{"dummy": "1", "dummy_dict": {"key": "value"}}',
-        '{"dummy": "1", "dummy_dict": {"key": "value"',
+        (
+            '{"dummy": "1", "dummy_dict": {"key": "value"}}',
+            "You are loading a checkpoint manager snapshot saved with an unknown Ray version but",
+        ),
+        ('{"ray_version": "2.0.0", "dummy": "1", "dummy_dict": {"key": "value"', None),
+        (
+            '{"ray_version": "2.0.0", "dummy": "1", "dummy_dict": {"key": "value"}}',
+            "You are loading a checkpoint manager snapshot saved with Ray version 2.0.0 but",
+        ),
     ],
 )
-def test_load_state_error(tmp_path, json_state):
+def test_load_state_error(tmp_path, json_state, match):
 
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -126,10 +158,12 @@ def test_load_state_error(tmp_path, json_state):
     )
     with pytest.raises(
         CheckpointManagerInitializationError,
+        match=match,
     ):
         checkpoint_manager._load_state(json_state)
 
 
+@pytest.mark.asyncio
 async def test_before_init_train_context(tmp_path):
 
     storage_context = StorageContext(
@@ -145,16 +179,19 @@ async def test_before_init_train_context(tmp_path):
     # Assert without a checkpoint.
     assert checkpoint_manager.before_init_train_context(workers) == {
         "checkpoint": [None] * 4,
+        "current_report_index": [0] * 4,
     }
 
     # Assert with a checkpoint
-    latest_checkpoint_result = create_dummy_training_results(1, storage_context)[0]
-    checkpoint_manager.register_checkpoint(latest_checkpoint_result, False)
+    latest_checkpoint_report = create_dummy_training_reports(1, storage_context)[0]
+    checkpoint_manager.register_checkpoint(latest_checkpoint_report)
     assert checkpoint_manager.before_init_train_context(workers) == {
-        "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
+        "checkpoint": [latest_checkpoint_report.checkpoint] * 4,
+        "current_report_index": [1] * 4,
     }
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -170,38 +207,51 @@ async def test_pending_checkpoint_management(tmp_path):
         checkpoint_config=checkpoint_config,
     )
     (
-        low_initial_high_final_training_result,
-        high_initial_low_final_training_result,
-        final_training_result,
-    ) = create_dummy_training_results(num_results=3, storage_context=storage_context)
-    scoreless_training_result = create_dummy_training_results(
-        num_results=1, storage_context=storage_context, include_metrics=False
+        low_initial_high_final_training_report,
+        high_initial_low_final_training_report,
+        final_training_report,
+    ) = create_dummy_training_reports(
+        num_results=3, storage_context=storage_context, include_validation=True
+    )
+    final_training_report.validation = False
+    scoreless_training_report = create_dummy_training_reports(
+        num_results=1,
+        storage_context=storage_context,
+        include_metrics=False,
+        starting_checkpoint_index=3,
     )[0]
 
     # Register pending/final/unknown checkpoints and verify their storage
-    checkpoint_manager.register_checkpoint(low_initial_high_final_training_result, True)
-    checkpoint_manager.register_checkpoint(final_training_result, False)
-    checkpoint_manager.register_checkpoint(scoreless_training_result, False)
-    checkpoint_manager.register_checkpoint(high_initial_low_final_training_result, True)
-    assert checkpoint_manager._checkpoint_results == [
-        low_initial_high_final_training_result,  # keep pending
-        high_initial_low_final_training_result,  # keep pending/latest
-        final_training_result,  # keep highest final score so far
+    checkpoint_manager.register_checkpoint(low_initial_high_final_training_report)
+    checkpoint_manager.register_checkpoint(final_training_report)
+    checkpoint_manager.register_checkpoint(scoreless_training_report)
+    checkpoint_manager.register_checkpoint(high_initial_low_final_training_report)
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        low_initial_high_final_training_report.checkpoint,  # keep pending
+        high_initial_low_final_training_report.checkpoint,  # keep pending/latest
+        final_training_report.checkpoint,  # keep highest final score so far
     ]
 
     # Assert checkpoint state after all tasks are done
-    checkpoint_manager.update_checkpoints_with_metrics(
+    checkpoint_manager.update_checkpoints_with_validation_result(
         {
-            low_initial_high_final_training_result.checkpoint: {"score": 200},
-            high_initial_low_final_training_result.checkpoint: {"score": 100},
+            low_initial_high_final_training_report.checkpoint: (
+                {"score": 200},
+                ReportedCheckpointStatus.VALIDATED,
+            ),
+            high_initial_low_final_training_report.checkpoint: (
+                {"score": 100},
+                ReportedCheckpointStatus.VALIDATED,
+            ),
         }
     )
-    assert checkpoint_manager._checkpoint_results == [
-        high_initial_low_final_training_result,  # keep latest checkpoint
-        low_initial_high_final_training_result,  # keep highest score checkpoint
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        high_initial_low_final_training_report.checkpoint,  # keep latest checkpoint
+        low_initial_high_final_training_report.checkpoint,  # keep highest score checkpoint
     ]
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -211,35 +261,36 @@ async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path
         storage_context=storage_context,
         checkpoint_config=CheckpointConfig(),
     )
-    training_results = create_dummy_training_results(
-        num_results=2, storage_context=storage_context, include_metrics=False
+    training_reports = create_dummy_training_reports(
+        num_results=2, storage_context=storage_context, include_validation=True
     )
-    checkpoint_manager.register_checkpoint(training_results[0], True)
-    checkpoint_manager.register_checkpoint(training_results[1], True)
-    assert checkpoint_manager._checkpoint_results == [
-        training_results[0],
-        training_results[1],
+    checkpoint_manager.register_checkpoint(training_reports[0])
+    checkpoint_manager.register_checkpoint(training_reports[1])
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
     ]
-    checkpoint_manager.update_checkpoints_with_metrics(
+    checkpoint_manager.update_checkpoints_with_validation_result(
         {
-            training_results[1].checkpoint: {},
+            training_reports[1].checkpoint: ({}, ReportedCheckpointStatus.VALIDATED),
         }
     )
-    assert checkpoint_manager._checkpoint_results == [
-        training_results[0],
-        training_results[1],
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
     ]
-    checkpoint_manager.update_checkpoints_with_metrics(
+    checkpoint_manager.update_checkpoints_with_validation_result(
         {
-            training_results[0].checkpoint: {},
+            training_reports[0].checkpoint: ({}, ReportedCheckpointStatus.VALIDATED),
         }
     )
-    assert checkpoint_manager._checkpoint_results == [
-        training_results[0],
-        training_results[1],
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
     ]
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -252,23 +303,26 @@ async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
             checkpoint_score_order="max",
         ),
     )
-    training_results = create_dummy_training_results(
+    training_reports = create_dummy_training_reports(
         num_results=2, storage_context=storage_context
     )
-    checkpoint_manager.register_checkpoint(training_results[0], False)
-    checkpoint_manager.register_checkpoint(training_results[1], False)
-    assert checkpoint_manager._checkpoint_results == [
-        training_results[0],
-        training_results[1],
+    checkpoint_manager.register_checkpoint(training_reports[0])
+    checkpoint_manager.register_checkpoint(training_reports[1])
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
     ]
-    checkpoint_manager.update_checkpoints_with_metrics(
+    checkpoint_manager.update_checkpoints_with_validation_result(
         {
-            training_results[0].checkpoint: {"score": 100},
+            training_reports[0].checkpoint: (
+                {"score": 100},
+                ReportedCheckpointStatus.VALIDATED,
+            ),
         }
     )
-    assert checkpoint_manager._checkpoint_results == [
-        training_results[0],
-        training_results[1],
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        training_reports[0].checkpoint,
+        training_reports[1].checkpoint,
     ]
 
 
@@ -281,15 +335,21 @@ def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
         storage_context=storage_context,
         checkpoint_config=CheckpointConfig(),
     )
-    training_results = create_dummy_training_results(
+    training_reports = create_dummy_training_reports(
         num_results=1, storage_context=storage_context
     )
-    checkpoint_manager._pending_training_results[
-        training_results[0].checkpoint
-    ] = training_results[0]
+    checkpoint_manager._pending_training_results[training_reports[0].checkpoint] = (
+        _TrainingResult(training_reports[0].checkpoint, training_reports[0].metrics),
+        training_reports[0].validation,
+    )
     with pytest.raises(ValueError):
-        checkpoint_manager.update_checkpoints_with_metrics(
-            {training_results[0].checkpoint: {"score": 100}}
+        checkpoint_manager.update_checkpoints_with_validation_result(
+            {
+                training_reports[0].checkpoint: (
+                    {"score": 100},
+                    ReportedCheckpointStatus.VALIDATED,
+                )
+            }
         )
 
 

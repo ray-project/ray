@@ -267,18 +267,17 @@ enum ErrorType {
   // The object cannot be reconstructed because it was borrowed from another
   // worker and we are not the owner.
   OBJECT_UNRECONSTRUCTABLE_BORROWED = 29;
-  // The object cannot be reconstructed because local mode does not support
-  // object reconstruction.
-  OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE = 30;
   // The object cannot be reconstructed because the reference has gone out of
   // scope (no longer tracked by the reference counter).
-  OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND = 31;
+  OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND = 30;
   // The object cannot be reconstructed because the task that would produce it
   // was cancelled.
-  OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 32;
+  OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 31;
   // The object cannot be reconstructed because lineage reconstruction is
   // disabled system-wide (lineage_pinning_enabled=false).
-  OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 33;
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 32;
+  // Indicates that the worker failed to startup after multiple retry attempts.
+  WORKER_STARTUP_FAILED = 33;
 }
 
 // The user error information.
@@ -661,6 +660,8 @@ message TaskInfoEntry {
   optional string call_site = 27;
   // The key-value label constraints of the node to schedule this task or actor on.
   map<string, string> label_selector = 28;
+
+  optional FallbackStrategy fallback_strategy = 29;
 }
 
 message TaskAttempt {
@@ -832,8 +833,8 @@ message ActorTaskSpec {
   bytes actor_id = 2;
   // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
-  // Number of tasks that have been submitted to this actor so far.
-  uint64 sequence_number = 5;
+  // Per-concurrency-group sequence number for ordering tasks within each group.
+  uint64 concurrency_group_sequence_number = 5;
 }
 
 // Represents a task, including task spec.

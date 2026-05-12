@@ -7,11 +7,11 @@ import pytest
 import requests
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
-    raw_metric_timeseries,
+    wait_for_condition,
 )
+from ray._private.test_utils import raw_metric_timeseries
 from ray._private.worker import RayContext
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 
@@ -70,8 +70,6 @@ def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
 )
 def test_shared_memory_and_inline_worker_heap(shutdown_only):
     """Test objects allocated in shared memory"""
-    import numpy as np
-
     info = ray.init(
         object_store_memory=100 * MiB,
         _system_config={
@@ -321,8 +319,6 @@ def test_fallback_memory(shutdown_only):
 )
 def test_seal_memory(shutdown_only):
     """Test objects sealed states reported correctly"""
-    import numpy as np
-
     info = ray.init(
         object_store_memory=100 * MiB,
         _system_config=_SYSTEM_CONFIG,

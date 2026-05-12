@@ -6,6 +6,11 @@ jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 
 # ML workload patterns with Ray Train
 
+Pre-install all requirements
+```bash
+!pip install -r ../requirements.txt
+```
+
 These tutorials demonstrate common ML workload patterns with Ray Train. They're independent and can be taken in any order.
 
 - **[Vision workloads](https://docs.ray.io/en/latest/train/tutorials/content/workload-patterns/04a_vision_pattern.html)** - Computer vision with Food-101 dataset

@@ -6,8 +6,6 @@ import platform
 import re
 import time
 import uuid
-from contextlib import contextmanager
-from functools import partial
 from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -24,17 +22,13 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import (
-    RAY_CHDIR_TO_TRIAL_DIR,
-    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
-)
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -52,7 +46,10 @@ from ray.tune.result import (
 )
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI
 
@@ -186,28 +183,8 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     return relative_logdir
 
 
-def _noop_logger_creator(config: Dict[str, Any], logdir: str):
-    # Upon remote process setup, record the actor's original working dir before
-    # changing to the Tune logdir
-    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
-
-    os.makedirs(logdir, exist_ok=True)
-
-    if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
-
-    return NoopLogger(config, logdir)
-
-
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
-
-    logger_creator = partial(
-        _noop_logger_creator, logdir=trial.storage.trial_working_directory
-    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
@@ -219,29 +196,10 @@ def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
 
     kwargs = {
         "config": trial_config,
-        "logger_creator": logger_creator,
         "storage": trial.storage,
     }
 
     return kwargs
-
-
-@contextmanager
-def _change_working_directory(trial):
-    """Context manager changing working directory to trial logdir.
-    Used in local mode.
-
-    For non-local mode it is no-op.
-    """
-    if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-        old_dir = os.getcwd()
-        try:
-            os.chdir(trial.local_path)
-            yield
-        finally:
-            os.chdir(old_dir)
-    else:
-        yield
 
 
 @DeveloperAPI
@@ -1007,7 +965,7 @@ class Trial:
 
     @classmethod
     def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
-        state = json.loads(json_state, cls=TuneFunctionDecoder)
+        state = _loads_with_cloudpickle(json_state)
 
         new_trial = Trial(
             state["trainable_name"],
@@ -1060,7 +1018,7 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Ensure that stub doesn't get overriden
+        # Ensure that stub doesn't get overridden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)

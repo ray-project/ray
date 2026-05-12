@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import os
 import sys
 import threading
 import time
@@ -7,23 +8,31 @@ from typing import Dict, List
 
 import httpx
 import pytest
+import redis
 from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import PrometheusTimeseries
+from ray._common.test_utils import PrometheusTimeseries, SignalActor, wait_for_condition
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollHost, UpdatedObject
+from ray.serve._private.queue_monitor import (
+    create_queue_monitor_actor,
+    kill_queue_monitor_actor,
+)
 from ray.serve._private.test_utils import (
     check_metric_float_eq,
     get_application_url,
     get_metric_dictionaries,
     get_metric_float,
 )
+from ray.tests.conftest import external_redis  # noqa: F401
 from ray.util.state import list_actors
 
 
@@ -61,14 +70,14 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     def check_status_metrics():
         # Check deployment status metrics
         deployment_metrics = get_metric_dictionaries(
-            "ray_serve_deployment_status", timeseries=timeseries
+            "ray_serve_deployment_status", timeseries=timeseries, wait=False
         )
         if len(deployment_metrics) < 2:
             return False
 
         # Check application status metrics
         app_metrics = get_metric_dictionaries(
-            "ray_serve_application_status", timeseries=timeseries
+            "ray_serve_application_status", timeseries=timeseries, wait=False
         )
         if len(app_metrics) < 2:
             return False
@@ -140,21 +149,21 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
     url = get_application_url("HTTP", "app")
     assert "hello" == httpx.get(url).text
 
-    # Verify startup latency metric count is exactly 1 (one replica started)
+    # Verify startup latency: two replicas aggregate into one time series (_count == 2).
     wait_for_condition(
         check_metric_float_eq,
         timeout=20,
         metric="ray_serve_replica_startup_latency_ms_count",
-        expected=1,
+        expected=2,
         expected_tags={"deployment": "MyDeployment", "application": "app"},
     )
 
-    # Verify initialization latency metric count is exactly 1
+    # Verify initialization latency _count matches (one observation per replica).
     wait_for_condition(
         check_metric_float_eq,
         timeout=20,
         metric="ray_serve_replica_initialization_latency_ms_count",
-        expected=1,
+        expected=2,
         expected_tags={"deployment": "MyDeployment", "application": "app"},
     )
 
@@ -171,24 +180,19 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
 
     wait_for_condition(check_initialization_latency_value, timeout=20)
 
-    # Assert that 2 metrics are recorded (one per replica)
-    def check_metrics_count():
+    # One aggregated time series per deployment (no per-replica label).
+    def check_single_series_no_replica_label():
         metrics = get_metric_dictionaries(
-            "ray_serve_replica_initialization_latency_ms_count"
+            "ray_serve_replica_initialization_latency_ms_count",
+            wait=False,
         )
-        assert len(metrics) == 2, f"Expected 2 metrics, got {len(metrics)}"
-        # All metrics should have same deployment and application
-        for metric in metrics:
-            assert metric["deployment"] == "MyDeployment"
-            assert metric["application"] == "app"
-        # Each replica should have a unique replica tag
-        replica_ids = {metric["replica"] for metric in metrics}
-        assert (
-            len(replica_ids) == 2
-        ), f"Expected 2 unique replica IDs, got {replica_ids}"
+        assert len(metrics) == 1, f"Expected 1 metric series, got {len(metrics)}"
+        assert metrics[0]["deployment"] == "MyDeployment"
+        assert metrics[0]["application"] == "app"
+        assert "replica" not in metrics[0]
         return True
 
-    wait_for_condition(check_metrics_count, timeout=20)
+    wait_for_condition(check_single_series_no_replica_label, timeout=20)
 
 
 def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
@@ -488,6 +492,9 @@ def test_autoscaling_metrics(metrics_start_shutdown):
         Tags: deployment, application
     - ray_serve_autoscaling_policy_execution_time_ms: Policy execution time
         Tags: deployment, application, policy_scope
+    - ray_serve_autoscaling_target_ongoing_requests: Configured target ongoing
+        requests per replica
+        Tags: deployment, application
     - ray_serve_autoscaling_replica_metrics_delay_ms: Replica metrics delay
         Tags: deployment, application, replica
     - ray_serve_autoscaling_handle_metrics_delay_ms: Handle metrics delay
@@ -570,7 +577,18 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     wait_for_condition(check_policy_execution_time_metric, timeout=15)
     print("Policy execution time metric verified.")
 
-    # Test 5: Check that metrics delay gauges are emitted with proper tags
+    # Test 5: Check that target_ongoing_requests metric is 2 (matches config)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_autoscaling_target_ongoing_requests",
+        expected=2,
+        expected_tags=base_tags,
+        timeseries=timeseries,
+    )
+    print("Target ongoing requests metric verified.")
+
+    # Test 6: Check that metrics delay gauges are emitted with proper tags
     def check_metrics_delay_metrics():
         # Check for handle metrics delay (depends on where metrics are collected)
         value = get_metric_float(
@@ -584,6 +602,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                 "ray_serve_autoscaling_handle_metrics_delay_ms",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -607,6 +626,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                 "ray_serve_autoscaling_replica_metrics_delay_ms",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -626,6 +646,99 @@ def test_autoscaling_metrics(metrics_start_shutdown):
 
     # Release signal to complete requests
     ray.get(signal.send.remote())
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Async Inference feature testing is flaky on Windows.",
+)
+def test_async_inference_task_queue_metrics_delay(
+    metrics_start_shutdown, external_redis  # noqa: F811
+):
+    """Test that async inference task queue metrics delay is emitted correctly.
+
+    This tests the metric:
+    - ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms
+        Tags: deployment, application
+
+    The QueueMonitor periodically pushes queue length metrics to the controller,
+    and the controller records the delay between when the metrics were collected
+    and when they were received.
+    """
+    # Setup Redis client
+    redis_address = os.environ.get("RAY_REDIS_ADDRESS")
+    host, port = redis_address.split(":")
+    redis_client = redis.Redis(host=host, port=int(port), db=0)
+    redis_broker_url = f"redis://{redis_address}/0"
+
+    test_deployment_id = DeploymentID("test_deployment", "test_app")
+    test_queue_name = "test_metrics_queue"
+
+    try:
+        # Create QueueMonitor with the Serve controller
+        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+        queue_monitor = create_queue_monitor_actor(
+            deployment_id=test_deployment_id,
+            broker_url=redis_broker_url,
+            queue_name=test_queue_name,
+            controller_handle=controller,
+            namespace=SERVE_NAMESPACE,
+        )
+
+        # Push some messages to the queue so the metrics pusher has data to report
+        for i in range(5):
+            redis_client.lpush(test_queue_name, f"message_{i}")
+
+        # Wait for the queue length to be picked up
+        def check_length():
+            return ray.get(queue_monitor.get_queue_length.remote()) == 5
+
+        wait_for_condition(check_length, timeout=30)
+
+        timeseries = PrometheusTimeseries()
+        base_tags = {
+            "deployment": test_deployment_id.name,
+            "application": test_deployment_id.app_name,
+        }
+
+        # Wait for the metrics delay metric to be emitted with correct tags and value
+        def check_metrics_delay_metric():
+            value = get_metric_float(
+                "ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
+                expected_tags=base_tags,
+                timeseries=timeseries,
+            )
+            if value <= 0:
+                return False
+
+            # Verify correct tags are attached
+            metrics_dicts = get_metric_dictionaries(
+                "ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
+                timeout=5,
+                timeseries=timeseries,
+                wait=False,
+            )
+            for m in metrics_dicts:
+                if (
+                    m.get("deployment") == test_deployment_id.name
+                    and m.get("application") == test_deployment_id.app_name
+                ):
+                    # Verify both required tags exist
+                    assert "deployment" in m, "Missing 'deployment' tag"
+                    assert "application" in m, "Missing 'application' tag"
+                    return True
+            return False
+
+        wait_for_condition(check_metrics_delay_metric, timeout=30)
+
+    finally:
+        # Cleanup
+        redis_client.delete(test_queue_name)
+        redis_client.close()
+        try:
+            kill_queue_monitor_actor(test_deployment_id, namespace=SERVE_NAMESPACE)
+        except ValueError:
+            pass  # Actor may already be killed
 
 
 def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
@@ -685,6 +798,7 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
                 "ray_serve_user_autoscaling_stats_latency_ms_sum",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -737,6 +851,7 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
             "ray_serve_record_autoscaling_stats_failed_total",
             timeout=5,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics_dicts:
             if (
@@ -850,6 +965,7 @@ def test_long_poll_latency_metric(metrics_start_shutdown):
         host_actor=host,
         key_listeners={"test_key": on_update},
         call_in_event_loop=loop,
+        client_id="test_metrics_client",
     )
 
     # Wait for initial update (client starts with snapshot_id -1)
@@ -1001,6 +1117,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "proxy" and m.get("loop_type") == "main":
@@ -1018,6 +1135,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "proxy" and m.get("loop_type") == "router":
@@ -1038,6 +1156,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "main":
@@ -1060,6 +1179,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "user_code":
@@ -1085,6 +1205,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "router":
@@ -1106,6 +1227,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_scheduling_latency_ms_count",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         # Should have metrics for proxy main, replica main, replica user_code, router
         component_loop_pairs = set()
@@ -1135,6 +1257,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_tasks",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         # Should have metrics for proxy main, replica main, replica user_code, router
         component_loop_pairs = set()

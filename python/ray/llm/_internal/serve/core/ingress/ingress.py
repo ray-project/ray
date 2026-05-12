@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import sys
 from contextlib import asynccontextmanager
@@ -23,7 +24,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ray import serve
-from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.common.utils.lora_utils import (
     get_base_model_id,
     get_lora_model_ids,
@@ -61,7 +61,6 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TranscriptionRequest,
     TranscriptionResponse,
     TranscriptionStreamResponse,
-    to_model_metadata,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
@@ -97,6 +96,23 @@ DEFAULT_INGRESS_OPTIONS = {
     },
 }
 
+
+def _get_min_replicas_from_llm_config(config: LLMConfig) -> Optional[int]:
+    autoscaling_config = config.deployment_config.get("autoscaling_config")
+    if autoscaling_config is None:
+        return None
+    if isinstance(autoscaling_config, dict):
+        return autoscaling_config.get("min_replicas")
+    return getattr(autoscaling_config, "min_replicas", None)
+
+
+def _all_models_scale_to_zero(llm_configs: Optional[List[LLMConfig]]) -> bool:
+    """Check if all models are configured with min_replicas == 0."""
+    if not llm_configs:
+        return False
+    return all(_get_min_replicas_from_llm_config(config) == 0 for config in llm_configs)
+
+
 # These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
 class CallMethod(Enum):
     CHAT = "chat"
@@ -116,20 +132,50 @@ def _sanitize_chat_completion_request(
 ) -> ChatCompletionRequest:
     """Sanitize ChatCompletionRequest to fix Pydantic ValidatorIterator serialization issue.
 
-    This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
-    objects that cannot be pickled for Ray remote calls.
+    This addresses a known Pydantic bug where fields typed as ``Iterable[...]``
+    on OpenAI message TypedDicts (notably ``content`` on every message variant
+    and ``tool_calls`` on assistant messages) become ValidatorIterator objects
+    that cannot be pickled for Ray remote calls.
 
-    References:
-    - vLLM PR that introduces the workaround: https://github.com/vllm-project/vllm/pull/9951
+    Workaround logic adapted from vLLM (credits: @gcalmettes):
+    - vLLM PR: https://github.com/vllm-project/vllm/pull/9951
     - Pydantic Issue: https://github.com/pydantic/pydantic/issues/9467
     - Related Issue: https://github.com/pydantic/pydantic/issues/9541
     - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
 
-    TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
+    Note: still reproducible on Pydantic 2.12 for the ``Iterable[...]`` arm of
+    a ``Union``, so this sanitizer is required regardless of Pydantic version.
     """
-    from vllm.tokenizers.mistral import maybe_serialize_tool_calls
+    for i, message in enumerate(request.messages):
+        # SGLang messages are Pydantic BaseModels (no .get()); convert to dicts
+        # so the same logic works for both vLLM (TypedDict) and SGLang.
+        if not isinstance(message, dict):
+            request.messages[i] = message = message.model_dump()
 
-    maybe_serialize_tool_calls(request)
+        # `content` is typed `Union[str, Iterable[ContentPart], None]` on every
+        # OpenAI message variant. When the iterable arm matches, Pydantic stores
+        # a non-picklable ValidatorIterator. Materialize it for any role.
+        content_val = message.get("content")
+        if content_val is not None and not isinstance(content_val, str):
+            try:
+                message["content"] = list(content_val)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    "Validating message `content` raised an error. Please "
+                    "ensure `content` is a string, None, or an iterable of "
+                    "content parts."
+                ) from e
+
+        if message.get("role") == "assistant":
+            tool_calls_val = message.get("tool_calls")
+            if tool_calls_val is not None:
+                try:
+                    message["tool_calls"] = list(tool_calls_val)
+                except (TypeError, ValueError) as e:
+                    raise ValueError(
+                        "Validating messages' `tool_calls` raised an error. "
+                        "Please ensure `tool_calls` are iterable of tool calls."
+                    ) from e
 
     return request
 
@@ -315,13 +361,18 @@ async def _openai_json_wrapper(
 
     Yields:
         String chunks in OpenAI SSE format: "data: {json}\n\n", with a final
-        "data: [DONE]\n\n" to indicate completion.
+        "data: [DONE]\n\n" to indicate completion. If the upstream generator
+        already yields a "data: [DONE]" sentinel, it is not duplicated.
     """
+    done_sent = False
     async for response in generator:
         packet = _apply_openai_json_format(response)
+        if packet.strip().endswith("data: [DONE]"):
+            done_sent = True
         yield packet
 
-    yield "data: [DONE]\n\n"
+    if not done_sent:
+        yield "data: [DONE]\n\n"
 
 
 @asynccontextmanager
@@ -340,14 +391,24 @@ async def router_request_timeout(timeout_duration: float):
 class OpenAiIngress(DeploymentProtocol):
     def __init__(
         self,
-        llm_deployments: List[DeploymentHandle],
+        llm_deployments: Dict[str, DeploymentHandle],
+        model_cards: Dict[str, ModelCard],
         *,
+        lora_paths: Optional[Dict[str, str]] = None,
         _get_lora_model_metadata_func: Optional[
-            Callable[[str, LLMConfig], Awaitable[Dict[str, Any]]]
+            Callable[[str, str], Awaitable[Dict[str, Any]]]
         ] = None,
     ):
-        self._default_serve_handles: Dict[str, DeploymentHandle] = {}
-        self._llm_configs: Dict[str, LLMConfig] = {}
+        if set(llm_deployments) != set(model_cards):
+            raise ValueError(
+                "llm_deployments and model_cards must have the same model IDs. "
+                f"Got llm_deployments={sorted(llm_deployments)}, "
+                f"model_cards={sorted(model_cards)}."
+            )
+
+        self._default_serve_handles: Dict[str, DeploymentHandle] = dict(llm_deployments)
+        self._model_cards: Dict[str, ModelCard] = dict(model_cards)
+        self._lora_paths: Dict[str, str] = dict(lora_paths or {})
 
         # Configuring a ServeHandle with .options() creates a new ServeHandle
         # object, which contains a new metrics pusher and long-polling call.
@@ -358,36 +419,13 @@ class OpenAiIngress(DeploymentProtocol):
             _get_lora_model_metadata_func or self._default_get_lora_model_metadata_func
         )
 
-        # Setup _default_serve_handles and _llm_configs asynchronously.
-        self._init_completed = asyncio.Event()
-        self.running_setup_task = get_or_create_event_loop().create_task(
-            self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
-        )
-
     async def _default_get_lora_model_metadata_func(
-        self, model_id: str, llm_config: LLMConfig
+        self, model_id: str, base_path: str
     ) -> Dict[str, Any]:
-        return await get_lora_model_metadata(model_id, llm_config)
-
-    async def _setup_handle_and_config_maps(
-        self, llm_deployments: List[DeploymentHandle]
-    ):
-        for handle in llm_deployments:
-            llm_config = await handle.llm_config.remote()
-            self._default_serve_handles[llm_config.model_id] = handle
-            self._llm_configs[llm_config.model_id] = llm_config
-
-        # Note (genesu): Even though we have already checked model id uniqueness in
-        # `router_application()` under run.py. When we OSS this router component, users
-        # would be able to directly use the lower level api and bypass that check. We
-        # check it again here to ensure all the model ids are unique.
-        if len(llm_deployments) != len(self._llm_configs):
-            raise ValueError("Duplicate models found. Make sure model ids are unique.")
-
-        self._init_completed.set()
+        return await get_lora_model_metadata(model_id, base_path)
 
     async def check_health(self):
-        await self._init_completed.wait()
+        pass
 
     def _get_configured_serve_handle(self, model_id: str):
         """Gets a ServeHandle to a model deployment.
@@ -432,17 +470,17 @@ class OpenAiIngress(DeploymentProtocol):
     async def _get_model_id(self, model: Optional[str]) -> str:
         # Default to the only configured model if no model specified
         if model is None:
-            if len(self._llm_configs) == 1:
-                model = next(iter(self._llm_configs.keys()))
+            if len(self._model_cards) == 1:
+                model = next(iter(self._model_cards.keys()))
             else:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
                     "Model parameter is required when multiple models are configured. "
-                    f"Available models: {list(self._llm_configs.keys())}",
+                    f"Available models: {list(self._model_cards.keys())}",
                 )
 
         base_model_id = get_base_model_id(model)
-        if base_model_id not in self._llm_configs:
+        if base_model_id not in self._model_cards:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND,
                 f'Got request for model "{model}". '
@@ -494,23 +532,23 @@ class OpenAiIngress(DeploymentProtocol):
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelCard]:
-        if model_id in self._llm_configs:
-            return to_model_metadata(model_id, self._llm_configs[model_id])
+        if model_id in self._model_cards:
+            return self._model_cards[model_id]
 
         base_model_id = get_base_model_id(model_id)
-        if (
-            base_model_id in self._llm_configs
-            and self._llm_configs[base_model_id].lora_config
-        ):
+        base_path = self._lora_paths.get(base_model_id)
+        if base_path is not None:
             try:
                 overrides = await self._get_lora_model_metadata_func(
-                    model_id, self._llm_configs[base_model_id]
+                    model_id, base_path
                 )
-
-                return to_model_metadata(
-                    model_id=model_id,
-                    model_config=self._llm_configs[base_model_id],
-                    overrides=overrides,
+                base_card = self._model_cards[base_model_id]
+                return ModelCard(
+                    id=model_id,
+                    object="model",
+                    owned_by=base_card.owned_by,
+                    permission=list(base_card.permission),
+                    metadata={**base_card.metadata, **overrides},
                 )
             except HTTPException:
                 logger.exception(
@@ -522,14 +560,15 @@ class OpenAiIngress(DeploymentProtocol):
     async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
-        for base_model_id, llm_config in self._llm_configs.items():
+        for base_model_id in self._model_cards:
             # Add the base model.
             all_models[base_model_id] = await self.model(base_model_id)
 
-            if llm_config.lora_config is not None:
+            base_path = self._lora_paths.get(base_model_id)
+            if base_path is not None:
                 # Add all the fine-tuned models.
                 lora_model_ids = get_lora_model_ids(
-                    dynamic_lora_loading_path=llm_config.lora_config.dynamic_lora_loading_path,
+                    dynamic_lora_loading_path=base_path,
                     base_model_id=base_model_id,
                 )
                 for lora_id in lora_model_ids:
@@ -687,9 +726,9 @@ class OpenAiIngress(DeploymentProtocol):
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
                 )
 
             if isinstance(result, ScoreResponse):
@@ -763,10 +802,17 @@ class OpenAiIngress(DeploymentProtocol):
     ) -> Dict[str, Any]:
         """Get the deployment options for the ingress deployment.
 
+        If all models are configured with min_replicas=0 (scale-to-zero),
+        the ingress will also be configured with min_replicas=0 so that
+        the worker node/GPU instance can be fully released when idle.
+
         Args:
             llm_configs: The LLM configs to infer the number of ingress replicas from.
 
         Returns:
             A dictionary containing the deployment options for the ingress deployment.
         """
-        return DEFAULT_INGRESS_OPTIONS
+        options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
+        if _all_models_scale_to_zero(llm_configs):
+            options.setdefault("autoscaling_config", {})["min_replicas"] = 0
+        return options

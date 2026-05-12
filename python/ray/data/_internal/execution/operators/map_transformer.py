@@ -1,12 +1,30 @@
+import itertools
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
+from ray._common.utils import env_integer
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import BatchFormat, Block, BlockAccessor, DataBatch
+
+_DEFAULT_BATCH_SIZE_BYTES: int = env_integer(
+    "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024  # 16 MiB
+)
 
 # Allowed input/output data types for a MapTransformFn.
 Row = Dict[str, Any]
@@ -60,37 +78,10 @@ class MapTransformFn(ABC):
         return blocks
 
     def _shape_blocks(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
-        buffer = BlockOutputBuffer(self._output_block_size_option)
-
-        # This method supports following modes of shaping of the output blocks:
-        #
-        #   1. Incremental: block is accumulated up to configured
-        #      ``_output_block_size_option``
-        #
-        #   2. *Non-incremental* (aka 1 block in / 1 block out): when
-        #      no ``OutputBlockSizeOption`` is provided this method will absorb
-        #      the whole input sequence and produce single block as an output
-        #
-        if self._input_type == MapTransformFnDataType.Block:
-            append = buffer.add_block
-        elif self._input_type == MapTransformFnDataType.Batch:
-            append = buffer.add_batch
-        else:
-            assert self._input_type == MapTransformFnDataType.Row
-            append = buffer.add
-
-        # Iterate over input sequence appending results to the
-        # buffer, while yielding incrementally
-        for result in results:
-            append(result)
-            # Try yielding incrementally
-            while buffer.has_next():
-                yield buffer.next()
-        # Finalize buffer
-        buffer.finalize()
-        # Yield remaining blocks from it
-        while buffer.has_next():
-            yield buffer.next()
+        """Shape results into blocks using a buffer."""
+        return _BlockShapingIterator(
+            results, self._input_type, self._output_block_size_option
+        )
 
     def __call__(
         self,
@@ -99,7 +90,7 @@ class MapTransformFn(ABC):
     ) -> Iterable[Block]:
         batches = self._pre_process(blocks)
         results = self._apply_transform(ctx, batches)
-        yield from self._post_process(results)
+        return self._post_process(results)
 
     @property
     def output_block_size_option(self):
@@ -141,6 +132,25 @@ class MapTransformer:
     be blocks, rows, or batches.
     """
 
+    class _UDFTimingIterator(Iterator[MapTransformFnData]):
+        """Iterator that times UDF execution"""
+
+        def __init__(
+            self, input: Iterable[MapTransformFnData], transformer: "MapTransformer"
+        ):
+            self._input = input
+            self._transformer = transformer
+
+        def __iter__(self) -> "MapTransformer._UDFTimingIterator":
+            return self
+
+        def __next__(self) -> MapTransformFnData:
+            start = time.perf_counter()
+            try:
+                return next(self._input)
+            finally:
+                self._transformer._report_udf_time(time.perf_counter() - start)
+
     def __init__(
         self,
         transform_fns: List[MapTransformFn],
@@ -157,10 +167,10 @@ class MapTransformer:
             output_block_size_option_override: (Optional) Output block size configuration.
         """
 
-        self._transform_fns = []
+        self._transform_fns: List[MapTransformFn] = []
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option_override = output_block_size_option_override
-        self._udf_time = 0
+        self._udf_time_s = 0
 
         # Add transformations
         self.add_transform_fns(transform_fns)
@@ -195,18 +205,6 @@ class MapTransformer:
         """
         self._init_fn()
 
-    def _udf_timed_iter(
-        self, input: Iterable[MapTransformFnData]
-    ) -> Iterable[MapTransformFnData]:
-        while True:
-            try:
-                start = time.perf_counter()
-                output = next(input)
-                self._udf_time += time.perf_counter() - start
-                yield output
-            except StopIteration:
-                break
-
     def apply_transform(
         self,
         input_blocks: Iterable[Block],
@@ -228,7 +226,7 @@ class MapTransformer:
         for transform_fn in self._transform_fns:
             iter = transform_fn(iter, ctx)
             if transform_fn._is_udf:
-                iter = self._udf_timed_iter(iter)
+                iter = self._UDFTimingIterator(iter, self)
 
         return iter
 
@@ -274,11 +272,14 @@ class MapTransformer:
     ) -> list[Any]:
         return ones + others
 
-    def udf_time(self) -> float:
-        return self._udf_time
+    def udf_time_s(self, reset: bool) -> float:
+        cur_time_s = self._udf_time_s
+        if reset:
+            self._udf_time_s = 0
+        return cur_time_s
 
-
-# Below are subclasses of MapTransformFn.
+    def _report_udf_time(self, udf_time: float) -> None:
+        self._udf_time_s += udf_time
 
 
 class RowMapTransformFn(MapTransformFn):
@@ -300,21 +301,48 @@ class RowMapTransformFn(MapTransformFn):
         self._row_fn = row_fn
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
-        for block in blocks:
-            block = BlockAccessor.for_block(block)
-            for row in block.iter_rows(public_row_format=True):
-                yield row
+        return _RowBasedIterator(blocks)
 
     def _apply_transform(
         self, ctx: TaskContext, inputs: Iterable[MapTransformFnData]
     ) -> Iterable[MapTransformFnData]:
-        yield from self._row_fn(inputs, ctx)
+        return self._row_fn(inputs, ctx)
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         return self._shape_blocks(results)
 
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
+
+
+def _peek_first_nonempty_block(
+    blocks: Iterable[Block],
+) -> Tuple[Optional[BlockAccessor], Iterable[Block]]:
+    """Advance the iterator past leading empty blocks to find the first non-empty block,
+    returning the corresponding accessor and a reconstructed iterator of all blocks.
+    We must reconstruct the iterator because we consume blocks as we advance through the iterator."""
+    blocks_iter = iter(blocks)
+    consumed = []
+    for block in blocks_iter:
+        consumed.append(block)
+        accessor = BlockAccessor.for_block(block)
+        if accessor.num_rows() > 0 and accessor.size_bytes() > 0:
+            return accessor, itertools.chain(consumed, blocks_iter)
+    return None, iter(consumed)
+
+
+def _compute_auto_batch_size(
+    blocks: Iterable[Block],
+    target_batch_size_bytes: int = _DEFAULT_BATCH_SIZE_BYTES,
+) -> Tuple[Optional[int], Iterable[Block]]:
+    """Peek at the first non-empty block to estimate the batch size to use for the
+    'auto' batch_size option."""
+    sample, blocks = _peek_first_nonempty_block(blocks)
+    if sample is None:
+        return None, blocks
+    bytes_per_row = sample.size_bytes() / sample.num_rows()
+    computed_batch_size = max(1, int(target_batch_size_bytes / bytes_per_row))
+    return computed_batch_size, blocks
 
 
 class BatchMapTransformFn(MapTransformFn):
@@ -325,10 +353,11 @@ class BatchMapTransformFn(MapTransformFn):
         batch_fn: MapTransformCallable[DataBatch, DataBatch],
         *,
         is_udf: bool = False,
-        batch_size: Optional[int] = None,
+        batch_size: Union[Optional[int], Literal["auto"]] = None,
         batch_format: Optional[BatchFormat] = None,
         zero_copy_batch: bool = True,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
+        target_batch_size_bytes: int = _DEFAULT_BATCH_SIZE_BYTES,
     ):
         super().__init__(
             input_type=MapTransformFnDataType.Batch,
@@ -339,18 +368,23 @@ class BatchMapTransformFn(MapTransformFn):
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
-        self._ensure_copy = not zero_copy_batch and batch_size is not None
+        self._target_batch_size_bytes = target_batch_size_bytes
 
         self._batch_fn = batch_fn
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
         # TODO make batch-udf zero-copy by default
-        ensure_copy = not self._zero_copy_batch and self._batch_size is not None
-
+        if self._batch_size == "auto":
+            batch_size, blocks = _compute_auto_batch_size(
+                blocks, target_batch_size_bytes=self._target_batch_size_bytes
+            )
+        else:
+            batch_size = self._batch_size
+        ensure_copy = not self._zero_copy_batch and batch_size is not None
         return batch_blocks(
             blocks=iter(blocks),
             stats=None,
-            batch_size=self._batch_size,
+            batch_size=batch_size,
             batch_format=self._batch_format,
             ensure_copy=ensure_copy,
         )
@@ -358,7 +392,8 @@ class BatchMapTransformFn(MapTransformFn):
     def _apply_transform(
         self, ctx: TaskContext, batches: Iterable[MapTransformFnData]
     ) -> Iterable[MapTransformFnData]:
-        yield from self._batch_fn(batches, ctx)
+        # _batch_fn returns an Iterable, just pass it through
+        return self._batch_fn(batches, ctx)
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         return self._shape_blocks(results)
@@ -403,7 +438,8 @@ class BlockMapTransformFn(MapTransformFn):
     def _apply_transform(
         self, ctx: TaskContext, blocks: Iterable[Block]
     ) -> Iterable[Block]:
-        yield from self._block_fn(blocks, ctx)
+        # _block_fn returns an Iterable, just pass it through
+        return self._block_fn(blocks, ctx)
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         # Short-circuit for block transformations for which no
@@ -417,3 +453,81 @@ class BlockMapTransformFn(MapTransformFn):
         return (
             f"BlockMapTransformFn({self._block_fn=}, {self._output_block_size_option=})"
         )
+
+
+class _BlockShapingIterator(Iterator[Block]):
+    """Iterator that shapes results into blocks using a buffer.
+
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
+    """
+
+    def __init__(
+        self,
+        results: Iterable[MapTransformFnData],
+        input_type: MapTransformFnDataType,
+        output_block_size_option: Optional[OutputBlockSizeOption],
+    ):
+        self._results_iter = iter(results)
+        self._buffer = BlockOutputBuffer(output_block_size_option)
+        self._finalized = False
+
+        if input_type == MapTransformFnDataType.Block:
+            self._append_buffer = self._buffer.add_block
+        elif input_type == MapTransformFnDataType.Batch:
+            self._append_buffer = self._buffer.add_batch
+        else:
+            assert input_type == MapTransformFnDataType.Row
+            self._append_buffer = self._buffer.add
+
+    def __iter__(self) -> "_BlockShapingIterator":
+        return self
+
+    def __next__(self) -> Block:
+        while True:
+            # First, yield any ready blocks from buffer
+            if self._buffer.has_next():
+                return self._buffer.next()
+
+            # If finalized, no more data
+            elif self._finalized:
+                raise StopIteration
+
+            try:
+                # Fetch more results
+                result = next(self._results_iter)
+                self._append_buffer(result)
+            except StopIteration:
+                self._buffer.finalize()
+                self._finalized = True
+
+
+class _RowBasedIterator(Iterator[Row]):
+    """Iterator that extracts rows from blocks.
+
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
+    """
+
+    def __init__(self, blocks: Iterable[Block]):
+        self._blocks_iter = iter(blocks)
+        self._cur_row_iter: Optional[Iterator[Row]] = None
+
+    def __iter__(self) -> "_RowBasedIterator":
+        return self
+
+    def __next__(self) -> Row:
+        while True:
+            # Try to get next row from current block
+            if self._cur_row_iter is not None:
+                try:
+                    return next(self._cur_row_iter)
+                except StopIteration:
+                    pass
+
+            # Get iterator from the next block
+            block = next(self._blocks_iter)
+
+            self._cur_row_iter = BlockAccessor.for_block(block).iter_rows(
+                public_row_format=True
+            )

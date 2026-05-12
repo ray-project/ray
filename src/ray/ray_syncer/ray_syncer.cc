@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
@@ -254,6 +254,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         syncer_.node_state_->RemoveNode(node_id);
       },
       /*auth_token=*/auth_token_,
+      /*auth_token_validator=*/auth_token_validator_,
       /*max_batch_size=*/syncer_.max_batch_size_,
       /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))

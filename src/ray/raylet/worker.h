@@ -17,15 +17,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/time/time.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 
@@ -65,10 +65,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Return the worker's ID.
   WorkerID WorkerId() const override;
   /// Return the worker process.
-  Process GetProcess() const override;
-  void SetProcess(Process proc) override;
+  const ProcessInterface &GetProcess() const override;
+  void SetProcess(std::unique_ptr<ProcessInterface> proc) override;
   rpc::Language GetLanguage() const override;
-  const std::string IpAddress() const override;
+  std::string IpAddress() const override;
   void AsyncNotifyGCSRestart() override;
   /// Connect this worker's gRPC client.
   void Connect(int port) override;
@@ -80,7 +80,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   void GrantLeaseId(const LeaseID &lease_id) override;
   const LeaseID &GetGrantedLeaseId() const override;
   const JobID &GetAssignedJobId() const override;
-  const RayLease &GetGrantedLease() const override;
   std::optional<bool> GetIsGpu() const override;
   std::optional<bool> GetIsActorWorker() const override;
   int GetRuntimeEnvHash() const override;
@@ -130,7 +129,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     lifetime_allocated_instances_ = nullptr;
   };
 
-  RayLease &GetGrantedLease() override { return granted_lease_; };
+  const RayLease &GetGrantedLease() const override {
+    RAY_CHECK(granted_lease_.has_value());
+    return *granted_lease_;
+  };
 
   void GrantLease(const RayLease &granted_lease) override {
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
@@ -141,7 +143,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     SetIsGpu(lease_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
     SetIsActorWorker(lease_spec.IsActorCreationTask());
     granted_lease_ = granted_lease;
-    root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
+    root_detached_actor_id_ =
+        granted_lease_->GetLeaseSpecification().RootDetachedActorId();
   }
 
   absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
@@ -169,7 +172,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
-  Process proc_;
+  std::unique_ptr<ProcessInterface> proc_;
   /// The language type of this worker.
   rpc::Language language_;
   /// The type of the worker.
@@ -221,7 +224,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayLease being assigned to this worker.
-  RayLease granted_lease_;
+  std::optional<RayLease> granted_lease_;
   /// Time when the last lease was granted to this worker.
   absl::Time lease_grant_time_;
   /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU lease

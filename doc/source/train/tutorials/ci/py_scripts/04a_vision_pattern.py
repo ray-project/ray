@@ -12,7 +12,7 @@ subprocess.check_call([
     "torch==2.8.0",
     "torchvision==0.23.0",
     "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
+    "pyarrow==17.0.0",
     "datasets==2.19.2",
 ])
 
@@ -23,15 +23,12 @@ subprocess.check_call([
 # ————————————————————————
 import os
 import io
-import tempfile
 import shutil  # file I/O and temp dirs
-import json                      # reading/writing configs
 import random, uuid              # randomness and unique IDs
 
 # ————————————————————————
 # Core Data & Storage Libraries
 # ————————————————————————
-import pandas as pd              # tabular data handling
 import numpy as np               # numerical ops
 import pyarrow as pa             # in-memory columnar format
 import pyarrow.parquet as pq     # reading/writing Parquet files
@@ -83,7 +80,7 @@ DataContext.get_current().use_streaming_executor = False
 
 
 # 02. Load 10% of food101 (~7,500 images)
-ds = load_dataset("food101", split="train[:10%]")
+ds = load_dataset("ethz/food101", split="train[:10%]")
 
 # 03. Resize and encode as JPEG bytes
 transform = Compose([Resize(256), CenterCrop(224)])
@@ -473,7 +470,7 @@ print(inference_row)   # {"predicted_label": ..., "label": ...}
 
 
 # Load label map from Hugging Face (for pretty titles)
-ds_tmp = load_dataset("food101", split="train[:1%]")  # just to get label names
+ds_tmp = load_dataset("ethz/food101", split="train[:1%]")  # just to get label names
 label_names = ds_tmp.features["label"].names
 
 # Load the raw image locally for visualization
