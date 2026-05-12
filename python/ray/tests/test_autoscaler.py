@@ -3542,6 +3542,12 @@ class AutoscalingTest(unittest.TestCase):
             request_resources(bundles=[{"foo": "bar"}])
         with self.assertRaises(TypeError):
             request_resources(bundles=[{"foo": 1}, {"bar": "baz"}])
+        # bool is a subclass of int but is not a meaningful resource value.
+        with self.assertRaises(TypeError):
+            request_resources(bundles=[{"CPU": True}])
+        # Float bundle values are accepted.
+        request_resources(bundles=[{"CPU": 0.1}])
+        request_resources(bundles=[{"CPU": 1, "GPU": 0.5}])
 
     def test_autoscaler_status_log(self):
         self._test_autoscaler_status_log(status_log_enabled_env=1)
