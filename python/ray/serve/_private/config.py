@@ -257,6 +257,15 @@ class DeploymentConfig(BaseModel):
                 # Required field with no default — don't fabricate a value.
                 continue
             self.__dict__[name] = default
+        # Symmetric to filling missing fields: drop keys that no longer
+        # correspond to a declared field (e.g. removed in a newer Ray
+        # version). Without this, the stale entry stays in `__dict__` and
+        # is re-emitted by the next `__getstate__`, so a single bad
+        # checkpoint would carry the obsolete field forward across
+        # subsequent controller restarts.
+        for name in list(self.__dict__):
+            if name not in type(self).model_fields:
+                del self.__dict__[name]
 
     @field_validator("user_config")
     @classmethod

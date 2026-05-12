@@ -1311,6 +1311,35 @@ def test_deployment_config_pickle_roundtrip_preserves_explicit_values():
     assert repickled == config
 
 
+def test_deployment_config_setstate_drops_unknown_fields():
+    """Cross-version recovery strips fields removed in newer Ray versions.
+
+    Mirror of the missing-fields case: when a checkpoint written by an older
+    Ray version contains a field that has since been removed, the recovered
+    instance should not retain the stale key in `__dict__`. Otherwise
+    `__getstate__` would re-emit it on the next checkpoint and the obsolete
+    field would propagate forward across controller restarts.
+    """
+    config = DeploymentConfig(num_replicas=7)
+    state = config.__getstate__()
+
+    # Simulate a checkpoint written by an older Ray version that still had
+    # a field which has since been removed from `DeploymentConfig`.
+    state["__dict__"]["obsolete_field"] = "stale"
+
+    recovered = DeploymentConfig.__new__(DeploymentConfig)
+    recovered.__setstate__(state)
+
+    assert "obsolete_field" not in recovered.__dict__
+    assert recovered.num_replicas == 7
+
+    # Re-pickling the recovered instance must not carry the obsolete field
+    # forward into the next checkpoint.
+    repickled = cloudpickle.loads(cloudpickle.dumps(recovered))
+    assert "obsolete_field" not in repickled.__dict__
+    assert repickled.num_replicas == 7
+
+
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
 def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
