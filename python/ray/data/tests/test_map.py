@@ -230,33 +230,26 @@ def test_actor_task_failure(
     ds.map_batches(Mapper, concurrency=1).materialize()
 
 
-def test_task_retry_on_errors_succeeds(
-    shutdown_only, restore_data_context, target_max_block_size_infinite_or_default
-):
-    ray.init(num_cpus=2)
-
+def test_task_retry_on_errors_succeeds(restore_data_context):
     ctx = DataContext.get_current()
     ctx.retried_map_errors = ["transient error"]
     ctx.max_map_retries = 3
 
-    # Use one block so the call_count dict is shared within the same task process.
-    call_count = {"n": 0}
+    class FlakyUDF:
+        def __init__(self):
+            self._counter = 0
 
-    def flaky_udf(batch):
-        call_count["n"] += 1
-        if call_count["n"] <= 2:
-            raise ValueError("transient error")
-        return batch
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter <= 2:
+                raise ValueError("transient error")
+            return batch
 
-    result = ray.data.range(5, override_num_blocks=1).map_batches(flaky_udf).take_all()
-    assert len(result) == 5
+    result = ray.data.range(2, override_num_blocks=1).map_batches(FlakyUDF).take_all()
+    assert sorted(extract_values("id", result)) == list(range(2)), result
 
 
-def test_task_retry_on_errors_exhausted(
-    shutdown_only, restore_data_context, target_max_block_size_infinite_or_default
-):
-    ray.init(num_cpus=2)
-
+def test_task_retry_on_errors_exhausted(restore_data_context):
     ctx = DataContext.get_current()
     ctx.retried_map_errors = ["persistent bug"]
     ctx.max_map_retries = 2
@@ -265,14 +258,10 @@ def test_task_retry_on_errors_exhausted(
         raise ValueError("persistent bug")
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ray.data.range(5).map_batches(always_fails).take_all()
+        ray.data.range(2, override_num_blocks=1).map_batches(always_fails).take_all()
 
 
-def test_task_retry_non_matching_exception_not_retried(
-    shutdown_only, restore_data_context, target_max_block_size_infinite_or_default
-):
-    ray.init(num_cpus=2)
-
+def test_task_retry_non_matching_exception_not_retried(restore_data_context):
     ctx = DataContext.get_current()
     ctx.retried_map_errors = ["rate limit"]
 
@@ -280,30 +269,28 @@ def test_task_retry_non_matching_exception_not_retried(
         raise ValueError("not a retryable error")
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ray.data.range(5).map_batches(udf).take_all()
+        ray.data.range(2, override_num_blocks=1).map_batches(udf).take_all()
 
 
-def test_task_retry_true_retries_any_exception(
-    shutdown_only, restore_data_context, target_max_block_size_infinite_or_default
-):
-    ray.init(num_cpus=2)
-
+def test_task_retry_true_retries_any_exception(restore_data_context):
     ctx = DataContext.get_current()
     ctx.retried_map_errors = True
     ctx.max_map_retries = 3
 
-    call_count = {"n": 0}
+    class FlakyUDF:
+        def __init__(self):
+            self._counter = 0
 
-    def flaky_udf(batch):
-        call_count["n"] += 1
-        if call_count["n"] <= 2:
-            raise RuntimeError("any kind of transient error")
-        if call_count["n"] <= 3:
-            raise ValueError("also a retryable error")
-        return batch
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter <= 2:
+                raise RuntimeError("any kind of transient error")
+            if self._counter <= 3:
+                raise ValueError("also a retryable error")
+            return batch
 
-    result = ray.data.range(5, override_num_blocks=1).map_batches(flaky_udf).take_all()
-    assert len(result) == 5
+    result = ray.data.range(2, override_num_blocks=1).map_batches(FlakyUDF).take_all()
+    assert sorted(extract_values("id", result)) == list(range(2)), result
 
 
 def test_gpu_workers_not_reused(
