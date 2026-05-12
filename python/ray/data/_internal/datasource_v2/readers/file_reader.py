@@ -16,6 +16,11 @@ from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 
+# Synthetic column name produced when ``include_paths=True``. Shared with
+# the V2 datasource and scanner layers so all references are spelled the
+# same way.
+INCLUDE_PATHS_COLUMN_NAME = "path"
+
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_batches
 # Default is specified by PyArrow.
 _ARROW_DEFAULT_BATCH_SIZE = 131_072
@@ -26,7 +31,7 @@ _ARROW_DEFAULT_BATCH_SIZE = 131_072
 # them).
 _ARROW_SCANNER_BATCH_READAHEAD = 1
 
-_ROW_HASH_COLUMN_NAME = "row_hash"
+ROW_HASH_COLUMN_NAME = "row_hash"
 
 
 class FileFormat(str, Enum):
@@ -138,13 +143,13 @@ class FileReader(Reader[FileManifest]):
             if self._partition_parser is not None
             else set()
         )
-        synthesized = {"path"}
+        synthesized = {INCLUDE_PATHS_COLUMN_NAME}
         if self._include_row_hash:
             # ``row_hash`` is synthesized post-read, and the schema's type
             # (``uint64``) may not match the on-disk column's type when a
             # file already carries a ``row_hash`` column. Strip it from the
             # dataset schema so pyarrow doesn't try to cast.
-            synthesized.add(_ROW_HASH_COLUMN_NAME)
+            synthesized.add(ROW_HASH_COLUMN_NAME)
         fields = [
             f
             for f in self._schema
@@ -246,7 +251,7 @@ class FileReader(Reader[FileManifest]):
             if self._partition_parser is not None:
                 derived_items.extend(self._partition_parser(fragment_path).items())
             if self._include_paths:
-                derived_items.append(("path", fragment_path))
+                derived_items.append((INCLUDE_PATHS_COLUMN_NAME, fragment_path))
 
             for name, value in derived_items:
                 if (
@@ -269,15 +274,15 @@ class FileReader(Reader[FileManifest]):
             # exclude ``row_hash`` — the projection below would just drop it.
             if self._include_row_hash and (
                 columns_to_synthesize is None
-                or _ROW_HASH_COLUMN_NAME in columns_to_synthesize
+                or ROW_HASH_COLUMN_NAME in columns_to_synthesize
             ):
                 hashes = _compute_row_hashes(
                     fragment_path, fragment_row_offset, table.num_rows
                 )
-                if _ROW_HASH_COLUMN_NAME in table.column_names:
-                    table = table.drop([_ROW_HASH_COLUMN_NAME])
+                if ROW_HASH_COLUMN_NAME in table.column_names:
+                    table = table.drop([ROW_HASH_COLUMN_NAME])
                 table = table.append_column(
-                    _ROW_HASH_COLUMN_NAME, pa.array(hashes, type=pa.uint64())
+                    ROW_HASH_COLUMN_NAME, pa.array(hashes, type=pa.uint64())
                 )
 
             if self._columns is not None:
