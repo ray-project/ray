@@ -3,6 +3,7 @@ import contextlib
 import io
 import logging
 import os
+import sys
 
 import pytest
 
@@ -358,11 +359,16 @@ def test_worker_app_print_redirect_stdout(worker_logging):
     LoggingManager.configure_worker_logger(create_dummy_train_context())
     patch_print_function()
 
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
+    stdout_buf = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf):
         print("captured text")
+    assert "captured text" in stdout_buf.getvalue()
 
-    assert "captured text" in buf.getvalue()
+    stderr_buf = io.StringIO()
+    with contextlib.redirect_stderr(stderr_buf):
+        print("captured error", file=sys.stderr)
+    assert "captured error" in stderr_buf.getvalue()
+
 
 # ============================================================
 # Isolation from ray.init tests
