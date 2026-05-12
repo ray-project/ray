@@ -750,10 +750,7 @@ class DeploymentScheduler(ABC):
             if scheduling_request.gang_placement_group is None:
                 if replica_pg is not None:
                     replica_pg.shutdown()
-                elif (
-                    placement_group is not None
-                    and scheduling_request.placement_group_bundles is not None
-                ):
+                elif placement_group is not None:
                     ray.util.remove_placement_group(placement_group)
 
             return False
