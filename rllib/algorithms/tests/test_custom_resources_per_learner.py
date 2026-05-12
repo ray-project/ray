@@ -5,6 +5,7 @@ import ray
 import ray._common
 from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.utils import _get_learner_bundles
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 
 EXPECTED_PER_NODE_OBJECT_STORE_MEMORY = 10**8
@@ -28,6 +29,20 @@ def test_reserved_keys_rejected(reserved):
     """`CPU`/`GPU` belong to `num_*_per_learner`, not custom resources."""
     with pytest.raises(ValueError, match="CPU.*GPU"):
         AlgorithmConfig().learners(custom_resources_per_learner={reserved: 1})
+
+
+def test_placement_group_bundles_include_custom_resources():
+    """The PG bundles built for Tune must reserve the custom learner resources;
+    otherwise learners scheduled within the PG can never satisfy their request.
+    """
+    cfg = AlgorithmConfig().learners(
+        num_learners=2,
+        num_cpus_per_learner=1,
+        custom_resources_per_learner={"learner_pool": 0.5},
+    )
+    bundles = _get_learner_bundles(cfg)
+    assert len(bundles) == 2
+    assert all(b.get("learner_pool") == 0.5 for b in bundles)
 
 
 @pytest.fixture
