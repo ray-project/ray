@@ -3,6 +3,7 @@ import logging
 import random
 import re
 import time
+import traceback
 from collections.abc import Sequence
 from typing import Callable, Optional, TypeVar
 
@@ -15,6 +16,17 @@ logger = logging.getLogger(__name__)
 
 R = TypeVar("R")
 P = ParamSpec("P")
+
+
+def _format_exc(exc: BaseException, include_cause: bool = False) -> str:
+    """Format exception as 'ClassName: ExceptionMessage' using traceback.format_exception_only, optionally appending the cause."""
+    s = "".join(traceback.format_exception_only(type(exc), exc)).rstrip("\n")
+    if include_cause and exc.__cause__:
+        cause = exc.__cause__
+        s += " " + "".join(traceback.format_exception_only(type(cause), cause)).rstrip(
+            "\n"
+        )
+    return s
 
 
 def _matches_error(pattern: str, error_str: str) -> bool:
@@ -63,7 +75,7 @@ def call_with_retry(
         try:
             return f(*args, **kwargs)
         except Exception as e:
-            exception_str = str(e)
+            exception_str = _format_exc(e)
             is_retryable = match is None or any(
                 _matches_error(pattern, exception_str) for pattern in match
             )

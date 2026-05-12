@@ -9,7 +9,6 @@ import random
 import sys
 import threading
 import time
-import traceback
 import urllib.parse
 import uuid
 from queue import Empty, Full, Queue
@@ -38,7 +37,7 @@ import pyarrow
 import pyarrow.fs
 
 import ray
-from ray._common.retry import _matches_error, call_with_retry
+from ray._common.retry import _format_exc, _matches_error, call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -1519,17 +1518,6 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         return self._retry_operation(
             lambda: self._fs.open_input_file(path), f"open input file {path}"
         )
-
-
-def _format_exc(exc: BaseException, include_cause: bool = False) -> str:
-    """Format exception as 'ClassName: ExceptionMessage' using traceback.format_exception_only, optionally appending the cause."""
-    s = "".join(traceback.format_exception_only(type(exc), exc)).rstrip("\n")
-    if include_cause and exc.__cause__:
-        cause = exc.__cause__
-        s += " " + "".join(traceback.format_exception_only(type(cause), cause)).rstrip(
-            "\n"
-        )
-    return s
 
 
 def iterate_with_retry(

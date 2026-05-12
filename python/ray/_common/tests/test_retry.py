@@ -91,5 +91,23 @@ def test_retry_fail_all_attempts_retry_all_errors(use_decorator):
     assert call_count == 3
 
 
+def test_call_with_retry_matches_class_name():
+    """Patterns can match the exception class name (e.g., 'RateLimit')."""
+
+    class RateLimitError(Exception):
+        pass
+
+    call_count = 0
+
+    def func():
+        nonlocal call_count
+        call_count += 1
+        raise RateLimitError("Error code: 429")
+
+    with pytest.raises(RateLimitError):
+        call_with_retry(func, "func", ["RateLimit"], 3, 0)
+    assert call_count == 3
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
