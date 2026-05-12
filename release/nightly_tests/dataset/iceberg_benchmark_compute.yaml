@@ -1,8 +1,7 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 advanced_instance_config:
-    IamInstanceProfile:
-        Name: "ray-autoscaler-v1"
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
 
 head_node:
     # r5.2xlarge: same 8 vCPUs as m5.2xlarge but double the memory (64GB vs 32GB).
