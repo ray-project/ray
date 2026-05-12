@@ -1,7 +1,7 @@
 # 00. Runtime setup
 import os
-import sys
 import subprocess
+import sys
 
 # Non-secret env var (safe to set here)
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -12,7 +12,7 @@ subprocess.check_call([
     "torch==2.8.0",
     "torchvision==0.23.0",
     "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
+    "pyarrow==17.0.0",
     "datasets==2.19.2",
     "lightning==2.5.5",
 ])
@@ -20,21 +20,17 @@ subprocess.check_call([
 # 01. Imports
 
 # Standard libraries
-import os
 import io
-import json
 import shutil
 import tempfile
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 from PIL import Image
 
 # Ray
 import ray, ray.data
-from ray.train import ScalingConfig, get_context, RunConfig, FailureConfig, CheckpointConfig, Checkpoint, get_checkpoint
+from ray.train import ScalingConfig, RunConfig, FailureConfig, CheckpointConfig
 from ray.train.torch import TorchTrainer
-from ray.train.lightning import RayLightningEnvironment
 
 # PyTorch / Lightning
 import lightning.pytorch as pl
@@ -43,11 +39,7 @@ from torch import nn
 
 # Dataset
 from datasets import load_dataset
-import pyarrow as pa
-import pyarrow.parquet as pq
-from tqdm import tqdm  
 from torchvision.transforms import Compose, Resize, CenterCrop
-import random
 
 # 02. Load 10% of food101 (~7,500 images)
 hf_ds = load_dataset("ethz/food101", split="train[:10%]")
@@ -237,7 +229,6 @@ def train_loop(config):
         message="barrier.*using the device under current context",
     )
     import os
-    import torch
     import lightning.pytorch as pl
     from ray.train import get_checkpoint, get_context
     from ray.train.lightning import (
@@ -372,7 +363,6 @@ def sample_image(model, steps=50, device="cpu"):
 # 14. Generate and display samples
 
 import glob
-from ray.train import Checkpoint
 
 assert best_ckpt is not None, "Checkpoint is missing. Did training run and complete?"
 

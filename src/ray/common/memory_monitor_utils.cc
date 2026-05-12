@@ -27,8 +27,8 @@
 
 namespace ray {
 
-const SystemMemorySnapshot MemoryMonitorUtils::TakeSystemMemorySnapshot(
-    const std::string root_cgroup_path, const std::string proc_dir) {
+const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+    const std::string &root_cgroup_path, const std::string &proc_dir) {
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes(root_cgroup_path);
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes(proc_dir);
   /// cgroup memory limit can be higher than system memory limit when it is
@@ -39,7 +39,96 @@ const SystemMemorySnapshot MemoryMonitorUtils::TakeSystemMemorySnapshot(
   if (system_total_bytes == cgroup_total_bytes) {
     system_used_bytes = cgroup_used_bytes;
   }
-  return SystemMemorySnapshot{system_used_bytes, system_total_bytes};
+  return MemoryUsageSnapshot{system_used_bytes, system_total_bytes};
+}
+
+const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
+MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+    const std::string &user_cgroup_path,
+    const std::string &system_cgroup_path,
+    const std::string &proc_dir) {
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> user_cgroup_memory_snapshot_or =
+      TakeCgroupMemorySnapshot(user_cgroup_path);
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> system_cgroup_memory_snapshot_or =
+      TakeCgroupMemorySnapshot(system_cgroup_path);
+  if (!user_cgroup_memory_snapshot_or.has_value() ||
+      !system_cgroup_memory_snapshot_or.has_value()) {
+    std::vector<std::string> error_reasons;
+    if (user_cgroup_memory_snapshot_or.has_error()) {
+      error_reasons.push_back(
+          absl::StrFormat("user cgroup: %s", user_cgroup_memory_snapshot_or.message()));
+    }
+    if (system_cgroup_memory_snapshot_or.has_error()) {
+      error_reasons.push_back(absl::StrFormat(
+          "system cgroup: %s", system_cgroup_memory_snapshot_or.message()));
+    }
+    return StatusT::NotFound(
+        absl::StrFormat("Failed to take memory snapshot of user slice usage relative to "
+                        "the system due to: %s",
+                        absl::StrJoin(error_reasons, ", ")));
+  }
+
+  auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
+  if (host_level_total_bytes == MemoryMonitorInterface::kNull) {
+    return StatusT::NotFound(absl::StrFormat(
+        "Failed to take memory snapshot of user slice usage relative to "
+        "the system memory due to failure to get total memory bytes from host machine. "
+        "Is %s/meminfo file accessible?",
+        proc_dir));
+  }
+
+  CgroupMemorySnapshot user_cgroup_memory_snapshot =
+      user_cgroup_memory_snapshot_or.value();
+  CgroupMemorySnapshot system_cgroup_memory_snapshot =
+      system_cgroup_memory_snapshot_or.value();
+  // We appoximate total user application memory usage with user slice anon bytes
+  // for approximating heap usage and the sum of user and system cgroup shmem bytes
+  // for approximating object store usage since shared memory accounting between
+  // the system and user slice is in-determinant per:
+  // https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-ownership
+  int64_t total_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
+                             user_cgroup_memory_snapshot.shmem_memory_bytes +
+                             system_cgroup_memory_snapshot.shmem_memory_bytes;
+  return MemoryUsageSnapshot{total_used_bytes, host_level_total_bytes};
+}
+
+const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
+MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path) {
+  std::string v2_stat_path = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
+  std::ifstream v2_stat_f(v2_stat_path, std::ios::in | std::ios::binary);
+  if (v2_stat_f) {
+    CgroupMemorySnapshot snapshot;
+    bool anon_found = false;
+    bool shmem_found = false;
+    std::string key;
+    int64_t stat_value;
+    while (v2_stat_f >> key >> stat_value) {
+      if (key == kCgroupsV2MemoryAnonKey) {
+        snapshot.anon_memory_bytes = stat_value;
+        anon_found = true;
+      } else if (key == kCgroupsV2MemoryShmemKey) {
+        snapshot.shmem_memory_bytes = stat_value;
+        shmem_found = true;
+      }
+      if (anon_found && shmem_found) {
+        break;
+      }
+    }
+    if (!anon_found || !shmem_found) {
+      return StatusT::NotFound(
+          absl::StrFormat("Failed to read memory stat for cgroup %s. "
+                          "Is the provided cgroupv2 path valid "
+                          "and cgroupv2 active?",
+                          root_cgroup_path));
+    }
+    return snapshot;
+  }
+
+  return StatusT::NotFound(
+      absl::StrFormat("Failed to open memory stat file on path: %s. "
+                      "Is the provided cgroupv2 path valid "
+                      "and cgroupv2 active?",
+                      v2_stat_path));
 }
 
 int64_t MemoryMonitorUtils::GetCGroupMemoryUsedBytes(const char *stat_path,
@@ -51,13 +140,13 @@ int64_t MemoryMonitorUtils::GetCGroupMemoryUsedBytes(const char *stat_path,
   // by the kernel and are considered available memory from
   // the OOM killer's perspective.
   std::ifstream memstat_ifs(stat_path, std::ios::in | std::ios::binary);
-  if (!memstat_ifs.is_open()) {
+  if (!memstat_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " memory stat file not found: " << stat_path;
     return MemoryMonitorInterface::kNull;
   }
   std::ifstream memusage_ifs(usage_path, std::ios::in | std::ios::binary);
-  if (!memusage_ifs.is_open()) {
+  if (!memusage_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " memory usage file not found: " << usage_path;
     return MemoryMonitorInterface::kNull;
@@ -163,7 +252,7 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
     const std::string proc_dir) {
   std::string meminfo_path = proc_dir + "/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
-  if (!meminfo_ifs.is_open()) {
+  if (!meminfo_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " file not found: " << meminfo_path;
     return {MemoryMonitorInterface::kNull, MemoryMonitorInterface::kNull};
@@ -245,7 +334,7 @@ int64_t MemoryMonitorUtils::GetProcessMemoryBytes(pid_t pid, const std::string p
 int64_t MemoryMonitorUtils::GetLinuxProcessMemoryBytesFromSmap(
     const std::string smap_path) {
   std::ifstream smap_ifs(smap_path, std::ios::in | std::ios::binary);
-  if (!smap_ifs.is_open()) {
+  if (!smap_ifs) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << " file not found: " << smap_path;
     return MemoryMonitorInterface::kNull;
@@ -319,7 +408,7 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
 
   if (resource_isolation_enabled) {
     StatusOr<std::string> user_slice_upper_bound_bytes_or =
-        cgroup_manager.GetUserCgroupConstraintValue("memory.high");
+        cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemoryHighPath);
     RAY_CHECK(user_slice_upper_bound_bytes_or.ok()) << absl::StrFormat(
         "Failed to get user cgroup memory limit from user cgroup %s "
         "when setting up memory monitor: %s. "
@@ -377,7 +466,7 @@ const std::string MemoryMonitorUtils::GetCommandLineForPid(pid_t pid,
   std::string path =
       proc_dir + "/" + std::to_string(pid) + "/" + MemoryMonitorUtils::kCommandlinePath;
   std::ifstream commandline_ifs(path, std::ios::in | std::ios::binary);
-  if (!commandline_ifs.is_open()) {
+  if (!commandline_ifs) {
     RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs)
         << "Command line path doesn't exist, returning empty command. Path: " << path;
     return {};

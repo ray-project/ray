@@ -4,8 +4,10 @@
 --
 -- Bodies exceeding tune.bufsize are truncated; we forward what we have with
 -- X-Body-Truncated since prefix-routing only needs the head of the body.
+-- See RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY in constants.py.
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
+local FORWARD_BODY = ${FORWARD_BODY}
 
 -- Per-app state. The frontend sets txn.ingress_request_router_app to the
 -- backend name whose path prefix matched, and we look up that app's
@@ -97,17 +99,24 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         return
     end
 
-    local body = txn.sf:req_body()
-    if not body or body == "" then
-        txn:set_var("txn.ingress_request_router_failed", "empty_body")
-        return
-    end
-
-    local truncated = truncated_full_length(txn, body)
-    if truncated then
-        core.log(core.warning,
-            "ingress_request_router: forwarding truncated body to router ("
-                .. #body .. "/" .. truncated .. " bytes)")
+    -- FORWARD_BODY=false: don't read or forward the body; call the router
+    -- with body="" so a Content-Length: 0 POST still goes through routing
+    -- (any policy that needs the body must opt in via FORWARD_BODY=true).
+    -- Empty body in FORWARD_BODY=true mode is treated the same -- a
+    -- legitimate input the router can accept or reject on its own terms;
+    -- we don't synthesize a sentinel for it here.
+    local body = ""
+    local truncated = nil
+    if FORWARD_BODY then
+        body = txn.sf:req_body() or ""
+        if body ~= "" then
+            truncated = truncated_full_length(txn, body)
+            if truncated then
+                core.log(core.warning,
+                    "ingress_request_router: forwarding truncated body to router ("
+                        .. #body .. "/" .. truncated .. " bytes)")
+            end
+        end
     end
 
     local response = call_router(router, body, truncated)
