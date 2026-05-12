@@ -15,6 +15,7 @@ The behavior is controlled by two orthogonal config knobs:
 Both apply identically regardless of ``evaluation_parallel_to_training``.
 """
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -172,7 +173,7 @@ def test_timeout_waits_then_skips_when_no_recovery(parallel_to_training):
     start = time.monotonic()
     algo.evaluate()
     elapsed = time.monotonic() - start
-    # Use 10 seconds as a loose upper bound to sanity check
+    # Check against lower bound but also a loose upper bound to sanity check
     assert 5 > elapsed >= timeout_s
 
 
@@ -188,13 +189,7 @@ def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
     empty/stale connector state (e.g. no obs-normalization filter), each
     silently producing wrong metrics for one iteration.
     """
-    from unittest.mock import patch
-
     timeout_s = 30  # generous; the first probe will revive quickly.
-    # Kills the original worker, spawns a fresh replacement, marks both
-    # unhealthy. The wait loop's probe pings both:
-    #   - original (dead): ping fails, stays unhealthy.
-    #   - replacement (alive): ping succeeds, marked healthy.
     algo = _algo_with_unhealthy_eval_workers(
         timeout_s=timeout_s,
         parallel_to_training=parallel_to_training,
@@ -207,7 +202,7 @@ def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
     # called >=2 times in one `evaluate()`:
     #   1) the unconditional sync at the start of `evaluate()` (effectively
     #      a no-op here because no eval worker is healthy at that moment),
-    #   2) the post-recovery re-sync inside the wait method.
+    #   2) the post-recovery re-sync inside the wait method we target here.
     with patch.object(
         eval_grp, "sync_weights", wraps=eval_grp.sync_weights
     ) as weights_spy, patch.object(
@@ -219,37 +214,15 @@ def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
         algo.evaluate()
         elapsed = time.monotonic() - start
 
-    # Recovery should be near-instant (first probe revives the
-    # replacement), well under the timeout.
+    # Recovery should be near-instant
     assert elapsed < timeout_s
-    # Replacement came back, so the consecutive-skip counter must NOT be
-    # incremented; the healthy branch in `evaluate()` resets it to 0.
     assert algo._counters["num_consecutive_eval_no_workers_iterations"] == 0
-    # Each sync ran >= 2 times: once in the unconditional prelude (no-op
-    # against the unhealthy worker) and once in the recovery branch.
-    assert weights_spy.call_count >= 2, (
-        f"Expected sync_weights >= 2 calls (initial + post-recovery); "
-        f"got {weights_spy.call_count}."
-    )
-    assert states_spy.call_count >= 2, (
-        f"Expected sync_env_runner_states >= 2 calls (initial + "
-        f"post-recovery); got {states_spy.call_count}."
-    )
+    assert weights_spy.call_count == 2
+    assert states_spy.call_count == 2
 
 
 def test_timeout_recovers_resyncs_and_evaluates_old_stack(parallel_to_training):
-    """Same as ``test_timeout_recovers_resyncs_and_evaluates`` but for the
-    *old* API stack, where the recovery path must re-sync observation
-    filters via ``_sync_filters_if_needed`` instead of connector states
-    via ``sync_env_runner_states``.
-
-    Without this re-sync, a recovered worker would run eval with an
-    empty/default observation filter (e.g. mean=0, std=1) on an
-    environment that the trained policy expects normalized -- silently
-    producing wrong eval metrics for one iteration.
-    """
-    from unittest.mock import patch
-
+    """Same as ``test_timeout_recovers_resyncs_and_evaluates`` but for the *old* API stack"""
     timeout_s = 30
     algo = _algo_with_unhealthy_eval_workers(
         timeout_s=timeout_s,
@@ -275,14 +248,8 @@ def test_timeout_recovers_resyncs_and_evaluates_old_stack(parallel_to_training):
 
     assert elapsed < timeout_s
     assert algo._counters["num_consecutive_eval_no_workers_iterations"] == 0
-    assert weights_spy.call_count >= 2, (
-        f"Expected sync_weights >= 2 calls (initial + post-recovery); "
-        f"got {weights_spy.call_count}."
-    )
-    assert filters_spy.call_count >= 2, (
-        f"Expected _sync_filters_if_needed >= 2 calls (initial + "
-        f"post-recovery); got {filters_spy.call_count}."
-    )
+    assert weights_spy.call_count == 2
+    assert filters_spy.call_count == 2
 
 
 if __name__ == "__main__":
