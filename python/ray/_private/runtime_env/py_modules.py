@@ -49,7 +49,7 @@ def _check_is_uri(s: str) -> bool:
 def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     include_gitignore: bool,
-    scratch_dir: Optional[str] = os.getcwd(),
+    scratch_dir: Optional[str] = None,
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
 ) -> Dict[str, Any]:
@@ -111,6 +111,8 @@ def upload_py_modules_if_needed(
                 else:
                     module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
+                    if scratch_dir is None:
+                        scratch_dir = os.getcwd()
                     try:
                         upload_package_if_needed(
                             module_uri,
