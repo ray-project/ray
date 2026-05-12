@@ -33,6 +33,7 @@ def _algo_with_unhealthy_eval_workers(
     error_after_n_consecutive_skips=None,
     parallel_to_training=True,
     spawn_replacement=False,
+    enable_v2_stack=True,
 ):
     """Build a PPO algo and put every remote eval worker into the failed
     state.
@@ -49,18 +50,26 @@ def _algo_with_unhealthy_eval_workers(
             subsequent ``probe_unhealthy_env_runners`` will be able to
             ping successfully -- simulating "a new worker has come back"
             without relying on Ray Core's restart timing.
+        enable_v2_stack: If True (default), use the new API stack (v2
+            connectors + Learner). If False, use the old API stack so
+            the recovery path's ``_sync_filters_if_needed`` branch is
+            exercised instead of ``sync_env_runner_states``.
 
     Config is the smallest that exercises the failure path: no remote
     training EnvRunners, 1 remote eval EnvRunner, fixed-duration eval so
     we can call ``evaluate()`` directly without a parallel-training
     future.
     """
+    config = PPOConfig()
+    if not enable_v2_stack:
+        config = config.api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
     config = (
-        PPOConfig()
-        .environment("CartPole-v1")
+        config.environment("CartPole-v1")
         # Local-only training: skips remote train EnvRunner setup.
-        .env_runners(num_env_runners=0)
-        .evaluation(
+        .env_runners(num_env_runners=0).evaluation(
             # 1 eval worker is enough; killing it leaves 0 healthy, which
             # is the condition we're testing.
             evaluation_num_env_runners=1,
@@ -169,15 +178,15 @@ def test_timeout_waits_then_skips_when_no_recovery(parallel_to_training):
 
 def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
     """When a fresh replacement eval worker appears during the wait
-    window, ``evaluate()`` must re-sync weights to it and then run eval
-    normally (no skip, no raise, counter stays at 0).
+    window, ``evaluate()`` must re-sync weights *and* connector state to
+    it and then run eval normally (no skip, no raise, counter stays at 0).
 
-    The original ``sync_weights`` call at the top of ``evaluate()`` runs
-    before the wait and skips workers that are unhealthy at that moment.
-    Without the post-recovery re-sync inside
-    ``_maybe_wait_for_eval_env_runner_recovery``, the recovered worker
-    would run eval with whatever weights it had at construction (initial
-    / stale) and silently report wrong metrics.
+    The corresponding syncs at the top of ``evaluate()`` run before the
+    wait and skip workers that are unhealthy at that moment. Without the
+    post-recovery re-syncs inside ``_maybe_wait_for_eval_env_runner_recovery``,
+    the recovered worker would run eval with stale/initial weights and
+    empty/stale connector state (e.g. no obs-normalization filter), each
+    silently producing wrong metrics for one iteration.
     """
     from unittest.mock import patch
 
@@ -193,12 +202,19 @@ def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
     )
     eval_grp = algo.eval_env_runner_group
 
-    # Spy on `sync_weights` so we can verify the re-sync after recovery.
-    # We expect at least 2 calls in one `evaluate()`:
+    # Spy on `sync_weights` AND `sync_env_runner_states` (v2 stack) so we
+    # can verify both re-syncs after recovery. Each is expected to be
+    # called >=2 times in one `evaluate()`:
     #   1) the unconditional sync at the start of `evaluate()` (effectively
     #      a no-op here because no eval worker is healthy at that moment),
     #   2) the post-recovery re-sync inside the wait method.
-    with patch.object(eval_grp, "sync_weights", wraps=eval_grp.sync_weights) as spy:
+    with patch.object(
+        eval_grp, "sync_weights", wraps=eval_grp.sync_weights
+    ) as weights_spy, patch.object(
+        eval_grp,
+        "sync_env_runner_states",
+        wraps=eval_grp.sync_env_runner_states,
+    ) as states_spy:
         start = time.monotonic()
         algo.evaluate()
         elapsed = time.monotonic() - start
@@ -209,8 +225,64 @@ def test_timeout_recovers_resyncs_and_evaluates(parallel_to_training):
     # Replacement came back, so the consecutive-skip counter must NOT be
     # incremented; the healthy branch in `evaluate()` resets it to 0.
     assert algo._counters["num_consecutive_eval_no_workers_iterations"] == 0
-    # Expected sync_weights to be called >=2 times (initial + post-recovery re-sync).
-    assert spy.call_count >= 2
+    # Each sync ran >= 2 times: once in the unconditional prelude (no-op
+    # against the unhealthy worker) and once in the recovery branch.
+    assert weights_spy.call_count >= 2, (
+        f"Expected sync_weights >= 2 calls (initial + post-recovery); "
+        f"got {weights_spy.call_count}."
+    )
+    assert states_spy.call_count >= 2, (
+        f"Expected sync_env_runner_states >= 2 calls (initial + "
+        f"post-recovery); got {states_spy.call_count}."
+    )
+
+
+def test_timeout_recovers_resyncs_and_evaluates_old_stack(parallel_to_training):
+    """Same as ``test_timeout_recovers_resyncs_and_evaluates`` but for the
+    *old* API stack, where the recovery path must re-sync observation
+    filters via ``_sync_filters_if_needed`` instead of connector states
+    via ``sync_env_runner_states``.
+
+    Without this re-sync, a recovered worker would run eval with an
+    empty/default observation filter (e.g. mean=0, std=1) on an
+    environment that the trained policy expects normalized -- silently
+    producing wrong eval metrics for one iteration.
+    """
+    from unittest.mock import patch
+
+    timeout_s = 30
+    algo = _algo_with_unhealthy_eval_workers(
+        timeout_s=timeout_s,
+        parallel_to_training=parallel_to_training,
+        spawn_replacement=True,
+        enable_v2_stack=False,
+    )
+    eval_grp = algo.eval_env_runner_group
+
+    # Spy on `sync_weights` (on the eval group) AND
+    # `_sync_filters_if_needed` (on the algo itself; that's where the
+    # method lives in the old API stack).
+    with patch.object(
+        eval_grp, "sync_weights", wraps=eval_grp.sync_weights
+    ) as weights_spy, patch.object(
+        algo,
+        "_sync_filters_if_needed",
+        wraps=algo._sync_filters_if_needed,
+    ) as filters_spy:
+        start = time.monotonic()
+        algo.evaluate()
+        elapsed = time.monotonic() - start
+
+    assert elapsed < timeout_s
+    assert algo._counters["num_consecutive_eval_no_workers_iterations"] == 0
+    assert weights_spy.call_count >= 2, (
+        f"Expected sync_weights >= 2 calls (initial + post-recovery); "
+        f"got {weights_spy.call_count}."
+    )
+    assert filters_spy.call_count >= 2, (
+        f"Expected _sync_filters_if_needed >= 2 calls (initial + "
+        f"post-recovery); got {filters_spy.call_count}."
+    )
 
 
 if __name__ == "__main__":

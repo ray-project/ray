@@ -1648,9 +1648,10 @@ class Algorithm(Checkpointable, Trainable):
         to `evaluation_unhealthy_workers_timeout_s` seconds for at least one
         to come back before deciding to skip evaluation or raise (per
         `evaluation_error_after_n_consecutive_skips`). If any worker
-        recovers during the wait, re-syncs current weights to it: the
-        original `sync_weights` call at the start of `evaluate()` was made
-        before the wait and skipped workers that were unhealthy then.
+        recovers during the wait, re-syncs current weights *and*
+        connector states / observation filters to it: the corresponding
+        syncs at the start of `evaluate()` were made before the wait and
+        skipped workers that were unhealthy then.
         """
         timeout_s = self.config.evaluation_unhealthy_workers_timeout_s
         if not timeout_s or timeout_s <= 0:
@@ -1706,9 +1707,13 @@ class Algorithm(Checkpointable, Trainable):
                 next_log = now + 60.0
 
         # If any workers recovered during the wait, push current weights
-        # to them. The `sync_weights` call at the start of `evaluate()`
-        # ran before this wait and only targeted workers that were
-        # healthy *then*.
+        # *and* connector/filter state to them. The sync block at the
+        # start of `evaluate()` ran before this wait and only targeted
+        # workers that were healthy *then*; freshly-recovered workers
+        # were skipped. Without re-syncing, they would run eval with
+        # default/empty model weights *and* default/empty observation
+        # filters (or stale connector states on the v2 stack) -- both
+        # silently producing wrong eval metrics for one iteration.
         if self.eval_env_runner_group.num_healthy_remote_workers() > 0:
             weights_src = (
                 self.learner_group
@@ -1719,6 +1724,27 @@ class Algorithm(Checkpointable, Trainable):
                 from_worker_or_learner_group=weights_src,
                 inference_only=True,
             )
+            if self.config.enable_env_runner_and_connector_v2:
+                if self.evaluation_config.broadcast_env_runner_states:
+                    self.eval_env_runner_group.sync_env_runner_states(
+                        config=self.evaluation_config,
+                        from_worker=self.env_runner,
+                        env_steps_sampled=self.metrics.peek(
+                            (
+                                ENV_RUNNER_RESULTS,
+                                NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                            ),
+                            default=0,
+                        ),
+                        env_to_module=self.env_to_module_connector,
+                        module_to_env=self.module_to_env_connector,
+                    )
+            else:
+                self._sync_filters_if_needed(
+                    central_worker=self.env_runner_group.local_env_runner,
+                    workers=self.eval_env_runner_group,
+                    config=self.evaluation_config,
+                )
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
