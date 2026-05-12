@@ -17,10 +17,12 @@
 #include <gtest/gtest_prod.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
 
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/util/compat.h"
 
@@ -28,6 +30,23 @@ namespace ray {
 
 class MemoryMonitorUtils {
  public:
+  static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
+  static constexpr char kCgroupsV1MemoryHighPath[] = "memory/memory.soft_limit_in_bytes";
+  static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
+  static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
+  static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
+  static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
+  static constexpr char kCgroupsV2MemoryMaxPath[] = "memory.max";
+  static constexpr char kCgroupsV2MemoryHighPath[] = "memory.high";
+  static constexpr char kCgroupsV2MemoryUsagePath[] = "memory.current";
+  static constexpr char kCgroupsV2MemoryStatPath[] = "memory.stat";
+  static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
+  static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
+  static constexpr char kCgroupsV2MemoryAnonKey[] = "anon";
+  static constexpr char kCgroupsV2MemoryShmemKey[] = "shmem";
+  static constexpr char kProcDirectory[] = "/proc";
+  static constexpr char kCommandlinePath[] = "cmdline";
+
   /**
    * @param top_n The number of top memory-using processes.
    * @param process_memory_snapshot The snapshot of per process memory usage.
@@ -43,12 +62,50 @@ class MemoryMonitorUtils {
   /**
    * @brief Takes a snapshot of system memory usage.
    *
-   * @param root_cgroup_path The path to the root cgroup.
-   * @param proc_dir The proc directory path.
+   * This includes the memory usage of all processes running on the system.
+   * The system is defined as either the container we are running in or the host machine.
+   * If the root cgroup memory limit is lower than the system memory limit,
+   * take the memory utilization from the cgroup instead.
+   *
+   * @param root_cgroup_path The path to the root cgroup
+   *                         to read the memory usage from.
+   * @param proc_dir The proc directory path
+   *                 to read the OS level memory usage from.
    * @return The used and total memory in bytes.
    */
-  static const SystemMemorySnapshot TakeSystemMemorySnapshot(
-      const std::string root_cgroup_path, const std::string proc_dir = kProcDirectory);
+  static const MemoryUsageSnapshot TakeSystemMemoryUsageSnapshot(
+      const std::string &root_cgroup_path, const std::string &proc_dir = kProcDirectory);
+
+  /**
+   * @brief Takes a snapshot of user slice memory usage across the host
+   *        machine. This includes the heap usage of all worker processes
+   *        and the object store usage shared across the raylet and workers.
+   *
+   * @param user_cgroup_path The path to the user cgroup
+   *                         to read the memory usage from.
+   * @param system_cgroup_path The path to the system cgroup
+                               to read the object store memory usage from.
+   * @param proc_dir The proc directory path
+   *                 to read the OS level memory usage from.
+   * @return The user application memory usage and total memory of the host in bytes.
+   *         Returns StatusT::NotFound if the memory values could not be successfully
+   retrieved.
+   */
+  static const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
+  TakeUserSliceMemoryUsageSnapshot(const std::string &user_cgroup_path,
+                                   const std::string &system_cgroup_path,
+                                   const std::string &proc_dir = kProcDirectory);
+
+  /**
+   * @brief Takes a snapshot of the memory usage for the given cgroupv2 path.
+   *
+   * @param root_cgroup_path The path to the cgroup to take the snapshot of.
+   * @return The cgroup memory snapshot.
+   *         Returns StatusT::NotFound if the memory values could not be found,
+   *         or if the path is a cgroupv1 path.
+   */
+  static const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
+  TakeCgroupMemorySnapshot(const std::string &root_cgroup_path);
 
   /**
    * @brief Takes a snapshot of per-process memory usage.
@@ -69,11 +126,18 @@ class MemoryMonitorUtils {
    * @param usage_threshold A value in [0-1] to indicate the max usage.
    * @param min_memory_free_bytes The min amount of free space to maintain before it is
    *        exceeding the threshold.
+   * @param resource_isolation_enabled Whether resource isolation is enabled. Used
+   *        to determine if the threshold should be calculated based on the cgroup
+   * constraints.
+   * @param cgroup_manager The cgroup manager to fetch the upper bound memory constraints
+   * from.
    * @return The memory threshold.
    */
   static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
                                     float usage_threshold,
-                                    int64_t min_memory_free_bytes);
+                                    int64_t min_memory_free_bytes,
+                                    bool resource_isolation_enabled,
+                                    const CgroupManagerInterface &cgroup_manager);
 
   /**
    * @brief Gets the used memory for a process from the process memory snapshot.
@@ -191,7 +255,6 @@ class MemoryMonitorUtils {
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
       uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
- private:
   FRIEND_TEST(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
@@ -209,18 +272,7 @@ class MemoryMonitorUtils {
   FRIEND_TEST(MemoryMonitorUtilsTest, TestTopNLessThanNReturnsMemoryUsedDesc);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestTopNMoreThanNReturnsAllDesc);
 
-  static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
-  static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
-  static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
-  static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
-  static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
-  static constexpr char kCgroupsV2MemoryMaxPath[] = "memory.max";
-  static constexpr char kCgroupsV2MemoryUsagePath[] = "memory.current";
-  static constexpr char kCgroupsV2MemoryStatPath[] = "memory.stat";
-  static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
-  static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
-  static constexpr char kProcDirectory[] = "/proc";
-  static constexpr char kCommandlinePath[] = "cmdline";
+  static constexpr double kDefaultThresholdMonitorReactionBufferProportion = 0.05;
 };
 
 }  // namespace ray

@@ -21,14 +21,29 @@ SERVE_LOGGER_NAME = "ray.serve"
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
 
+# Reserved runtime_env keys used to hydrate deployment actor context.
+# Unlike replicas which use _set_internal_replica_context() during init,
+# deployment actors are user-defined Ray actors. Serve controller can't
+# inject constructor params. Env vars via runtime_env are the reasonable
+# injection point that doesn't require modifying the user's class.
+RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR = "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME"
+RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION"
+)
+
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Host
-DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
+DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
@@ -66,6 +81,20 @@ HTTP_PROXY_TIMEOUT = 60
 # Max retry on deployment constructor is
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
+
+#: Max processing latency metric configuration.
+#: Rolling window duration for calculating max processing latency (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S", "60")
+)
+#: Interval for reporting max processing latency metric (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS", "6")
+)
 
 
 # If you are wondering why we are using histogram buckets, please refer to
@@ -236,6 +265,7 @@ DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
 DEFAULT_CONSUMER_CONCURRENCY = DEFAULT_MAX_ONGOING_REQUESTS
 DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
+DEFAULT_ROLLING_UPDATE_PERCENTAGE = 0.2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
@@ -354,6 +384,9 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# Serve HTTP request header key for session-stickiness routing.
+SERVE_SESSION_ID = "x_session_id"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
@@ -630,11 +663,22 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
+# of a system-installed binary. When enabled, get_haproxy_binary() resolves
+# the binary from the ray_haproxy package (pip install ray-haproxy).
+RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
+    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
+)
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
+
+# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
+# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
@@ -678,6 +722,9 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
 )
+
+# HAProxy stats UI port
+RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
 # HAProxy log port
 RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
@@ -739,6 +786,36 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 # The balancing algorithm to use in HAProxy backends. Default is leastconn.
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
     "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
+)
+
+# Timeout shared by the ingress-request-router Lua call and the frontend
+# `wait-for-body` directive. Bounds head-of-line blocking on POSTs when a
+# router replica is unhealthy.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
+)
+
+# Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
+# active. Bodies longer than this are truncated; the Lua forwards what it has
+# with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
+# do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
+# Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+)
+
+# Escape hatch: when true, HAProxy forwards the (possibly truncated) request
+# body to /internal/route and the router reads it. Off by default because for
+# large payloads the body buffering / re-emit cost adds noticeable time-to-
+# first-response. Skipping the forward is fine for any policy whose decision
+# does not depend on the request body: round-robin and power-of-two ignore
+# the body entirely, and session-aware policies key on the ``x-session-id``
+# header (forwarded with the request line) rather than the body.
+#
+# Flip this to true if the configured request router needs the body for its
+# decision, e.g. prefix-aware / prefix-cache routing.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
@@ -807,6 +884,15 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
+)
+# Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
+# When enabled, metric tags use only the LongPollNamespace enum name
+# (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes
+# per-deployment identifiers. This bounds metric cardinality to ~6 namespace types
+# instead of scaling with the number of deployments.
+# Recommended for workloads with a large number (>1000) of deployments.
+RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = get_env_bool(
+    "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", "0"
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"

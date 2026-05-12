@@ -492,6 +492,9 @@ def test_autoscaling_metrics(metrics_start_shutdown):
         Tags: deployment, application
     - ray_serve_autoscaling_policy_execution_time_ms: Policy execution time
         Tags: deployment, application, policy_scope
+    - ray_serve_autoscaling_target_ongoing_requests: Configured target ongoing
+        requests per replica
+        Tags: deployment, application
     - ray_serve_autoscaling_replica_metrics_delay_ms: Replica metrics delay
         Tags: deployment, application, replica
     - ray_serve_autoscaling_handle_metrics_delay_ms: Handle metrics delay
@@ -574,7 +577,18 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     wait_for_condition(check_policy_execution_time_metric, timeout=15)
     print("Policy execution time metric verified.")
 
-    # Test 5: Check that metrics delay gauges are emitted with proper tags
+    # Test 5: Check that target_ongoing_requests metric is 2 (matches config)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_autoscaling_target_ongoing_requests",
+        expected=2,
+        expected_tags=base_tags,
+        timeseries=timeseries,
+    )
+    print("Target ongoing requests metric verified.")
+
+    # Test 6: Check that metrics delay gauges are emitted with proper tags
     def check_metrics_delay_metrics():
         # Check for handle metrics delay (depends on where metrics are collected)
         value = get_metric_float(
@@ -951,6 +965,7 @@ def test_long_poll_latency_metric(metrics_start_shutdown):
         host_actor=host,
         key_listeners={"test_key": on_update},
         call_in_event_loop=loop,
+        client_id="test_metrics_client",
     )
 
     # Wait for initial update (client starts with snapshot_id -1)

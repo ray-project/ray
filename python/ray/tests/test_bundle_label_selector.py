@@ -299,7 +299,7 @@ def test_spread_strategy_bundle_label_selector(ray_start_cluster):
 
 def test_gpu_domain_scheduling_reschedule_on_node_failure(ray_start_cluster):
     """
-    Spins up 18 nodes in a single GPU domain (rack-1). Schedules 16 bundles,
+    Spins up 6 nodes in a single GPU domain (rack-1). Schedules 4 bundles,
     then kills 2 nodes containing bundles. Verifies that the PG reschedules
     the bundles onto remaining nodes that share the same GPU domain.
     """
@@ -313,13 +313,13 @@ def test_gpu_domain_scheduling_reschedule_on_node_failure(ray_start_cluster):
     }
 
     rack_nodes = []
-    for _ in range(18):
+    for _ in range(6):
         rack_nodes.append(cluster.add_node(num_cpus=1, labels=rack_labels))
-    for _ in range(18):
+    for _ in range(2):
         cluster.add_node(num_cpus=1)
 
-    bundles = [{"CPU": 1}] * 16
-    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 16
+    bundles = [{"CPU": 1}] * 4
+    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 4
 
     pg = placement_group(
         bundles=bundles,
@@ -377,6 +377,70 @@ def test_gpu_domain_scheduling_infeasible_after_node_kill(ray_start_cluster):
 
     state = placement_group_table(pg)["state"]
     assert state == "RESCHEDULING", f"Expected RESCHEDULING, got {state}"
+
+
+def test_gpu_domain_scheduling_rescheduling_on_gpu_domain_failure(ray_start_cluster):
+    """Verify the PG reschedules onto a new GPU domain after total domain failure.
+
+    Creates a placement group on rack 1. Then removes one rack 1 node so the PG cannot
+    be fully placed on that rack anymore, confirming the PG enters RESCHEDULING. While
+    partial rack 1 remains, the PG stays infeasible because label locality pins it to
+    the original domain. Once all rack 1 nodes are removed (total failure), the gpu
+    domain assignment is cleared and the PG reschedules onto rack 2.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    rack1_labels = {
+        "ray.io/gpu-domain": "rack-1",
+        "ray.io/accelerator-type": "GB300",
+    }
+
+    rack2_labels = {
+        "ray.io/gpu-domain": "rack-2",
+        "ray.io/accelerator-type": "GB300",
+    }
+
+    rack1_nodes = []
+    for _ in range(4):
+        rack1_nodes.append(cluster.add_node(num_cpus=1, labels=rack1_labels))
+
+    def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
+        node_id_to_labels = {node["NodeID"]: node["Labels"] for node in cluster_nodes}
+        for node_id in placement_group_table(pg)["bundles_to_node_id"].values():
+            labels = node_id_to_labels[node_id]
+            assert labels.get(label) == value
+
+    bundles = [{"CPU": 1}] * 4
+    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 4
+
+    pg = placement_group(
+        bundles=bundles,
+        bundle_label_selector=label_selector,
+    )
+    ray.get(pg.ready(), timeout=30)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    assert_pg_nodes_label_value(ray.nodes(), pg, "ray.io/gpu-domain", "rack-1")
+
+    for _ in range(4):
+        cluster.add_node(num_cpus=1, labels=rack2_labels)
+
+    cluster.remove_node(rack1_nodes[0])
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=5)
+
+    assert placement_group_table(pg)["state"] == "RESCHEDULING"
+
+    for node in rack1_nodes[1:]:
+        cluster.remove_node(node)
+
+    ray.get(pg.ready(), timeout=30)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    # Verify that the PG is now on rack 2 after all rack 1 nodes are removed
+    assert_pg_nodes_label_value(ray.nodes(), pg, "ray.io/gpu-domain", "rack-2")
 
 
 if __name__ == "__main__":

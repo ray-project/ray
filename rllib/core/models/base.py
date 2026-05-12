@@ -243,8 +243,8 @@ class Encoder(Model, abc.ABC):
             def _forward(self, input_dict, **kwargs):
                 obs = input_dict[Columns.OBS]
                 return {
-                    ENCODER_OUT: np.array(obs) * self.factor,
-                    Columns.STATE_OUT: (
+                    ENCODER_OUT: int(np.array(obs) * self.factor),
+                    Columns.STATE_OUT: int(
                         np.array(input_dict[Columns.STATE_IN])
                         * self.factor
                     ),

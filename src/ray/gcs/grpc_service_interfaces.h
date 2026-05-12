@@ -132,9 +132,10 @@ class NodeResourceInfoGcsServiceHandler {
                                          SendReplyCallback send_reply_callback) = 0;
 };
 
-class InternalPubSubGcsServiceHandler {
+/// Shared handler surface for GCS control-plane and observability pubsub gRPC services.
+class PubSubGcsServiceHandlerBase {
  public:
-  virtual ~InternalPubSubGcsServiceHandler() = default;
+  virtual ~PubSubGcsServiceHandlerBase() = default;
 
   virtual void HandleGcsPublish(GcsPublishRequest request,
                                 GcsPublishReply *reply,
@@ -147,6 +148,15 @@ class InternalPubSubGcsServiceHandler {
   virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
                                                GcsSubscriberCommandBatchReply *reply,
                                                SendReplyCallback send_reply_callback) = 0;
+};
+
+class ControlPlanePubSubGcsServiceHandler : public PubSubGcsServiceHandlerBase {};
+
+class ObservabilityPubSubServiceHandler : public PubSubGcsServiceHandlerBase {
+ public:
+  virtual void HandleReportJobError(ReportJobErrorRequest request,
+                                    ReportJobErrorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 class JobInfoGcsServiceHandler {
@@ -168,10 +178,6 @@ class JobInfoGcsServiceHandler {
                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
-
-  virtual void HandleReportJobError(ReportJobErrorRequest request,
-                                    ReportJobErrorReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetNextJobID(GetNextJobIDRequest request,
                                   GetNextJobIDReply *reply,

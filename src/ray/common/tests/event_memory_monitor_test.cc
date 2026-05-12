@@ -66,8 +66,7 @@ class EventMemoryMonitorTest : public ::testing::Test {
 TEST_F(EventMemoryMonitorTest, TestNonexistentCgroupPathFailsGracefully) {
   std::string nonexistent_path = "/nonexistent/cgroup/path";
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
-      EventMemoryMonitor::Create(std::move(nonexistent_path),
-                                 [](SystemMemorySnapshot) {});
+      EventMemoryMonitor::Create(std::move(nonexistent_path), []() {});
 
   ASSERT_TRUE(result.has_error())
       << "Failed to catch invalid cgroup path when creating EventMemoryMonitor";
@@ -79,7 +78,7 @@ TEST_F(EventMemoryMonitorTest, TestMissingMemoryEventsFileFailsGracefully) {
   RAY_CHECK(empty_dir_or.ok()) << empty_dir_or.status().ToString();
   std::unique_ptr<TempDirectory> empty_dir = std::move(empty_dir_or.value());
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
-      EventMemoryMonitor::Create(empty_dir->GetPath(), [](SystemMemorySnapshot) {});
+      EventMemoryMonitor::Create(empty_dir->GetPath(), []() {});
 
   ASSERT_TRUE(result.has_error())
       << "Failed to catch invalid cgroup configuration when creating EventMemoryMonitor";
@@ -88,8 +87,7 @@ TEST_F(EventMemoryMonitorTest, TestMissingMemoryEventsFileFailsGracefully) {
 
 TEST_F(EventMemoryMonitorTest, TestSuccessfulCreationWithValidPath) {
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
-      EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(),
-                                 [](SystemMemorySnapshot) {});
+      EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(), []() {});
   ASSERT_TRUE(result.has_value())
       << "Failed to create EventMemoryMonitor: " << result.message();
   std::unique_ptr<EventMemoryMonitor> monitor = std::move(result.value());
@@ -100,9 +98,7 @@ TEST_F(EventMemoryMonitorTest, TestCallbackCalledWhenHighEventChanges) {
   WriteMemoryEventsFile(events_file_->GetPath(), 0, 0);
 
   auto callback_latch = std::make_shared<boost::latch>(1);
-  KillWorkersCallback callback = [callback_latch](SystemMemorySnapshot) {
-    callback_latch->count_down();
-  };
+  KillWorkersCallback callback = [callback_latch]() { callback_latch->count_down(); };
 
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
       EventMemoryMonitor::Create(std::move(mock_cgroup_dir_->GetPath()),
@@ -120,9 +116,7 @@ TEST_F(EventMemoryMonitorTest, TestNoCallbackWhenValuesUnchanged) {
   WriteMemoryEventsFile(events_file_->GetPath(), 0, 0);
 
   auto callback_latch = std::make_shared<boost::latch>(1);
-  KillWorkersCallback callback = [callback_latch](SystemMemorySnapshot) {
-    callback_latch->count_down();
-  };
+  KillWorkersCallback callback = [callback_latch]() { callback_latch->count_down(); };
 
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
       EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(), callback);
@@ -139,9 +133,7 @@ TEST_F(EventMemoryMonitorTest, TestNoCallbackWhenIrrelevantEventChanges) {
   WriteMemoryEventsFile(events_file_->GetPath(), 0, 0);
 
   auto callback_latch = std::make_shared<boost::latch>(1);
-  KillWorkersCallback callback = [callback_latch](SystemMemorySnapshot) {
-    callback_latch->count_down();
-  };
+  KillWorkersCallback callback = [callback_latch]() { callback_latch->count_down(); };
 
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
       EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(), callback);
@@ -161,17 +153,16 @@ TEST_F(EventMemoryMonitorTest, TestMultipleCallbacksOnMultipleChanges) {
   auto latch2 = std::make_shared<boost::latch>(1);
   auto latch3 = std::make_shared<boost::latch>(1);
   std::atomic<int> callback_count{0};
-  KillWorkersCallback callback =
-      [&callback_count, latch1, latch2, latch3](SystemMemorySnapshot) {
-        int count = ++callback_count;
-        if (count == 1) {
-          latch1->count_down();
-        } else if (count == 2) {
-          latch2->count_down();
-        } else if (count == 3) {
-          latch3->count_down();
-        }
-      };
+  KillWorkersCallback callback = [&callback_count, latch1, latch2, latch3]() {
+    int count = ++callback_count;
+    if (count == 1) {
+      latch1->count_down();
+    } else if (count == 2) {
+      latch2->count_down();
+    } else if (count == 3) {
+      latch3->count_down();
+    }
+  };
 
   StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> result =
       EventMemoryMonitor::Create(mock_cgroup_dir_->GetPath(), callback);

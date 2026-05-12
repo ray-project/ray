@@ -118,25 +118,19 @@ void RedisStoreClient::MGetValues(
   }
 }
 
-std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service,
-                                                  const RedisClientOptions &options) {
-  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
-  auto context = std::make_shared<RedisContext>(io_service);
-  RAY_CHECK_OK(context->Connect(options.ip,
-                                options.port,
-                                /*username=*/options.username,
-                                /*password=*/options.password,
-                                /*enable_ssl=*/options.enable_ssl))
-      << "Failed to connect to Redis.";
-  return context;
-}
-
 RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
                                    const RedisClientOptions &options)
     : io_service_(io_service),
       options_(options),
       external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      primary_context_(ConnectRedisContext(io_service, options)) {
+      primary_context_(std::make_shared<RedisContext>(io_service)) {
+  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
+  RAY_CHECK_OK(primary_context_->Connect(options.ip,
+                                         options.port,
+                                         /*username=*/options.username,
+                                         /*password=*/options.password,
+                                         /*enable_ssl=*/options.enable_ssl))
+      << "Failed to connect to Redis.";
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
@@ -526,7 +520,14 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
-  std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options);
+  RedisContext context(io_service);
+  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
+  RAY_CHECK_OK(context.Connect(options.ip,
+                               options.port,
+                               /*username=*/options.username,
+                               /*password=*/options.password,
+                               /*enable_ssl=*/options.enable_ssl))
+      << "Failed to connect to Redis.";
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -548,7 +549,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   do {
     std::vector<std::string> cmd{"SCAN", std::to_string(cursor), "MATCH", match_pattern};
     std::promise<std::shared_ptr<CallbackReply>> promise;
-    context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
+    context.RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
       promise.set_value(reply);
     });
 
@@ -569,10 +570,10 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto delete_one_sync = [&context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
     std::promise<std::shared_ptr<CallbackReply>> prom;
-    context->RunArgvAsync(del_cmd,
-                          [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
-                            prom.set_value(callback_reply);
-                          });
+    context.RunArgvAsync(del_cmd,
+                         [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+                           prom.set_value(callback_reply);
+                         });
     auto del_reply = prom.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
