@@ -142,6 +142,7 @@ class ParquetFileReader(FileReader):
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
         schema: Optional[pa.Schema] = None,
     ):
         """Initialize the Parquet reader.
@@ -160,6 +161,8 @@ class ParquetFileReader(FileReader):
                 Used for adaptive batch sizing when ``batch_size`` is not set.
             include_paths: If True, include the source file path in a
                 ``'path'`` column for each row.
+            include_row_hash: If True, include a deterministic uint64 hash
+                per row in a ``'row_hash'`` column.
             schema: Caller-supplied unified schema forwarded to the base
                 :class:`FileReader` for per-fragment inference override
                 and partition-column type casting.
@@ -174,6 +177,7 @@ class ParquetFileReader(FileReader):
             partitioning=partitioning,
             ignore_prefixes=ignore_prefixes,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
             schema=schema,
         )
         self._explicit_batch_size = batch_size
