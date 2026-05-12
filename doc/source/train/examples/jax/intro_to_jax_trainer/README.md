@@ -268,7 +268,7 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 from jax.experimental import mesh_utils
-from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
+from jax.sharding import Mesh
 
 import flax.nnx as nnx
 import optax
@@ -492,6 +492,7 @@ Each Ray Train worker runs the same Python function with a different world rank,
 
 - Read the distributed context (`world_rank`, `world_size`).
 - Get the per-worker dataset shard (`train.get_dataset_shard(...)`) to stream batches.
+- Stream sharded JAX Arrays directly to training devices using [`Dataset.iter_jax_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.Dataset.iter_jax_batches.html), which handles device sharding natively.
 - Report metrics and checkpoints back to the trainer with `ray.train.report(...)`.
 
 
@@ -537,6 +538,8 @@ def train_loop_per_worker(config_dict: dict) -> None:
     # This removes the need for try/except StopIteration blocks in the training loop.
     def batch_generator(dataset_shard):
         while True:
+            # iter_jax_batches yields globally sharded JAX Array batches directly,
+            # mapped onto all process JAX-addressable training devices.
             yield from dataset_shard.iter_jax_batches(
                 batch_size=local_batch_size,
                 prefetch_batches=2,
