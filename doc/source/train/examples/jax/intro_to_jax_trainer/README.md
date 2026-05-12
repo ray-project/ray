@@ -635,7 +635,7 @@ def train_loop_per_worker(config_dict: dict) -> None:
 
 In the example above, we used `iter_batches(batch_format="numpy")` and manually transferred data to devices using `jax.make_array_from_process_local_data`.
 
-Ray Data also provides an API, `iter_jax_batches`, which streamlines this process by automatically yielding globally sharded JAX Arrays. This can be more efficient and requires less boilerplate code.
+Ray Data also provides an Alpha API, `iter_jax_batches`, which streamlines this process by automatically yielding globally sharded JAX Arrays. This can be more efficient and requires less boilerplate code.
 
 Here is how you would modify the data loading section in `train_loop_per_worker` to use `iter_jax_batches`:
 
