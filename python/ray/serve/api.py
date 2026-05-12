@@ -669,8 +669,21 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.model_dump()
 
-    if accelerator_config is not DEFAULT.VALUE:
+    if accelerator_config is not DEFAULT.VALUE and accelerator_config is not None:
         accelerator_config = _resolve_accelerator_config(accelerator_config)
+
+        if (
+            gang_scheduling_config is not DEFAULT.VALUE
+            and gang_scheduling_config is not None
+        ):
+            # The only supported accelerator_config currently is for TPU, which utilizes
+            # SlicePlacementGroup internally for atomic scheduling of SPMD workers. This
+            # check can be loosened if additional accelerator configs are added in the
+            # future that don't manage their own gang scheduling.
+            raise ValueError(
+                "Cannot specify both `accelerator_config` and `gang_scheduling_config`. "
+                "Accelerator configurations automatically manage their own gang scheduling."
+            )
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,

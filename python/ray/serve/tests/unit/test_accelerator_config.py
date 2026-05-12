@@ -10,7 +10,7 @@ from ray.serve._private.default_impl import (
     _create_replica_placement_group,
 )
 from ray.serve.api import deployment
-from ray.serve.config import TPUAcceleratorConfig
+from ray.serve.config import GangSchedulingConfig, TPUAcceleratorConfig
 from ray.util.placement_group import PlacementGroup
 from ray.util.tpu import SlicePlacementGroup
 
@@ -245,6 +245,52 @@ def test_tpu_config_resources_per_bundle_forwarded_to_slice_pg(monkeypatch):
     assert captured["resources_per_bundle"] == {"TPU": 1, "memory": 1_000_000}
     assert captured["topology"] == "4x4"
     assert captured["accelerator_version"] == "v6e"
+
+
+@pytest.mark.parametrize(
+    "options, should_raise",
+    [
+        ({}, False),
+        (
+            {
+                "accelerator_config": TPUAcceleratorConfig(
+                    topology="2x2", accelerator_version="v6e"
+                )
+            },
+            False,
+        ),
+        (
+            {
+                "gang_scheduling_config": GangSchedulingConfig(gang_size=2),
+                "num_replicas": 2,
+            },
+            False,
+        ),
+        (
+            {
+                "accelerator_config": TPUAcceleratorConfig(
+                    topology="2x2", accelerator_version="v6e"
+                ),
+                "gang_scheduling_config": GangSchedulingConfig(gang_size=2),
+                "num_replicas": 2,
+            },
+            True,
+        ),
+    ],
+)
+def test_deployment_config_mutual_exclusivity(options, should_raise):
+    """accelerator_config and gang_scheduling_config validation matrix."""
+
+    def create_deployment():
+        @deployment(**options)
+        class D:
+            pass
+
+    if should_raise:
+        with pytest.raises(ValueError, match="Cannot specify both"):
+            create_deployment()
+    else:
+        create_deployment()
 
 
 if __name__ == "__main__":
