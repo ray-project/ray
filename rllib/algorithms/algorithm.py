@@ -1129,7 +1129,6 @@ class Algorithm(Checkpointable, Trainable):
 
                     per_instance_options = dict(base_options)
                     if trial_pg is not None:
-                        # In a Tune trial PG: claim the bundle directly.
                         # The bundle is already on the learner's node by
                         # construction, so co-location is implicit.
                         per_instance_options[
@@ -1138,10 +1137,10 @@ class Algorithm(Checkpointable, Trainable):
                             placement_group=trial_pg,
                             placement_group_bundle_index=bundle_idx,
                         )
-                    # No PG (running Algorithm directly, outside Tune):
-                    # let Ray's default scheduling place the actor on
-                    # any node with capacity. Co-location with the
-                    # learner is best-effort in that case.
+                    # No PG (Algorithm built directly, outside Tune): no
+                    # scheduling hint -- Ray's default scheduling places
+                    # the actor on any node with capacity. Co-location
+                    # with the learner is best-effort in this case.
 
                     handle = agg_cls.options(**per_instance_options).remote(
                         self.config, rl_module_spec
