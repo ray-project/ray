@@ -319,6 +319,53 @@ def test_iterate_with_retry():
     )
 
 
+def test_iterate_with_retry_unwrap_cause():
+    """unwrap_cause=True makes `match` patterns search e.__cause__ as well."""
+    attempts = 0
+
+    class MockIterable:
+        def __init__(self):
+            nonlocal attempts
+            attempts += 1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            try:
+                raise RuntimeError("transient inner")
+            except RuntimeError as inner:
+                raise ValueError("outer wrapper") from inner
+
+    # unwrap_cause=True: pattern matches the cause → all attempts consumed.
+    attempts = 0
+    with pytest.raises(ValueError, match="outer wrapper"):
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get item",
+                match=["transient inner"],
+                max_attempts=2,
+                unwrap_cause=True,
+            )
+        )
+    assert attempts == 2
+
+    # unwrap_cause=False: cause invisible → not retryable → only one attempt.
+    attempts = 0
+    with pytest.raises(ValueError, match="outer wrapper"):
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get item",
+                match=["transient inner"],
+                max_attempts=2,
+                unwrap_cause=False,
+            )
+        )
+    assert attempts == 1
+
+
 @pytest.mark.parametrize(
     "pattern, error_message, expected",
     [
