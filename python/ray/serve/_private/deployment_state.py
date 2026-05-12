@@ -1438,6 +1438,8 @@ class ActorReplicaWrapper:
             try:
                 # TODO(simon): fully implement reconfigure for Java replicas.
                 if self._is_cross_language:
+                    if self._replica_pg is not None:
+                        self._replica_pg.release_reservation_holders()
                     return ReplicaStartupStatus.SUCCEEDED, None
 
                 # todo: The replica's userconfig whitch java client created
