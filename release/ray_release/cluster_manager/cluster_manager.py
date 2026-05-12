@@ -108,9 +108,14 @@ class ClusterManager(abc.ABC):
             #   - Base AND per-group -> tag everywhere. Both are
             #     load-bearing: the base covers node groups without an
             #     override, the per-group covers node groups with one.
-            head = cluster_compute.get("head_node")
-            workers = cluster_compute.get("worker_nodes", []) or []
-            has_head_aic = isinstance(head, dict) and "advanced_instance_config" in head
+            # Normalize missing/null head_node and worker_nodes to empty
+            # containers so the downstream checks don't need to special-case
+            # them. When head is missing/null the resulting `head` is a
+            # fresh `{}` we never mutate (has_head_aic is False); when
+            # head_node is a real dict we mutate that dict in place below.
+            head = cluster_compute.get("head_node") or {}
+            workers = cluster_compute.get("worker_nodes") or []
+            has_head_aic = "advanced_instance_config" in head
             has_worker_aic = any(
                 isinstance(w, dict) and "advanced_instance_config" in w for w in workers
             )

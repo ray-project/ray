@@ -470,6 +470,23 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ),
         )
 
+    def testClusterComputeNewSchemaNoAic(self):
+        # No advanced_instance_config anywhere: auto-create the base spec to
+        # hold the billing tags. Per-group specs stay absent.
+        cluster_manager = self._make_new_schema_cluster_manager()
+        cluster_compute = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
+        cluster_manager.set_cluster_compute(cluster_compute, extra_tags={"foo": "bar"})
+        self.assertIn(
+            "TagSpecifications",
+            cluster_manager.cluster_compute["advanced_instance_config"],
+        )
+        self.assertNotIn(
+            "advanced_instance_config",
+            cluster_manager.cluster_compute["head_node"],
+        )
+        for worker in cluster_manager.cluster_compute["worker_nodes"]:
+            self.assertNotIn("advanced_instance_config", worker)
+
     def testClusterComputeNewSchemaNonAws(self):
         # Non-AWS cloud (gce): annotation should be skipped entirely.
         cluster_manager = self._make_new_schema_cluster_manager(env="gce")
