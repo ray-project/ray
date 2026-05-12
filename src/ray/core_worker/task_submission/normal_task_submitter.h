@@ -178,14 +178,6 @@ class NormalTaskSubmitter {
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Report worker backlog information to the local raylet
-  void ReportWorkerBacklogInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Report backlog if the backlog size is changed for this scheduling key
-  /// since last report
-  void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
@@ -312,7 +304,7 @@ class NormalTaskSubmitter {
     // Keep track of pending worker lease requests to the raylet.
     absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
 
-    LeaseSpecification lease_spec;
+    std::optional<LeaseSpecification> lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue;
@@ -321,7 +313,6 @@ class NormalTaskSubmitter {
     absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
-    int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
@@ -370,6 +361,10 @@ class NormalTaskSubmitter {
   // Tasks that have failed but we are waiting for their error cause to decide if they
   // should be retried or permanently failed.
   absl::flat_hash_set<TaskID> failed_tasks_pending_failure_cause_ ABSL_GUARDED_BY(mu_);
+
+  // True if the last backlog report sent to the raylet was non-empty.
+  // Used to ensure we send one final empty report to clear stale backlog.
+  bool last_backlog_report_nonempty_ = false;
 
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;

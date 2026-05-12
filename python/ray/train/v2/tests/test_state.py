@@ -1,4 +1,4 @@
-import importlib
+import json
 import time
 from collections import OrderedDict
 from unittest.mock import MagicMock, patch
@@ -43,6 +43,8 @@ from ray.train.v2._internal.state.schema import (
     BackendConfig as BackendConfigSchema,
     CheckpointConfig as CheckpointConfigSchema,
     DataConfig as DataConfigSchema,
+    DataExecutionOptions,
+    ExecutionOptions as ExecutionOptionsSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
     RunConfig as RunConfigSchema,
@@ -52,6 +54,7 @@ from ray.train.v2._internal.state.schema import (
     TrainResources,
     TrainRun,
     TrainRunAttempt,
+    _to_json_serializable_value,
 )
 from ray.train.v2._internal.state.state_actor import (
     TrainStateActor,
@@ -61,7 +64,7 @@ from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.state.util import (
     _DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
     construct_data_config,
-    execution_options_to_dict,
+    execution_options_to_model,
 )
 from ray.train.v2.api.config import (
     CheckpointConfig,
@@ -175,6 +178,11 @@ def callback(monkeypatch):
     return callback
 
 
+# =============================================================================
+# TrainStateActor: CRUD and dead-controller reconciliation
+# =============================================================================
+
+
 def test_train_state_actor_create_and_get_run(ray_start_regular):
     """Test basic CRUD operations for train runs in the state actor."""
     actor = ray.remote(TrainStateActor).remote()
@@ -207,7 +215,11 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
             datasets=["dataset_1"],
             data_config=DataConfigSchema(
                 datasets_to_split="all",
-                execution_options={},
+                data_execution_options=DataExecutionOptions(
+                    default=execution_options_to_model(
+                        DataConfig.default_ingest_options()
+                    ),
+                ),
                 enable_shard_locality=True,
             ),
             run_config=RunConfigSchema(
@@ -300,7 +312,10 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
 
     # Create TrainStateActor with interesting runs and run attempts.
     # NOTE: TrainStateActor will poll for real but its updates are idempotent.
-    actor = TrainStateActor(enable_state_actor_reconciliation=True)
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        controllers_to_poll_per_iteration=5,
+    )
     finished_controller_run = create_mock_train_run(
         status=RunStatus.FINISHED,
         controller_actor_id="finished_controller_id",
@@ -466,6 +481,11 @@ def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
     assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
 
 
+# =============================================================================
+# TrainStateManager: run and run-attempt lifecycle
+# =============================================================================
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -601,6 +621,11 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     assert attempt.end_time_ns is not None
     assert len(attempt.workers) == 2
     assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
+
+
+# =============================================================================
+# StateManagerCallback: controller state, worker group, and log paths
+# =============================================================================
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
@@ -825,6 +850,11 @@ def test_callback_log_file_paths(
     assert attempt.workers[0].log_file_path == mock_worker.log_file_path
 
 
+# =============================================================================
+# Helpers: framework version detection and DataConfig serialization
+# =============================================================================
+
+
 def test_get_framework_version():
     """Test _get_framework_version with None and every TrainingFramework value."""
     # None should return only the ray version.
@@ -832,37 +862,39 @@ def test_get_framework_version():
     assert list(versions.keys()) == ["ray"]
     assert versions["ray"] == ray.__version__
 
-    # Each framework should return ray + versions for all importable modules.
-    for framework in TrainingFramework:
-        versions = _get_framework_version(framework)
-        assert "ray" in versions
-        assert versions["ray"] == ray.__version__
-
-        for module_name in framework.module_names():
-            try:
-                module = importlib.import_module(module_name)
-                assert module_name in versions
-                assert versions[module_name] == module.__version__
-            except ModuleNotFoundError:
-                assert module_name not in versions
-
-
-def test_execution_options_to_dict_defaults_and_custom():
-    """Test execution_options_to_dict with default and fully customized options."""
-    # Default options
-    default_result = execution_options_to_dict(ExecutionOptions())
-    assert set(default_result.keys()) == {
-        "resource_limits",
-        "exclude_resources",
-        "preserve_order",
-        "actor_locality_enabled",
-        "verbose_progress",
+    # Mock importlib.import_module to prevent heavy imports
+    mock_versions = {
+        name: f"{name}-mock-1.2.3"
+        for framework in TrainingFramework
+        for name in framework.module_names()
     }
-    assert default_result["preserve_order"] is False
-    assert default_result["actor_locality_enabled"] is True
+
+    def mock_import(name):
+        module = MagicMock()
+        module.__version__ = mock_versions[name]
+        return module
+
+    with patch(
+        "ray.train.v2._internal.callbacks.state_manager.importlib"
+    ) as mock_importlib:
+        mock_importlib.import_module.side_effect = mock_import
+        for framework in TrainingFramework:
+            versions = _get_framework_version(framework)
+            assert versions["ray"] == ray.__version__
+            for module_name in framework.module_names():
+                assert versions[module_name] == mock_versions[module_name]
+
+
+def test_execution_options_to_model_defaults_and_custom():
+    """Test execution_options_to_model with default and fully customized options."""
+    # Default options
+    default_result = execution_options_to_model(ExecutionOptions())
+    assert isinstance(default_result, ExecutionOptionsSchema)
+    assert default_result.preserve_order is False
+    assert default_result.actor_locality_enabled is True
 
     # All custom values
-    custom_result = execution_options_to_dict(
+    custom_result = execution_options_to_model(
         ExecutionOptions(
             resource_limits=ExecutionResources(
                 cpu=8.0, gpu=4.0, object_store_memory=1e9
@@ -873,24 +905,29 @@ def test_execution_options_to_dict_defaults_and_custom():
             verbose_progress=False,
         )
     )
-    assert custom_result["resource_limits"]["CPU"] == 8.0
-    assert custom_result["resource_limits"]["GPU"] == 4.0
-    assert custom_result["resource_limits"]["object_store_memory"] == 1e9
-    assert custom_result["exclude_resources"]["CPU"] == 2.0
-    assert custom_result["exclude_resources"]["GPU"] == 0.5
-    assert custom_result["preserve_order"] is True
-    assert custom_result["actor_locality_enabled"] is False
-    assert custom_result["verbose_progress"] is False
+    assert custom_result.resource_limits["CPU"] == 8.0
+    assert custom_result.resource_limits["GPU"] == 4.0
+    assert custom_result.resource_limits["object_store_memory"] == 1e9
+    assert custom_result.exclude_resources["CPU"] == 2.0
+    assert custom_result.exclude_resources["GPU"] == 0.5
+    assert custom_result.preserve_order is True
+    assert custom_result.actor_locality_enabled is False
+    assert custom_result.verbose_progress is False
 
 
 def test_construct_data_config_defaults_and_split_variants():
     """Test construct_data_config with default config and different split options."""
-    # Default
+    # Default: data_execution_options.default mirrors the library default ingest
+    # options and per_dataset_execution_options is empty.
     default = construct_data_config(DataConfig())
     assert isinstance(default, DataConfigSchema)
     assert default.datasets_to_split == "all"
     assert default.enable_shard_locality is True
-    assert default.execution_options is None
+    assert isinstance(default.data_execution_options, DataExecutionOptions)
+    assert default.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    assert default.data_execution_options.per_dataset_execution_options == {}
 
     # Specific dataset list
     result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
@@ -905,8 +942,30 @@ def test_construct_data_config_defaults_and_split_variants():
     assert result.enable_shard_locality is False
 
 
+def test_construct_data_config_single_execution_options():
+    """A single ExecutionOptions lands in data_execution_options.default and
+    leaves per_dataset_execution_options empty."""
+    shared = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=8.0, gpu=2.0),
+        exclude_resources=ExecutionResources(cpu=1.0),
+        preserve_order=True,
+        actor_locality_enabled=False,
+        verbose_progress=False,
+    )
+    result = construct_data_config(
+        DataConfig(
+            datasets_to_split=["train", "eval"],
+            execution_options=shared,
+        )
+    )
+
+    assert result.data_execution_options.default == execution_options_to_model(shared)
+    assert result.data_execution_options.per_dataset_execution_options == {}
+
+
 def test_construct_data_config_per_dataset_execution_options():
-    """Test with multiple datasets each having distinct execution options."""
+    """Per-dataset ExecutionOptions land in per_dataset_execution_options while
+    default remains the library default."""
     config = DataConfig(
         datasets_to_split=["ds1", "ds2", "ds3"],
         execution_options={
@@ -930,22 +989,287 @@ def test_construct_data_config_per_dataset_execution_options():
 
     assert result.datasets_to_split == ["ds1", "ds2", "ds3"]
     assert result.enable_shard_locality is False
-    assert len(result.execution_options) == 3
 
-    ds1 = result.execution_options["ds1"]
-    assert ds1["resource_limits"]["CPU"] == 16.0
-    assert ds1["resource_limits"]["GPU"] == 8.0
-    assert ds1["exclude_resources"]["CPU"] == 4.0
-    assert ds1["preserve_order"] is True
-    assert ds1["actor_locality_enabled"] is False
-    assert ds1["verbose_progress"] is False
+    # default reflects the library default ingest options.
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
 
-    ds2 = result.execution_options["ds2"]
-    assert ds2["verbose_progress"] is False
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"ds1", "ds2", "ds3"}
 
-    ds3 = result.execution_options["ds3"]
-    assert ds3["exclude_resources"]["CPU"] == 0.5
-    assert ds3["exclude_resources"]["GPU"] == 0.5
+    ds1 = overrides["ds1"]
+    assert ds1.resource_limits["CPU"] == 16.0
+    assert ds1.resource_limits["GPU"] == 8.0
+    assert ds1.exclude_resources["CPU"] == 4.0
+    assert ds1.preserve_order is True
+    assert ds1.actor_locality_enabled is False
+    assert ds1.verbose_progress is False
+
+    ds2 = overrides["ds2"]
+    assert ds2.verbose_progress is False
+
+    ds3 = overrides["ds3"]
+    assert ds3.exclude_resources["CPU"] == 0.5
+    assert ds3.exclude_resources["GPU"] == 0.5
+
+
+def test_construct_data_config_partial_per_dataset_execution_options():
+    """User dict covering a subset of datasets populates only those overrides
+    while default remains the library default."""
+    custom = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=4.0),
+        preserve_order=True,
+    )
+    config = DataConfig(
+        datasets_to_split=["train", "eval", "predict"],
+        execution_options={"train": custom},
+    )
+    result = construct_data_config(config)
+
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"train"}
+    assert overrides["train"] == execution_options_to_model(custom)
+
+
+# =============================================================================
+# Schema sanitization tests
+# =============================================================================
+
+
+def test_to_json_serializable_value_standalone_inputs():
+    """The sanitizer accepts any value, not just dicts.
+
+    Covers JSON-native primitives (passthrough), edge floats (stringified),
+    bytes (str fallback), modules (str fallback), and a custom object
+    (uses __str__).
+    """
+
+    class Obj:
+        def __str__(self):
+            return "Obj()"
+
+    # JSON-native primitives pass through unchanged.
+    assert _to_json_serializable_value(None) is None
+    assert _to_json_serializable_value(True) is True
+    assert _to_json_serializable_value(42) == 42
+    assert _to_json_serializable_value("hello") == "hello"
+    assert _to_json_serializable_value(3.14) == 3.14
+    assert _to_json_serializable_value([1, "a", None]) == [1, "a", None]
+
+    # Non-finite floats get stringified (not valid JSON otherwise).
+    assert _to_json_serializable_value(float("inf")) == "inf"
+    assert _to_json_serializable_value(float("-inf")) == "-inf"
+    assert _to_json_serializable_value(float("nan")) == "nan"
+
+    # Bytes fall through to str() (no special handling).
+    assert _to_json_serializable_value(b"hello") == "b'hello'"
+
+    # A module uses its repr (modules define one, so we don't fall back to type name).
+    assert _to_json_serializable_value(json).startswith("<module 'json'")
+
+    # A custom object with __str__ uses that.
+    assert _to_json_serializable_value(Obj()) == "Obj()"
+
+    # A module uses default python string representation.
+    import ray
+
+    assert _to_json_serializable_value(ray).startswith("<module 'ray'")
+
+
+def test_to_json_serializable_value_collection_coercion():
+    """tuple, set, and frozenset are all coerced to lists."""
+    # tuple → list
+    assert _to_json_serializable_value({"t": (1, 2, 3)}) == {"t": [1, 2, 3]}
+
+    # set → list (use sorted comparison since set iteration order isn't guaranteed)
+    result = _to_json_serializable_value({"s": {3, 1, 2}})
+    assert sorted(result["s"]) == [1, 2, 3]
+
+    # frozenset → list
+    result = _to_json_serializable_value({"f": frozenset({3, 1, 2})})
+    assert sorted(result["f"]) == [1, 2, 3]
+
+    # Empty containers preserved.
+    assert _to_json_serializable_value({"d": {}, "l": [], "s": set()}) == {
+        "d": {},
+        "l": [],
+        "s": [],
+    }
+
+
+def test_to_json_serializable_value_non_string_keys():
+    """All dict keys are coerced via str(), regardless of original type."""
+
+    class KeyObj:
+        def __str__(self):
+            return "key_obj"
+
+    obj = {
+        1: "int",
+        2.5: "float",
+        None: "none",
+        (1, 2): "tuple",
+        KeyObj(): "custom",
+    }
+    assert _to_json_serializable_value(obj) == {
+        "1": "int",
+        "2.5": "float",
+        "None": "none",
+        "(1, 2)": "tuple",
+        "key_obj": "custom",
+    }
+
+
+def test_to_json_serializable_value_max_depth():
+    """Test that _to_json_serializable_value respects the max_depth argument."""
+
+    class CustomObj:
+        def __str__(self) -> str:
+            return "CustomObj"
+
+    obj = {
+        "native": 42,
+        "sequence": [1, CustomObj()],
+        "nested": {"inner": {"deep": 99}},
+        "obj": CustomObj(),
+        "inf_float": float("inf"),
+    }
+
+    with pytest.raises(ValueError, match="max_depth must be greater than 0"):
+        _to_json_serializable_value(obj, max_depth=0)
+
+    assert _to_json_serializable_value(obj, max_depth=2) == {
+        "native": 42,
+        "nested": {"inner": "..."},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
+    }
+
+    assert _to_json_serializable_value(obj, max_depth=3) == {
+        "native": 42,
+        "nested": {"inner": {"deep": 99}},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
+    }
+
+
+def test_to_json_serializable_value_falls_back_to_type_name():
+    """Objects without custom string representation are rendered as their class name."""
+
+    class NoCustomStr:
+        pass
+
+    class HasRepr:
+        def __repr__(self):
+            return "HasRepr(meaningful)"
+
+    obj = {"plain": NoCustomStr(), "with_repr": HasRepr()}
+    assert _to_json_serializable_value(obj) == {
+        "plain": "NoCustomStr",
+        "with_repr": "HasRepr(meaningful)",
+    }
+
+
+def test_train_run_schema_sanitizes_all_validated_fields():
+    """End-to-end: every dict field with a sanitizer validator coerces
+    non-JSON values at construction time, and the resulting TrainRun
+    serializes via pydantic's JSON dump without raising.
+
+    Covers:
+        - RunSettings.train_loop_config
+        - RunConfig.worker_runtime_env
+        - RunConfig.storage_filesystem
+        - BackendConfig.config
+        - ExecutionOptions.resource_limits / exclude_resources
+    """
+    import pyarrow.fs
+
+    class CustomCfg:
+        def __str__(self):
+            return "CustomCfg()"
+
+    run = TrainRun(
+        id="r1",
+        name="test_run",
+        job_id="job_1",
+        controller_actor_id="controller_1",
+        status=RunStatus.RUNNING,
+        status_detail=None,
+        start_time_ns=1,
+        end_time_ns=None,
+        controller_log_file_path=None,
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config={"epochs": 3, "obj": CustomCfg(), "fn": lambda x: x},
+            backend_config=BackendConfigSchema(
+                framework=None,
+                config={"hook": lambda: None, "module": json},
+            ),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                placement_strategy="PACK",
+                use_tpu=False,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                data_execution_options=DataExecutionOptions(
+                    default=ExecutionOptionsSchema(
+                        resource_limits={"CPU": float("inf"), "obj": CustomCfg()},
+                        exclude_resources={"GPU": float("nan")},
+                        preserve_order=False,
+                        actor_locality_enabled=True,
+                        verbose_progress=True,
+                    ),
+                ),
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test_run",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"setup_hook": lambda: None, "type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(checkpoint_score_order="max"),
+                storage_path="s3://bucket/path",
+                storage_filesystem=pyarrow.fs.LocalFileSystem(),
+            ),
+        ),
+    )
+
+    # Pydantic JSON dump must not raise, since every field was sanitized.
+    payload = json.loads(run.model_dump_json())
+    rs = payload["run_settings"]
+
+    # train_loop_config
+    assert rs["train_loop_config"]["epochs"] == 3
+    assert rs["train_loop_config"]["obj"] == "CustomCfg()"
+    assert rs["train_loop_config"]["fn"].startswith("<function ")
+
+    # backend_config.config
+    assert rs["backend_config"]["config"]["hook"].startswith("<function ")
+    assert rs["backend_config"]["config"]["module"].startswith("<module 'json'")
+
+    # data_config.data_execution_options.default.resource_limits / exclude_resources
+    default_opts = rs["data_config"]["data_execution_options"]["default"]
+    assert default_opts["resource_limits"]["CPU"] == "inf"
+    assert default_opts["resource_limits"]["obj"] == "CustomCfg()"
+    assert default_opts["exclude_resources"]["GPU"] == "nan"
+
+    # run_config.worker_runtime_env
+    assert rs["run_config"]["worker_runtime_env"]["setup_hook"].startswith("<function ")
+    assert rs["run_config"]["worker_runtime_env"]["type"] == "conda"
+
+    # run_config.storage_filesystem (pyarrow filesystems use default object repr,
+    # so they fall back to the type name)
+    assert rs["run_config"]["storage_filesystem"] == "LocalFileSystem"
 
 
 if __name__ == "__main__":

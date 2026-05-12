@@ -110,12 +110,11 @@ PressureMemoryMonitor::PressureMemoryMonitor(std::string cgroup_path,
 
 PressureMemoryMonitor::~PressureMemoryMonitor() {
   uint64_t val = 1;
-  ssize_t written_bytes = write(shutdown_event_fd_, &val, sizeof(val));
-  RAY_CHECK(written_bytes == sizeof(val)) << absl::StrFormat(
-      "PressureMemoryMonitor could not be successfully cleaned up due to "
-      "Failure to signal shutdown to monitoring thread via eventfd, errno: %d, error: %s",
-      errno,
-      strerror(errno));
+  RAY_CHECK(write(shutdown_event_fd_, &val, sizeof(val)) == sizeof(val))
+      << absl::StrFormat(
+             "Failed to signal shutdown to pressure monitoring thread when shutting down "
+             "raylet, errno: %d",
+             errno);
 
   if (pressure_monitoring_thread_.joinable()) {
     pressure_monitoring_thread_.join();
@@ -129,7 +128,9 @@ void PressureMemoryMonitor::Enable() { worker_killing_in_progress_.store(false);
 
 void PressureMemoryMonitor::Disable() { worker_killing_in_progress_.store(true); }
 
-bool PressureMemoryMonitor::IsEnabled() { return !worker_killing_in_progress_.load(); }
+bool PressureMemoryMonitor::IsEnabled() const {
+  return !worker_killing_in_progress_.load();
+}
 
 void PressureMemoryMonitor::MonitoringThreadMain() {
   struct pollfd fds[2];
@@ -160,8 +161,7 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
     if (fds[0].revents & POLLPRI) {
       if (IsEnabled()) {
         Disable();
-        kill_workers_callback_(
-            MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path_));
+        kill_workers_callback_();
       }
     } else if (fds[0].revents & POLLERR) {
       RAY_LOG(ERROR) << "Got POLLERR while monitoring memory pressure. "

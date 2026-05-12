@@ -155,4 +155,31 @@ TEST(SysFsCgroupDriver, AddConstraintFailsIfNotCgroupv2Path) {
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriver, GetConstraintValueFailsIfConstraintDoesNotExist) {
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  StatusOr<std::string> result =
+      driver.GetConstraintValue(temp_dir->GetPath(), "cpu.weight");
+  ASSERT_TRUE(result.IsInvalidArgument()) << result.ToString();
+}
+
+TEST(SysFsCgroupDriver, GetConstraintValueSucceedsIfConstraintExists) {
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+
+  std::filesystem::path constraint_file_path =
+      std::filesystem::path(temp_dir->GetPath()) / "cpu.weight";
+  TempFile constraint_file(constraint_file_path);
+  constraint_file.AppendLine("100");
+
+  SysFsCgroupDriver driver;
+  StatusOr<std::string> result =
+      driver.GetConstraintValue(temp_dir->GetPath(), "cpu.weight");
+  ASSERT_TRUE(result.ok()) << result.ToString();
+  EXPECT_EQ(result.value(), "100");
+}
+
 };  // namespace ray

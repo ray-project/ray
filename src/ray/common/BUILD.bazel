@@ -1,5 +1,24 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+# Default main function that configures the Ray logger and sets up failure signal
+# handling to aid with debugging.
+#
+# Included by default in ray_cc_test (see bazel/ray.bzl for ray_cc_test definition).
+# To use a custom main function instead (like `gtest_main`), set
+# `use_ray_gtest_main = False` in the `ray_cc_test` target.
+ray_cc_library(
+    name = "ray_gtest_main",
+    testonly = True,
+    srcs = ["ray_gtest_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
@@ -10,12 +29,12 @@ ray_cc_library(
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
     deps = [
-        ":asio",
         ":function_descriptor",
         ":id",
         ":placement_group",
         ":ray_object",
         ":task_common",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
@@ -81,6 +100,7 @@ ray_cc_library(
         "//src/ray/common/tests:__pkg__",
     ],
     deps = [
+        ":memory_monitor_utils",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:logging",
         "@com_google_googletest//:gtest",
@@ -116,6 +136,8 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
+        ":ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/util:compat",
         "//src/ray/util:logging",
         "@boost//:algorithm",
@@ -138,9 +160,9 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        ":asio",
         ":memory_monitor_interface",
         ":memory_monitor_utils",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",
         "@com_google_absl//absl/strings:str_format",
@@ -155,6 +177,29 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":memory_monitor_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "event_memory_monitor",
+    srcs = [
+        "event_memory_monitor.cc",
+    ],
+    hdrs = [
+        "event_memory_monitor.h",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":memory_monitor_interface",
+        ":memory_monitor_utils",
+        ":status",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "@boost//:algorithm",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -184,7 +229,7 @@ ray_cc_library(
     name = "memory_monitor_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "threshold_memory_monitor_factory.cc",
+            "multi_memory_monitor_factory.cc",
         ],
         "//conditions:default": [
             "noop_memory_monitor_factory.cc",
@@ -199,14 +244,18 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
-        ":noop_memory_monitor",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
+            ":memory_monitor_utils",
+            ":noop_memory_monitor",
             ":ray_config",
             ":threshold_memory_monitor",
             "//src/ray/util:logging",
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+            ":noop_memory_monitor",
+        ],
     }),
 )
 
@@ -215,7 +264,8 @@ ray_cc_library(
     srcs = ["file_system_monitor.cc"],
     hdrs = ["file_system_monitor.h"],
     deps = [
-        ":asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
@@ -378,44 +428,6 @@ ray_cc_library(
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/protobuf:common_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "asio",
-    srcs = [
-        "asio/asio_chaos.cc",
-        "asio/instrumented_io_context.cc",
-        "asio/io_service_pool.cc",
-        "asio/periodical_runner.cc",
-    ],
-    hdrs = [
-        "asio/asio_chaos.h",
-        "asio/asio_util.h",
-        "asio/instrumented_io_context.h",
-        "asio/io_service_pool.h",
-        "asio/periodical_runner.h",
-    ],
-    deps = [
-        ":event_stats",
-        ":metrics",
-        ":ray_config",
-        "//src/ray/util:array",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-ray_cc_library(
-    name = "fake_periodical_runner",
-    hdrs = [
-        "asio/fake_periodical_runner.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":asio",
-        "@boost//:asio",
     ],
 )
 

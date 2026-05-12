@@ -6,13 +6,11 @@ import re
 import sys
 import threading
 import time
-from typing import Type
 from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
-from pydantic import BaseModel as BaseModelV2
-from pydantic.v1 import BaseModel as BaseModelV1
+from pydantic import BaseModel
 
 import ray
 import ray.cloudpickle as cloudpickle
@@ -692,8 +690,6 @@ def test_dataclient_server_drop(call_ray_start_shared):
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True], indirect=True)
 def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
-    import ray
-
     with enable_client_mode():
         # No client connection.
         with pytest.raises(Exception) as e:
@@ -708,8 +704,7 @@ def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
             assert ray.get_gpu_ids() == []
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
-def test_client_serialize_addon(call_ray_start_shared, BaseModel: Type):
+def test_client_serialize_addon(call_ray_start_shared):
     class User(BaseModel):
         name: str
 
@@ -770,16 +765,12 @@ def test_wrapped_actor_creation(call_ray_start_shared, shutdown_only):
     applied to the actor then the signature would be modified when the server
     imports the class.
     """
-    import ray
-
     ray.init(SHARED_CLIENT_SERVER_ADDRESS)
     run_wrapped_actor_creation()
 
 
 @pytest.mark.parametrize("use_client", [True, False])
 def test_init_requires_no_resources(call_ray_start_shared, use_client, shutdown_only):
-    import ray
-
     if not use_client:
         address = call_ray_start_shared
         ray.init(address)
@@ -794,8 +785,6 @@ def test_init_requires_no_resources(call_ray_start_shared, use_client, shutdown_
 
 
 def test_object_ref_release(call_ray_start_shared, shutdown_only):
-    import ray
-
     ray.init(SHARED_CLIENT_SERVER_ADDRESS)
 
     a = ray.put("Hello")
@@ -867,8 +856,6 @@ def test_large_remote_call(call_ray_start_shared):
 
 
 def test_ignore_reinit(call_ray_start_shared, shutdown_only):
-    import ray
-
     ctx1 = ray.init(SHARED_CLIENT_SERVER_ADDRESS)
     ctx2 = ray.init(SHARED_CLIENT_SERVER_ADDRESS, ignore_reinit_error=True)
     assert ctx1 == ctx2
@@ -977,8 +964,6 @@ def test_get_runtime_context_session_name_client(call_ray_start_shared):
 
 
 def test_internal_kv_in_proxy_mode(call_ray_start_shared):
-    import ray
-
     ray.init(SHARED_CLIENT_SERVER_ADDRESS)
     client_api = ray.util.client.ray
     client_api._internal_kv_put(b"key", b"val")

@@ -84,6 +84,12 @@ class NixlTensorTransport(TensorTransportManager):
         """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
         self._add_tensor_descs([tensor])
 
+    def deregister_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Decrements the reference count for the tensor's NIXL memory registration.
+        If the count reaches 0, the memory is deregistered from NIXL.
+        """
+        self._remove_tensor_descs([tensor])
+
     def get_nixl_agent(self):
         """
         Creates a NIXL agent with UCX backend if not already created.
@@ -260,7 +266,7 @@ class NixlTensorTransport(TensorTransportManager):
                 local_xfer_descs,
                 remote_xfer_descs,
                 remote_name,
-                "UUID",
+                b"UUID",
             )
 
             state = nixl_agent.transfer(xfer_handle)
@@ -299,16 +305,7 @@ class NixlTensorTransport(TensorTransportManager):
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if added_tensor_descs:
-                with self._cache_lock:
-                    for tensor in tensors:
-                        key = tensor.untyped_storage().data_ptr()
-                        tensor_desc = self._tensor_desc_cache[key]
-                        tensor_desc.metadata_count -= 1
-
-                        if tensor_desc.metadata_count == 0:
-                            nixl_agent.deregister_memory(tensor_desc.reg_desc)
-                            self._tensor_desc_cache.pop(key)
-                            self._nixl_agent_meta_version += 1
+                self._remove_tensor_descs(tensors)
 
         return tensors
 
@@ -333,15 +330,7 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            for tensor in tensors:
-                key = tensor.untyped_storage().data_ptr()
-                if key in self._tensor_desc_cache:
-                    tensor_desc = self._tensor_desc_cache[key]
-                    tensor_desc.metadata_count -= 1
-                    if tensor_desc.metadata_count == 0:
-                        self._tensor_desc_cache.pop(key)
-                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
-                        self._nixl_agent_meta_version += 1
+            self._remove_tensor_descs(tensors)
 
     def abort_transport(
         self,
@@ -371,6 +360,23 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             self._managed_meta_nixl[object_id] = meta
 
+    def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
+        """
+        Decrements the reference count for each tensor. If the count reaches 0,
+        the memory is deregistered from NIXL.
+        """
+        with self._cache_lock:
+            for tensor in tensors:
+                key = tensor.untyped_storage().data_ptr()
+                if key not in self._tensor_desc_cache:
+                    continue
+                tensor_desc = self._tensor_desc_cache[key]
+                tensor_desc.metadata_count -= 1
+                if tensor_desc.metadata_count == 0:
+                    self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                    self._tensor_desc_cache.pop(key)
+                    self._nixl_agent_meta_version += 1
+
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
         If this is the first time the tensor is being registered, we register the
@@ -390,15 +396,29 @@ class NixlTensorTransport(TensorTransportManager):
                     # Registering the full underlying pytorch storage object by constructing a memory region
                     # with the data pointer, size, GPU ID, and meta info. Doing the equivalent of what nixl does for pytorch tensors
                     # internally: https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
-                    reg_desc = self.get_nixl_agent().register_memory(
-                        [
-                            (
-                                tensor.untyped_storage().data_ptr(),
-                                tensor.untyped_storage().nbytes(),
-                                gpu_id,
-                                "",
-                            )
-                        ],
-                        mem_type=mem_type,
-                    )
+                    try:
+                        reg_desc = self.get_nixl_agent().register_memory(
+                            [
+                                (
+                                    tensor.untyped_storage().data_ptr(),
+                                    tensor.untyped_storage().nbytes(),
+                                    gpu_id,
+                                    "",
+                                )
+                            ],
+                            mem_type=mem_type,
+                        )
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"Failed to register {mem_type} memory with NIXL "
+                            f"(size={tensor.untyped_storage().nbytes()} bytes, "
+                            f"gpu_id={gpu_id}). "
+                            f"Common causes:\n"
+                            f"  - Locked memory limit too low: check 'ulimit -l' (should be 'unlimited')\n"
+                            f"  - nvidia-peermem kernel module not loaded: check 'lsmod | grep nvidia_peermem'\n"
+                            f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
+                            f"  - IOMMU enabled without passthrough mode\n"
+                            f"  - Container cgroup memory restrictions\n"
+                            f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                        ) from e
                     self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)

@@ -17,7 +17,7 @@ from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import CONFIG_PREFIX, DEFAULT_METRIC
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.serialization import TuneFunctionDecoder
+from ray.tune.utils.serialization import _loads_with_cloudpickle
 from ray.tune.utils.util import is_nan, is_nan_or_inf, unflattened_lookup
 from ray.util.annotations import PublicAPI
 
@@ -107,7 +107,7 @@ class ExperimentAnalysis:
 
     def _load_trials(self) -> List[Trial]:
         with self._fs.open_input_stream(self._experiment_json_fs_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         experiment_fs_path = Path(self._experiment_fs_path)
 

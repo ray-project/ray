@@ -148,7 +148,7 @@ The following example shows a complete, functional deployment:
 This configuration creates:
 - **Prefill phase**: 2 data parallel replicas for processing input prompts
 - **Decode phase**: 2 data parallel replicas for generating tokens
-- **PDProxyServer**: Coordinates requests between prefill and decode phases
+- **PDDecodeServer**: Orchestrates remote prefill then runs local decode
 - **OpenAI ingress**: Provides OpenAI-compatible API endpoints
 
 This allows you to:

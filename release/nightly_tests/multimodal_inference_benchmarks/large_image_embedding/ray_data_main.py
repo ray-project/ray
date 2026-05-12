@@ -93,7 +93,6 @@ def run_pipeline():
             Infer,
             batch_size=BATCH_SIZE,
             num_gpus=1,
-            concurrency=40,
         )
         .write_parquet(OUTPUT_PREFIX)
     )

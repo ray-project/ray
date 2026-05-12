@@ -63,18 +63,14 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        plan = self._dataset._plan.copy()
         op = Aggregate(
-            self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            input_dependencies=[self._dataset._logical_plan.dag],
             num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
-        return Dataset(
-            plan,
-            logical_plan,
-        )
+        return Dataset._from_parent(self._dataset, logical_plan)
 
     def _aggregate_on(
         self,
@@ -226,7 +222,10 @@ class GroupedData:
         #     same key values)
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
-        elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        elif self._dataset.context.shuffle_strategy in (
+            ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.GPU_SHUFFLE,
+        ):
             num_partitions = (
                 self._num_partitions
                 or self._dataset.context.default_hash_shuffle_parallelism

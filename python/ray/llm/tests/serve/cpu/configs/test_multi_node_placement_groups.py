@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+import pydantic
 import pytest
 
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
@@ -404,6 +405,81 @@ def test_bundle_per_worker_non_fractional_gpu_no_env_var():
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
     assert "VLLM_RAY_PER_WORKER_GPUS" not in runtime_env.get("env_vars", {})
+
+
+def test_llm_serve_placement_group_explicit_none():
+    """Test that explicitly setting bundle_per_worker key to None does not crash."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-1.3b",
+        ),
+        placement_group_config={
+            "bundle_per_worker": None,
+            "bundles": [{"GPU": 1}],
+        },
+    )
+
+    # This should succeed fall back to the GPU bundles
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert len(serve_options["placement_group_bundles"]) > 0
+
+
+class TestAcceleratorTypeValidation:
+    """Test accelerator_type validation with CPU-only configurations."""
+
+    def test_llm_config_accelerator_type_with_cpu_config_raises_error(self):
+        """LLMConfig raises error with accelerator_type and CPU config."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                accelerator_config={"kind": "cpu"},
+            )
+
+    def test_llm_config_accelerator_type_with_cpu_only_bundles_raises_error(self):
+        """LLMConfig raises error with accelerator_type and CPU-only bundles."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_llm_config_accelerator_type_with_empty_bundles_raises_error(self):
+        """LLMConfig raises error with accelerator_type and empty bundles."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_llm_config_accelerator_type_with_gpu_bundles_succeeds(self):
+        """Test that LLMConfig succeeds when accelerator_type is set with GPU bundles."""
+        config = LLMConfig(
+            model_loading_config={"model_id": "test_model"},
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
+        )
+        assert config.accelerator_type == "L4"
+
+    def test_llm_config_accelerator_type_default_uses_gpu(self):
+        """Test that LLMConfig with accelerator_type defaults to GPU."""
+        config = LLMConfig(
+            model_loading_config={"model_id": "test_model"},
+            accelerator_type="L4",
+        )
+        assert config.accelerator_type == "L4"
 
 
 if __name__ == "__main__":

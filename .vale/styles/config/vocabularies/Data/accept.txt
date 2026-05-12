@@ -56,3 +56,5 @@ YOLO
 [Ss]harded
 [Pp]arameterization(s)?
 repr
+[Uu]psample(d|s)?
+[Rr]ebatch(ing|ed|es)?

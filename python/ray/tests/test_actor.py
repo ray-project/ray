@@ -1572,6 +1572,27 @@ def test_actor_equal(ray_start_regular_shared):
     assert origin == remote
 
 
+@pytest.mark.parametrize("cross_language", [False, True], ids=["python", "cross_lang"])
+def test_actor_handle_hash_eq(ray_start_regular_shared, cross_language):
+    """hash()/eq/set/dict ops must work for both Python and cross-language handles."""
+
+    @ray.remote
+    class Actor:
+        pass
+
+    handle = Actor.remote()
+    if cross_language:
+        handle._ray_is_cross_language = True
+
+    h = hash(handle)
+    assert isinstance(h, int)
+    assert hash(handle) == h
+
+    assert handle == handle
+    assert handle in {handle}
+    assert {handle: "v"}[handle] == "v"
+
+
 def test_actor_handle_weak_ref_counting(ray_start_regular_shared):
     """
     Actors can get handles to themselves or to named actors but these count
