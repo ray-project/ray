@@ -86,7 +86,9 @@ def test_enabled_does_not_call_node_has_gpus_when_dynolog_missing(
     # No dynolog binaries on PATH → shutil.which returns None for both.
     gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     assert not gpu_profiler.enabled
-    assert not node_has_gpus_called, "node_has_gpus() must not be called when dynolog binaries are absent"
+    assert (
+        not node_has_gpus_called
+    ), "node_has_gpus() must not be called when dynolog binaries are absent"
 
 
 def test_enabled(tmp_path, mock_node_has_gpus, mock_dynolog_binaries):
