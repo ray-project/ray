@@ -434,6 +434,31 @@ class TestPandasJSONDatasource:
         # Verify.
         assert rows_same(block, df)
 
+    def test_read_stream_with_advanced_file_pointer(
+        self, tmp_path, target_max_block_size_infinite_or_default
+    ):
+        # Setup test file.
+        df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        path = os.path.join(tmp_path, "test.json")
+        df.to_json(path, orient="records", lines=True)
+
+        # Setup datasource.
+        local_filesystem = fs.LocalFileSystem()
+        source = PandasJSONDatasource(
+            path, target_output_size_bytes=1, filesystem=local_filesystem
+        )
+
+        # Simulate retrying a stream read on a file handle that was already consumed.
+        block_builder = PandasBlockBuilder()
+        with source._open_input_source(local_filesystem, path) as f:
+            f.read(1)
+            for block in source._read_stream(f, path):
+                block_builder.add_block(block)
+        block = block_builder.build()
+
+        # Verify.
+        assert rows_same(block, df)
+
 
 if __name__ == "__main__":
     import sys

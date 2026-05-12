@@ -775,10 +775,6 @@ def test_projection_pushdown_on_count(ray_start_regular_shared, temp_dir):
 def test_parquet_read_with_udf(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-        )
     one_data = list(range(6))
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
@@ -1361,10 +1357,6 @@ def test_tensors_in_tables_parquet(
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
     """
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-        )
     new_tensor_format = tensor_format_context
 
     num_rows = 10_000
@@ -1453,10 +1445,6 @@ def test_tensors_in_tables_parquet(
 def test_multiple_files_with_ragged_arrays(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-        )
     # Test reading multiple parquet files, each of which has different-shaped
     # ndarrays in the same column.
     # See https://github.com/ray-project/ray/issues/47960 for more context.

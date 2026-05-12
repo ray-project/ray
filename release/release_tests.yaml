@@ -1682,6 +1682,11 @@
   variations:
     # Low-latency / high-throughput workload
     - __suffix__: aws.standard
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+            - RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
       run:
         timeout: 7200
         long_running: false
@@ -1691,6 +1696,7 @@
           --simulated-latency-cap-s 0.1
           --max-ongoing-requests-child 5
           --max-ongoing-requests-parent 5
+          --max-users-per-task 24
           --router-type pow2
     # Supply-constrained workload
     - __suffix__: aws.supply_constraint
@@ -5151,7 +5157,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
-  frequency: weekly
+  frequency: manual # was weekly
   python: "3.11"
   group: ray-examples
   team: data

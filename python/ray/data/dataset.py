@@ -70,6 +70,8 @@ from ray.data._internal.logical.operators import (
     Limit,
     MapBatches,
     MapRows,
+    Mix as MixLogicalOperator,
+    MixStoppingCondition,
     Project,
     RandomizeBlocks,
     RandomShuffle,
@@ -2910,6 +2912,86 @@ class Dataset:
 
         stats = DatasetStats(
             metadata={"Union": []},
+            parent=[d._raw_stats() for d in datasets],
+        )
+        stats.time_total_s = time.perf_counter() - start_time
+        return Dataset(
+            logical_plan,
+            self.context.copy(),
+            stats,
+        )
+
+    @PublicAPI(stability="alpha", api_group=SMJ_API_GROUP)
+    def mix(
+        self,
+        *other: "Dataset",
+        weights: Optional[List[float]] = None,
+        stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_LONGEST_DROP,
+    ) -> "Dataset":
+        """Mix this dataset with others using weighted interleaving.
+
+        This is a streaming operator that interleaves blocks from multiple
+        input datasets into a single output stream, respecting the target row
+        ratio specified by ``weights``. Each output block is drawn from exactly
+        one input dataset; the operator tracks cumulative row counts and always
+        pulls from whichever dataset has fallen furthest behind its target ratio.
+
+        .. caution::
+            Mixed datasets aren't lineage-serializable. As a result, they can't
+            be used as a tunable hyperparameter in Ray Tune.
+
+        Examples:
+
+            >>> import ray
+            >>> ds1 = ray.data.from_items([{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}]).repartition(2)
+            >>> ds2 = ray.data.from_items([{"x": 5}, {"x": 6}, {"x": 7}, {"x": 8}]).repartition(2)
+            >>> ds = ds1.mix(ds2, weights=[0.5, 0.5])
+            >>> list(ds.iter_batches(batch_size=4))  # doctest: +SKIP
+            [{'x': [1, 2, 5, 6]}, {'x': [3, 4, 7, 8]}]
+
+        Args:
+            *other: The other datasets to mix with this one. All datasets
+                must produce the same schema.
+            weights: Target row ratios for each dataset, where the first
+                weight corresponds to ``self`` and subsequent weights
+                correspond to ``*other`` in order. If ``None``, defaults
+                to equal weight per dataset. Weights are normalized
+                internally so they don't need to sum to 1.
+            stopping_condition: Controls when the pipeline terminates.
+                See :class:`~ray.data.MixStoppingCondition` for options.
+                Defaults to ``STOP_ON_LONGEST_DROP``.
+
+        Returns:
+            A new dataset whose rows are interleaved from the input datasets
+            according to the specified weights.
+
+        Raises:
+            ValueError: If the length of ``weights`` doesn't match the
+                number of datasets.
+        """
+        datasets = [self] + list(other)
+
+        if weights is None:
+            weights = [1.0] * len(datasets)
+
+        if len(weights) != len(datasets):
+            raise ValueError(
+                f"Number of datasets ({len(datasets)}) must match "
+                f"number of weights ({len(weights)})."
+            )
+
+        start_time = time.perf_counter()
+
+        logical_plans = [ds._logical_plan for ds in datasets]
+        op = MixLogicalOperator(
+            *[plan.dag for plan in logical_plans],
+            weights=weights,
+            stopping_condition=stopping_condition,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+
+        stats = DatasetStats(
+            metadata={"Mix": []},
             parent=[d._raw_stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time

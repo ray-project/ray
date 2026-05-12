@@ -1052,7 +1052,6 @@ py_test(
     tags = [
         "exclusive",
         "team:data",
-        "tfxbsl",
     ],
     deps = [
         ":conftest",
