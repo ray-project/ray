@@ -34,7 +34,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &_) {
+    const MemoryUsageSnapshot &_) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
   for (const std::pair<std::shared_ptr<WorkerInterface>, bool>
            &worker_to_kill_or_should_retry : workers_being_killed_) {

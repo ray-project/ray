@@ -73,7 +73,7 @@ class DataParallelTrainer:
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Union[Callable[[], Any], Callable[[Dict], Any]],
         *,
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
@@ -254,7 +254,7 @@ class DataParallelTrainer:
         return callbacks
 
     def _initialize_and_run_local_controller(
-        self, train_func: Callable[[], None]
+        self, train_func: Callable[[], Any]
     ) -> Result:
         return self._get_local_controller().run(train_func)
 

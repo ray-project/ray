@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
+    DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     VALID_TPU_TYPES,
     get_chips_per_host,
     get_num_chips_from_topology,
@@ -442,6 +443,10 @@ class SlicePlacementGroup:
         chips_per_vm: An optional override for the number of chips per VM. Useful for resolving
             ambiguous topologies (e.g. v6e 2x4) where the slice could physically consist of
             a single 8-chip VM or two 4-chip VMs.
+        head_reservation_timeout_s: The maximum time in seconds to wait for each
+            TPU head placement group to become ready. Defaults to
+            ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``. Pass ``None`` to wait
+            indefinitely.
 
     Examples:
 
@@ -482,6 +487,9 @@ class SlicePlacementGroup:
         # default
         num_slices: int = 1,
         chips_per_vm: Optional[int] = None,
+        head_reservation_timeout_s: Optional[float] = (
+            DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
+        ),
     ):
         self._topology = topology.strip().lower()
         self._accelerator_version = get_tpu_version_from_type(
@@ -489,6 +497,7 @@ class SlicePlacementGroup:
         )
         self._resources_per_bundle = resources_per_bundle or {}
         self._num_slices = num_slices
+        self._head_reservation_timeout_s = head_reservation_timeout_s
 
         # Calculate number of bundles and bundle resources for specified TPU topology.
         self._num_bundles, self._bundle_resources = get_tpu_worker_resources(
@@ -549,7 +558,11 @@ class SlicePlacementGroup:
 
         try:
             for _ in range(self.num_slices):
-                reservation = reserve_tpu_slice(self._topology, accelerator_type)
+                reservation = reserve_tpu_slice(
+                    self._topology,
+                    accelerator_type,
+                    timeout_s=self._head_reservation_timeout_s,
+                )
                 if not reservation:
                     raise RuntimeError(
                         f"Failed to reserve TPU slice. Requested {self.num_slices} "
