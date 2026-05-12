@@ -432,12 +432,6 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_allocation(op)
 
-    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return planned_grant - usage, or None if the op has no allocation."""
-        if self._op_resource_allocator is None:
-            return None
-        return self._op_resource_allocator.get_signed_headroom(op)
-
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
         return (
@@ -690,11 +684,6 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
-    @abstractmethod
-    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return planned_grant - usage, or None if the op has no allocation."""
-        ...
-
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         """Returns a list of operators eligible for allocation.
 
@@ -839,7 +828,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
         # Planned resource grants for each operator, excluding `_reserved_for_op_outputs`.
-        self._op_planned_grants: Dict[PhysicalOperator, ExecutionResources] = {}
+        self._op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
 
@@ -947,14 +936,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return op_mem_usage
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        planned_grant = self._op_planned_grants.get(op)
-        if planned_grant is None:
+        allocation = self._op_allocations.get(op)
+        if allocation is None:
             return None
 
         adjusted_usage = self._resource_manager.get_op_usage(op).copy(
             object_store_memory=self._get_adjusted_object_store_usage(op)
         )
-        budget = planned_grant.subtract(adjusted_usage.min(self._op_reserved[op]))
+        budget = allocation.subtract(adjusted_usage.min(self._op_reserved[op]))
 
         if self._resource_manager._is_blocking_materializing_op(op):
             return budget.copy(object_store_memory=float("inf"))
@@ -964,13 +953,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        return self._op_planned_grants.get(op)
-
-    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        pg = self._op_planned_grants.get(op)
-        if pg is None:
-            return None
-        return pg.subtract(self._resource_manager.get_op_usage(op))
+        return self._op_allocations.get(op)
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         budget = self.get_budget(op)
@@ -1006,10 +989,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         ) = self._update_reservation(limits)
 
         op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
-        op_planned_grants: Dict[PhysicalOperator, ExecutionResources] = {}
+        op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
-            self._op_planned_grants = op_planned_grants
+            self._op_allocations = op_allocations
             return
 
         # Compute per-op shared-pool usage (usage beyond the reserved floor).
@@ -1104,7 +1087,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             remaining_shared = remaining_shared.subtract(op_shared)
             assert remaining_shared.is_non_negative(), (remaining_shared, op, op_shared)
-            op_planned_grants[op] = self._op_reserved[op].add(
+            op_allocations[op] = self._op_reserved[op].add(
                 op_proportional.add(op_shared)
             )
 
@@ -1113,7 +1096,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if eligible_ops and not remaining_shared.is_zero():
             for op in reversed(eligible_ops):
                 if op_max_resources[op] == ExecutionResources.inf():
-                    op_planned_grants[op] = op_planned_grants[op].add(remaining_shared)
+                    op_allocations[op] = op_allocations[op].add(remaining_shared)
                     break
 
-        self._op_planned_grants = op_planned_grants
+        self._op_allocations = op_allocations

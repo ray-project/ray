@@ -149,10 +149,10 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
-        # cpu_budget[o2] = planned_grant(7) - min(reserved(4), usage(6)) = 7 - 4 = 3
+        # cpu_budget[o2] = allocation(7) - min(reserved(4), usage(6)) = 7 - 4 = 3
         # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
         assert allocator.get_budget(o2) == ExecutionResources(3, 0, 113)
-        # cpu_budget[o3] = planned_grant(7) - min(reserved(4), usage(2)) = 7 - 2 = 5
+        # cpu_budget[o3] = allocation(7) - min(reserved(4), usage(2)) = 7 - 2 = 5
         # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
         assert allocator.get_budget(o3) == ExecutionResources(5, 0, 207)
         # Test max_task_output_bytes_to_read.
@@ -160,17 +160,21 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
-        # Test get_allocation = planned_grant.
-        # planned_grant[o2] = (4, 0, 125) + op_shared(3, 0, 113) = (7, 0, 238)
-        # planned_grant[o3] = (4, 0, 125) + op_shared(3, 0, 112) = (7, 0, 237)
+        # Test get_allocation = allocation.
+        # allocation[o2] = (4, 0, 125) + op_shared(3, 0, 113) = (7, 0, 238)
+        # allocation[o3] = (4, 0, 125) + op_shared(3, 0, 112) = (7, 0, 237)
         assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 238)
         assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
-        # Test get_signed_headroom = planned_grant - usage (component-wise, can be negative).
+        # Test allocation - usage (component-wise, can be negative).
         # o2: CPU headroom = 7 - 6 = 1 (within grant); OSM headroom = 238 - 500 = -262
         #     (over grant on OSM: in-flight outputs exceed the planned memory allocation).
         # o3: CPU headroom = 7 - 2 = 5; OSM headroom = 237 - 125 = 112 (within grant).
-        assert allocator.get_signed_headroom(o2) == ExecutionResources(1, 0, 238 - 500)
-        assert allocator.get_signed_headroom(o3) == ExecutionResources(5, 0, 237 - 125)
+        assert allocator.get_allocation(o2).subtract(
+            op_usages[o2]
+        ) == ExecutionResources(1, 0, 238 - 500)
+        assert allocator.get_allocation(o3).subtract(
+            op_usages[o3]
+        ) == ExecutionResources(5, 0, 237 - 125)
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -205,14 +209,14 @@ class TestReservationOpResourceAllocator:
         assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
-        # Test get_allocation = planned_grant.
-        # planned_grant[o2] = (3, 0, 100) + op_shared(1.5, 0, 50) = (4.5, 0, 150)
-        # planned_grant[o3] = (4.5, 0, 150)
+        # Test get_allocation = allocation.
+        # allocation[o2] = (3, 0, 100) + op_shared(1.5, 0, 50) = (4.5, 0, 150)
+        # allocation[o3] = (4.5, 0, 150)
         assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
         assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
 
-    def test_get_signed_headroom_on_cpu(self, restore_data_context):
-        """get_signed_headroom returns planned_grant - usage; can go negative on CPU."""
+    def test_signed_headroom_on_cpu(self, restore_data_context):
+        """allocation - usage can go negative on CPU when an op exceeds its grant."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
@@ -255,23 +259,22 @@ class TestReservationOpResourceAllocator:
         # op_shared_usage loop: o2 exceeds reserved by 3,
         #   total_shared_usage=3 → remaining_shared = max(4-3, 0) = 1.
         # distribution loop (downstream-first): o3 gets 0.5, o2 gets 0.5.
-        # planned_grant[o2] = reserved + op_shared = 2 + 0.5 = 2.5
-        # signed_headroom = 2.5 - 5 = -2.5 (over-budget, autoscaler can downscale)
+        # allocation[o2] = reserved + op_shared = 2 + 0.5 = 2.5
+        # headroom = 2.5 - 5 = -2.5 (over-budget, autoscaler can downscale)
         op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
         op_usages[o3] = ExecutionResources.zero()
 
         allocator.update_budgets(limits=global_limits)
 
-        headroom2 = allocator.get_signed_headroom(o2)
-        assert headroom2 is not None
+        headroom2 = allocator.get_allocation(o2).subtract(op_usages[o2])
         assert headroom2.cpu == -2.5, headroom2
 
-        # At moderate usage (3 CPUs), still within planned grant.
+        # At moderate usage (3 CPUs), still within allocation.
         # o2 exceeds reserved by 1, remaining_shared = 3; each op gets 1.5 shared.
-        # planned_grant[o2] = 2 + 1.5 = 3.5; signed_headroom = 3.5 - 3 = 0.5
+        # allocation[o2] = 2 + 1.5 = 3.5; headroom = 3.5 - 3 = 0.5
         op_usages[o2] = ExecutionResources(cpu=3, gpu=0, object_store_memory=0)
         allocator.update_budgets(limits=global_limits)
-        assert allocator.get_signed_headroom(o2).cpu == 0.5
+        assert allocator.get_allocation(o2).subtract(op_usages[o2]).cpu == 0.5
 
     def test_reserve_min_resource_requirements(self, restore_data_context):
         """Test that we'll reserve at least min_resource_requirements
@@ -1176,7 +1179,7 @@ class TestReservationOpResourceAllocator:
         """
         allocator = resource_manager._op_resource_allocator
 
-        assert set(allocator._op_planned_grants.keys()) == {o6, o8}
+        assert set(allocator._op_allocations.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
             cpu=3, object_store_memory=200
@@ -1245,7 +1248,7 @@ class TestReservationOpResourceAllocator:
         | op8 | 50/163           | 50/163           | 0            |
         +-----+------------------+------------------+--------------+
         """
-        assert set(allocator._op_planned_grants.keys()) == {o6, o8}
+        assert set(allocator._op_allocations.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
             cpu=3.75, object_store_memory=213
@@ -1270,7 +1273,7 @@ class TestReservationOpResourceAllocator:
 
     def test_proportional_grant_capped_and_leftover_shared(self, restore_data_context):
         """Capped ops leave shared-pool remainder that uncapped ops absorb; and when a
-        capped op over-uses, its planned_grant is bounded by max_resource_usage."""
+        capped op over-uses, its allocation is bounded by max_resource_usage."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
@@ -1309,7 +1312,7 @@ class TestReservationOpResourceAllocator:
         # so _op_reserved[o2] = 2. _total_shared = 16 - 2 - 4 = 10.
         # Distribution: o3 gets 5 shared; o2 gets 5 but capped at max(2)-reserved(2)=0,
         #   leaving remaining_shared = 5. Leftover loop: o3 absorbs 5.
-        # planned_grant[o3] = 4 + 5 + 5 = 14; budget[o3] = 14 - min(4, 0) = 14.
+        # allocation[o3] = 4 + 5 + 5 = 14; budget[o3] = 14 - min(4, 0) = 14.
         limits_16 = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
         resource_manager.get_global_limits = MagicMock(return_value=limits_16)
         allocator.update_budgets(limits=limits_16)
@@ -1320,18 +1323,17 @@ class TestReservationOpResourceAllocator:
         # 4 CPUs: reserved per op = 0.5 * 4 / 2 = 1. _total_shared = 2.
         # o2 uses 5 CPUs (shared usage = 4.5), o3 uses 0.5 (shared usage = 0).
         # Over-subscribed → proportional distribution; o2 capped at 2
-        # → planned_grant[o2] <= 2; usage = 5 → headroom < 0.
+        # → allocation[o2] <= 2; usage = 5 → headroom < 0.
         limits_4 = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
         resource_manager.get_global_limits = MagicMock(return_value=limits_4)
         op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
         op_usages[o3] = ExecutionResources(cpu=0.5, gpu=0, object_store_memory=0)
         allocator.update_budgets(limits=limits_4)
 
-        pg2 = allocator._op_planned_grants[o2]
-        assert pg2.cpu <= 2.0 + 1e-9, f"planned_grant[o2].cpu={pg2.cpu} exceeds cap=2"
+        pg2 = allocator._op_allocations[o2]
+        assert pg2.cpu <= 2.0 + 1e-9, f"allocation[o2].cpu={pg2.cpu} exceeds cap=2"
 
-        headroom2 = allocator.get_signed_headroom(o2)
-        assert headroom2 is not None
+        headroom2 = allocator.get_allocation(o2).subtract(op_usages[o2])
         assert (
             headroom2.cpu < 0
         ), f"Expected negative headroom for o2, got {headroom2.cpu}"
@@ -1341,7 +1343,7 @@ class TestReservationOpResourceAllocator:
         #   default_reserved=400 OSM/op → _op_reserved[o2]=200, _reserved_for_op_outputs[o2]=200.
         # o2 has an OSM cap of 600. The shared portion available to o2 is
         #   600 - _op_reserved[o2] = 400 (correct), not 600 - 400 = 200 (buggy).
-        # With zero usage o2 should absorb 400 shared OSM → planned_grant[o2].osm == 600.
+        # With zero usage o2 should absorb 400 shared OSM → allocation[o2].osm == 600.
         limits_1600 = ExecutionResources(cpu=16, gpu=0, object_store_memory=1600)
         o2.min_max_resource_requirements = MagicMock(
             return_value=(
@@ -1357,12 +1359,12 @@ class TestReservationOpResourceAllocator:
         op_usages[o3] = ExecutionResources.zero()
         allocator.update_budgets(limits=limits_1600)
         assert allocator._reserved_for_op_outputs[o2] == pytest.approx(200)
-        assert allocator._op_planned_grants[o2].object_store_memory == pytest.approx(
+        assert allocator._op_allocations[o2].object_store_memory == pytest.approx(
             600
         ), (
-            f"planned_grant[o2].osm should reach the cap (600), not the over-conservative "
+            f"allocation[o2].osm should reach the cap (600), not the over-conservative "
             f"value (400) that results from subtracting _reserved_for_op_outputs from the cap. "
-            f"Got: {allocator._op_planned_grants[o2].object_store_memory}"
+            f"Got: {allocator._op_allocations[o2].object_store_memory}"
         )
 
     @pytest.mark.parametrize(
@@ -1420,7 +1422,7 @@ class TestReservationOpResourceAllocator:
         expected_hw3,
     ):
         """When shared-pool usage exceeds the pool for a dimension, planned grants are
-        distributed proportionally; signed_headroom goes negative for over-budget ops."""
+        distributed proportionally; headroom goes negative for over-budget ops."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
@@ -1459,15 +1461,13 @@ class TestReservationOpResourceAllocator:
         op_usages[o3] = o3_usage
         allocator.update_budgets(limits=global_limits)
 
-        pg2 = allocator._op_planned_grants[o2]
-        pg3 = allocator._op_planned_grants[o3]
+        pg2 = allocator._op_allocations[o2]
+        pg3 = allocator._op_allocations[o3]
         assert abs(getattr(pg2, over_dim) - expected_pg2) < 1e-6, getattr(pg2, over_dim)
         assert abs(getattr(pg3, over_dim) - expected_pg3) < 1e-6, getattr(pg3, over_dim)
 
-        headroom2 = allocator.get_signed_headroom(o2)
-        headroom3 = allocator.get_signed_headroom(o3)
-        assert headroom2 is not None
-        assert headroom3 is not None
+        headroom2 = allocator.get_allocation(o2).subtract(op_usages[o2])
+        headroom3 = allocator.get_allocation(o3).subtract(op_usages[o3])
         assert abs(getattr(headroom2, over_dim) - expected_hw2) < 1e-6, getattr(
             headroom2, over_dim
         )
