@@ -236,12 +236,14 @@ def _numerical_aggregators(column: str) -> List[AggregateFnV2]:
 def _boolean_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for boolean columns.
 
-    Boolean columns get a subset of the numerical metrics because PyArrow has no
-    kernels for ``subtract(bool, double)``, ``quantile(bool)``, or
-    ``equal(bool, int64)`` — the operations underlying ``Std``,
-    ``ApproximateQuantile``, and ``ZeroPercentage`` respectively. See #62235.
+    Boolean columns get a reduced metric set. ``Std`` and ``ZeroPercentage`` are
+    dropped because PyArrow has no ``subtract(bool, double)`` or
+    ``equal(bool, int64)`` kernels — they crash on bool inputs. See #62235.
+    ``ApproximateQuantile`` is dropped because quantiles are not a meaningful
+    statistic on a two-valued domain (its implementation uses datasketches and
+    would not crash, but the output isn't informative).
 
-    This function returns a list of aggregators that compute the following metrics:
+    Returned aggregators:
     - count
     - mean
     - min
@@ -340,7 +342,7 @@ def _default_dtype_aggregators() -> Dict[
         DataType.uint64(): _numerical_aggregators,
         DataType.float32(): _numerical_aggregators,
         DataType.float64(): _numerical_aggregators,
-        # Boolean has its own aggregator set — std/quantile/zero-percentage
+        # Boolean has its own aggregator set — std and zero-percentage
         # have no PyArrow kernels for bool inputs (#62235).
         DataType.bool(): _boolean_aggregators,
         # String and binary types
