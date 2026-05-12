@@ -348,7 +348,12 @@ class RunningReplica:
             accepted, num_ongoing_requests = await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
-            # TODO (#63254): Add error handling for actor-unavailable cleanup.
+            self._actor_handle.release_slot.remote(slot_token)
+            raise
+        except Exception:
+            # The actor may have reserved the slot before the reply was lost
+            # (e.g. ActorUnavailableError). `release_slot` is idempotent for unknown
+            # tokens, so this is safe even when the reservation never actually happened.
             self._actor_handle.release_slot.remote(slot_token)
             raise
 
@@ -407,6 +412,11 @@ class ReplicaSelection:
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
+
+    # Set by dispatch once the result's done-callback is wired up. Read by
+    # choose_replica's finally to decide whether to fire on_request_completed
+    # manually (only one of the two paths should fire it).
+    _completion_callback_registered: bool = field(default=False, init=False)
 
     @property
     def address(self) -> str:
