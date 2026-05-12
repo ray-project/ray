@@ -645,48 +645,66 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  RAY_CHECK(object_id_out != nullptr);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "TryReadObjectRefStream API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  auto status = stream_it->second.TryReadNextItem(object_id_out);
+  Status read_status;
+  std::vector<ExecutionSignalCallback> callbacks_to_run;
+  int64_t signal_total_consumed = 0;
 
-  /// If you could read the next item, signal the executor to resume
-  /// if necessary.
-  if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    // Threshold is per-stream only (see TaskSpecification::
-    // EffectiveStreamingGeneratorOwnerBackpressureThreshold). Actor-wide sharing is
-    // enforced separately on the worker before each yield.
-    //
-    // When threshold is 1, we must flush on every successful read if any deferred
-    // report replies remain: unconsumed may stay >= 1 until all queued callbacks are
-    // drained (e.g. several in-flight reports before reads catch up).
-    if (backpressure_threshold != -1) {
-      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end() && !it->second.empty()) {
-        const bool below_threshold = total_unconsumed < backpressure_threshold;
-        const bool flush_owner_tight = backpressure_threshold == 1;
-        if (below_threshold || flush_owner_tight) {
-          for (const auto &execution_signal : it->second) {
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    RAY_CHECK(object_id_out != nullptr);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "TryReadObjectRefStream API can be used only when the stream has been "
+           "created "
+           "and not removed.";
+    read_status = stream_it->second.TryReadNextItem(object_id_out);
+
+    /// If you could read the next item, signal the executor to resume
+    /// if necessary.
+    if (read_status.ok()) {
+      auto total_generated = stream_it->second.TotalNumObjectWritten();
+      auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+      auto total_unconsumed = total_generated - total_consumed;
+      // Threshold is per-stream only (see TaskSpecification::
+      // EffectiveStreamingGeneratorOwnerBackpressureThreshold). Actor-wide sharing is
+      // enforced separately on the worker before each yield.
+      //
+      // At threshold 1, unconsumed stays >= 1 while several report RPCs are deferred, so
+      // "flush when below threshold only" would deadlock. Signal one deferred reply per
+      // successful read so consumption and acks stay matched; when unconsumed drops
+      // below the threshold, flush any remainder in one batch.
+      //
+      // Run callbacks only after releasing object_ref_stream_ops_mu_: replying may
+      // synchronously re-enter HandleReportGeneratorItemReturns on this worker.
+      if (backpressure_threshold != -1) {
+        auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
+        if (it != ref_stream_execution_signal_callbacks_.end() && !it->second.empty()) {
+          const bool below_threshold = total_unconsumed < backpressure_threshold;
+          auto &callbacks = it->second;
+          if (below_threshold) {
             RAY_LOG(DEBUG) << "The task for a stream " << generator_id
                            << " should resume. total_generated: " << total_generated
                            << ". total_consumed: " << total_consumed
                            << ". threshold: " << backpressure_threshold;
-            execution_signal(Status::OK(), total_consumed);
+            signal_total_consumed = total_consumed;
+            callbacks_to_run = std::move(callbacks);
+          } else if (backpressure_threshold == 1) {
+            RAY_LOG(DEBUG) << "Resume one deferred report for stream " << generator_id
+                           << ". total_generated: " << total_generated
+                           << ". total_consumed: " << total_consumed;
+            signal_total_consumed = total_consumed;
+            callbacks_to_run.push_back(std::move(callbacks.front()));
+            callbacks.erase(callbacks.begin());
           }
-          it->second.clear();
         }
       }
     }
   }
 
-  return status;
+  for (const auto &execution_signal : callbacks_to_run) {
+    execution_signal(Status::OK(), signal_total_consumed);
+  }
+  return read_status;
 }
 
 bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
