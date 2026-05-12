@@ -7,7 +7,7 @@ import pytest
 from typing_extensions import Hashable
 
 import ray
-from ray._common.retry import _matches_error
+from ray._common.retry import matches_error
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -415,7 +415,7 @@ def test_iterate_with_retry_matches_class_name():
 )
 def test_matches_error(pattern, error_message, expected):
     """Retry helper matches substring first, then regex; invalid patterns do not raise."""
-    assert _matches_error(pattern, error_message) is expected
+    assert matches_error(pattern, error_message) is expected
 
 
 def test_find_partition_index_single_column_ascending():

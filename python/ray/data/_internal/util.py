@@ -37,7 +37,7 @@ import pyarrow
 import pyarrow.fs
 
 import ray
-from ray._common.retry import _format_exc, _matches_error, call_with_retry
+from ray._common.retry import call_with_retry, format_exception, matches_error
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -1562,9 +1562,9 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            error_str = _format_exc(e, include_cause=unwrap_cause)
+            error_str = format_exception(e, include_cause=unwrap_cause)
             is_retryable = match is None or any(
-                _matches_error(pattern, error_str) for pattern in match
+                matches_error(pattern, error_str) for pattern in match
             )
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.

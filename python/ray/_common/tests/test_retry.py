@@ -109,5 +109,28 @@ def test_call_with_retry_matches_class_name():
     assert call_count == 3
 
 
+@pytest.mark.parametrize(
+    "pattern,should_retry",
+    [
+        # Valid regex that is not a literal substring, that matches via regex search
+        (r"\d{3}", True),
+        # Invalid regex, re.error is handled by returning False and the error is not retried.
+        (r"[unclosed", False),
+    ],
+)
+def test_call_with_retry_regex_matching(pattern, should_retry):
+    call_count = 0
+
+    def func():
+        nonlocal call_count
+        call_count += 1
+        raise ValueError("Error code: 429")
+
+    with pytest.raises(ValueError):
+        call_with_retry(func, "func", [pattern], 3, 0)
+
+    assert call_count == (3 if should_retry else 1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
