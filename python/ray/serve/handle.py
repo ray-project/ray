@@ -270,11 +270,8 @@ class _DeploymentHandleBase(Generic[T]):
         kwargs: Dict[str, Any],
     ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
         """Dispatch a request to a previously selected replica."""
-        # Validate that the selection belongs to the same deployment
-        if (
-            selection._deployment_id is not None
-            and selection._deployment_id != self.deployment_id
-        ):
+        # Validate that the selection was produced for this deployment
+        if selection._deployment_id != self.deployment_id:
             raise ValueError(
                 f"Cannot dispatch a selection created for a different deployment. "
                 f"This handle is for {self.deployment_id}, but the selection was created "

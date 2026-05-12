@@ -661,6 +661,38 @@ async def test_dispatch_wrapper_uses_choose_replica_stream_flag(serve_instance):
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't support choose_replica/dispatch",
 )
+async def test_dispatch_rejects_selection_without_deployment_id(serve_instance):
+    """dispatch must reject a selection whose deployment_id is unset."""
+
+    @serve.deployment
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, backend: DeploymentHandle):
+            self.handle = backend.process
+
+        async def run(self) -> str:
+            async with self.handle.choose_replica("msg") as sel:
+                sel._deployment_id = None
+                try:
+                    resp = self.handle.dispatch(sel, "msg")
+                except ValueError:
+                    return "raised"
+                await resp
+                return "no_raise"
+
+    h = serve.run(Caller.bind(Backend.bind()))
+    assert await h.run.remote() == "raised"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
 async def test_request_counter_only_increments_on_dispatch(serve_instance):
     """request_counter ticks per dispatched request, not per choose_replica."""
 
