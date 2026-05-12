@@ -46,9 +46,8 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     # Without this, libraries like smart_open that capture docstrings via
     # redirect_stdout() at import time will have their output swallowed by
     # the logger instead of being captured by the StringIO.
-    if (
-        (file in (sys.stdout, None) and sys.stdout is not sys.__stdout__)
-        or (file is sys.stderr and sys.stderr is not sys.__stderr__)
+    if (file in (sys.stdout, None) and sys.stdout is not sys.__stdout__) or (
+        file is sys.stderr and sys.stderr is not sys.__stderr__
     ):
         _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
         return
