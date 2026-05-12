@@ -112,9 +112,6 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         ['model.pt', 'optimizer.pt', 'misc.pt']
     """
 
-    path: str
-    filesystem: pyarrow.fs.FileSystem
-
     def __init__(
         self,
         path: Union[str, os.PathLike],
