@@ -88,9 +88,9 @@ class GpuProfilingManager:
     @property
     def enabled(self) -> bool:
         return (
-            self.node_has_gpus()
-            and self._dynolog_bin is not None
+            self._dynolog_bin is not None
             and self._dyno_bin is not None
+            and self.node_has_gpus()
         )
 
     @property
@@ -104,7 +104,10 @@ class GpuProfilingManager:
     @functools.cache
     def node_has_gpus(cls) -> bool:
         try:
-            subprocess.check_output(["nvidia-smi"], stderr=subprocess.DEVNULL)
+            subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                stderr=subprocess.DEVNULL,
+            )
             return True
         except Exception:
             return False
