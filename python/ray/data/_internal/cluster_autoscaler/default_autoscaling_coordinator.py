@@ -170,7 +170,7 @@ class _AutoscalingCoordinatorActor:
         self,
         get_current_time: Callable[[], float] = time.time,
         send_resources_request: Callable[
-            ..., None
+            [List[ResourceDict], Optional[List[Dict[str, str]]]], None
         ] = lambda bundles, label_selectors=None: (
             ray.autoscaler.sdk.request_resources(
                 bundles=bundles, bundle_label_selectors=label_selectors
