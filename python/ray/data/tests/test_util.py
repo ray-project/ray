@@ -366,6 +366,38 @@ def test_iterate_with_retry_unwrap_cause():
     assert attempts == 1
 
 
+def test_iterate_with_retry_matches_class_name():
+    """Patterns can match the exception class name (e.g., 'RateLimit')."""
+
+    class RateLimitError(Exception):
+        pass
+
+    attempts = 0
+
+    class MockIterable:
+        def __init__(self):
+            nonlocal attempts
+            attempts += 1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise RateLimitError("Error code: 429")
+
+    attempts = 0
+    with pytest.raises(RateLimitError):
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get item",
+                match=["RateLimit"],
+                max_attempts=2,
+            )
+        )
+    assert attempts == 2
+
+
 @pytest.mark.parametrize(
     "pattern, error_message, expected",
     [
