@@ -2,6 +2,7 @@ import logging
 import os
 import queue
 import socket
+import sys
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar, Union
@@ -140,10 +141,28 @@ class RayTrainWorker:
             raise
 
         def train_fn_with_final_checkpoint_flush():
-            train_fn()
+            result = train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()
 
+            if "torch" in sys.modules:
+                from ray.air._internal.torch_utils import contains_tensor
+
+                if contains_tensor(result):
+                    raise ValueError(
+                        "Returning objects containing Torch tensors from the "
+                        "training function is not supported as it will throw an "
+                        "exception on deserialization. You can either convert "
+                        "the tensors to Python objects (ex: `.numpy()`, "
+                        "`.item()`, etc.) or save tensors as part of the "
+                        "checkpoint files instead."
+                    )
+
+            return result
+
         # Create and start the training thread.
+        logger.debug(
+            f"Rank {get_train_context().get_world_rank()}: Launching training function."
+        )
         get_train_context().execution_context.training_thread_runner.run(
             train_fn_with_final_checkpoint_flush
         )
@@ -178,9 +197,35 @@ class RayTrainWorker:
             training_report
         )
 
-        return WorkerStatus(
-            running=running, error=error, training_report=training_report
+        return_value = (
+            execution_context.training_thread_runner.get_return_value()
+            if not running
+            else None
         )
+
+        return WorkerStatus(
+            running=running,
+            error=error,
+            training_report=training_report,
+            return_value=return_value,
+        )
+
+    def clear_result_queue(self) -> bool:
+        """Drain the result queue, discarding any pending training reports.
+
+        Returns:
+            True if the queue had at least one result, False if it was empty.
+        """
+        execution_context = get_train_context().execution_context
+        had_result = False
+        while True:
+            try:
+                execution_context.result_queue.get_nowait()
+                execution_context.result_queue.task_done()
+                had_result = True
+            except queue.Empty:
+                break
+        return had_result
 
     def shutdown(self):
         """Shutdown the worker.

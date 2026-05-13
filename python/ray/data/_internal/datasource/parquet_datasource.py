@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import math
 import os
@@ -195,71 +196,83 @@ class _SplitPredicateResult:
     """Result of splitting a predicate by column type.
 
     Attributes:
-        data_predicate: Expression containing only data column predicates
-            (for PyArrow pushdown), or None if no data predicates exist.
-        partition_predicate: Expression containing only partition column predicates
-            (for partition pruning), or None if no partition predicates exist.
+        data_predicate: Conjuncts referencing only data columns (for PyArrow
+            pushdown), or None if none could be extracted.
+        partition_predicate: Conjuncts referencing only partition columns
+            (for partition pruning), or None if none could be extracted.
+        residual_predicate: Conjuncts that mix partition and data columns
+            and can't be split safely (e.g. an ``OR`` straddling both
+            kinds). The caller must keep these as a ``Filter`` above the
+            read; dropping them would over-include rows.
     """
 
     data_predicate: Optional[Expr]
     partition_predicate: Optional[Expr]
+    residual_predicate: Optional[Expr]
 
 
 def _split_predicate_by_columns(
     predicate: Expr,
     partition_columns: set,
 ) -> _SplitPredicateResult:
-    """Split a predicate into data-only and partition-only parts.
+    """Split a predicate into data, partition, and residual parts.
 
-    This function extracts both data column predicates and partition column
-    predicates from AND chains, enabling both PyArrow pushdown (data part) and
-    partition pruning (partition part).
+    This function walks the top-level ``AND`` chain and classifies each
+    conjunct by the columns it references:
+
+    - References only data columns (or none) → data bucket; pyarrow can
+      evaluate it at scan time.
+    - References only partition columns → partition bucket; the partition
+      parser can evaluate it from file paths.
+    - References both kinds (i.e. a non-``AND`` whose column set spans
+      both) → residual bucket; semantics-preserving splitting is
+      impossible (e.g. ``data > 5 OR partition == "US"``), so the caller
+      must keep these as a ``Filter`` above the read.
 
     Args:
         predicate: The predicate expression to analyze.
         partition_columns: Set of partition column names.
 
     Returns:
-        _SplitPredicateResult containing:
-        - data_predicate: Expression with only data columns (for PyArrow pushdown),
-          or None if no data predicates can be extracted.
-        - partition_predicate: Expression with only partition columns (for pruning),
-          or None if no partition predicates can be extracted.
+        :class:`_SplitPredicateResult` with the three buckets. Combining
+        ``data_predicate``, ``partition_predicate``, and
+        ``residual_predicate`` with ``AND`` reproduces the original
+        predicate exactly.
 
     Examples:
         >>> from ray.data.expressions import col
         >>> # Pure data predicate:
         >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
-        >>> result.data_predicate is not None  # Should have data predicate
+        >>> result.data_predicate is not None
         True
-        >>> result.partition_predicate is None  # Should not have partition predicate
+        >>> result.partition_predicate is None and result.residual_predicate is None
         True
 
         >>> # Pure partition predicate:
         >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
-        >>> result.data_predicate is None  # Should not have data predicate
+        >>> result.partition_predicate is not None
         True
-        >>> result.partition_predicate is not None  # Should have partition predicate
+        >>> result.data_predicate is None and result.residual_predicate is None
         True
 
-        >>> # Mixed AND - can split both parts:
+        >>> # Mixed AND - can split into data and partition parts:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) & (col("partition_col") == "US"),
         ...     {"partition_col"}
         ... )
-        >>> result.data_predicate is not None  # Should have data predicate
+        >>> result.data_predicate is not None and result.partition_predicate is not None
         True
-        >>> result.partition_predicate is not None  # Should have partition predicate
+        >>> result.residual_predicate is None
         True
 
-        >>> # Mixed OR - can't split safely:
+        >>> # Mixed OR - kept as residual; caller wraps it in a Filter above:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) | (col("partition_col") == "US"),
         ...     {"partition_col"}
         ... )
-        >>> result.data_predicate is None  # Should not have data predicate
+        >>> result.data_predicate is None and result.partition_predicate is None
         True
-        >>> result.partition_predicate is None  # Should not have partition predicate
+        >>> result.residual_predicate is not None
         True
     """
     referenced_cols = set(get_column_references(predicate))
@@ -267,20 +280,26 @@ def _split_predicate_by_columns(
     partition_cols_in_predicate = referenced_cols & partition_columns
 
     if not partition_cols_in_predicate:
-        # Pure data predicate
-        return _SplitPredicateResult(data_predicate=predicate, partition_predicate=None)
+        # Pure data predicate (or no column refs).
+        return _SplitPredicateResult(
+            data_predicate=predicate,
+            partition_predicate=None,
+            residual_predicate=None,
+        )
 
     if not data_cols:
-        # Pure partition predicate
-        return _SplitPredicateResult(data_predicate=None, partition_predicate=predicate)
+        # Pure partition predicate.
+        return _SplitPredicateResult(
+            data_predicate=None,
+            partition_predicate=predicate,
+            residual_predicate=None,
+        )
 
-    # Mixed predicate - try to split if it's an AND chain
+    # Mixed predicate - keep splitting if it's an AND chain.
     if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-        # Recursively split left and right sides
         left_result = _split_predicate_by_columns(predicate.left, partition_columns)
         right_result = _split_predicate_by_columns(predicate.right, partition_columns)
 
-        # Helper to combine predicates from both sides
         def combine_predicates(
             left: Optional[Expr], right: Optional[Expr]
         ) -> Optional[Expr]:
@@ -288,20 +307,28 @@ def _split_predicate_by_columns(
                 return left & right
             return left or right
 
-        data_predicate = combine_predicates(
-            left_result.data_predicate, right_result.data_predicate
-        )
-        partition_predicate = combine_predicates(
-            left_result.partition_predicate, right_result.partition_predicate
-        )
-
         return _SplitPredicateResult(
-            data_predicate=data_predicate, partition_predicate=partition_predicate
+            data_predicate=combine_predicates(
+                left_result.data_predicate, right_result.data_predicate
+            ),
+            partition_predicate=combine_predicates(
+                left_result.partition_predicate, right_result.partition_predicate
+            ),
+            residual_predicate=combine_predicates(
+                left_result.residual_predicate, right_result.residual_predicate
+            ),
         )
 
-    # For OR, NOT, or other operations with mixed columns,
-    # we can't safely split - must evaluate the full predicate together
-    return _SplitPredicateResult(data_predicate=None, partition_predicate=None)
+    # ``OR``/``NOT``/etc. straddling both column kinds — not safely
+    # splittable. Surface as residual so the caller doesn't silently drop
+    # it (the prior version returned ``(None, None)`` here, which let the
+    # surrounding ``AND`` chain push partial conjuncts and over-include
+    # rows that should have been filtered by this one).
+    return _SplitPredicateResult(
+        data_predicate=None,
+        partition_predicate=None,
+        residual_predicate=predicate,
+    )
 
 
 class ParquetDatasource(Datasource):
@@ -358,6 +385,7 @@ class ParquetDatasource(Datasource):
         partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         super().__init__()
@@ -500,6 +528,7 @@ class ParquetDatasource(Datasource):
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
         )
 
     def _init_state(
@@ -522,6 +551,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]],
         shuffle: Union["FileShuffleConfig", Literal["files"], None],
         include_paths: bool,
+        include_row_hash: bool = False,
     ):
         """Shared initialization for all instance state and sampling estimates.
 
@@ -551,6 +581,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = partition_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
+        self._include_row_hash = include_row_hash
         self._partitioning = partitioning
         _validate_shuffle_arg(shuffle)
         self._shuffle = shuffle
@@ -609,6 +640,7 @@ class ParquetDatasource(Datasource):
         schema: Optional["pyarrow.lib.Schema"] = None,
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
 
@@ -676,6 +708,7 @@ class ParquetDatasource(Datasource):
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
         )
 
     @property
@@ -753,6 +786,7 @@ class ParquetDatasource(Datasource):
             projected_columns=self.get_current_projection(),
             _block_udf=self._block_udf,
             include_paths=self._include_paths,
+            include_row_hash=self._include_row_hash,
         )
 
         read_tasks = []
@@ -787,6 +821,7 @@ class ParquetDatasource(Datasource):
                 partition_columns,
                 read_schema,
                 include_paths,
+                include_row_hash,
                 partitioning,
             ) = (
                 self._block_udf,
@@ -796,6 +831,7 @@ class ParquetDatasource(Datasource):
                 self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
+                self._include_row_hash,
                 self._partitioning,
             )
 
@@ -810,6 +846,7 @@ class ParquetDatasource(Datasource):
                         read_schema,
                         f,
                         include_paths,
+                        include_row_hash,
                         partitioning,
                         filter_expr,
                         filter_columns,
@@ -854,6 +891,8 @@ class ParquetDatasource(Datasource):
             #       via _derive_schema, so we only need to add it when there is a projection.
             if self._include_paths and "path" not in result:
                 result = result + ["path"]
+            if self._include_row_hash and "row_hash" not in result:
+                result = result + ["row_hash"]
 
         return result
 
@@ -913,11 +952,13 @@ class ParquetDatasource(Datasource):
 
         # Get partition columns and filter them out from the projection
         partition_cols = self._partition_columns
-        # Also filter out "path" column if include_paths is True, as it's a
-        # synthetic column added after reading from the file
+        # Also filter out synthetic columns (path, row_hash) as they are
+        # added after reading from the file
         cols_to_filter = set(partition_cols)
         if self._include_paths:
             cols_to_filter.add("path")
+        if self._include_row_hash:
+            cols_to_filter.add("row_hash")
         data_cols = [
             col for col in self._projection_map.keys() if col not in cols_to_filter
         ]
@@ -943,6 +984,16 @@ class ParquetDatasource(Datasource):
 
         # Split predicate into data and partition parts
         split_result = _split_predicate_by_columns(predicate_expr, partition_cols)
+
+        # If a mixed-column conjunct can't be safely split (e.g. ``data > 5
+        # OR partition == "US"``), the V1 ``Read.apply_predicate`` wrapper
+        # has no way to keep it as a ``Filter`` above the read — its return
+        # type is ``Read``, not ``LogicalOperator``. Pushing the splittable
+        # parts and silently dropping the residual would over-include rows.
+        # Return ``self`` so ``PredicatePushdown`` keeps the original
+        # ``Filter`` above intact.
+        if split_result.residual_predicate is not None:
+            return self
 
         # Apply partition pruning if we have a partition predicate
         if (
@@ -995,6 +1046,7 @@ class ParquetDatasource(Datasource):
         projected_columns: Optional[List[str]],
         _block_udf,
         include_paths: bool = False,
+        include_row_hash: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
 
@@ -1027,6 +1079,15 @@ class ParquetDatasource(Datasource):
         # Add path column if include_paths is True and path column is not already present
         if include_paths and target_schema.get_field_index("path") == -1:
             target_schema = target_schema.append(pa.field("path", pa.string()))
+
+        if include_row_hash:
+            idx = target_schema.get_field_index("row_hash")
+            if idx == -1:
+                target_schema = target_schema.append(pa.field("row_hash", pa.uint64()))
+            elif target_schema.field(idx).type != pa.uint64():
+                target_schema = target_schema.set(
+                    idx, pa.field("row_hash", pa.uint64())
+                )
 
         # Project schema if necessary
         if projected_columns is not None:
@@ -1064,6 +1125,7 @@ def read_fragments(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
     include_paths: bool,
+    include_row_hash: bool,
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
@@ -1089,6 +1151,7 @@ def read_fragments(
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
+                include_row_hash=include_row_hash,
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
                 to_batches_kwargs=to_batches_kwargs,
@@ -1452,6 +1515,7 @@ def _read_batches_from(
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
     include_path: bool = False,
+    include_row_hash: bool = False,
     use_threads: bool = False,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Iterable["pyarrow.Table"]:
@@ -1492,8 +1556,11 @@ def _read_batches_from(
         fragment, partition_columns, partitioning
     )
 
+    row_offset = 0
+
     def _generate_tables() -> "pa.Table":
         """Inner generator that yields tables without renaming."""
+        nonlocal row_offset
 
         def _postprocess_table(table):
             if partition_col_values:
@@ -1535,7 +1602,16 @@ def _read_batches_from(
                 use_threads=use_threads,
                 to_batches_kwargs=to_batches_kwargs,
             ):
-                yield _postprocess_table(pa.Table.from_batches([batch]))
+                table = _postprocess_table(pa.Table.from_batches([batch]))
+                if include_row_hash:
+                    hashes = _compute_row_hashes(
+                        fragment.path, row_offset, table.num_rows
+                    )
+                    table = ArrowBlockAccessor.for_block(table).fill_column(
+                        "row_hash", pa.array(hashes, type=pa.uint64())
+                    )
+                    row_offset += table.num_rows
+                yield table
 
         except pa.lib.ArrowInvalid as e:
             error_message = str(e)
@@ -1555,6 +1631,38 @@ def _read_batches_from(
     yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
         _generate_tables(), data_columns_rename_map
     )
+
+
+def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
+    """Compute deterministic uint64 hashes from file path and output row position.
+
+    ``start_row`` is the position within the output stream (post-filter), not
+    the physical file offset.  This means hashes are reproducible for a given
+    pipeline configuration (same file + same filter) but will differ across
+    reads with different filters.
+
+    Hashes the file path with MD5 to obtain a 64-bit seed, adds the row indices,
+    then applies the splitmix64 finalizer (a bijective 64-bit mixing function) to
+    produce well-distributed, reproducible hashes.  Fully vectorized via numpy.
+    """
+    path_seed = np.uint64(
+        int.from_bytes(
+            hashlib.md5(file_path.encode("utf-8")).digest()[:8], byteorder="little"
+        )
+    )
+    keys = path_seed + np.arange(start_row, start_row + num_rows, dtype=np.uint64)
+
+    # splitmix64 finalizer – a bijective 64-bit mixing function from
+    # Steele, Lea & Flood, "Fast Splittable Pseudorandom Number Generators",
+    # OOPSLA 2014.  Also used in Java's SplittableRandom.
+    # Reference: https://xorshift.di.unimi.it/splitmix64.c
+    keys ^= keys >> np.uint64(30)
+    keys *= np.uint64(0xBF58476D1CE4E5B9)
+    keys ^= keys >> np.uint64(27)
+    keys *= np.uint64(0x94D049BB133111EB)
+    keys ^= keys >> np.uint64(31)
+
+    return keys
 
 
 def _parse_partition_column_values(

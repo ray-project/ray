@@ -109,10 +109,10 @@ if PYDANTIC_INSTALLED:
         pid: int
         createTime: float
         cpuPercent: float
-        cpuTimes: Optional[CpuTimes]  # psutil._pslinux.scputimes object
+        cpuTimes: Optional[CpuTimes] = None  # psutil._pslinux.scputimes object
         cmdline: List[str]
-        memoryInfo: Optional[MemoryInfo]  # psutil._pslinux.svmem object
-        memoryFullInfo: Optional[MemoryFullInfo]  # psutil._pslinux.smem object
+        memoryInfo: Optional[MemoryInfo] = None  # psutil._pslinux.svmem object
+        memoryFullInfo: Optional[MemoryFullInfo] = None  # psutil._pslinux.smem object
         numFds: Optional[int] = None  # Not available on Windows
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers
@@ -163,6 +163,10 @@ if PYDANTIC_INSTALLED:
         cpu: float  # CPU usage percentage
         cpus: Tuple[int, int]  # (logicalCpuCount, physicalCpuCount)
         mem: MemoryUsage  # (total, available, percent, used) in bytes
+        hostMem: Tuple[int, int]  # host physical memory (used, totall) in bytes
+        cgroupMem: Optional[
+            Tuple[int, int]
+        ] = None  # (used, total) from cgroup, or None
         shm: Optional[int] = None  # shared memory in bytes, None if not available
         workers: List[ProcessInfo]
         raylet: Optional[ProcessInfo] = None

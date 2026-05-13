@@ -33,6 +33,11 @@ class ImageClassificationConfig(TaskConfig):
 
     image_classification_local_dataset: bool = False
     image_classification_data_format: ImageFormat = ImageFormat.PARQUET
+    # When True and data_format=PARQUET, read from the larger
+    # IMAGENET_PARQUET_SPLIT_1T_S3_ROOT dataset instead of the default
+    # parquet_split root. Used by the slow-consumer benchmarks to sustain
+    # backpressure.
+    image_classification_use_1t_dataset: bool = False
 
 
 class RecsysConfig(TaskConfig):
@@ -90,6 +95,11 @@ class BenchmarkConfig(BaseModel):
     # after each training step. Used to benchmark dataloader behavior under
     # consumer back-pressure. 0 disables the sleep.
     train_step_sleep_s: float = 0.0
+    # Maximum number of training batches per worker per epoch. When reached,
+    # the epoch ends early regardless of dataset size. -1 disables the cap.
+    # Used with slow-consumer benchmarks to bound wall-clock without
+    # truncating the data source.
+    max_train_batches: int = -1
 
     # Checkpointing
     checkpoint_every_n_steps: int = -1

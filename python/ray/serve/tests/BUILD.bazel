@@ -139,6 +139,7 @@ py_test_module_list(
         "test_regression.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",
+        "test_round_robin_router.py",
         "test_streaming_response.py",
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
@@ -203,6 +204,7 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "enormous",
+    data = glob(["test_config_files/**/*"]),
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -277,6 +279,7 @@ py_test_module_list(
         "test_cli_2.py",
         "test_cli_3.py",
         "test_cli_4.py",
+        "test_consistent_hash_router.py",
     ],
     tags = [
         "exclusive",
@@ -753,11 +756,11 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     files = [
-        "test_direct_ingress_standalone.py",
+        "test_per_request_headers.py",
     ],
     tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],
@@ -789,13 +792,13 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
     files = [
-        "test_direct_ingress_standalone.py",
+        "test_per_request_headers.py",
     ],
     name_suffix = "_with_grpc",
     tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],
