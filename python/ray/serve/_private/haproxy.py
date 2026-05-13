@@ -748,7 +748,42 @@ class HAProxyApi(ProxyApi):
                 await proc.wait()
             raise
 
+        # HAProxy in -db mode emits hundreds of stderr lines/sec. If nothing
+        # reads from the pipe, the 64KB kernel buffer fills and HAProxy blocks
+        # on its next write — including from threads serving the admin socket,
+        # which makes runtime API calls appear to hang. Drain to a per-pid file.
+        asyncio.create_task(
+            self._drain_proc_stderr(proc, self._stderr_log_path_for(proc.pid))
+        )
+
         return proc
+
+    def _stderr_log_path_for(self, pid: int) -> str:
+        """Per-pid stderr log path co-located with the admin socket."""
+        return f"{self.cfg.socket_path}.stderr.{pid}.log"
+
+    async def _drain_proc_stderr(
+        self,
+        proc: asyncio.subprocess.Process,
+        log_path: str,
+        max_bytes: int = 10_000_000,
+    ) -> None:
+        """Drain `proc.stderr` to `log_path`, truncating when the file passes
+        `max_bytes` so a long-lived proc cannot fill the disk."""
+        if proc.stderr is None:
+            return
+        try:
+            with open(log_path, "ab", buffering=0) as f:
+                while True:
+                    chunk = await proc.stderr.read(65536)
+                    if not chunk:
+                        return
+                    f.write(chunk)
+                    if f.tell() > max_bytes:
+                        f.seek(0)
+                        f.truncate()
+        except Exception as e:
+            logger.warning(f"HAProxy stderr drain for pid={proc.pid} exited: {e}")
 
     async def _save_server_state(self) -> None:
         """Save the server state to the file."""
