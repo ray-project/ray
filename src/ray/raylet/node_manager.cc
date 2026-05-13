@@ -3068,12 +3068,12 @@ void NodeManager::ReleaseKillWorkerInProgress() {
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](const std::string &trigger_reason) {
+  return [this](std::string trigger_reason) {
     if (!MarkKillWorkerInProgress()) {
       return;
     }
     io_service_.post(
-        [this, trigger_reason]() {
+        [this, trigger_reason = std::move(trigger_reason)]() {
           std::vector<std::shared_ptr<WorkerInterface>> workers =
               worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                    /* filter_io_workers */ true);
@@ -3235,7 +3235,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
 
   return absl::StrFormat(
       "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f); "
-      "Trigger: %s; "
+      "OOM kill reason: %s; "
       "Object store memory usage: [%s]; "
       "Ray killed %d worker(s) based on the killing policy: "
       "[%s]; "

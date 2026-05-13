@@ -53,7 +53,7 @@ using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
  * @param trigger_reason A human-readable description of why the monitor triggered
  *        the kill (e.g. threshold exceeded, cgroup event, PSI pressure).
  */
-using KillWorkersCallback = std::function<void(const std::string &trigger_reason)>;
+using KillWorkersCallback = std::function<void(const std::string trigger_reason)>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node

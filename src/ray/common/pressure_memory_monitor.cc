@@ -161,8 +161,7 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
     if (fds[0].revents & POLLPRI) {
       if (IsEnabled()) {
         Disable();
-        kill_workers_callback_(
-            "cgroup memory.pressure PSI trigger fired (pressure-driven)");
+        kill_workers_callback_("user cgroup memory pressure was detected");
       }
     } else if (fds[0].revents & POLLERR) {
       RAY_LOG(ERROR) << "Got POLLERR while monitoring memory pressure. "
