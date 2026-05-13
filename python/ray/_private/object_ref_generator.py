@@ -63,6 +63,12 @@ class ObjectRefGenerator:
         self.worker = worker
         self.worker.check_connected()
         assert hasattr(worker, "core_worker")
+        # Cached next ObjectRef returned by peek_object_ref_stream. The stream's
+        # next ref only changes when the consumer advances it via
+        # try_read_next_object_ref_stream, so we can reuse the cached value
+        # across repeated peeks (e.g., from ray.wait, which calls
+        # _get_next_ref once per generator on every invocation).
+        self._cached_next_ref: Optional["ray.ObjectRef"] = None
 
     # Public APIs
 
@@ -181,9 +187,13 @@ class ObjectRefGenerator:
         Note that the ObjectID generated from a generator
         is always deterministic.
         """
+        if self._cached_next_ref is not None:
+            return self._cached_next_ref
         self.worker.check_connected()
         core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(self._generator_ref)[0]
+        ref = core_worker.peek_object_ref_stream(self._generator_ref)[0]
+        self._cached_next_ref = ref
+        return ref
 
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
@@ -222,8 +232,11 @@ class ObjectRefGenerator:
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
+            # The stream advanced; the cached next ref is stale.
+            self._cached_next_ref = None
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
+            self._cached_next_ref = None
             if self._generator_task_raised:
                 # Exception has been returned.
                 raise StopIteration from None
@@ -266,8 +279,11 @@ class ObjectRefGenerator:
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
+            # The stream advanced; the cached next ref is stale.
+            self._cached_next_ref = None
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
+            self._cached_next_ref = None
             if self._generator_task_raised:
                 # Exception has been returned.
                 raise StopAsyncIteration from None
