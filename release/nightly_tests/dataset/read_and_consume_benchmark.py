@@ -6,6 +6,7 @@ from typing import Callable
 from benchmark import Benchmark
 
 import ray
+import pyarrow.dataset as pqds
 
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -58,7 +59,17 @@ def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
         # https://github.com/ray-project/ray/issues/49883.
         read_fn = functools.partial(ray.data.read_images, mode="RGB")
     elif args.format == "parquet":
-        read_fn = ray.data.read_parquet
+        PARQUET_SCAN_OPTS = pqds.ParquetFragmentScanOptions(
+            pre_buffer=False,
+            use_buffered_stream=True,
+            buffer_size=8 * 1024 * 1024,
+        )
+        read_fn = functools.partial(
+            ray.data.read_parquet,
+            fragment_scan_options=PARQUET_SCAN_OPTS,
+            batch_readahead=8,
+        )
+        # read_fn = ray.data.read_parquet
     elif args.format == "tfrecords":
         read_fn = ray.data.read_tfrecords
     else:
