@@ -61,6 +61,9 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
     {%- endif %}
+    tune.bufsize 65536
+    tune.h2.initial-window-size 1048576
+    tune.h2.max-frame-size 65536
 defaults
     mode http
     option log-health-checks
@@ -262,6 +265,7 @@ backend default_grpc_backend
 backend {{ backend.name or 'unknown' }}
     mode http
     log global
+    http-reuse always
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
