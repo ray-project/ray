@@ -10,7 +10,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_dashboard_agent_available,
 )
-from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.dashboard.tests.conftest import *  # noqa
 
 _PLATFORM_EVENT_PORT = 12348
@@ -44,6 +43,7 @@ def test_ray_platform_events(ray_start_cluster, httpserver):
     def emit_test_platform_event():
         from ray._common.observability.platform_events import PlatformEventBuilder
         from ray._raylet import EventRecorder
+        from ray.core.generated.events_base_event_pb2 import RayEvent
         from ray.core.generated.platform_event_pb2 import Source
 
         builder = PlatformEventBuilder(
