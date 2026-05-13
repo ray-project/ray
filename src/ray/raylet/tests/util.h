@@ -165,6 +165,19 @@ class MockWorker : public WorkerInterface {
     lifetime_allocated_instances_ = nullptr;
   }
 
+  void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+    startup_allocated_instances_ = allocated_instances;
+  }
+
+  std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
+    return startup_allocated_instances_;
+  }
+
+  void ClearStartupAllocatedInstances() override {
+    startup_allocated_instances_ = nullptr;
+  }
+
   const BundleID &GetBundleId() const override {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;
@@ -205,6 +218,7 @@ class MockWorker : public WorkerInterface {
   rpc::Address address_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  std::shared_ptr<TaskResourceInstances> startup_allocated_instances_;
   std::vector<double> borrowed_cpu_instances_;
   std::optional<bool> is_gpu_;
   std::optional<bool> is_actor_worker_;

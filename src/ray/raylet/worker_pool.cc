@@ -863,6 +863,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   worker->SetAssignedPort(port);
 
   worker->SetResourceRequirements(starting_process_info.resource_requirements);
+  worker->SetStartupAllocatedInstances(starting_process_info.allocated_instances);
 
   state.registered_workers.insert(worker);
 
@@ -1356,6 +1357,18 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
   if (worker.GetResourceRequirements() != pop_worker_request.resource_requirements_) {
     return WorkerUnfitForLeaseReason::OTHERS;
   }
+  // Skip if the startup allocated instances mismatch.
+  bool allocated_instances_match = false;
+  const auto &worker_allocated_instances = worker.GetStartupAllocatedInstances();
+  if (worker_allocated_instances == pop_worker_request.allocated_instances_) {
+    allocated_instances_match = true;
+  } else if (worker_allocated_instances && pop_worker_request.allocated_instances_ &&
+             *worker_allocated_instances == *pop_worker_request.allocated_instances_) {
+    allocated_instances_match = true;
+  }
+  if (!allocated_instances_match) {
+    return WorkerUnfitForLeaseReason::OTHERS;
+  }
   return WorkerUnfitForLeaseReason::NONE;
 }
 
@@ -1400,7 +1413,7 @@ void WorkerPool::StartNewWorker(
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info_.serialized_runtime_env();
 
-  if (pop_worker_request->language_ == Language::PYTHON) {
+  if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     GetOrCreateRuntimeEnv(
         serialized_runtime_env,
         pop_worker_request->runtime_env_info_.runtime_env_config(),
@@ -1422,30 +1435,7 @@ void WorkerPool::StartNewWorker(
           }
         });
   } else {
-    if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-      GetOrCreateRuntimeEnv(
-          serialized_runtime_env,
-          pop_worker_request->runtime_env_info_.runtime_env_config(),
-          pop_worker_request->job_id_,
-          pop_worker_request->resource_requirements_,
-          pop_worker_request->allocated_instances_,
-          [this, start_worker_process_fn, pop_worker_request](
-              bool successful,
-              const std::string &serialized_runtime_env_context,
-              const std::string &setup_error_message) {
-            if (successful) {
-              start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
-            } else {
-              process_failed_runtime_env_setup_failed_++;
-              pop_worker_request->callback_(
-                  nullptr,
-                  PopWorkerStatus::RuntimeEnvCreationFailed,
-                  /*runtime_env_setup_error_message*/ setup_error_message);
-            }
-          });
-    } else {
-      start_worker_process_fn(pop_worker_request, "");
-    }
+    start_worker_process_fn(pop_worker_request, "");
   }
 }
 

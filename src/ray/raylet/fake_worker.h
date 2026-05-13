@@ -103,6 +103,12 @@ class FakeWorker : public WorkerInterface {
   void ActorCallArgWaitComplete(int64_t tag) override {}
   void ClearAllocatedInstances() override {}
   void ClearLifetimeAllocatedInstances() override {}
+  void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
+  std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
+    return nullptr;
+  }
+  void ClearStartupAllocatedInstances() override {}
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
   bool IsRegistered() override { return false; }

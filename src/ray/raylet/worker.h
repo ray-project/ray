@@ -132,6 +132,19 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     lifetime_allocated_instances_ = nullptr;
   };
 
+  void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+    startup_allocated_instances_ = allocated_instances;
+  };
+
+  std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
+    return startup_allocated_instances_;
+  };
+
+  void ClearStartupAllocatedInstances() override {
+    startup_allocated_instances_ = nullptr;
+  };
+
   const RayLease &GetGrantedLease() const override {
     RAY_CHECK(granted_lease_.has_value());
     return *granted_lease_;
@@ -233,6 +246,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  /// Specific allocated instances this worker was started with.
+  std::shared_ptr<TaskResourceInstances> startup_allocated_instances_;
   /// RayLease being assigned to this worker.
   std::optional<RayLease> granted_lease_;
   /// Time when the last lease was granted to this worker, or std::nullopt if

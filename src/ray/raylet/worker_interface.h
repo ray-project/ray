@@ -107,6 +107,12 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
+  virtual void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+  virtual std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const = 0;
+
+  virtual void ClearStartupAllocatedInstances() = 0;
+
   virtual void GrantLease(const RayLease &granted_lease) = 0;
 
   virtual bool IsRegistered() = 0;
