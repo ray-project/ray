@@ -312,7 +312,7 @@ class ResourceIsolationConfig:
         resolved_buffer = (
             ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
         )
-        if user_physical_logical_memory_limit_buffer:
+        if user_physical_logical_memory_limit_buffer is not None:
             resolved_buffer = user_physical_logical_memory_limit_buffer
 
         if not isinstance(resolved_buffer, int):
