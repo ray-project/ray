@@ -6,6 +6,9 @@ from ray.data.block import BlockAccessor, CallableClass
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
 
 
 def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
@@ -80,3 +83,15 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
             return future.result()
 
     return _SingleThreadedWrapper
+
+
+def is_datasink_op(op: "PhysicalOperator") -> bool:
+    """Return True if the operator is a datasink (write) operator.
+
+    Checks the logical operator rather than output_dependencies to avoid
+    misidentifying terminal map ops (e.g. materialize()) that still produce
+    output into the object store.
+    """
+    from ray.data._internal.logical.operators.write_operator import Write
+
+    return any(isinstance(logical_op, Write) for logical_op in op._logical_operators)
