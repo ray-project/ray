@@ -337,6 +337,13 @@ class _AutoscalingCoordinatorActor:
             for node_resource in cluster_node_resources:
                 # Divide remaining resources equally among requesters.
                 # NOTE: Integer division may leave some resources unallocated.
+                # When fractional bundles are subtracted earlier, IEEE-754
+                # rounding can leave a tiny epsilon (e.g. 4.0 - 10*0.1 =
+                # 2.9999...) which `//` truncates to the next-lower integer.
+                # That undershoot is preferred over true division here, which
+                # would also change the integer-only path (5 // 2 = 2 vs
+                # 5 / 2 = 2.5) and could surprise consumers that rely on
+                # whole-CPU shares.
                 divided_resource = {
                     k: v // num_remaining_requesters for k, v in node_resource.items()
                 }

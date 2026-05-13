@@ -3546,6 +3546,14 @@ class AutoscalingTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             request_resources(bundles=[{"CPU": True}])
 
+        # Positive cases: the SDK validator should accept these. Mock the
+        # downstream `commands.request_resources` so the call doesn't trip
+        # on `ray.is_initialized()` in this unit-test process.
+        with patch("ray.autoscaler.sdk.sdk.commands.request_resources") as mock_cmd:
+            request_resources(bundles=[{"CPU": 0.1}])
+            request_resources(bundles=[{"CPU": 1, "GPU": 0.5}])
+            assert mock_cmd.call_count == 2
+
     def test_autoscaler_status_log(self):
         self._test_autoscaler_status_log(status_log_enabled_env=1)
         self._test_autoscaler_status_log(status_log_enabled_env=0)
