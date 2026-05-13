@@ -905,6 +905,17 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if budget is None:
             return True
 
+        # Sink operators (no downstream consumers, e.g. write_parquet) only
+        # consume blocks from the object store — they never produce output into
+        # it.  Blocking a sink on object store budget is counterproductive: it
+        # prevents draining the very data that is filling the object store.
+        # So for sinks we check CPU budget normally but skip the object store
+        # budget check entirely.
+        if not op.output_dependencies:
+            return op.incremental_resource_usage().satisfies_limit(
+                budget, ignore_object_store_memory=True
+            )
+
         return (
             op.incremental_resource_usage().satisfies_limit(budget)
             and
