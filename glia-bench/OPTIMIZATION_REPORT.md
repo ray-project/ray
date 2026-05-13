@@ -376,6 +376,28 @@ M6_TREE="$REPO/python/ray" \
 
 Both trees are run with library versions matched between their venvs; the Python source files under `python/ray/` are the only systematic difference — the perf and correctness deltas are attributable to Ray Data code-level changes between master and the rebased branch.
 
+## 6. Checkpoint: M5 reverted
+
+This branch tip reverts §2.5 (M5 — Incremental budget decrement). The remaining five optimizations (M1–M4, M6) are unchanged from §2.
+
+**Background.** In follow-up perf work after the original report, we identified that M5's static per-dispatch decrement on `_global_usage` leaves the cluster autoscaler's `RollingLogicalUtilizationGauge` reading stale CPU/GPU utilization across scheduling-step boundaries when actor pool scaling occurs mid-step.
+
+### 6.1 N=1 perf (master vs no_m5)
+
+Same hardware (24-vCPU devpod), same matched-libs venvs, same harness and workloads as §3.2. **Single rep per (config, workload)** — this is a fast checkpoint sweep; refer to §4.1 for the with-M5 N=3 baseline.
+
+| Workload | master wall | no_m5 wall | Δ wall | master tps | no_m5 tps | Δ tps | Output hash |
+|---|---|---|---|---|---|---|---|
+| synthetic          | 145.19 | 101.88 | **−29.8%** | 137.75 | 196.32 | **+42.5%** | ✓ `1589ce21a198` |
+| mixed_pipeline     | 182.26 | 119.45 | **−34.5%** | 109.74 | 167.43 | **+52.6%** | ✓ `1f98030ecc7d` |
+| medium_tasks       |  46.31 |  20.89 | **−54.9%** | 107.96 | 239.34 | **+121.7%** | ✓ `89081b43d8b8` |
+| long_tasks         |  92.92 |  87.12 | −6.2% (control) |  13.77 |  14.69 | +6.7% (control) | ✓ `aa861fa79507` |
+| actor_backpressure |  49.64 |  24.79 | **−50.1%** |  20.15 |  40.34 | **+100.2%** | ✓ `8f2d922dfded` |
+
+Output hashes are byte-identical between master and no_m5 on every workload. The four scheduler-bound workloads still show large speedups from the remaining five optimizations; `long_tasks` is flat as the control. Versus the §4.1 with-M5 numbers, removing M5 costs roughly 20% wall on `synthetic` and `mixed_pipeline` (the workloads with deep task-pool fan-out where M5's per-dispatch budget shortcut had the most amortization) and is within noise on the other three.
+
+Raw data: `glia-bench/results/optimization_perf_master_vs_no_m5.jsonl`. Reproduce with `./glia-bench/run_master_vs_no_m5.sh all 1`.
+
 ## Appendix: Raw per-run data
 
 Per-run performance data lives at `glia-bench/results/optimization_perf_master_vs_rebased.jsonl` — one JSON line per run, 30 lines total (5 workloads × 2 configs × 3 reps). Fields per line: `config` (`master`|`rebased`), `workload`, `rep`, `wall_time_sec`, `throughput_blocks_per_sec`, `throughput_rows_per_sec`, `driver_cpu_per_wall`, `efficiency_blocks_per_core_sec`, `output_hash`. `actor_backpressure` rows additionally carry `peak_op_obj_store_over_alloc_ratio`, `peak_op_obj_store_used_mb`, `peak_op_obj_store_alloc_mb`, `num_sampler_reads`, `backpressure_log_count`, `plasma_directory`, `hash_time_sec`.
