@@ -97,8 +97,10 @@ class ResourceIsolationConfig:
         self.system_reserved_memory = self._validate_and_get_system_reserved_memory(
             system_reserved_memory
         )
-        self.user_physical_logical_memory_limit_buffer = max(
-            ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES, 0
+        self.user_physical_logical_memory_limit_buffer = (
+            self._validate_and_get_user_physical_logical_memory_limit_buffer(
+                system_reserved_memory,
+            )
         )
 
         self.cgroup_path = self._validate_and_get_cgroup_path(cgroup_path)
@@ -285,3 +287,53 @@ class ResourceIsolationConfig:
                 f"is greater than the amount of memory available={available_system_memory}."
             )
         return system_reserved_memory
+
+    @staticmethod
+    def _validate_and_get_user_physical_logical_memory_limit_buffer(
+        system_reserved_memory: int,
+        user_physical_logical_memory_limit_buffer: Optional[int],
+    ) -> int:
+        """If user_physical_logical_memory_limit_buffer is not specified, returns the default value. Otherwise,
+        checks the type, makes sure that the value is in range.
+
+        Args:
+            system_reserved_memory: The amount of memory in bytes reserved
+                for ray system processes. Used to determine if the system reserved memory
+                plus buffer is within the total memory available.
+            user_physical_logical_memory_limit_buffer: The number of bytes of
+                buffer between the physical memory limit enforced by resource
+                isolation and the logical memory limit available for scheduling
+                user tasks. Must be non-negative.
+
+        Returns:
+            int: The validated user physical logical memory limit buffer in bytes.
+        """
+        available_system_memory = ray._common.utils.get_system_memory()
+        resolved_buffer = (
+            ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
+        )
+        if not user_physical_logical_memory_limit_buffer:
+            resolved_buffer = user_physical_logical_memory_limit_buffer
+
+        if not isinstance(user_physical_logical_memory_limit_buffer, int):
+            raise ValueError(
+                f"Invalid value {user_physical_logical_memory_limit_buffer} for the buffer between "
+                "the physical memory limit enforced by resource isolation and the logical memory limit available for scheduling. "
+                "Use an integer to represent the number of bytes for the buffer."
+            )
+
+        if user_physical_logical_memory_limit_buffer < 0:
+            raise ValueError(
+                "The requested buffer between physical memory limit and logical memory limit "
+                f"{user_physical_logical_memory_limit_buffer} is less than 0. "
+                "Please pick a number of bytes greater than or equal to 0."
+            )
+
+        if system_reserved_memory + resolved_buffer > available_system_memory:
+            raise ValueError(
+                f"The total requested system_reserved_memory={system_reserved_memory} plus "
+                f"the buffer between physical memory limit and logical memory limit={resolved_buffer} "
+                f"is greater than the amount of memory available={available_system_memory}. "
+                "Pleaes reserve a smaller amount of memory for the system processes."
+            )
+        return resolved_buffer
