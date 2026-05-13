@@ -99,7 +99,7 @@ class ResourceIsolationConfig:
         )
         self.user_physical_logical_memory_limit_buffer = (
             self._validate_and_get_user_physical_logical_memory_limit_buffer(
-                system_reserved_memory,
+                self.system_reserved_memory,
             )
         )
 
@@ -291,7 +291,7 @@ class ResourceIsolationConfig:
     @staticmethod
     def _validate_and_get_user_physical_logical_memory_limit_buffer(
         system_reserved_memory: int,
-        user_physical_logical_memory_limit_buffer: Optional[int],
+        user_physical_logical_memory_limit_buffer: Optional[int] = None,
     ) -> int:
         """If user_physical_logical_memory_limit_buffer is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range.
@@ -312,20 +312,20 @@ class ResourceIsolationConfig:
         resolved_buffer = (
             ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
         )
-        if not user_physical_logical_memory_limit_buffer:
+        if user_physical_logical_memory_limit_buffer:
             resolved_buffer = user_physical_logical_memory_limit_buffer
 
-        if not isinstance(user_physical_logical_memory_limit_buffer, int):
+        if not isinstance(resolved_buffer, int):
             raise ValueError(
-                f"Invalid value {user_physical_logical_memory_limit_buffer} for the buffer between "
+                f"Invalid value {resolved_buffer} for the buffer between "
                 "the physical memory limit enforced by resource isolation and the logical memory limit available for scheduling. "
                 "Use an integer to represent the number of bytes for the buffer."
             )
 
-        if user_physical_logical_memory_limit_buffer < 0:
+        if resolved_buffer < 0:
             raise ValueError(
                 "The requested buffer between physical memory limit and logical memory limit "
-                f"{user_physical_logical_memory_limit_buffer} is less than 0. "
+                f"{resolved_buffer} is less than 0. "
                 "Please pick a number of bytes greater than or equal to 0."
             )
 
