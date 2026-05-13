@@ -27,7 +27,7 @@ class DatasetManager:
         world_size: int,
         worker_node_ids: List["NodeIdStr"],
     ):
-        self._datasets = {k: v() if callable(v) else v for k, v in datasets.items()}
+        self._datasets = datasets
         self._data_config = data_config
         self._datasets_to_split = (
             set(self._datasets.keys())
