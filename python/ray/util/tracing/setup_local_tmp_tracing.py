@@ -16,10 +16,11 @@ def setup_tracing() -> None:
     # Sets the tracer_provider. This is only allowed once per execution
     # context and will log a warning if attempted multiple times.
     trace.set_tracer_provider(TracerProvider())
+    out = open(f"{spans_dir}{os.getpid()}.txt", "w")
     trace.get_tracer_provider().add_span_processor(
         SimpleSpanProcessor(
             ConsoleSpanExporter(
-                out=open(f"{spans_dir}{os.getpid()}.txt", "w"),
+                out=out,
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
             )
         )

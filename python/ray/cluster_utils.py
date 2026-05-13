@@ -54,14 +54,12 @@ class AutoscalingCluster:
     def _generate_config(
         self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
     ):
-        base_config = yaml.safe_load(
-            open(
-                os.path.join(
-                    os.path.dirname(ray.__file__),
-                    "autoscaler/_private/fake_multi_node/example.yaml",
-                )
-            )
+        yaml_path = os.path.join(
+            os.path.dirname(ray.__file__),
+            "autoscaler/_private/fake_multi_node/example.yaml",
         )
+        with open(yaml_path) as f:
+            base_config = yaml.safe_load(f)
         custom_config = copy.deepcopy(base_config)
         custom_config["available_node_types"] = worker_node_types
         custom_config["available_node_types"]["ray.head.default"] = {
