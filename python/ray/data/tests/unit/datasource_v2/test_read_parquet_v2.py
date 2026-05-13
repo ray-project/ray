@@ -93,6 +93,16 @@ def test_read_parquet_v2_columns_raises(tmp_path, restore_ctx):
         ray.data.read_parquet(str(tmp_path), columns=["a"])
 
 
+def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
+    import pyarrow.dataset as pds
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.raises(NotImplementedError, match="`filter=` on `read_parquet`"):
+        ray.data.read_parquet(str(tmp_path), filter=pds.field("a") > 1)
+
+
 def test_read_parquet_v2_empty_dir_raises(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = True
     with pytest.raises(ValueError, match="no files found"):
