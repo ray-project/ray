@@ -2411,7 +2411,7 @@
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: microbenchmark
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2440,7 +2440,7 @@
       python: "3.12"
 
 - name: compiled_graphs
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2455,7 +2455,7 @@
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: compiled_graphs_GPU
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2472,7 +2472,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2527,7 +2527,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: rdt_single_node_T4_microbenchmark
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2583,7 +2583,7 @@
 #     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2638,7 +2638,7 @@
 
 
 - name: stress_test_state_api_scale
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2691,7 +2691,7 @@
 
 
 - name: shuffle_20gb_with_state_api
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2719,7 +2719,7 @@
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
 - name: stress_test_many_tasks
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2764,7 +2764,7 @@
           cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 - name: stress_test_dead_actors
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
   env: aws_perf
@@ -2812,7 +2812,7 @@
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
 - name: threaded_actors_stress_test
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2873,7 +2873,7 @@
 #         timeout: 600
 
 - name: stress_test_many_runtime_envs
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2902,7 +2902,7 @@
         frequency: manual
 
 - name: single_node_oom
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2956,7 +2956,7 @@
 
 
 - name: many_nodes_actor_test_on_v2
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: benchmarks
 
@@ -3000,7 +3000,7 @@
 #
 
 - name: pg_autoscaling_regression_test
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -3024,7 +3024,7 @@
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
-  python: "3.10"
+  python: "3.14"
   group: core-daily-test
   working_dir: nightly_tests
 
