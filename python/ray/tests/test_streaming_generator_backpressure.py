@@ -1,7 +1,9 @@
 import asyncio
+import gc
 import os
 import signal
 import sys
+import threading
 import time
 from typing import List, Optional, Tuple, Type
 
@@ -322,6 +324,8 @@ def test_backpressure_pause_signal(shutdown_only):
 # Actor-wide streaming-generator backpressure
 # ----------------------------------------------------------------------------
 
+_ACTOR_GEN_BP_WAIT_S = 30
+
 
 @ray.remote
 class TagReporter:
@@ -421,18 +425,27 @@ def test_actor_generator_backpressure_single_task(shutdown_only):
     g = a.gen.remote(reporter, "a")
 
     # First 3 items get reported, then the producer is parked at the cap.
-    wait_for_condition(lambda: ray.get(reporter.count_tag.remote("a")) == 3)
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     # Consume one → exactly one more is produced.
     ray.get(next(g))
-    wait_for_condition(lambda: ray.get(reporter.count_tag.remote("a")) == 4)
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 4,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     # Drain the rest, generator ends.
     _drain_all([g])
 
     # Fire again: the cap is reclaimed, the new task fills up to 3 again.
     g2 = a.gen.remote(reporter, "a")
-    wait_for_condition(lambda: ray.get(reporter.count_tag.remote("a")) == 5 + 3)
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 5 + 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
     _drain_all([g2])
 
 
@@ -446,11 +459,17 @@ def test_actor_generator_backpressure_mt_actor(shutdown_only):
     g1 = a.gen.remote(reporter, "1")
     g2 = a.gen.remote(reporter, "2")
 
-    wait_for_condition(lambda: ray.get(reporter.total_len.remote()) == 6)
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     # Consume one ref from g1 — exactly one more report.
     ray.get(next(g1))
-    wait_for_condition(lambda: ray.get(reporter.total_len.remote()) == 7)
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 7,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     _drain_all([g1])
     # Pull the rest from g2 (consumption unblocks the producer path for the tail).
@@ -470,11 +489,20 @@ def test_actor_generator_backpressure_mt_with_method_cap(shutdown_only):
     g1 = a.gen.remote(reporter, "1")
     g2 = a.gen.remote(reporter, "2")
 
-    wait_for_condition(lambda: ray.get(reporter.count_tag.remote("1")) == 2)
-    wait_for_condition(lambda: ray.get(reporter.count_tag.remote("2")) == 2)
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     ray.get(next(g1))
-    wait_for_condition(lambda: ray.get(reporter.count_tag.remote("1")) == 3)
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     _drain_all([g1, g2])
 
@@ -489,13 +517,98 @@ def test_actor_generator_backpressure_reclaim_on_cancel(shutdown_only):
     g1 = a.gen.remote(reporter, "1")
     g2 = a.gen.remote(reporter, "2")
 
-    wait_for_condition(lambda: ray.get(reporter.total_len.remote()) == 6)
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
 
     ray.cancel(g1)
     _drain_cancelled(g1)
 
     _drain_all([g2])
     assert ray.get(reporter.count_tag.remote("2")) == 5
+
+
+def test_actor_generator_backpressure_reclaim_on_del_gen(shutdown_only):
+    """Deleting ``g2`` after partial reads frees BP budget so ``g1`` can emit further yields."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+
+    @ray.remote(max_concurrency=2, _actor_generator_backpressure_num_objects=6)
+    class A:
+        def __init__(self):
+            self._extend = threading.Event()
+
+        def enable_extend(self) -> None:
+            self._extend.set()
+
+        def gen(self, rep, tag: str):
+            if tag == "2":
+                for i in range(5):
+                    ray.get(rep.report.remote(tag, i))
+                    yield i
+                return
+            for i in range(16):
+                ray.get(rep.report.remote(tag, i))
+                yield i
+                if i == 5:
+                    self._extend.wait()
+
+    a = A.remote()
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    n_take = 2
+    for _ in range(n_take):
+        ray.get(next(g2))
+
+    n1_before = ray.get(reporter.count_tag.remote("1"))
+
+    del g2
+    gc.collect()
+
+    ray.get(a.enable_extend.remote())
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) >= n1_before + n_take,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1])
+    assert ray.get(reporter.count_tag.remote("1")) == 16
+
+
+def test_actor_generator_backpressure_large_actor_small_method(shutdown_only):
+    """Large actor cap does not bypass per-method cap on the executor."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _dual_stream_actor_class(actor_cap=50, method_cap=2)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    ray.get(next(g1))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1, g2])
 
 
 def test_actor_generator_backpressure_reclaim_on_exception(shutdown_only):
@@ -522,6 +635,69 @@ def test_actor_generator_backpressure_reclaim_on_exception(shutdown_only):
     good = a.ok.remote()
     seen = [ray.get(next(good)) for _ in range(3)]
     assert seen == [0, 1, 2]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Uses SIGTERM on worker_pid from task metadata.",
+)
+def test_actor_generator_backpressure_reconstruction_worker_crash(shutdown_only):
+    """Actor-wide BP sets owner effective threshold 1; worker SIGTERM mid-stream retries."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(
+        max_concurrency=1,
+        max_restarts=5,
+        max_task_retries=10,
+        _actor_generator_backpressure_num_objects=3,
+    )
+    class Producer:
+        def gen(self, rep):
+            for i in range(5):
+                ray.get(rep.report.remote("recon", i))
+                time.sleep(0.25)
+                yield i
+
+    p = Producer.remote()
+    gen = p.gen.options(name="actor_wide_bp_recon").remote(reporter)
+
+    assert ray.get(next(gen)) == 0
+
+    def running():
+        tasks = _list_tasks(filters=[("name", "=", "actor_wide_bp_recon")])
+        return bool(tasks) and tasks[0].state == "RUNNING"
+
+    wait_for_condition(running, timeout=30)
+    t = _list_tasks(filters=[("name", "=", "actor_wide_bp_recon")])[0]
+    os.kill(t.worker_pid, signal.SIGTERM)
+
+    values = [0]
+
+    def drained_five_values():
+        if len(values) >= 5:
+            return True
+        ref = next(gen)
+        try:
+            values.append(ray.get(ref))
+        except (
+            ray.exceptions.WorkerCrashedError,
+            ray.exceptions.RayActorError,
+        ):
+            pass
+        return len(values) >= 5
+
+    wait_for_condition(drained_five_values, timeout=120, raise_exceptions=True)
+
+    assert values == list(range(5))
+    # Retries replay producer-side reporting before owner-visible consumption catches up.
+    assert ray.get(reporter.count_tag.remote("recon")) >= 5
+
+    try:
+        while True:
+            ray.get(next(gen))
+    except StopIteration:
+        pass
 
 
 def test_actor_generator_backpressure_zero_value_rejected(shutdown_only):

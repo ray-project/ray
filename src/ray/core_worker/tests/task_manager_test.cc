@@ -70,6 +70,34 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   return task;
 }
 
+TaskSpecification CreateActorStreamingGeneratorTaskHelper(
+    int64_t generator_backpressure_num_objects,
+    int64_t actor_generator_backpressure_num_objects) {
+  RAY_CHECK_GT(actor_generator_backpressure_num_objects, 0);
+  TaskSpecification task;
+  const JobID job_id = JobID::FromInt(1);
+  const ActorID actor_id = ActorID::FromHex("e4ce02420592ca68c1738a0d01000000");
+  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
+  task.GetMutableMessage().set_task_id(
+      TaskID::ForActorTask(job_id, TaskID::Nil(), /*parent_counter=*/0, actor_id)
+          .Binary());
+  task.GetMutableMessage().set_job_id(job_id.Binary());
+  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_returns_dynamic(true);
+  task.GetMutableMessage().set_streaming_generator(true);
+  task.GetMutableMessage().set_generator_backpressure_num_objects(
+      generator_backpressure_num_objects);
+  task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  auto *actor_spec = task.GetMutableMessage().mutable_actor_task_spec();
+  actor_spec->set_actor_id(actor_id.Binary());
+  actor_spec->set_actor_creation_dummy_object_id(actor_creation_dummy_object_id.Binary());
+  actor_spec->set_actor_generator_backpressure_num_objects(
+      actor_generator_backpressure_num_objects);
+  return task;
+}
+
 rpc::Address GetRandomWorkerAddr() {
   rpc::Address addr;
   addr.set_worker_id(WorkerID::FromRandom().Binary());
@@ -2859,6 +2887,88 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   ASSERT_TRUE(signal_called);
   ASSERT_TRUE(retry_signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);
+}
+
+TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
+  // Actor-wide backpressure forces
+  // EffectiveStreamingGeneratorOwnerBackpressureThreshold() to 1 on the owner while the
+  // executor still uses the configured caps separately.
+  auto spec = CreateActorStreamingGeneratorTaskHelper(
+      /*generator_backpressure_num_objects=*/5,
+      /*actor_generator_backpressure_num_objects=*/3);
+  ASSERT_EQ(spec.EffectiveStreamingGeneratorOwnerBackpressureThreshold(), 1);
+
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/5);
+
+  auto data = GenerateRandomBuffer();
+  int ack_count = 0;
+  auto bump_ack = [&ack_count](Status callback_status, int64_t /*num_objects_consumed*/) {
+    ASSERT_TRUE(callback_status.ok());
+    ack_count++;
+  };
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
+  ASSERT_EQ(ack_count, 0);
+
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
+  ASSERT_EQ(ack_count, 0);
+
+  ASSERT_TRUE(
+      manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED));
+
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
+
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
+
+  int tries = 0;
+  while (ack_count < 4 && tries < 16) {
+    ObjectID obj_id;
+    ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+    tries++;
+    if (!obj_id.IsNil()) {
+      reference_counter_->RemoveLocalReference(obj_id, nullptr);
+    }
+  }
+  ASSERT_EQ(ack_count, 4);
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/2);
 }
 
 TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {

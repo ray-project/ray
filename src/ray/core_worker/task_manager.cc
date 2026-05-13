@@ -887,13 +887,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Otherwise, follow the regular backpressure logic.
-  // Defer when either (a) index gap >= threshold (out-of-order reports), or (b)
-  // unconsumed >= threshold. (b) matches owner EffectiveStreamingGenerator...=1 for
-  // actor-wide streaming cap so each insert can defer; (a) alone can miss that case when
-  // last_consumed tracks the sequential read cursor oddly.
+  // NOTE: Here we check `item_index - last_consumed_index >= backpressure_threshold`,
+  // instead of the number of unconsumed items, because we may receive the
+  // `HandleReportGeneratorItemReturns` requests out of order. Use
+  // EffectiveStreamingGeneratorOwnerBackpressureThreshold() for the threshold so
+  // actor-wide backpressure maps to owner-side semantics without changing executor caps.
   if (backpressure_threshold != -1 &&
-      ((item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold ||
-       (total_generated - total_consumed) >= backpressure_threshold)) {
+      (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed
