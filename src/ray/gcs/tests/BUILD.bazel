@@ -38,6 +38,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/observability:fake_metric",
+        "//src/ray/util:clock",
         "//src/ray/util:counter_map",
     ],
 )
@@ -110,6 +111,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_health_check_manager",
         "//src/ray/observability:fake_metric",
         "//src/ray/rpc:grpc_server",
+        "//src/ray/util:clock",
         "//src/ray/util:network_util",
         "@boost//:thread",
     ],
@@ -131,6 +133,7 @@ ray_cc_test(
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -152,6 +155,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -188,6 +192,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
+        "//src/ray/util:clock",
         "//src/ray/util:counter_map",
     ],
 )
@@ -271,6 +276,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -390,6 +396,7 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/util:clock",
         "//src/ray/util:event",
     ],
 )

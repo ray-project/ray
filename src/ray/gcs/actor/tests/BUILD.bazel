@@ -25,6 +25,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/util:clock",
     ],
 )
 
