@@ -121,10 +121,15 @@ def _pyarrow_fs_copy_files(
 
 
 def delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-    """Deletes (fs, fs_path) or raises FileNotFoundError if it doesn't exist."""
-    is_dir = _is_directory(fs, fs_path)
+    """Best-effort delete of (fs, fs_path).
 
+    Logs and swallows errors so a unreachable or misconfigured
+    filesystem (e.g. an out-of-band checkpoint whose endpoint_override was
+    lost across a snapshot reload) cannot crash the training run during
+    checkpoint eviction.
+    """
     try:
+        is_dir = _is_directory(fs, fs_path)
         if is_dir:
             fs.delete_dir(fs_path)
         else:

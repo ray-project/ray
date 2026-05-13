@@ -128,7 +128,7 @@ def _get_training_result_from_state(
             logger.info(
                 "Restoring an out-of-band checkpoint on a different filesystem of %s at %s. "
                 "The checkpoint's filesystem may be missing configurations (e.g. credentials, region, endpoint overrides). "
-                "If this causes a problems, update the checkpoint's filesystem with a fully configured filesystem.",
+                "If this causes a problem, update the checkpoint's filesystem with a fully configured filesystem.",
                 state.checkpoint_filesystem_type,
                 state.checkpoint_dir_name,
             )
@@ -553,7 +553,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                         "The filesystem may have been reconstructed without credentials. "
                         "Calling `to_directory()` may fail until you provide a fully configured filesystem.",
                         checkpoint,
-                        exc_info=True,
                     )
                     continue
                 raise e
