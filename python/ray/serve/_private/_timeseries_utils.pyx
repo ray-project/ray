@@ -1,3 +1,9 @@
+# cython: profile=False
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: cdivision=True
+# cython: initializedcheck=False
+
 # C library imports
 from libc.stdlib cimport malloc, free
 from libc.math cimport round as c_round, isnan, nan, isinf
