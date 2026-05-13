@@ -126,9 +126,10 @@ def test_include_paths_with_column_projection(
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
     pq.write_table(table, path)
 
-    # Under V1, ``include_paths=True`` implicitly retained ``path`` through
-    # ``.select_columns``. V2 respects ``.select_columns`` literally — the
-    # caller must include ``"path"`` explicitly when they want it.
+    # V2 ``select_columns`` is literal — ``"path"`` is dropped unless listed.
+    # V1 ``read_parquet(columns=[...], include_paths=True)`` retained ``"path"``
+    # automatically; the ``columns=`` deprecation message in ``read_api`` calls
+    # this out so callers know to thread ``"path"`` through their projection.
     ds = ray.data.read_parquet(path, include_paths=True).select_columns(["id", "path"])
 
     schema_names = ds.schema().names
