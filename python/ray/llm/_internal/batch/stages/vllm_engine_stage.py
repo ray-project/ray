@@ -278,6 +278,13 @@ class vLLMEngineWrapper:
         # create_engine_config will set default values including `max_num_seqs`.
         self._vllm_config = engine_args.create_engine_config()
 
+        # Inject the current PG so vLLM's Ray executor uses it directly rather than
+        # creating a secondary PG that conflicts with capture_child_tasks=True,
+        # which causes wrong PP rank → bundle mapping.
+        pg = ray.util.get_current_placement_group()
+        if pg is not None:
+            self._vllm_config.parallel_config.placement_group = pg
+
         stat_loggers = None
         if log_engine_metrics:
             from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
@@ -289,7 +296,7 @@ class vLLMEngineWrapper:
             )
 
         self.engine = vllm.AsyncLLMEngine.from_engine_args(
-            engine_args, stat_loggers=stat_loggers
+            engine_args, engine_config=self._vllm_config, stat_loggers=stat_loggers
         )
 
         # The performance gets really bad if there are too many requests in the pending queue.
