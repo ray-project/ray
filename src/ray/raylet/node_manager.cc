@@ -3116,18 +3116,6 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             return;
           }
 
-          // Compute the memory usage threshold
-          int64_t total_memory_bytes = memory_usage_snapshot.total_bytes;
-          int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-              total_memory_bytes,
-              RayConfig::instance().memory_usage_threshold(),
-              RayConfig::instance().min_memory_free_bytes(),
-              initial_config_.enable_resource_isolation,
-              *cgroup_manager_);
-          float computed_threshold_fraction =
-              static_cast<float>(computed_threshold_bytes) /
-              static_cast<float>(total_memory_bytes);
-
           std::string oom_kill_details = CreateOomKillMessageDetails(
               workers_to_kill_and_should_retry,
               self_node_id_,
