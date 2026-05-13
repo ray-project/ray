@@ -22,7 +22,6 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
@@ -906,7 +905,7 @@ class DataIterator(abc.ABC):
         import torch
 
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
+        from ray.data.util.torch_utils import convert_table_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -945,27 +944,30 @@ class DataIterator(abc.ABC):
         def make_generator():
             for batch in self._iter_batches(
                 batch_size=batch_size,
-                batch_format="pandas",
+                batch_format="pyarrow",
                 prefetch_batches=prefetch_batches,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
+                    feature_batch = batch.select(
+                        [col for col in batch.column_names if col != label_column]
+                    )
+                    label_tensor = convert_table_to_torch_tensor(
                         batch,
                         [label_column],
                         label_column_dtype,
                         unsqueeze=unsqueeze_label_tensor,
                     )
-                    batch.pop(label_column)
                 else:
+                    feature_batch = batch
                     label_tensor = None
 
                 if isinstance(feature_columns, dict):
                     features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
+                        key: convert_table_to_torch_tensor(
+                            feature_batch,
                             feature_columns[key],
                             (
                                 feature_column_dtypes[key]
@@ -977,8 +979,8 @@ class DataIterator(abc.ABC):
                         for key in feature_columns
                     }
                 else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
+                    features_tensor = convert_table_to_torch_tensor(
+                        feature_batch,
                         columns=feature_columns,
                         column_dtypes=feature_column_dtypes,
                         unsqueeze=unsqueeze_feature_tensors,
@@ -1232,15 +1234,12 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats, self.get_context())
+        context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
-            execution_plan._context,
+            context,
         )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        return MaterializedDataset(logical_plan, context, stats)
 
 
 # Backwards compatibility alias.
