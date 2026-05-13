@@ -158,8 +158,10 @@ class ZarrV2Datasource(Datasource):
         path: str,
         chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
+        allow_full_metadata_scan: bool = False
     ) -> None:
         super().__init__()
+        self.allow_full_metadata_scan = allow_full_metadata_scan
 
         if chunk_shape:
             for val in chunk_shape:
@@ -170,65 +172,94 @@ class ZarrV2Datasource(Datasource):
         self.chunk_shape: tuple[int, ...] | None = (
             tuple(chunk_shape) if chunk_shape is not None else None
         )
-        self._metadata = self._load_consolidated_metadata()
-        self._selected_arrays = self._select_array_metadata(array_paths)
+        self._selected_arrays = self._load_array_metadata(array_paths)
         self._grid_shape_dict = self._gen_grid_shape()
-
-    def _load_consolidated_metadata(self) -> dict[str, Any]:
+        
+    def _load_array_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
         fs, store_path = _resolve_store(self.paths[0], self)
-        if store_path:
-            meta_path = f"{store_path.rstrip('/')}/.zmetadata"
+        array_metadata: dict[str, ZarrArrayMeta] = {}
+        
+        # 1) if the user provided array paths
+        if array_paths:
+            
+            for array in array_paths:
+                normalized_array = array.strip("/")
+                
+                if normalized_array != "":
+                    full_path = f"{store_path.rstrip('/')}/{normalized_array}/.zarray"
+                else:
+                    full_path = f"{store_path.rstrip('/')}/.zarray"
+                
+                try:
+                    with fs.open(full_path, "r") as f:
+                        data = json.load(f)
+                    raw_meta = cast(dict[str, Any], data)
+                    meta: ZarrArrayMeta = {
+                        "shape": tuple(int(x) for x in raw_meta["shape"]),
+                        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+                        "dtype": str(raw_meta["dtype"]),
+                    }
+                    array_metadata[normalized_array] = meta
+                except FileNotFoundError as e:
+                    raise ValueError(f"{array} is not a valid array path in the zarr store") from e
+        
         else:
-            meta_path = ".zmetadata"
-
-        with fs.open(meta_path, "rb") as f:
-            consolidated = json.load(f)
-
-        if "metadata" not in consolidated:
-            raise ValueError("Missing 'metadata' in consolidated .zmetadata file")
-
-        return consolidated["metadata"]
-
-    def _select_array_metadata(
-        self, array_paths: Iterable[str] | None
-    ) -> dict[str, ZarrArrayMeta]:
-        """Pick a single array's metadata from the consolidated metadata."""
-        arrays: dict[str, ZarrArrayMeta] = {}
-        for key, value in self._metadata.items():
-            if not key.endswith(".zarray"):
-                continue
-
-            raw_meta = cast(dict[str, Any], value)
-            meta: ZarrArrayMeta = {
-                "shape": tuple(int(x) for x in raw_meta["shape"]),
-                "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-                "dtype": str(raw_meta["dtype"]),
-            }
-
-            if key == ".zarray":
-                arrays[""] = meta
+            z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
+            
+            # 2) if the user did not provide array paths, but .zmetadata exists
+            if fs.exists(z_meta_path):
+                with fs.open(z_meta_path, 'rb') as f:
+                    consolidated = json.load(f)
+                metadata = consolidated['metadata']
+                
+                for key, value in metadata.items():
+                    if not key.endswith(".zarray"):
+                        continue
+                    
+                    raw_meta = cast(dict[str, Any], value)
+                    meta: ZarrArrayMeta = {
+                        "shape": tuple(int(x) for x in raw_meta["shape"]),
+                        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+                        "dtype": str(raw_meta["dtype"]),
+                    }
+                    
+                    if key == ".zarray":
+                        array_metadata[""] = meta
+                    else:
+                        array_metadata[key[: -len("/.zarray")]] = meta
+            
+            # 3) if the user did not provide array paths, and .zmetadata does not exist
             else:
-                arrays[key[: -len("/.zarray")]] = meta
-
-        if not arrays:
-            raise ValueError("No arrays found in consolidated metadata.")
-
-        if array_paths is None:
-            requested_paths = [p.strip("/") for p in arrays.keys()]
-            normalized_paths = [p if p != "." else "" for p in requested_paths]
-            selected_paths = normalized_paths
-        else:
-            requested_paths = [p.strip("/") for p in array_paths]
-            normalized_paths = [p if p != "." else "" for p in requested_paths]
-            missing = [p for p in normalized_paths if p not in arrays]
-            if missing:
-                available = ", ".join(sorted(p or "." for p in arrays.keys()))
-                raise ValueError(
-                    f"Array(s) not found: {', '.join(missing)}. Available: {available}"
-                )
-            selected_paths = normalized_paths
-
-        return {path: arrays[path] for path in selected_paths}
+                # since this scan can be potentially very time consuming, it will only run if the user explicitly allowed for it
+                if self.allow_full_metadata_scan:
+                    for dirpath, _, filenames in fs.walk(store_path):
+                        for filename in filenames:
+                            if filename == ".zarray":
+                                
+                                if dirpath.rstrip("/") == store_path.rstrip("/"):
+                                    array = ""
+                                else:
+                                    array = dirpath.removeprefix(store_path.rstrip("/") + "/")
+                                array_path = f"{dirpath.rstrip('/')}/.zarray"
+                                
+                                try:
+                                    with fs.open(array_path, 'r') as f:
+                                        data = json.load(f)
+                                        raw_meta = cast(dict[str, Any], data)
+                                        meta: ZarrArrayMeta = {
+                                            "shape": tuple(int(x) for x in raw_meta["shape"]),
+                                            "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+                                            "dtype": str(raw_meta["dtype"]),
+                                        }
+                                        array_metadata[array.strip("/")] = meta
+                                except FileNotFoundError:
+                                    continue
+                else:
+                    raise ValueError(
+                        "No array_paths were provided and this Zarr store does not contain .zmetadata. "
+                        "Pass array_paths=[...] or set allow_full_metadata_scan=True."
+                    )
+        return array_metadata
 
     def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
         grid_shape_dict: dict[str, ZarrGridData] = {}

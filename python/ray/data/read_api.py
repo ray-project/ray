@@ -816,6 +816,7 @@ def read_zarrv2(
     path: str,
     chunk_shape: List[int] | None = None,
     array_paths: List[str] | None = None,
+    allow_full_metadata_scan: bool = False,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -883,7 +884,7 @@ def read_zarrv2(
         per-dimension trailing padding for one chunk.
     """
     datasource = ZarrV2Datasource(
-        path=path, chunk_shape=chunk_shape, array_paths=array_paths
+        path=path, chunk_shape=chunk_shape, array_paths=array_paths, allow_full_metadata_scan=allow_full_metadata_scan
     )
     return read_datasource(
         datasource,
