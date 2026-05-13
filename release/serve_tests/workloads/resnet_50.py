@@ -93,7 +93,10 @@ def _fetch_image_ssrf_safe(uri: str):
     if parsed.query:
         path += "?" + parsed.query
     # Preserve the original Host header for correct virtual-host routing.
-    headers = {"Host": hostname}
+    # Per RFC 7230, include the port when it is non-default.
+    default_port = 443 if parsed.scheme == "https" else 80
+    host_header = f"{hostname}:{port}" if port != default_port else hostname
+    headers = {"Host": host_header}
 
     timeout = urllib3.Timeout(connect=5, read=5)
     try:
