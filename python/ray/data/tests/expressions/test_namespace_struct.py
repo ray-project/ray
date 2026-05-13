@@ -52,15 +52,13 @@ class TestStructNamespace:
         ):
             col("user").struct[True]
 
-    def test_struct_field_by_index_non_integer_raises(self, dataset_format):
+    @pytest.mark.parametrize("bad_index", ["1", True])
+    def test_struct_field_by_index_non_integer_raises(self, dataset_format, bad_index):
         """Test struct.field_by_index() rejects non-integer indices."""
         del dataset_format  # Unused, required by class-level parametrization.
 
         with pytest.raises(TypeError, match="Struct field index must be an integer"):
-            col("user").struct.field_by_index("1")
-
-        with pytest.raises(TypeError, match="Struct field index must be an integer"):
-            col("user").struct.field_by_index(True)
+            col("user").struct.field_by_index(bad_index)
 
     def test_struct_field_by_index_negative_raises(self, dataset_format):
         """Test struct.field_by_index() rejects negative indices."""
