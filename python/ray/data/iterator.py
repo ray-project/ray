@@ -173,9 +173,11 @@ class DataIterator(abc.ABC):
                 # out of scope. Call ``it.close()`` to release resources
                 # eagerly, or stick with ``for batch in ds.iter_batches()``.
 
-            Some libraries (for example PyTorch Lightning's batch fetchers)
-            keep an ``iter()`` reference internally; in those cases prefer
-            calling ``close()`` on the iterator when you stop reading early.
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
 
         Time complexity: O(1)
 

@@ -436,9 +436,9 @@ def test_streaming_split_early_exit_shuts_down_executor(ray_start_10_cpus_shared
         t.join()
 
     # Shutdown is fire-and-forget from the iterator; wait for the
-    # coordinator to process the last ``client_disengaged`` call. Tight
-    # timeout to catch the regression where shutdown waits for the slow
-    # producer to drain naturally.
+    # coordinator to process the last ``notify_split_finished`` call.
+    # Tight timeout to catch the regression where shutdown waits for the
+    # slow producer to drain naturally.
     coord = splits[0]._coord_actor
     wait_for_condition(
         lambda: ray.get(coord._is_executor_shutdown.remote()),
@@ -482,10 +482,10 @@ def test_streaming_split_partial_early_exit_keeps_executor(
     t2.join(timeout=30)
 
     # The remaining split iterated to completion — the executor stayed
-    # alive even after the first split disengaged.
+    # alive even after the first split finished.
     assert other_count[0] == num_blocks_per_split, other_count[0]
 
-    # And once both splits disengaged, the executor was shut down.
+    # And once both splits finished, the executor was shut down.
     coord = i1._coord_actor
     wait_for_condition(
         lambda: ray.get(coord._is_executor_shutdown.remote()),

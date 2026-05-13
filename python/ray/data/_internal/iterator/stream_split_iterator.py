@@ -133,7 +133,7 @@ class StreamSplitDataIterator(DataIterator):
         return gen_blocks(), self._iter_stats, False, None
 
     def _on_iteration_end(self, executor) -> None:
-        """Fire ``client_disengaged`` from the consumer's thread.
+        """Fire ``notify_split_finished`` from the consumer's thread.
 
         Runs synchronously on the consumer's thread from
         ``_iter_batches``'s ``finally`` (normal exhaustion, early
@@ -147,14 +147,14 @@ class StreamSplitDataIterator(DataIterator):
 
         ``executor`` is always ``None`` here — the executor lives on the
         remote ``SplitCoordinator`` actor and is shut down there once
-        every split has disengaged.
+        every split has finished.
         """
         epoch = self._active_epoch
         if epoch is None:
             # Iteration never started, or already cleaned up.
             return
         self._active_epoch = None
-        self._coord_actor.client_disengaged.remote(epoch, self._output_split_idx)
+        self._coord_actor.notify_split_finished.remote(epoch, self._output_split_idx)
 
     def stats(self) -> str:
         """Implements DataIterator."""
@@ -217,15 +217,16 @@ class SplitCoordinator:
 
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
-        self._unfinished_clients_in_epoch = n
-        # Splits that have already disengaged from the current epoch.
-        # Cleared whenever a new epoch starts. Once every split has
-        # disengaged, the executor is shut down so it stops producing
-        # blocks into the object store. Tracked as a set so
-        # ``client_disengaged`` is idempotent per ``(epoch, split_idx)``
-        # — guards against duplicate or stale notifications. Guarded by
-        # self._lock.
-        self._disengaged_splits_in_epoch: Set[int] = set()
+        # Number of splits that have not yet arrived at the next-epoch
+        # barrier. Decremented as each split calls ``start_epoch``;
+        # reset to ``n`` when an epoch starts.
+        self._num_unarrived_splits_at_barrier = n
+        # Splits that have finished consuming the current epoch (via
+        # natural exhaustion or early ``break``). Reset on each new
+        # epoch. Once every split has finished, the executor is shut
+        # down so it stops producing blocks into the object store.
+        # Guarded by self._lock.
+        self._finished_splits: Set[int] = set()
         self._cur_epoch = -1
 
         # Track prefetched bytes reported by each client (from BatchIterator).
@@ -326,8 +327,8 @@ class SplitCoordinator:
             raise self._gen_epoch_error
 
     def _reset_state(self):
-        self._unfinished_clients_in_epoch = self._n
-        self._disengaged_splits_in_epoch.clear()
+        self._num_unarrived_splits_at_barrier = self._n
+        self._finished_splits.clear()
         self._next_bundle.clear()
         self._gen_epoch_error = None
         # Reset per-split dispatch counters for the new epoch.
@@ -502,27 +503,27 @@ class SplitCoordinator:
             if self._current_executor is not None:
                 self._current_executor.shutdown(force=False)
 
-    def client_disengaged(self, epoch_id: int, split_idx: int) -> None:
+    def notify_split_finished(self, epoch_id: int, split_idx: int) -> None:
         """Called by a split iterator when it stops consuming for ``epoch_id``.
 
         Triggered from ``_on_iteration_end`` on the consumer's thread on
         normal exhaustion, early ``break``, or an exception. Clears this
         split's prefetch state so resource accounting is accurate for the
         remaining consumers, and shuts down the executor once every split
-        has disengaged from the current epoch. Idempotent per
-        ``(epoch_id, split_idx)``.
+        has finished the current epoch.
         """
         executor_to_shutdown = None
         with self._lock:
-            # Stale notification from a prior epoch: the executor that was
-            # running when this iterator started has already been replaced
-            # by ``_try_start_new_epoch``. Nothing to clean up here.
+            # ``notify_split_finished`` is fire-and-forget on the consumer
+            # side; in the time between the consumer firing it and the
+            # actor processing it, the other splits may have completed
+            # the current epoch and called ``start_epoch`` again, causing
+            # ``_try_start_new_epoch`` to advance ``_cur_epoch`` past
+            # ``epoch_id``. The state for the old epoch has already been
+            # cleared by ``_reset_state``, so there's nothing left to do.
             if epoch_id != self._cur_epoch:
                 return
-            if split_idx in self._disengaged_splits_in_epoch:
-                # Already processed for this epoch — skip the duplicate.
-                return
-            self._disengaged_splits_in_epoch.add(split_idx)
+            self._finished_splits.add(split_idx)
 
             self._client_prefetched_bytes[split_idx] = 0
             # Drop any blocks buffered for this split — the consumer won't
@@ -531,7 +532,7 @@ class SplitCoordinator:
             self._report_prefetched_bytes_to_executor()
 
             if (
-                len(self._disengaged_splits_in_epoch) >= self._n
+                len(self._finished_splits) >= self._n
                 and self._current_executor is not None
             ):
                 executor_to_shutdown = self._current_executor
@@ -541,8 +542,7 @@ class SplitCoordinator:
         # coordinator calls in the meantime. ``shutdown`` is idempotent.
         if executor_to_shutdown is not None:
             logger.debug(
-                f"All splits disengaged from epoch {epoch_id}; shutting "
-                "down executor."
+                f"All splits finished epoch {epoch_id}; shutting down " "executor."
             )
             executor_to_shutdown.shutdown(force=False)
 
@@ -555,11 +555,12 @@ class SplitCoordinator:
                 f"{self._cur_epoch + 1}."
             )
             starting_epoch = self._cur_epoch
-            self._unfinished_clients_in_epoch -= 1
+            self._num_unarrived_splits_at_barrier -= 1
 
         start_time = time.time()
         while (
-            self._cur_epoch == starting_epoch and self._unfinished_clients_in_epoch != 0
+            self._cur_epoch == starting_epoch
+            and self._num_unarrived_splits_at_barrier != 0
         ):
             if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
                 if log_once(f"stream_split_blocked_{split_idx}_{starting_epoch}"):
