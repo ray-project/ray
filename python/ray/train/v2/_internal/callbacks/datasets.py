@@ -163,8 +163,9 @@ class DatasetsCallback(WorkerGroupCallback):
     def after_worker_group_shutdown(
         self, worker_group_context: WorkerGroupContext
     ) -> None:
-        assert self._dataset_shard_provider
-        self._dataset_shard_provider.shutdown_data_executors()
+        shard_provider = self._dataset_shard_provider
+        if shard_provider:
+            shard_provider.shutdown_data_executors()
 
     def after_worker_group_abort(
         self, worker_group_context: WorkerGroupContext
