@@ -2389,18 +2389,20 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
 
   // ray.get() returns and worker1 acquires the CPU resource again
   ASSERT_TRUE(local_lease_manager_->ReturnCpuResourcesToUnblockedWorker(worker1));
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")),
+            -1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_1_aaa")), 1);
 
   auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 7678);
   allocated_instances = std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
       {{"CPU_group_aaa", 1.}, {"CPU_group_1_aaa", 1.}}, allocated_instances));
   worker3->SetAllocatedInstances(allocated_instances);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), -1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), -1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")),
+            -1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_1_aaa")), 0);
 }
 
 TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources) {
@@ -2417,8 +2419,8 @@ TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources
   const NodeResources &node_resources =
       scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(id_.Binary()));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 4);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 8);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::GPU()), 4);
 
   auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678);
@@ -2448,24 +2450,24 @@ TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources
   worker2->SetAllocatedInstances(allocated_instances);
 
   // Check that the resources are allocated successfully.
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 7);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::GPU()), 3);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_0_aaa")), 0);
 
   // Check that the cpu resources are released successfully.
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker2));
 
   // Check that only cpu resources are released.
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), 1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 8);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::GPU()), 3);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_0_aaa")), 0);
 
   // Mark worker as blocked.
   worker1->MarkBlocked();
@@ -2474,24 +2476,24 @@ TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources
   ASSERT_FALSE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
   ASSERT_FALSE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker2));
   // Check nothing will be changed.
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), 1);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 8);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::GPU()), 3);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_0_aaa")), 0);
 
   // Check that the cpu resources are returned back to worker successfully.
   ASSERT_TRUE(local_lease_manager_->ReturnCpuResourcesToUnblockedWorker(worker1));
   ASSERT_TRUE(local_lease_manager_->ReturnCpuResourcesToUnblockedWorker(worker2));
 
   // Check that only cpu resources are returned back to the worker.
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 7);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::GPU()), 3);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_0_aaa")), 0);
 
   // Mark worker as unblocked.
   worker1->MarkUnblocked();
@@ -2499,12 +2501,12 @@ TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources
   ASSERT_FALSE(local_lease_manager_->ReturnCpuResourcesToUnblockedWorker(worker1));
   ASSERT_FALSE(local_lease_manager_->ReturnCpuResourcesToUnblockedWorker(worker2));
   // Check nothing will be changed.
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("GPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 7);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::GPU()), 3);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU_group_0_aaa")), 0);
 }
 
 TEST_F(ClusterLeaseManagerTest, TestSpillWaitingLeases) {

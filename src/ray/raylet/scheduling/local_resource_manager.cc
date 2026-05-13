@@ -44,7 +44,7 @@ LocalResourceManager::LocalResourceManager(
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber),
       resource_usage_gauge_(resource_usage_gauge) {
-  RAY_CHECK(node_resources.total == node_resources.available);
+  RAY_CHECK(node_resources.total == node_resources.GetAvailable());
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;

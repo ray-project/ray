@@ -636,9 +636,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
         resource_scheduler.GetClusterResourceManager().GetNodeResources(node_id, &nr2));
 
     for (auto &resource_id : nr1.total.ExplicitResourceIds()) {
-      auto t = nr1.available.Get(resource_id) - resource_request.Get(resource_id);
+      auto t = nr1.GetAvailableSum(resource_id) - resource_request.Get(resource_id);
       if (t < 0) t = 0;
-      ASSERT_EQ(nr2.available.Get(resource_id), t);
+      ASSERT_EQ(nr2.GetAvailableSum(resource_id), t);
     }
   }
 }
@@ -1296,7 +1296,7 @@ TEST_F(ClusterResourceSchedulerTest,
       NodeResources nr;
       resource_scheduler.GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(0), &nr);
-      ASSERT_TRUE(nr.available.Get(ResourceID::GPU()) == 1.5);
+      ASSERT_TRUE(nr.GetAvailableSum(ResourceID::GPU()) == 1.5);
     }
 
     {
@@ -1318,7 +1318,7 @@ TEST_F(ClusterResourceSchedulerTest,
       NodeResources nr;
       resource_scheduler.GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(0), &nr);
-      ASSERT_TRUE(nr.available.Get(ResourceID::GPU()) == 3.8);
+      ASSERT_TRUE(nr.GetAvailableSum(ResourceID::GPU()) == 3.8);
     }
   }
 }

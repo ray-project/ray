@@ -312,7 +312,6 @@ class NodeResources {
   explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
-  NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
 
@@ -374,6 +373,15 @@ class NodeResources {
 
   /// Return available resources as a name->value map.
   absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
+
+  /// Returns true if the resource has an explicit available entry.
+  bool HasAvailableResource(scheduling::ResourceID resource_id) const;
+
+  /// Read-only access to the entire available resource set.
+  const NodeResourceSet &GetAvailable() const;
+
+ private:
+  NodeResourceSet available;
 };
 
 /// Total and available capacities of each resource instance.
