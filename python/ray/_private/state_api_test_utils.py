@@ -1,9 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
-import os
 import pprint
-import threading
 import time
 import traceback
 from collections import defaultdict
@@ -33,23 +31,6 @@ from ray.util.state.common import (
 from ray.util.state.state_manager import StateDataSourceClient
 
 import psutil
-
-
-def _read_proc_file(path: str, *, binary: bool = False):
-    try:
-        mode = "rb" if binary else "r"
-        with open(path, mode) as f:
-            return f.read()
-    except OSError as e:
-        return f"{type(e).__name__}: {e}"
-
-
-def _split_proc_cmdline(cmdline: bytes):
-    return [
-        part.decode("utf-8", "replace")
-        for part in cmdline.rstrip(b"\x00").split(b"\x00")
-        if part
-    ]
 
 
 @dataclass
@@ -442,77 +423,6 @@ def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> 
     test_utils.wait_for_condition(_check, timeout=timeout)
 
 
-def _actor_task_running_debug_info(actor_pid: int, task_name: str):
-    """
-    Return the process-title state used by `_is_actor_task_running`.
-
-    This is intentionally detailed because setproctitle updates can be visible
-    through different /proc files depending on the platform and thread.
-    """
-    info = {
-        "actor_pid": actor_pid,
-        "task_name": task_name,
-        "current_pid": os.getpid(),
-        "current_thread_native_id": threading.get_native_id(),
-        "pid_exists": psutil.pid_exists(actor_pid),
-        "psutil_name": None,
-        "psutil_cmdline": None,
-        "psutil_status": None,
-        "proc_comm": None,
-        "proc_cmdline": None,
-        "current_thread_comm": None,
-        "ray_cached_proctitle": None,
-        "matches_name": False,
-        "matches_cmdline0": False,
-        "is_actor_task_running": False,
-    }
-
-    if not info["pid_exists"]:
-        return info
-
-    try:
-        proc = psutil.Process(actor_pid)
-        info["psutil_name"] = proc.name()
-        info["psutil_cmdline"] = proc.cmdline()
-        info["psutil_status"] = proc.status()
-    except psutil.Error as e:
-        info["psutil_error"] = f"{type(e).__name__}: {e}"
-
-    if info["current_pid"] == actor_pid:
-        try:
-            info["ray_cached_proctitle"] = ray._raylet.getproctitle()
-        except Exception as e:
-            info["ray_cached_proctitle_error"] = f"{type(e).__name__}: {e}"
-
-    proc_comm = _read_proc_file(f"/proc/{actor_pid}/comm")
-    if isinstance(proc_comm, str):
-        info["proc_comm"] = proc_comm.strip()
-
-    raw_cmdline = _read_proc_file(f"/proc/{actor_pid}/cmdline", binary=True)
-    if isinstance(raw_cmdline, bytes):
-        info["proc_cmdline"] = _split_proc_cmdline(raw_cmdline)
-    else:
-        info["proc_cmdline"] = raw_cmdline
-
-    current_thread_comm = _read_proc_file(
-        f"/proc/{actor_pid}/task/{info['current_thread_native_id']}/comm"
-    )
-    if isinstance(current_thread_comm, str):
-        info["current_thread_comm"] = current_thread_comm.strip()
-
-    name = info["psutil_name"]
-    cmdline = info["psutil_cmdline"]
-    if isinstance(name, str):
-        info["matches_name"] = task_name in name and name.startswith("ray::")
-    if cmdline:
-        cmdline0 = cmdline[0]
-        info["matches_cmdline0"] = task_name in cmdline0 and cmdline0.startswith(
-            "ray::"
-        )
-    info["is_actor_task_running"] = info["matches_name"] or info["matches_cmdline0"]
-    return info
-
-
 def _is_actor_task_running(actor_pid: int, task_name: str):
     """
     Check whether the actor task `task_name` is running on the actor process
@@ -531,6 +441,9 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
         running on the actor process. To resolve this issue, we can possibly
         pass in the actor name.
     """
+    if not psutil.pid_exists(actor_pid):
+        return False
+
     """
     Why use both `psutil.Process.name()` and `psutil.Process.cmdline()`?
 
@@ -568,9 +481,6 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
     [ref]:
     https://man7.org/linux/man-pages/man5/proc_pid_comm.5.html
     """
-    if not psutil.pid_exists(actor_pid):
-        return False
-
     name = psutil.Process(actor_pid).name()
     if task_name in name and name.startswith("ray::"):
         return True

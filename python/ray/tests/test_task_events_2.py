@@ -16,7 +16,6 @@ from ray._common.test_utils import (
 )
 from ray._private import ray_constants
 from ray._private.state_api_test_utils import (
-    _actor_task_running_debug_info,
     _is_actor_task_running,
     get_state_api_manager,
     verify_failed_task,
@@ -51,11 +50,6 @@ _SYSTEM_CONFIG = {
     "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
     "gcs_mark_task_failed_on_worker_dead_delay_ms": 1000,
 }
-
-
-def _assert_actor_task_running(pid: int, task_name: str):
-    info = _actor_task_running_debug_info(pid, task_name)
-    assert info["is_actor_task_running"], info
 
 
 @ray.remote
@@ -1112,7 +1106,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, "check")
+                    assert _is_actor_task_running(pid, "check")
                     assert psutil.Process(pid).name() == "ray::A.check"
                     assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
                     return True
@@ -1138,7 +1132,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, "check_long_comm")
+                    assert _is_actor_task_running(pid, "check_long_comm")
                     assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
                     assert (
                         psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
@@ -1165,7 +1159,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, task_name)
+                    assert _is_actor_task_running(pid, task_name)
                     assert psutil.Process(pid).name() == f"ray::{task_name}"
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
@@ -1191,7 +1185,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, task_name)
+                    assert _is_actor_task_running(pid, task_name)
                     assert psutil.Process(pid).name() == f"ray::{task_name}"
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
@@ -1216,7 +1210,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, "check")
+                    assert _is_actor_task_running(pid, "check")
                     assert psutil.Process(pid).name() == "ray::A"
                     assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
                     return True
@@ -1244,7 +1238,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, "check_long_comm")
+                    assert _is_actor_task_running(pid, "check_long_comm")
                     assert (
                         psutil.Process(pid).name()
                         == "ray::VeryLongCommActor.check_long_comm"
@@ -1276,7 +1270,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, task_name)
+                    assert _is_actor_task_running(pid, task_name)
                     assert psutil.Process(pid).name() == "ray::A"
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
@@ -1297,7 +1291,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, task_name)
+                    assert _is_actor_task_running(pid, task_name)
                     assert psutil.Process(pid).name() == "ray::Actor"
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
                     return True
@@ -1324,7 +1318,7 @@ class TestIsActorTaskRunning:
                 pid = os.getpid()
 
                 def _check():
-                    _assert_actor_task_running(pid, task_name)
+                    assert _is_actor_task_running(pid, task_name)
                     # The first 15 characters of "ray::VeryLongCommActor"
                     assert psutil.Process(pid).name() == "ray::VeryLongCo"
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
