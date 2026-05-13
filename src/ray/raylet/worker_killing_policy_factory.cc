@@ -33,7 +33,7 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
     return std::make_unique<GroupByOwnerIdWorkerKillingPolicy>();
   }
 
-  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemorySnapshot(
+  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                                    MemoryMonitorInterface::kDefaultCgroupPath)
                                    .total_bytes;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(

@@ -3088,20 +3088,36 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           }
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
-          SystemMemorySnapshot system_memory_snapshot =
-              MemoryMonitorUtils::TakeSystemMemorySnapshot(
+          MemoryUsageSnapshot memory_usage_snapshot =
+              MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
+          if (initial_config_.enable_resource_isolation) {
+            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
+                user_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+                        cgroup_manager_->GetUserCgroupPath(),
+                        cgroup_manager_->GetSystemCgroupPath());
+            if (user_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            } else {
+              RAY_LOG(ERROR) << absl::StrFormat(
+                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Falling back to host system memory snapshot.",
+                  user_slice_memory_snapshot_or.message());
+            }
+          }
+
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
               workers_to_kill_and_should_retry =
                   worker_killing_policy_->SelectWorkersToKill(
-                      workers, process_memory_snapshot, system_memory_snapshot);
+                      workers, process_memory_snapshot, memory_usage_snapshot);
           if (workers_to_kill_and_should_retry.empty()) {
             ReleaseKillWorkerInProgress();
             return;
           }
 
           // Compute the memory usage threshold
-          int64_t total_memory_bytes = system_memory_snapshot.total_bytes;
+          int64_t total_memory_bytes = memory_usage_snapshot.total_bytes;
           int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
               total_memory_bytes,
               RayConfig::instance().memory_usage_threshold(),
@@ -3115,7 +3131,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           std::string oom_kill_details = CreateOomKillMessageDetails(
               workers_to_kill_and_should_retry,
               self_node_id_,
-              system_memory_snapshot,
+              memory_usage_snapshot,
               store_client_->GetMemoryUsage().value_or("Not available"),
               process_memory_snapshot,
               computed_threshold_fraction);
@@ -3185,7 +3201,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
 std::string NodeManager::CreateOomKillMessageDetails(
     const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill,
     const NodeID &node_id,
-    const SystemMemorySnapshot &system_memory_snapshot,
+    const MemoryUsageSnapshot &memory_usage_snapshot,
     const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {
@@ -3193,13 +3209,12 @@ std::string NodeManager::CreateOomKillMessageDetails(
     return "";
   }
 
-  float usage_fraction = static_cast<float>(system_memory_snapshot.used_bytes) /
-                         system_memory_snapshot.total_bytes;
+  float usage_fraction = static_cast<float>(memory_usage_snapshot.used_bytes) /
+                         memory_usage_snapshot.total_bytes;
   std::string used_bytes_gb = absl::StrFormat(
-      "%.2f", static_cast<float>(system_memory_snapshot.used_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(memory_usage_snapshot.used_bytes) / 1024 / 1024 / 1024);
   std::string total_bytes_gb = absl::StrFormat(
-      "%.2f",
-      static_cast<float>(system_memory_snapshot.total_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(memory_usage_snapshot.total_bytes) / 1024 / 1024 / 1024);
 
   const auto &first_worker = workers_to_kill.front().first;
   std::string node_ip = first_worker->IpAddress();
