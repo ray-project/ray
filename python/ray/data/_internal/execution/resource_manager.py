@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -905,13 +906,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if budget is None:
             return True
 
-        # Sink operators (no downstream consumers, e.g. write_parquet) only
-        # consume blocks from the object store — they never produce output into
-        # it.  Blocking a sink on object store budget is counterproductive: it
-        # prevents draining the very data that is filling the object store.
-        # So for sinks we check CPU budget normally but skip the object store
+        # Datasink operators (write_parquet, etc.) only consume blocks from the
+        # object store — they never produce output into it.  Blocking a datasink
+        # on object store budget is counterproductive: it prevents draining the
+        # very data that is filling the object store.
+        # So for datasinks we check CPU budget normally but skip the object store
         # budget check entirely.
-        if not op.output_dependencies:
+        # We check the logical operator rather than `not op.output_dependencies`
+        # to avoid misidentifying terminal map ops (e.g. materialize()) that DO
+        # produce output into the object store.
+        if self._is_datasink_op(op):
             return op.incremental_resource_usage().satisfies_limit(
                 budget, ignore_object_store_memory=True
             )
@@ -1074,3 +1078,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._op_budgets[op] = self._op_budgets[op].copy(
                     object_store_memory=float("inf")
                 )
+
+    @staticmethod
+    def _is_datasink_op(op: PhysicalOperator) -> bool:
+        """Return True if the operator is a datasink (write) operator.
+
+        Checks the logical operator rather than output_dependencies to avoid
+        misidentifying terminal map ops (e.g. materialize()) that still produce
+        output into the object store.
+        """
+        return any(
+            isinstance(logical_op, Write) for logical_op in op._logical_operators
+        )
