@@ -398,6 +398,25 @@ Output hashes are byte-identical between master and no_m5 on every workload. The
 
 Raw data: `glia-bench/results/optimization_perf_master_vs_no_m5.jsonl`. Reproduce with `./glia-bench/run_master_vs_no_m5.sh all 1`.
 
+### 6.2 Correctness gate
+
+The §3.4 gate was rerun against the no_m5 tree, reusing the existing master baseline (master tree is still at `a1ce262eff`). Same fractional-retry methodology, same `KNOWN_FLAKY_TESTS` set.
+
+**Gate summary** (26 files, baseline 470 tests, current 462):
+
+| Category | Count |
+|---|---|
+| Real regressions | 0 |
+| Real fixes | 2 |
+| Tests no longer in current (M5 symbols removed) | 8 |
+| Known-flaky noise | 1 |
+
+The 2 fixes are unchanged from §4.2: `test_streaming_executor::test_adapt_wait_timeout_halve_and_double` (M4) and `test_stats::test_sub_operator_num_rows` (pandas 3.0 read-only ndarray fix). The 8 baseline tests that no longer appear on the branch are the M5-specific tests added in §2.5 (`test_on_task_dispatched_*`, `test_m5_borrow_drift_*`, `test_execution_resources_subtract_clamp_zero`) — those symbols no longer exist on this branch, so they fall out of `current_total` exactly as they were absent from `baseline_total` against master.
+
+The single flagged "regression" is `test_consumption::test_read_write_local_node_ray_client` (8/10 vs baseline 10/10) — already on the `KNOWN_FLAKY_TESTS` list as a probabilistic Ray-client connectivity test; the 20% pass-rate gap is within the natural flake distribution and matches the original §4.2 treatment.
+
+**Net: 0 regressions, 2 fixes.** Raw artifacts at `glia-bench/results/optimization_gate_{baseline,m6}.json`.
+
 ## Appendix: Raw per-run data
 
 Per-run performance data lives at `glia-bench/results/optimization_perf_master_vs_rebased.jsonl` — one JSON line per run, 30 lines total (5 workloads × 2 configs × 3 reps). Fields per line: `config` (`master`|`rebased`), `workload`, `rep`, `wall_time_sec`, `throughput_blocks_per_sec`, `throughput_rows_per_sec`, `driver_cpu_per_wall`, `efficiency_blocks_per_core_sec`, `output_hash`. `actor_backpressure` rows additionally carry `peak_op_obj_store_over_alloc_ratio`, `peak_op_obj_store_used_mb`, `peak_op_obj_store_alloc_mb`, `num_sampler_reads`, `backpressure_log_count`, `plasma_directory`, `hash_time_sec`.
