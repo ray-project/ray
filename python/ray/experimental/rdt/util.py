@@ -208,15 +208,11 @@ def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
     return tensor_transport
 
 
-def validate_one_sided(tensor_transport: str, ray_usage_func: str):
+def is_one_sided_transport(tensor_transport: str) -> bool:
     _ensure_default_transports_registered()
-    if not transport_manager_info[
+    return transport_manager_info[
         tensor_transport
-    ].transport_manager_class.is_one_sided():
-        raise ValueError(
-            f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
-            "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
-        )
+    ].transport_manager_class.is_one_sided()
 
 
 @PublicAPI(stability="alpha")

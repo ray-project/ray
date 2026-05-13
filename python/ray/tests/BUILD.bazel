@@ -1204,7 +1204,7 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
+    size = "medium",
     srcs = [
         "test_typing.py",
         "typing_files/check_typing_actor_async.py",
@@ -1215,8 +1215,8 @@ py_test(
     # (https://github.com/python/mypy/issues/17189)
     tags = [
         "exclusive",
+        "medium_size_python_tests_shard_0",
         "no_windows",
-        "small_size_python_tests",
         "team:core",
     ],
     deps = [

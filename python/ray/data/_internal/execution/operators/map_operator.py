@@ -65,7 +65,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -705,7 +705,7 @@ def _map_task(
             ctx.target_max_block_size_override
         )
 
-        blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+        retry_on = data_context.retried_map_errors
 
         # NOTE: We avoid the cost of deduping schemas in the task because
         # each yielded block should have the same schema, since each one
@@ -714,8 +714,25 @@ def _map_task(
         # the same schema)
         yielded_schema: bool = False
 
+        def transform_iter_factory():
+            blocks_iter = (
+                _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+            )
+            return map_transformer.apply_transform(blocks_iter, ctx)
+
+        if retry_on:
+            block_iter = iterate_with_retry(
+                transform_iter_factory,
+                description="apply UDF transform",
+                match=None if retry_on is True else retry_on,
+                max_attempts=data_context.max_map_retries + 1,
+                unwrap_cause=True,
+            )
+        else:
+            block_iter = transform_iter_factory()
+
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-            for block in map_transformer.apply_transform(blocks_iter, ctx):
+            for block in block_iter:
                 block_meta = BlockAccessor.for_block(block).get_metadata()
                 block_schema = BlockAccessor.for_block(block).schema()
 
