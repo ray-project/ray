@@ -28,7 +28,11 @@ class ResourceIsolationConfig:
             and < the total number of cores available.
         system_reserved_memory: The amount of memory in bytes reserved
             for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
-            and system_reserved_cpu + object_store_bytes < the total memory available.
+            and < the total memory available.
+        user_physical_logical_memory_limit_buffer: The number of bytes of
+            buffer between the physical memory limit enforced by resource
+            isolation and the logical memory limit available for scheduling
+            user tasks. Must be non-negative.
 
     TODO(54703): Link documentation when it's available.
     """
@@ -39,7 +43,6 @@ class ResourceIsolationConfig:
         cgroup_path: Optional[str] = None,
         system_reserved_cpu: Optional[float] = None,
         system_reserved_memory: Optional[int] = None,
-        object_store_memory: Optional[int] = None,
     ):
         """
         Raises:
@@ -55,15 +58,12 @@ class ResourceIsolationConfig:
                 and < the total number of cores available.
             system_reserved_memory: The amount of memory in bytes reserved
                 for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
-                and system_reserved_memory + object_store_memory < the total memory available.
-            object_store_memory: The amount of memory in bytes reserved for the object store.
-                Must be not None when resource isolation is enabled.
+                and < the total memory available.
         """
         self._resource_isolation_enabled = enable_resource_isolation
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
         self.system_pids = ""
-        self.object_store_memory = object_store_memory
 
         # cgroupv2 cpu.weight calculated from system_reserved_cpu assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
@@ -90,19 +90,15 @@ class ResourceIsolationConfig:
                 )
             return
 
-        if object_store_memory is None:
-            raise ValueError(
-                "object_store_memory must be resolved before creating a ResourceIsolationConfig "
-                "when resource isolation is enabled. This is likely a bug in Ray, "
-                "please report it at https://github.com/ray-project/ray/issues/new/choose."
-            )
-
         self.system_reserved_cpu_weight = self._validate_and_get_system_reserved_cpu(
             system_reserved_cpu
         )
 
         self.system_reserved_memory = self._validate_and_get_system_reserved_memory(
-            system_reserved_memory, object_store_memory
+            system_reserved_memory
+        )
+        self.user_physical_logical_memory_limit_buffer = max(
+            ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES, 0
         )
 
         self.cgroup_path = self._validate_and_get_cgroup_path(cgroup_path)
@@ -226,7 +222,6 @@ class ResourceIsolationConfig:
     @staticmethod
     def _validate_and_get_system_reserved_memory(
         system_reserved_memory: Optional[int],
-        object_store_memory: int,
     ) -> int:
         """If system_reserved_memory is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range.
@@ -235,7 +230,6 @@ class ResourceIsolationConfig:
             system_reserved_memory: The amount of memory in bytes reserved
                 for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
                 and < the total memory available.
-            object_store_memory: The amount of memory in bytes reserved for the object store.
 
         Returns:
             int: The validated system reserved memory in bytes.
@@ -285,10 +279,9 @@ class ResourceIsolationConfig:
                 f"greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES}"
             )
 
-        total_system_reserved_memory = system_reserved_memory + object_store_memory
-        if total_system_reserved_memory > available_system_memory:
+        if system_reserved_memory > available_system_memory:
             raise ValueError(
-                f"The total requested system_reserved_memory={total_system_reserved_memory} (including object store memory) "
+                f"The total requested system_reserved_memory={system_reserved_memory} "
                 f"is greater than the amount of memory available={available_system_memory}."
             )
-        return total_system_reserved_memory
+        return system_reserved_memory

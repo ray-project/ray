@@ -147,6 +147,7 @@ ray_cc_library(
         "//src/ray/common/tests:__pkg__",
     ],
     deps = [
+        ":cgroup_manager_interface",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
