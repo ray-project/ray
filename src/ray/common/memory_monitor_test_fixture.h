@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -74,14 +75,33 @@ class MemoryMonitorTestFixture : public ::testing::Test {
    *
    * @param total_bytes The value to write to memory.max (total memory limit).
    * @param current_bytes The value to write to memory.current (current usage).
+   * @param anon_memory_bytes The anon to write to memory.stat (anonymous memory usage).
+   * @param shmem_memory_bytes The shmem to write to memory.stat (shared memory usage).
    * @param inactive_file_bytes The inactive_file value in memory.stat.
    * @param active_file_bytes The active_file value in memory.stat.
    * @return The path to the created mock cgroup directory.
    */
-  std::string MockCgroupMemoryUsage(int64_t total_bytes,
-                                    int64_t current_bytes,
-                                    int64_t inactive_file_bytes,
-                                    int64_t active_file_bytes);
+  std::string MockCgroupv2MemoryUsage(int64_t total_bytes,
+                                      int64_t current_bytes,
+                                      std::optional<int64_t> anon_memory_bytes,
+                                      std::optional<int64_t> shmem_memory_bytes,
+                                      int64_t inactive_file_bytes,
+                                      int64_t active_file_bytes);
+
+  /**
+   * @brief Sets up a mock cgroup v1 directory for emulating memory usage and populates
+   * the files with the provided mock memory values.
+   *
+   * @param total_bytes The value to write to memory/memory.limit_in_bytes.
+   * @param current_bytes The value to write to memory/memory.usage_in_bytes.
+   * @param inactive_file_bytes The total_inactive_file value in memory/memory.stat.
+   * @param active_file_bytes The total_active_file value in memory/memory.stat.
+   * @return The path to the created mock cgroup root directory.
+   */
+  std::string MockCgroupv1MemoryUsage(int64_t total_bytes,
+                                      int64_t current_bytes,
+                                      int64_t inactive_file_bytes,
+                                      int64_t active_file_bytes);
 
  private:
   std::vector<std::unique_ptr<TempDirectory>> mock_proc_dirs_;

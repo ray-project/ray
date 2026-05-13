@@ -160,6 +160,9 @@ class RayTrainWorker:
             return result
 
         # Create and start the training thread.
+        logger.debug(
+            f"Rank {get_train_context().get_world_rank()}: Launching training function."
+        )
         get_train_context().execution_context.training_thread_runner.run(
             train_fn_with_final_checkpoint_flush
         )
