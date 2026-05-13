@@ -45,7 +45,7 @@ class ZarrGridData(TypedDict):
 def _resolve_store(
     path: str,
     filesystem: AbstractFileSystem | None = None
-) -> tuple[Any, str]:
+) -> tuple[AbstractFileSystem, str]:
     
     parsed = urlsplit(path)
     
