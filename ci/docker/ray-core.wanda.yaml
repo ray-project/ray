@@ -15,7 +15,8 @@ srcs:
   - python/ray/_raylet.pyi
   - python/ray/_raylet.pyx
   - python/ray/includes/
-  - python/ray/serve/
+  - python/ray/serve/_private/_timeseries_utils.pyx
+  - python/ray/serve/BUILD.bazel
   - java/BUILD.bazel
   - java/dependencies.bzl
   - release/BUILD.bazel
