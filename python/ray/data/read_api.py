@@ -831,17 +831,35 @@ def read_zarrv2(
     Each row in the resulting dataset describes a single chunk from one of the
     selected arrays in the store. The returned rows contain chunk metadata,
     per-dimension slice bounds that can be used to query the chunk, and
-    per-dimension padding for truncated edge chunks, but the datasource
-    doesn't materialize any array or chunk data.
+    per-dimension padding for truncated edge chunks, but the datasource doesn't
+    materialize any array or chunk data.
 
     The column names are ``"array"``, ``"array_shape"``, ``"chunk_shape"``,
     ``"dtype"``, ``"chunk_slices"``, and ``"padding"``.
+
+    Metadata discovery follows three paths:
+
+    * If ``array_paths`` is provided, the datasource reads each requested array's
+    ``.zarray`` metadata file directly. In this case, the store doesn't need a
+    ``.zmetadata`` file.
+    * If ``array_paths`` is not provided and the store contains ``.zmetadata``, the
+    datasource reads the consolidated metadata and selects all arrays found in the
+    store.
+    * If ``array_paths`` is not provided and the store doesn't contain
+    ``.zmetadata``, the datasource raises an error by default. Set
+    ``allow_full_metadata_scan=True`` to recursively scan the store for
+    ``.zarray`` files. This can be slow or expensive for large remote stores.
+
+    The datasource resolves storage with ``fsspec``. For private buckets or custom
+    authentication, pass a preconfigured ``fsspec`` filesystem through
+    ``filesystem``. If ``filesystem`` is omitted, the datasource infers the
+    filesystem from ``path``.
 
     Examples:
         >>> import ray
         >>> ds = ray.data.read_zarrv2("/path/to/store")  # doctest: +SKIP
 
-        Read specific arrays from a store.
+        Read specific arrays from a store. This doesn't require ``.zmetadata``.
 
         >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
         ...     "/path/to/store",
@@ -855,15 +873,42 @@ def read_zarrv2(
         ...     chunk_shape=[256, 256],
         ... )
 
+        Pass a custom ``fsspec`` filesystem for private or authenticated storage.
+
+        >>> import fsspec
+        >>> fs = fsspec.filesystem("s3")  # doctest: +SKIP
+        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        ...     "s3://bucket/path/to/store.zarr",
+        ...     filesystem=fs,
+        ...     array_paths=["images"],
+        ... )
+
+        Explicitly allow full metadata discovery when ``.zmetadata`` is missing.
+
+        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        ...     "/path/to/store",
+        ...     allow_full_metadata_scan=True,
+        ... )
+
     Args:
-        path: Path to the Zarr v2 store. The store must contain consolidated
-            metadata in a ``.zmetadata`` file.
+        path: Path to the Zarr v2 store.
+        filesystem: Optional preconfigured :class:`fsspec.spec.AbstractFileSystem`
+            instance to use when reading from ``path``. Use this for private buckets,
+            custom credentials, anonymous/public cloud access, or any storage backend
+            configuration that shouldn't be inferred internally. If omitted, the
+            datasource infers the filesystem from ``path`` using ``fsspec``.
         chunk_shape: Optional chunk shape override to use for all selected arrays.
             If unspecified, the datasource uses the chunk shape recorded in each
-            array's metadata. If provided, the chunk shape must have the same
-            number of dimensions as each selected array.
+            array's ``.zarray`` metadata. If provided, the chunk shape must have the
+            same number of dimensions as each selected array.
         array_paths: Optional list of array paths within the Zarr store to read.
-            If unspecified, all arrays found in the store are used.
+            If provided, the datasource reads each array's ``.zarray`` metadata file
+            directly and doesn't require ``.zmetadata``. If unspecified, the
+            datasource first tries to discover arrays from ``.zmetadata``.
+        allow_full_metadata_scan: If ``True``, recursively scan the store for
+            ``.zarray`` files when ``array_paths`` is unspecified and ``.zmetadata``
+            is missing. This may be slow or expensive for large remote stores, so it
+            is disabled by default.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -881,8 +926,8 @@ def read_zarrv2(
 
     Returns:
         A :class:`~ray.data.Dataset` where each row contains the selected array
-        path, array metadata, per-dimension chunk slice bounds, and
-        per-dimension trailing padding for one chunk.
+        path, array metadata, per-dimension chunk slice bounds, and per-dimension
+        trailing padding for one chunk.
     """
     datasource = ZarrV2Datasource(
         path=path, 
