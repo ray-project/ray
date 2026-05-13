@@ -404,9 +404,9 @@ def _resolve_read_remote_args(
         ray_remote_args = {}
     if not datasource.supports_distributed_reads:
         label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[ray._raylet.RAY_NODE_ID_KEY] = (
-            ray.get_runtime_context().get_node_id()
-        )
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
         ray_remote_args["label_selector"] = label_selector
         ray_remote_args.pop("scheduling_strategy", None)
     if (
@@ -1192,14 +1192,17 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col, lit
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            ).select_columns(["sepal.length", "variety"])
+            # Create a Dataset by reading a Parquet file, with column selection and
+            # row filtering pushed down to the file scan.
+            ds = (
+                ray.data.read_parquet(
+                    "s3://anonymous@ray-example-data/iris.parquet",
+                )
+                .filter(expr=col("sepal.length") > lit(5.0))
+                .select_columns(["sepal.length", "variety"])
+            )
 
             ds.show(2)
 

@@ -284,9 +284,9 @@ class ReadFiles(
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator), (
-            self.input_dependencies[0]
-        )
+        assert isinstance(
+            self.input_dependencies[0], LogicalOperator
+        ), self.input_dependencies[0]
         if self.compute is None:
             from ray.data._internal.compute import TaskPoolStrategy
 
