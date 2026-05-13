@@ -207,58 +207,58 @@ class ZarrV2Datasource(Datasource):
             z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
             
             # 2) if the user did not provide array paths, but .zmetadata exists
-            # if fs.exists(z_meta_path):
-            #     with fs.open(z_meta_path, 'rb') as f:
-            #         consolidated = json.load(f)
-            #     metadata = consolidated['metadata']
+            if fs.exists(z_meta_path):
+                with fs.open(z_meta_path, 'rb') as f:
+                    consolidated = json.load(f)
+                metadata = consolidated['metadata']
                 
-            #     for key, value in metadata.items():
-            #         if not key.endswith(".zarray"):
-            #             continue
+                for key, value in metadata.items():
+                    if not key.endswith(".zarray"):
+                        continue
                     
-            #         raw_meta = cast(dict[str, Any], value)
-            #         meta: ZarrArrayMeta = {
-            #             "shape": tuple(int(x) for x in raw_meta["shape"]),
-            #             "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-            #             "dtype": str(raw_meta["dtype"]),
-            #         }
+                    raw_meta = cast(dict[str, Any], value)
+                    meta: ZarrArrayMeta = {
+                        "shape": tuple(int(x) for x in raw_meta["shape"]),
+                        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+                        "dtype": str(raw_meta["dtype"]),
+                    }
                     
-            #         if key == ".zarray":
-            #             array_metadata[""] = meta
-            #         else:
-            #             array_metadata[key[: -len("/.zarray")]] = meta
+                    if key == ".zarray":
+                        array_metadata[""] = meta
+                    else:
+                        array_metadata[key[: -len("/.zarray")]] = meta
             
-            # # 3) if the user did not provide array paths, and .zmetadata does not exist
-            # else:
-            # since this scan can be potentially very time consuming, it will only run if the user explicitly allowed for it
-            if self.allow_full_metadata_scan:
-                for dirpath, _, filenames in fs.walk(store_path):
-                    for filename in filenames:
-                        if filename == ".zarray":
-                            
-                            if dirpath.rstrip("/") == store_path.rstrip("/"):
-                                array = ""
-                            else:
-                                array = dirpath.removeprefix(store_path.rstrip("/") + "/")
-                            array_path = f"{dirpath.rstrip('/')}/.zarray"
-                            
-                            try:
-                                with fs.open(array_path, 'r') as f:
-                                    data = json.load(f)
-                                    raw_meta = cast(dict[str, Any], data)
-                                    meta: ZarrArrayMeta = {
-                                        "shape": tuple(int(x) for x in raw_meta["shape"]),
-                                        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-                                        "dtype": str(raw_meta["dtype"]),
-                                    }
-                                    array_metadata[array.strip("/")] = meta
-                            except FileNotFoundError:
-                                continue
+            # 3) if the user did not provide array paths, and .zmetadata does not exist
             else:
-                raise ValueError(
-                    "No array_paths were provided and this Zarr store does not contain .zmetadata. "
-                    "Pass array_paths=[...] or set allow_full_metadata_scan=True."
-                )
+                # since this scan can be potentially very time consuming, it will only run if the user explicitly allowed for it
+                if self.allow_full_metadata_scan:
+                    for dirpath, _, filenames in fs.walk(store_path):
+                        for filename in filenames:
+                            if filename == ".zarray":
+                                
+                                if dirpath.rstrip("/") == store_path.rstrip("/"):
+                                    array = ""
+                                else:
+                                    array = dirpath.removeprefix(store_path.rstrip("/") + "/")
+                                array_path = f"{dirpath.rstrip('/')}/.zarray"
+                                
+                                try:
+                                    with fs.open(array_path, 'r') as f:
+                                        data = json.load(f)
+                                        raw_meta = cast(dict[str, Any], data)
+                                        meta: ZarrArrayMeta = {
+                                            "shape": tuple(int(x) for x in raw_meta["shape"]),
+                                            "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+                                            "dtype": str(raw_meta["dtype"]),
+                                        }
+                                        array_metadata[array.strip("/")] = meta
+                                except FileNotFoundError:
+                                    continue
+                else:
+                    raise ValueError(
+                        "No array_paths were provided and this Zarr store does not contain .zmetadata. "
+                        "Pass array_paths=[...] or set allow_full_metadata_scan=True."
+                    )
         return array_metadata
 
     def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
