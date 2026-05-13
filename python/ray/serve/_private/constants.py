@@ -718,6 +718,15 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
+# Window for coalescing back-to-back controller broadcasts into a single
+# HAProxy reload. The Serve controller emits TARGET_GROUPS and
+# FALLBACK_TARGETS updates independently, often within tens of ms of each
+# other during autoscaling churn; without coalescing each one triggers its
+# own reload.
+RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = float(
+    os.environ.get("RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", "0.1")
+)
+
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
