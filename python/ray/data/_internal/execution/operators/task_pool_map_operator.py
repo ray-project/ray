@@ -92,6 +92,13 @@ class TaskPoolMapOperator(MapOperator):
         self._max_concurrency = max_concurrency
         self._current_logical_usage = ExecutionResources.zero()
 
+        # Prime the resource estimate so `per_task_resource_allocation` reflects
+        # `ray_remote_args_fn` overrides before the first task is submitted.
+        # `_try_schedule_task` refreshes it on each submission.
+        self._dynamic_ray_remote_args: Dict[str, Any] = (
+            self._get_dynamic_ray_remote_args()
+        )
+
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
         #       invocation
@@ -124,6 +131,7 @@ class TaskPoolMapOperator(MapOperator):
         )
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
+        self._dynamic_ray_remote_args = dynamic_ray_remote_args.copy()
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 
@@ -170,9 +178,9 @@ class TaskPoolMapOperator(MapOperator):
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0),
-            gpu=self._ray_remote_args.get("num_gpus", 0),
-            memory=self._ray_remote_args.get("memory", 0),
+            cpu=self._dynamic_ray_remote_args.get("num_cpus", 0),
+            gpu=self._dynamic_ray_remote_args.get("num_gpus", 0),
+            memory=self._dynamic_ray_remote_args.get("memory", 0),
         )
 
     def min_scheduling_resources(
