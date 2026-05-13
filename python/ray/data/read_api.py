@@ -404,9 +404,9 @@ def _resolve_read_remote_args(
         ray_remote_args = {}
     if not datasource.supports_distributed_reads:
         label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
+        label_selector[ray._raylet.RAY_NODE_ID_KEY] = (
+            ray.get_runtime_context().get_node_id()
+        )
         ray_remote_args["label_selector"] = label_selector
         ray_remote_args.pop("scheduling_strategy", None)
     if (
@@ -563,7 +563,6 @@ def _read_datasource_v2(
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
 
     read_op = ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
@@ -571,9 +570,10 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        input_dependencies=[list_files_op],
     )
 
-    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    stats = DatasetStats(metadata={"ReadFiles": []}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(read_op, context)
 
