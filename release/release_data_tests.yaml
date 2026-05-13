@@ -27,6 +27,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -66,6 +72,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -82,6 +94,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 3600
     script: >
@@ -93,6 +111,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -111,6 +135,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 3600
     script: >
@@ -126,6 +156,11 @@
   cluster:
     byod:
       post_build_script: byod_install_pyiceberg.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: iceberg_benchmark_compute.yaml
 
   matrix:
@@ -144,6 +179,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -282,6 +323,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: fixed_size_cpu_compute.yaml
 
   matrix:
@@ -302,6 +344,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 300
     wait_for_nodes:
@@ -428,6 +476,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
@@ -443,6 +497,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 2400
     script: >
@@ -470,6 +530,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
@@ -478,6 +544,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
@@ -531,6 +603,12 @@
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: fixed_size_1000_cpu_compute.yaml
 
   matrix:
@@ -723,6 +801,11 @@
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
       python_depset: image_classification_py3.10.lock
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
 
   matrix:
@@ -818,6 +901,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING=1
       post_build_script: byod_install_pybase64.sh
 
   run:
@@ -880,6 +964,12 @@
   env: gce
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: autoscaling_gpu_g2_gce.yaml
 
   run:
@@ -1193,6 +1283,12 @@
   frequency: manual
   env: gce
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: cross_az_250_350_compute_gce.yaml
 
   run:
