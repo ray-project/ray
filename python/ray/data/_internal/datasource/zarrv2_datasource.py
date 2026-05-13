@@ -181,6 +181,7 @@ class ZarrV2Datasource(Datasource):
         
         # 1) if the user provided array paths
         if array_paths:
+            print("array_paths provided. Collecting .zarray file metadata")
             
             for array in array_paths:
                 normalized_array = array.strip("/")
@@ -208,6 +209,7 @@ class ZarrV2Datasource(Datasource):
             
             # 2) if the user did not provide array paths, but .zmetadata exists
             if fs.exists(z_meta_path):
+                print("no array_paths provided. Loading .zmetadata file")
                 with fs.open(z_meta_path, 'rb') as f:
                     consolidated = json.load(f)
                 metadata = consolidated['metadata']
@@ -232,6 +234,7 @@ class ZarrV2Datasource(Datasource):
             else:
                 # since this scan can be potentially very time consuming, it will only run if the user explicitly allowed for it
                 if self.allow_full_metadata_scan:
+                    print("no array_paths provided. Executing full scan of zarr store metadata")
                     for dirpath, _, filenames in fs.walk(store_path):
                         for filename in filenames:
                             if filename == ".zarray":
