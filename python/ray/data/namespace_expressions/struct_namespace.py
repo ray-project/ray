@@ -44,9 +44,10 @@ class _StructNamespace:
             PyArrowComputeUDFExpr that extracts the specified field from each struct.
 
         Example:
-            >>> col("user").struct["age"]  # Get age field by name  # doctest: +SKIP
-            >>> col("user").struct[1]  # Get second field by index  # doctest: +SKIP
-            >>> col("user").struct["address"].struct["city"]  # Get nested city field  # doctest: +SKIP
+            >>> from ray.data.expressions import col
+            >>> expr = col("user").struct["age"]  # Get age field by name
+            >>> expr = col("user").struct[1]  # Get second field by index
+            >>> expr = col("user").struct["address"].struct["city"]  # Get nested city field
         """
         if isinstance(key, str):
             return self.field(key)
