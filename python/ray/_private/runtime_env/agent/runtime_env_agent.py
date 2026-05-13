@@ -304,32 +304,30 @@ class RuntimeEnvAgent:
     def _inject_resource_env_vars(
         self, context: RuntimeEnvContext, request
     ) -> RuntimeEnvContext:
-        cpu_req = request.resource_requirements.get("CPU", 0)
         import math
-
-        omp_num_threads = max(math.floor(cpu_req), 1)
-        if "OMP_NUM_THREADS" not in context.env_vars:
-            context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
 
         from ray._private.accelerators import (
             get_accelerator_manager_for_resource,
             get_all_accelerator_resource_names,
         )
 
+        cpu_req = request.resource_requirements.get("CPU", 0)
+        omp_num_threads = max(math.floor(cpu_req), 1)
+        if "OMP_NUM_THREADS" not in context.env_vars:
+            context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
+
         for resource_name in get_all_accelerator_resource_names():
             manager = get_accelerator_manager_for_resource(resource_name)
             env_var = manager.get_visible_accelerator_ids_env_var()
-            context.env_vars.pop(env_var, None)
+            if not env_var:
+                continue
 
-        for resource_name in get_all_accelerator_resource_names():
             if resource_name in request.allocated_instances:
-                manager = get_accelerator_manager_for_resource(resource_name)
-                env_var = manager.get_visible_accelerator_ids_env_var()
                 allocated_ids = list(request.allocated_instances[resource_name].ids)
                 allocated_ids_str = [str(i) for i in allocated_ids]
                 context.env_vars[env_var] = ",".join(allocated_ids_str)
-
-        return context
+            else:
+                context.env_vars[env_var] = ""
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
