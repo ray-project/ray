@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 import fsspec
 import fsspec.core
+from fsspec.spec import AbstractFileSystem
 import pandas as pd
 
 from ray.data._internal.util import _check_import
@@ -41,65 +42,22 @@ class ZarrGridData(TypedDict):
     grid_shape: tuple[int, ...]
 
 
-def _make_azure_fs(url: str, obj: Any) -> tuple[Any, Any]:
-    """Create an authenticated Azure FsspecStore and AzureStore from a URL.
-
-    Args:
-        url: The Azure URL to parse.
-        obj: The original filesystem/storage options object used to construct
-            the authenticated Azure store.
-
-    Returns:
-        A tuple containing the authenticated fsspec filesystem and Azure store.
-    """
-    _check_import(obj, module="obstore", package="obstore")
-
-    from obstore.fsspec import FsspecStore
-    from obstore.store import AzureStore
-
-    store = AzureStore.from_url(
-        url=url,
-    )
-    return (
-        FsspecStore(
-            config=store.config,
-            protocol="abfs",
-        ),
-        store,
-    )
-
-
-def _resolve_store(path: str, obj: Any) -> tuple[Any, str]:
-    """
-    Return a filesystem-like object and a rooted path prefix for the Zarr store.
-    Works for:
-    - Azure abfs://...
-    - local paths
-    - s3://... (including public anonymous buckets)
-    - generic fsspec-supported URLs
-    """
+def _resolve_store(
+    path: str,
+    filesystem: AbstractFileSystem | None = None
+) -> tuple[Any, str]:
+    
     parsed = urlsplit(path)
+    
+    # if user passes filesystem, use it
+    if filesystem is not None:
+        return filesystem, path.rstrip("/")
 
-    # Azure
-    if parsed.scheme in ("abfs", "abfss", "az"):
-        fs, _ = _make_azure_fs(path, obj)
-        return fs, path.rstrip("/")
-
-    # Local
+    # local default
     if parsed.scheme in ("", "file"):
         local = path if not parsed.scheme else parsed.path
         root = str(Path(local).resolve())
         return fsspec.filesystem("file"), root
-    
-    # GCP
-    if parsed.scheme in ("gs", "gcs"):
-        fs = fsspec.filesystem("gcs")
-        return fs, path.rstrip("/")
-
-    # Public S3
-    if parsed.scheme == "s3":
-        fs = fsspec.filesystem("s3")
-        return fs, path.rstrip("/")
 
     # Generic fallback
     fs, root = fsspec.core.url_to_fs(path)
@@ -161,6 +119,7 @@ class ZarrV2Datasource(Datasource):
     def __init__(
         self,
         path: str,
+        filesystem: AbstractFileSystem | None = None,
         chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False
@@ -177,11 +136,11 @@ class ZarrV2Datasource(Datasource):
         self.chunk_shape: tuple[int, ...] | None = (
             tuple(chunk_shape) if chunk_shape is not None else None
         )
-        self._selected_arrays = self._load_array_metadata(array_paths)
+        self._selected_arrays = self._load_array_metadata(array_paths, filesystem)
         self._grid_shape_dict = self._gen_grid_shape()
         
-    def _load_array_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
-        fs, store_path = _resolve_store(self.paths[0], self)
+    def _load_array_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
+        fs, store_path = _resolve_store(self.paths[0], filesystem)
         array_metadata: dict[str, ZarrArrayMeta] = {}
         
         # 1) if the user provided array paths

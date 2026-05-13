@@ -814,6 +814,7 @@ def read_audio(
 @PublicAPI(stability="alpha")
 def read_zarrv2(
     path: str,
+    filesystem: Any | None = None,
     chunk_shape: List[int] | None = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
@@ -884,7 +885,11 @@ def read_zarrv2(
         per-dimension trailing padding for one chunk.
     """
     datasource = ZarrV2Datasource(
-        path=path, chunk_shape=chunk_shape, array_paths=array_paths, allow_full_metadata_scan=allow_full_metadata_scan
+        path=path, 
+        filesystem=filesystem, 
+        chunk_shape=chunk_shape, 
+        array_paths=array_paths, 
+        allow_full_metadata_scan=allow_full_metadata_scan,
     )
     return read_datasource(
         datasource,
