@@ -194,6 +194,8 @@ bool NodeResources::HasAvailableResource(scheduling::ResourceID resource_id) con
 
 const NodeResourceSet &NodeResources::GetAvailable() const { return available; }
 
+NodeResourceSet NodeResources::TakeAvailable() { return std::move(available); }
+
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const {
   return this->total == other.total && this->available == other.available;
 }

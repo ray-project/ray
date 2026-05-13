@@ -380,6 +380,10 @@ class NodeResources {
   /// Read-only access to the entire available resource set.
   const NodeResourceSet &GetAvailable() const;
 
+  /// Transfer ownership of the available resource set (leaves available in a moved-from
+  /// state).
+  NodeResourceSet TakeAvailable();
+
  private:
   NodeResourceSet available;
 };
