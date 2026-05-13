@@ -90,6 +90,11 @@ def _resolve_store(path: str, obj: Any) -> tuple[Any, str]:
         local = path if not parsed.scheme else parsed.path
         root = str(Path(local).resolve())
         return fsspec.filesystem("file"), root
+    
+    # GCP
+    if parsed.scheme in ("gs", "gcs"):
+        fs = fsspec.filesystem("gcs")
+        return fs, path.rstrip("/")
 
     # Public S3
     if parsed.scheme == "s3":
