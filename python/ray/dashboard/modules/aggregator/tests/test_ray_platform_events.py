@@ -40,11 +40,19 @@ def test_ray_platform_events(ray_start_cluster, httpserver):
 
     # Define a task that explicitly initializes and emits a platform event via EventRecorder
     @ray.remote
-    def emit_test_platform_event():
+    def emit_test_platform_event(aggregator_port, node_ip, node_id):
         from ray._common.observability.platform_events import PlatformEventBuilder
         from ray._raylet import EventRecorder
         from ray.core.generated.events_base_event_pb2 import RayEvent
         from ray.core.generated.platform_event_pb2 import Source
+
+        EventRecorder.initialize(
+            aggregator_port=aggregator_port,
+            node_ip=node_ip,
+            node_id_hex=node_id,
+            max_buffer_size=1000,
+            metric_source="platform_events",
+        )
 
         builder = PlatformEventBuilder(
             event_uid="uid-test-platform-e2e",
@@ -61,13 +69,22 @@ def test_ray_platform_events(ray_start_cluster, httpserver):
             timestamp_ns=int(time.time() * 1e9),
         )
         EventRecorder.emit(cython_event)
+        EventRecorder.shutdown()
         return True
 
     # Expect the POST request on the HTTP server
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
+    # Fetch the aggregator agent's address from GCS
+    from ray._private.test_utils import GcsClient, get_dashboard_agent_address
+
+    gcs_client = GcsClient(address=cluster.address)
+    agent_address = get_dashboard_agent_address(gcs_client, head_node_id)
+    ip, port_str = agent_address.split(":")
+    aggregator_port = int(port_str)
+
     # Execute the remote task to emit the event on the node
-    ray.get(emit_test_platform_event.remote())
+    ray.get(emit_test_platform_event.remote(aggregator_port, ip, head_node_id))
 
     # Wait for the HTTP log collector to receive the batched payload
     wait_for_condition(lambda: len(httpserver.log) >= 1, timeout=20)
