@@ -509,6 +509,72 @@ def _inject_tracing_into_class(_cls):
 
         return _resume_span
 
+    def gen_span_wrapper(method: Callable[..., Any]) -> Any:
+        def _resume_span(
+            self: Any,
+            *_args: Any,
+            _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+            **_kwargs: Any,
+        ) -> Generator[Any, None, None]:
+            """
+            Wrap a generator method to preserve generator nature while adding tracing.
+            Uses 'yield from' to maintain the generator protocol.
+            """
+            # If tracing feature flag is not on, perform a no-op
+            if not _is_tracing_enabled() or _ray_trace_ctx is None:
+                yield from method(self, *_args, **_kwargs)
+                return
+
+            tracer = _opentelemetry.trace.get_tracer(__name__)
+
+            # Retrieves the context from the _ray_trace_ctx dictionary we
+            # injected.
+            with _use_context(
+                _DictPropagator.extract(_ray_trace_ctx)
+            ), tracer.start_as_current_span(
+                _actor_span_consumer_name(self.__class__.__name__, method),
+                kind=_opentelemetry.trace.SpanKind.CONSUMER,
+                attributes=_actor_hydrate_span_args(self.__class__.__name__, method),
+            ):
+                yield from method(self, *_args, **_kwargs)
+
+        return _resume_span
+
+    def asyncgen_span_wrapper(method: Callable[..., Any]) -> Any:
+        async def _resume_span(
+            self: Any,
+            *_args: Any,
+            _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+            **_kwargs: Any,
+        ) -> Any:
+            """
+            Wrap an async generator method to preserve async generator nature while adding tracing.
+            Uses 'async yield from' to maintain the async generator protocol.
+            """
+            # If tracing feature flag is not on, perform a no-op
+            if not _is_tracing_enabled() or _ray_trace_ctx is None:
+                async for item in method(self, *_args, **_kwargs):
+                    yield item
+                return
+
+            tracer = _opentelemetry.trace.get_tracer(__name__)
+
+            # Retrieves the context from the _ray_trace_ctx dictionary we
+            # injected.
+            with _use_context(
+                _DictPropagator.extract(_ray_trace_ctx)
+            ), tracer.start_as_current_span(
+                _actor_span_consumer_name(self.__class__.__name__, method.__name__),
+                kind=_opentelemetry.trace.SpanKind.CONSUMER,
+                attributes=_actor_hydrate_span_args(
+                    self.__class__.__name__, method.__name__
+                ),
+            ):
+                async for item in method(self, *_args, **_kwargs):
+                    yield item
+
+        return _resume_span
+
     methods = inspect.getmembers(_cls, is_function_or_method)
     for name, method in methods:
         # Skip tracing for staticmethod or classmethod, because these method
@@ -517,11 +583,14 @@ def _inject_tracing_into_class(_cls):
         if is_static_method(_cls, name) or is_class_method(method):
             continue
 
-        if inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method):
-            # Right now, this method somehow changes the signature of the method
-            # when they are generator.
-            # TODO(sang): Fix it.
-            continue
+        # Handle generator methods: wrap them to preserve generator nature while adding tracing.
+        # We need to check and wrap before the __del__ and signature checks below.
+        if inspect.isgeneratorfunction(method):
+            generator_method = True
+        elif inspect.isasyncgenfunction(method):
+            generator_method = True
+        else:
+            generator_method = False
 
         # Don't decorate the __del__ magic method.
         # It's because the __del__ can be called after Python
@@ -559,7 +628,11 @@ def _inject_tracing_into_class(_cls):
         if getattr(method, "__ray_tracing_wrapped__", False):
             continue
 
-        if inspect.iscoroutinefunction(method):
+        if generator_method and inspect.isasyncgenfunction(method):
+            wrapped_method = wraps(method)(asyncgen_span_wrapper(method))
+        elif generator_method:
+            wrapped_method = wraps(method)(gen_span_wrapper(method))
+        elif inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))
         else:

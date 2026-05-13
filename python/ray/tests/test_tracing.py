@@ -205,6 +205,85 @@ def test_wrapping(ray_start_init_tracing):
         pass
 
 
+def generator_actor_helper():
+    """Run a Ray actor with generator method and check the spans produced."""
+
+    @ray.remote
+    class GeneratorActor:
+        def __init__(self, factor: int) -> None:
+            self.factor = factor
+
+        def generator(self, n_steps: int):
+            for k in range(n_steps):
+                yield self.factor * k
+
+    actor = GeneratorActor.remote(factor=2)
+    results = list(ray.get(actor.generator.remote(n_steps=3)))
+    assert results == [0, 2, 4], f"Expected [0, 2, 4], got {results}"
+
+    span_list = get_span_list()
+    # Should have spans for __init__ and generator methods
+    # At minimum, we need spans for both methods on client and worker side
+    assert len(span_list) >= 4, f"Expected at least 4 spans, got {len(span_list)}: {span_list}"
+
+    span_names = get_span_dict(span_list)
+    # Check that generator method was traced (search for generator in span names)
+    generator_spans = [name for name in span_names.keys() if "generator" in name]
+    assert (
+        len(generator_spans) > 0
+    ), f"Expected generator spans, got: {list(span_names.keys())}"
+
+
+def async_generator_actor_helper():
+    """Run a Ray actor with async generator method and check the spans produced."""
+
+    @ray.remote
+    class AsyncGeneratorActor:
+        def __init__(self, factor: int) -> None:
+            self.factor = factor
+
+        async def async_generator(self, n_steps: int):
+            for k in range(n_steps):
+                yield self.factor * k
+
+    actor = AsyncGeneratorActor.remote(factor=3)
+    results = list(ray.get(actor.async_generator.remote(n_steps=3)))
+    assert results == [0, 3, 6], f"Expected [0, 3, 6], got {results}"
+
+    span_list = get_span_list()
+    # Should have spans for __init__ and async_generator methods
+    assert len(span_list) >= 4, f"Expected at least 4 spans, got {len(span_list)}: {span_list}"
+
+    span_names = get_span_dict(span_list)
+    # Check that async_generator method was traced (search for async_generator in span names)
+    async_gen_spans = [
+        name for name in span_names.keys() if "async_generator" in name
+    ]
+    assert (
+        len(async_gen_spans) > 0
+    ), f"Expected async_generator spans, got: {list(span_names.keys())}"
+
+
+def test_tracing_generator_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
+    generator_actor_helper()
+
+
+def test_tracing_generator_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
+    generator_actor_helper()
+
+
+def test_tracing_async_generator_actor_init_workflow(
+    cleanup_dirs, ray_start_init_tracing
+):
+    async_generator_actor_helper()
+
+
+def test_tracing_async_generator_actor_start_workflow(
+    cleanup_dirs, ray_start_cli_tracing
+):
+    async_generator_actor_helper()
+
+
 def test_deserialization_works_without_opentelemetry(ray_start_regular):
     """
     Test that if a function is serialized with opentelemetry, it can be
