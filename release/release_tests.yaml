@@ -270,7 +270,7 @@
         anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
@@ -1987,8 +1987,7 @@
   group: Train tests
   working_dir: train_tests/benchmark
 
-  # TODO: Keep these manual for now -- there are a still a few issues to resolve.
-  frequency: manual
+  frequency: nightly
   team: ml
 
   cluster:
@@ -4875,7 +4874,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -4900,7 +4899,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -5001,7 +5000,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -5026,7 +5025,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -5202,7 +5201,7 @@
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -5277,7 +5276,7 @@
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -5303,6 +5302,6 @@
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
