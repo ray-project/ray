@@ -98,6 +98,14 @@ def _create_read_fn(
             chunk_shapes.append(tuple(chunk_shape))
             dtypes.append(row["meta"]["dtype"])
             full_paddings.append(padding)
+        
+        # just to emulate a larger dataset for testing
+        arrays = arrays * 10
+        array_shapes = array_shapes * 10
+        chunk_shapes = chunk_shapes * 10
+        dtypes = dtypes * 10
+        full_chunk_slices = full_chunk_slices * 10
+        full_paddings = full_paddings * 10
 
         yield pd.DataFrame(
             {
