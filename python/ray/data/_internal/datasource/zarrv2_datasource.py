@@ -339,7 +339,8 @@ class ZarrV2Datasource(Datasource):
             prod(value["grid_shape"]) for _, value in self._grid_shape_dict.items()
         )
         parallelism = min(parallelism, num_chunks) if num_chunks > 0 else 1
-        batch_size = math.ceil(num_chunks / parallelism)
+        # batch_size = math.ceil(num_chunks / parallelism)
+        batch_size = 1 # this is just for testing of task completion time
 
         for array, data in self._grid_shape_dict.items():
             for chunk_index in product(*(range(n) for n in data["grid_shape"])):
