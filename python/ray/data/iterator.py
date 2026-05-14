@@ -133,7 +133,7 @@ class DataIterator(abc.ABC):
         therefore not deterministic.
         """
         if executor is not None:
-            executor.shutdown(force=False)
+            executor.shutdown(force=True)
 
     @PublicAPI
     def iter_batches(
