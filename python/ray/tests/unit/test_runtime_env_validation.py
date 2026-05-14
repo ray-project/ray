@@ -9,6 +9,7 @@ import yaml
 
 from ray import job_config
 from ray._private.runtime_env import validation
+from ray._private.runtime_env.pip import _get_pip_hash
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import (
     parse_and_validate_conda,
@@ -545,8 +546,6 @@ class TestValidatePip:
 
 class TestGetPipHash:
     def test_pip_hash_with_requirements_file(self, test_directory):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
         _, requirements_file, _, _ = test_directory
         req_path = str(requirements_file)
 
@@ -559,8 +558,6 @@ class TestGetPipHash:
         assert hash1 == hash2
 
     def test_pip_hash_changes_with_file_content(self, test_directory):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
         _, requirements_file, _, _ = test_directory
         req_path = str(requirements_file)
 
@@ -577,8 +574,6 @@ class TestGetPipHash:
         assert hash1 != hash2
 
     def test_pip_hash_with_comments_and_empty_lines(self, test_directory):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
         _, requirements_file, _, _ = test_directory
         req_path = str(requirements_file)
 
@@ -594,8 +589,6 @@ class TestGetPipHash:
         assert hash1 == hash2
 
     def test_pip_hash_without_r(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
         pip_dict = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
         hash1 = _get_pip_hash(pip_dict)
 
@@ -605,8 +598,6 @@ class TestGetPipHash:
         assert hash1 == hash2
 
     def test_pip_hash_different_packages(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
         pip_dict = {"packages": ["numpy==1.21.0"]}
         hash1 = _get_pip_hash(pip_dict)
 
@@ -616,8 +607,6 @@ class TestGetPipHash:
         assert hash1 != hash2
 
     def test_pip_hash_with_pip_install_options(self, test_directory):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
         _, requirements_file, _, _ = test_directory
         req_path = str(requirements_file)
 
@@ -636,11 +625,6 @@ class TestGetPipHash:
         assert hash1 != hash2
 
     def test_pip_hash_with_circular_reference(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create file A
             file_a = os.path.join(tmpdir, "a.txt")
@@ -658,11 +642,6 @@ class TestGetPipHash:
             assert len(hash_val) == 40
 
     def test_pip_hash_with_self_reference(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create self-referencing file
             self_file = os.path.join(tmpdir, "self.txt")
@@ -675,11 +654,6 @@ class TestGetPipHash:
             assert len(hash_val) == 40
 
     def test_pip_hash_with_nested_relative_paths(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create directory structure
             reqs_dir = os.path.join(tmpdir, "reqs")
@@ -715,11 +689,6 @@ class TestGetPipHash:
             assert len(hash1) == 40
 
     def test_pip_hash_with_nested_circular_relative_paths(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create directory structure
             reqs_dir = os.path.join(tmpdir, "reqs")
@@ -741,11 +710,6 @@ class TestGetPipHash:
             assert len(hash_val) == 40
 
     def test_pip_hash_with_long_form_requirement(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("numpy==1.21.0\n")
             temp_file = f.name
@@ -760,11 +724,6 @@ class TestGetPipHash:
             os.unlink(temp_file)
 
     def test_pip_hash_with_long_form_requirement_equals(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("numpy==1.21.0\n")
             temp_file = f.name
@@ -779,11 +738,6 @@ class TestGetPipHash:
             os.unlink(temp_file)
 
     def test_pip_hash_with_invalid_file(self):
-        from ray._private.runtime_env.pip import _get_pip_hash
-
-        import tempfile
-        import os
-
         with tempfile.TemporaryDirectory() as tmpdir:
             # Test with non-existent file
             non_existent_file = os.path.join(tmpdir, "non_existent.txt")
