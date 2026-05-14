@@ -1,0 +1,88 @@
+# Fires the Cursor "template-updater" fan-out webhook for every template in
+# anyscale/templates/BUILD.yaml whenever a Ray .0 release is published, so the
+# agent can open per-template `[ray-update-<target>]` PRs that bump each
+# template's Ray image pin.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CURSOR_TEMPLATE_UPDATER_WEBHOOK     Cursor Cloud webhook URL
+#   CURSOR_TEMPLATE_UPDATER_AUTH_TOKEN  Bearer token for the webhook
+#
+# Patch-zero filter: only releases whose tag parses to MAJOR.MINOR.0 trigger
+# the fan-out (e.g. ray-2.55.0 fires, ray-2.55.1 does not). Patch bumps rarely
+# justify refreshing every template image and the agent cycles get noisy.
+#
+# Prereleases are filtered at the job level so the run shows as skipped in the
+# Actions UI rather than burning a runner. workflow_dispatch always proceeds
+# (useful for smoke runs once secrets are provisioned).
+
+name: Anyscale Template Fan-out
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target_ray:
+        description: "Bare Ray version, e.g. 2.55.0 (manual smoke runs only)."
+        required: false
+        type: string
+
+# Minimum required: this workflow only reads from this repo (vendored scripts)
+# and reads cross-repo public PR metadata via gh pr list. It never writes to
+# the current repo. GITHUB_TOKEN can stay locked down to contents: read.
+permissions:
+  contents: read
+
+jobs:
+  fanout:
+    # workflow_dispatch always runs; release events skip when prerelease=true.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (vendored fan-out scripts)
+        uses: actions/checkout@v4
+
+      - name: Derive target Ray version & apply patch-zero filter
+        id: derive
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            target="${{ inputs.target_ray }}"
+            if [[ -z "$target" ]]; then
+              echo "::error::workflow_dispatch requires the target_ray input"
+              exit 1
+            fi
+          else
+            tag="${{ github.event.release.tag_name }}"
+            target="${tag#ray-}"
+          fi
+          echo "target=$target"
+
+          if [[ ! "$target" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::warning::target '$target' is not MAJOR.MINOR.PATCH — skipping fan-out"
+            echo "should_fanout=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          patch="${BASH_REMATCH[3]}"
+          if [[ "$patch" != "0" ]]; then
+            echo "::notice::PATCH=$patch in target '$target' — patch-zero filter, skipping fan-out"
+            echo "should_fanout=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "target_ray=$target" >>"$GITHUB_OUTPUT"
+          echo "should_fanout=true" >>"$GITHUB_OUTPUT"
+
+      - name: Fan out to template-updater webhook
+        if: steps.derive.outputs.should_fanout == 'true'
+        env:
+          CURSOR_TEMPLATE_UPDATER_WEBHOOK: ${{ secrets.CURSOR_TEMPLATE_UPDATER_WEBHOOK }}
+          CURSOR_TEMPLATE_UPDATER_AUTH_TOKEN: ${{ secrets.CURSOR_TEMPLATE_UPDATER_AUTH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_RAY: ${{ steps.derive.outputs.target_ray }}
+        run: |
+          chmod +x .github/workflows/scripts/list-templates.sh
+          chmod +x .github/workflows/scripts/fanout-template-updater.sh
+          bash .github/workflows/scripts/fanout-template-updater.sh
