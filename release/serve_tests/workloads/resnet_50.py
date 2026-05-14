@@ -9,8 +9,8 @@ from PIL import Image
 import starlette.requests
 import torch
 import torchvision.models as models
-from torchvision.models import ResNet50_Weights
-from torchvision import transforms
+import torchvision.transforms as transforms
+import numpy as np
 
 from ray import serve
 
@@ -89,13 +89,28 @@ def _fetch_image_ssrf_safe(uri: str):
         return None
 
     # --- Connect directly to the validated IP (no second DNS lookup) ---
+    # Reconstruct path including semicolon-delimited path parameters (parsed.params)
+    # so they are not silently dropped (urllib.parse.urlparse splits them out).
     path = parsed.path or "/"
+    if parsed.params:
+        path += ";" + parsed.params
     if parsed.query:
         path += "?" + parsed.query
+
     # Preserve the original Host header for correct virtual-host routing.
-    # Per RFC 7230, include the port when it is non-default.
+    # Per RFC 7230, include the port when it is non-default, and wrap IPv6
+    # addresses in square brackets (parsed.hostname strips them).
     default_port = 443 if parsed.scheme == "https" else 80
-    host_header = f"{hostname}:{port}" if port != default_port else hostname
+    try:
+        # Detect IPv6 by attempting to parse as an IP address.
+        addr_obj = ipaddress.ip_address(hostname)
+        if addr_obj.version == 6:
+            bare = f"[{hostname}]"
+        else:
+            bare = hostname
+    except ValueError:
+        bare = hostname
+    host_header = f"{bare}:{port}" if port != default_port else bare
     headers = {"Host": host_header}
 
     timeout = urllib3.Timeout(connect=5, read=5)
@@ -112,8 +127,11 @@ def _fetch_image_ssrf_safe(uri: str):
         else:
             pool = urllib3.HTTPConnectionPool(safe_ip, port=port, timeout=timeout)
 
-        response = pool.request("GET", path, headers=headers, redirect=False)
-        return response.data
+        # Use the pool as a context manager to ensure the underlying socket
+        # resources are released promptly rather than relying on GC.
+        with pool:
+            response = pool.request("GET", path, headers=headers, redirect=False)
+            return response.data
     except urllib3.exceptions.HTTPError:
         return None
 
@@ -121,13 +139,11 @@ def _fetch_image_ssrf_safe(uri: str):
 @serve.deployment
 class Model:
     def __init__(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.resnet50 = (
-            models.resnet50(weights=ResNet50_Weights.DEFAULT).eval().to(self.device)
-        )
-        self.preprocess = transforms.Compose(
+        self.model = models.resnet50(pretrained=True)
+        self.model.eval()
+        self.preprocessor = transforms.Compose(
             [
-                transforms.Resize(256),
+                transforms.Resize(224),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 transforms.Normalize(
@@ -135,10 +151,6 @@ class Model:
                 ),
             ]
         )
-        with open("imagenet_classes.txt", "r") as f:
-            self.categories = [s.strip() for s in f.readlines()]
-
-        self.model_thread_pool = ThreadPoolExecutor(max_workers=5)
 
     async def __call__(self, request: starlette.requests.Request) -> str:
         uri = (await request.json())["uri"]
@@ -148,27 +160,14 @@ class Model:
             return
 
         try:
-            image = Image.open(BytesIO(image_bytes)).convert("RGB")
-        except PIL.UnidentifiedImageError:
+            image = self.preprocessor(Image.open(BytesIO(image_bytes)).convert("RGB"))
+        except Exception:
             return
 
-        images = [image]  # Batch size is 1
+        with torch.no_grad():
+            output = self.model(torch.stack([image]))
 
-        def run_model():
-            input_tensor = torch.cat(
-                [self.preprocess(img).unsqueeze(0) for img in images]
-            ).to(self.device)
-            with torch.no_grad():
-                output = self.resnet50(input_tensor)
-                sm_output = torch.nn.functional.softmax(output[0], dim=0)
-            return torch.argmax(sm_output)
-
-        try:
-            future = self.model_thread_pool.submit(run_model)
-            ind = future.result(timeout=5)
-            return self.categories[ind]
-        except TimeoutError:
-            return
+        return str(torch.argmax(output, dim=1).tolist())
 
 
 app = Model.bind()
