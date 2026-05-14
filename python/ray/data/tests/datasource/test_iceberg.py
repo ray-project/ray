@@ -2027,6 +2027,151 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.file_actions) > 0, "Expected file actions in result"
 
 
+# ---------------------------------------------------------------------------
+# Cross-format retry precedence chain (per-call > iceberg_config > shared).
+# ---------------------------------------------------------------------------
+
+
+def test_iceberg_resolved_retry_config_per_call_wins():
+    """Per-call kwarg must win over iceberg_config and table_write_config."""
+    from ray.data._internal.datasource.iceberg_adapter import IcebergAdapter
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    ice_orig = ctx.iceberg_config.catalog_max_attempts
+    shared_orig = ctx.table_write_config.max_attempts
+    try:
+        ctx.iceberg_config.catalog_max_attempts = 88
+        ctx.table_write_config.max_attempts = 77
+        adapter = IcebergAdapter(
+            table_identifier="db.t",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            commit_retry_max_attempts=3,
+        )
+        max_attempts, _, _ = adapter._resolved_retry_config()
+        assert max_attempts == 3, "per-call kwarg must win"
+    finally:
+        ctx.iceberg_config.catalog_max_attempts = ice_orig
+        ctx.table_write_config.max_attempts = shared_orig
+
+
+def test_iceberg_resolved_retry_config_falls_through_to_shared():
+    """When IcebergConfig.catalog_max_attempts is None (default), the chain
+    falls through to TableWriteConfig.max_attempts."""
+    from ray.data._internal.datasource.iceberg_adapter import IcebergAdapter
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    ice_orig = ctx.iceberg_config.catalog_max_attempts
+    shared_orig = ctx.table_write_config.max_attempts
+    try:
+        ctx.iceberg_config.catalog_max_attempts = None
+        ctx.table_write_config.max_attempts = 42
+        adapter = IcebergAdapter(
+            table_identifier="db.t", catalog_kwargs=_CATALOG_KWARGS.copy()
+        )
+        max_attempts, _, _ = adapter._resolved_retry_config()
+        assert max_attempts == 42, "must fall through to shared TableWriteConfig"
+    finally:
+        ctx.iceberg_config.catalog_max_attempts = ice_orig
+        ctx.table_write_config.max_attempts = shared_orig
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_iceberg_per_call_retry_override_end_to_end(pyiceberg_table):
+    """End-to-end: passing ``commit_retry_max_attempts=`` to
+    ``write_iceberg`` must cap the driver-side commit retry count at the
+    user-specified value (not the IcebergConfig/TableWriteConfig defaults)."""
+    from unittest.mock import patch
+
+    # Force the matcher set to contain our synthetic error substring so the
+    # retry layer actually retries. Configure backoff to 0 to keep the test fast.
+    attempts = {"n": 0}
+
+    def flaky_commit(self, *args, **kwargs):
+        attempts["n"] += 1
+        raise IOError("Connection reset")
+
+    data = pa.Table.from_pydict(
+        {"col_a": [300], "col_b": ["z"], "col_c": [7]}, schema=_SCHEMA
+    )
+
+    with patch("pyiceberg.table.Transaction.commit_transaction", flaky_commit):
+        with pytest.raises(Exception):
+            ray.data.from_arrow(data).write_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                commit_retry_max_attempts=2,
+                commit_retry_max_backoff_s=0,
+                commit_retried_errors=["Connection reset"],
+            )
+
+    assert (
+        attempts["n"] == 2
+    ), f"Expected exactly 2 commit attempts (per-call override), got {attempts['n']}"
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_iceberg_shared_config_default_end_to_end(pyiceberg_table):
+    """End-to-end: with no per-call override and IcebergConfig fields unset,
+    the retry policy falls through to ``DataContext.table_write_config``."""
+    from unittest.mock import patch
+
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    ice_orig_attempts = ctx.iceberg_config.catalog_max_attempts
+    ice_orig_backoff = ctx.iceberg_config.catalog_retry_max_backoff_s
+    ice_orig_errors = ctx.iceberg_config.catalog_retried_errors
+    shared_orig_attempts = ctx.table_write_config.max_attempts
+    shared_orig_backoff = ctx.table_write_config.max_backoff_s
+    shared_orig_errors = ctx.table_write_config.retried_errors
+
+    attempts = {"n": 0}
+
+    def flaky_commit(self, *args, **kwargs):
+        attempts["n"] += 1
+        raise IOError("Connection reset")
+
+    try:
+        # Ensure iceberg_config has no overrides so the chain falls through.
+        ctx.iceberg_config.catalog_max_attempts = None
+        ctx.iceberg_config.catalog_retry_max_backoff_s = None
+        ctx.iceberg_config.catalog_retried_errors = None
+        # Set the shared knob to 2 attempts.
+        ctx.table_write_config.max_attempts = 2
+        ctx.table_write_config.max_backoff_s = 0
+        ctx.table_write_config.retried_errors = ["Connection reset"]
+
+        data = pa.Table.from_pydict(
+            {"col_a": [301], "col_b": ["y"], "col_c": [7]}, schema=_SCHEMA
+        )
+        with patch("pyiceberg.table.Transaction.commit_transaction", flaky_commit):
+            with pytest.raises(Exception):
+                ray.data.from_arrow(data).write_iceberg(
+                    table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                    catalog_kwargs=_CATALOG_KWARGS.copy(),
+                )
+
+        assert attempts["n"] == 2, (
+            "Expected shared table_write_config.max_attempts=2 to take effect "
+            f"when iceberg_config retry fields are unset, got {attempts['n']}"
+        )
+    finally:
+        ctx.iceberg_config.catalog_max_attempts = ice_orig_attempts
+        ctx.iceberg_config.catalog_retry_max_backoff_s = ice_orig_backoff
+        ctx.iceberg_config.catalog_retried_errors = ice_orig_errors
+        ctx.table_write_config.max_attempts = shared_orig_attempts
+        ctx.table_write_config.max_backoff_s = shared_orig_backoff
+        ctx.table_write_config.retried_errors = shared_orig_errors
+
+
 if __name__ == "__main__":
     import sys
 

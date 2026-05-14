@@ -149,6 +149,7 @@ def create_table_with_files(
         description=inputs.write_kwargs.get("description"),
         configuration=inputs.write_kwargs.get("configuration"),
         storage_options=inputs.storage_options,
+        commit_properties=inputs.write_kwargs.get("commit_properties"),
     )
 
 
@@ -203,6 +204,7 @@ def commit_to_existing_table(
         mode="append",
         schema=table.schema(),
         partition_by=inputs.partition_cols or None,
+        commit_properties=inputs.write_kwargs.get("commit_properties"),
     )
 
 

@@ -102,6 +102,51 @@ FileAction = TypeVar("FileAction")
 DeletePredicate = TypeVar("DeletePredicate")
 
 
+# ---------------------------------------------------------------------------
+# Shared per-call retry-override extraction.
+# ---------------------------------------------------------------------------
+# The same three keys are honoured uniformly across every table adapter:
+#   - commit_retry_max_attempts
+#   - commit_retry_max_backoff_s
+#   - commit_retried_errors
+# Adapters call ``_extract_retry_overrides`` from their ``__init__`` to pop
+# the keys out of the user-supplied ``**write_kwargs`` (so they don't leak
+# into the underlying format library and trigger an unknown-kwarg error) and
+# stash the three values for later consumption by their ``_with_retry``.
+
+RETRY_OVERRIDE_KEYS: Tuple[str, str, str] = (
+    "commit_retry_max_attempts",
+    "commit_retry_max_backoff_s",
+    "commit_retried_errors",
+)
+
+
+def _extract_retry_overrides(
+    write_kwargs: Dict[str, Any],
+) -> Tuple[Optional[int], Optional[int], Optional[List[str]]]:
+    """Pop the standard per-call retry-override keys from ``write_kwargs``.
+
+    Returns ``(max_attempts, max_backoff_s, retried_errors)``. Any key not
+    present in ``write_kwargs`` becomes ``None`` in the returned tuple. The
+    input dict is **mutated** — recognised keys are removed so they don't
+    leak into format-library kwargs.
+
+    Recognised keys (see ``RETRY_OVERRIDE_KEYS``):
+        - ``commit_retry_max_attempts``
+        - ``commit_retry_max_backoff_s``
+        - ``commit_retried_errors``
+
+    Each is surfaceable globally via ``DataContext.table_write_config`` and
+    per-format via ``DataContext.{delta,iceberg}_config``; this helper just
+    drains the per-call override layer.
+    """
+    return (
+        write_kwargs.pop("commit_retry_max_attempts", None),
+        write_kwargs.pop("commit_retry_max_backoff_s", None),
+        write_kwargs.pop("commit_retried_errors", None),
+    )
+
+
 class TableAdapter(Generic[FileAction, DeletePredicate], ABC):
     """Plug-in for one table format. APPEND + OVERWRITE baseline.
 

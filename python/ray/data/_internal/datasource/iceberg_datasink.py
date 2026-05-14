@@ -48,8 +48,14 @@ class IcebergDatasink(TableDatasink["DataFile", Any]):
         overwrite_filter: Optional["Expr"] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
+        **write_kwargs: Any,
     ):
-        """See ``Dataset.write_iceberg`` for argument semantics."""
+        """See ``Dataset.write_iceberg`` for argument semantics.
+
+        ``**write_kwargs`` is forwarded to ``IcebergAdapter`` so per-call
+        retry overrides (``commit_retry_max_attempts`` etc., recognised by
+        the shared :func:`_extract_retry_overrides` helper) can take effect.
+        """
         adapter = IcebergAdapter(
             table_identifier=table_identifier,
             catalog_kwargs=catalog_kwargs,
@@ -57,6 +63,7 @@ class IcebergDatasink(TableDatasink["DataFile", Any]):
             overwrite_filter=overwrite_filter,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
+            **write_kwargs,
         )
 
         join_cols: List[str] = []

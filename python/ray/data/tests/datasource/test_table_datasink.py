@@ -622,6 +622,46 @@ def test_gather_receives_one_entry_per_task_even_when_metadata_empty():
     assert len(gather.kwargs["task_metadata"]) == 2
 
 
+# ---------------------------------------------------------------------------
+# Cross-format retry-override helper.
+# ---------------------------------------------------------------------------
+
+
+def test_extract_retry_overrides_pops_recognised_keys():
+    """The shared helper pops the three recognised keys from write_kwargs
+    and returns them as a tuple; non-recognised kwargs stay put."""
+    from ray.data._internal.datasource.table import _extract_retry_overrides
+
+    write_kwargs: Dict[str, Any] = {
+        "commit_retry_max_attempts": 7,
+        "commit_retry_max_backoff_s": 3,
+        "commit_retried_errors": ["Connection reset"],
+        "some_other_kwarg": "value",
+    }
+    max_attempts, max_backoff_s, retried = _extract_retry_overrides(write_kwargs)
+
+    assert max_attempts == 7
+    assert max_backoff_s == 3
+    assert retried == ["Connection reset"]
+    # Recognised keys are removed.
+    assert "commit_retry_max_attempts" not in write_kwargs
+    assert "commit_retry_max_backoff_s" not in write_kwargs
+    assert "commit_retried_errors" not in write_kwargs
+    # Other kwargs survive untouched.
+    assert write_kwargs == {"some_other_kwarg": "value"}
+
+
+def test_extract_retry_overrides_returns_none_when_missing():
+    """Missing keys yield ``None`` and the dict is unchanged."""
+    from ray.data._internal.datasource.table import _extract_retry_overrides
+
+    write_kwargs: Dict[str, Any] = {"unrelated": 1}
+    result = _extract_retry_overrides(write_kwargs)
+
+    assert result == (None, None, None)
+    assert write_kwargs == {"unrelated": 1}
+
+
 # ----------------------------------------------------------------------
 # Orphan-cleanup robustness — regressions for PR #64300 bot review.
 # ----------------------------------------------------------------------

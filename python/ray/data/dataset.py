@@ -4571,6 +4571,7 @@ class Dataset:
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        **write_kwargs: Any,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
@@ -4653,6 +4654,16 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            **write_kwargs: Additional keyword arguments forwarded to the
+                Iceberg adapter. Recognised cross-format retry overrides:
+
+                * ``commit_retry_max_attempts`` -- max retries for the commit step.
+                * ``commit_retry_max_backoff_s`` -- max exponential backoff (seconds).
+                * ``commit_retried_errors`` -- list of error-message substrings.
+
+                These take precedence over
+                ``DataContext.iceberg_config.catalog_*`` and the shared
+                ``DataContext.table_write_config`` defaults.
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
@@ -4667,6 +4678,7 @@ class Dataset:
             overwrite_filter=overwrite_filter,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
+            **write_kwargs,
         )
 
         self.write_datasink(
@@ -4732,7 +4744,16 @@ class Dataset:
             **write_kwargs: Additional Delta writer options
                 (``compression``, ``write_statistics``, ``name``, ``description``,
                 ``configuration``, ``storage_options``, ``target_file_size_bytes``,
-                ``partition_overwrite_mode``).
+                ``partition_overwrite_mode``). Also accepts the cross-format
+                retry overrides:
+
+                * ``commit_retry_max_attempts`` -- max retries for the commit step.
+                * ``commit_retry_max_backoff_s`` -- max exponential backoff (seconds).
+                * ``commit_retried_errors`` -- list of error-message substrings.
+
+                These take precedence over
+                ``DataContext.delta_config.commit_*`` and the shared
+                ``DataContext.table_write_config`` defaults.
 
         Raises:
             ImportError: If ``deltalake`` is not installed.

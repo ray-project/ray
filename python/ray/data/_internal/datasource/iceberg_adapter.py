@@ -34,6 +34,7 @@ from ray.data._internal.datasource.table import (
     SupportsUpserts,
     TableAdapter,
     UpsertSemantics,
+    _extract_retry_overrides,
 )
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import MiB
@@ -236,6 +237,7 @@ class IcebergAdapter(
         overwrite_filter: Optional[Any] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
+        **write_kwargs: Any,
     ):
         self.table_identifier = table_identifier
         self._catalog_kwargs = dict(catalog_kwargs or {})
@@ -243,6 +245,18 @@ class IcebergAdapter(
         self._overwrite_filter = overwrite_filter
         self._upsert_kwargs = dict(upsert_kwargs or {})
         self._overwrite_kwargs = dict(overwrite_kwargs or {})
+
+        # Per-call retry overrides via the shared TableAdapter helper. The
+        # three keys (``commit_retry_max_attempts`` etc.) are popped out of
+        # write_kwargs so they don't reach PyIceberg. Resolution chain
+        # (see ``_resolved_retry_config``):
+        #   per-call > IcebergConfig (if explicitly set) > TableWriteConfig.
+        self._write_kwargs = dict(write_kwargs)
+        (
+            self._commit_retry_max_attempts,
+            self._commit_retry_max_backoff_s,
+            self._commit_retried_errors,
+        ) = _extract_retry_overrides(self._write_kwargs)
 
         # Drop invalid params from overwrite_kwargs to match prior behaviour.
         for invalid_param, reason in [
@@ -322,14 +336,49 @@ class IcebergAdapter(
                 f"SaveMode.OVERWRITE, but mode is {mode}"
             )
 
+    def _resolved_retry_config(self) -> Tuple[int, int, List[str]]:
+        """Resolve (max_attempts, max_backoff_s, retried_errors).
+
+        Three-level precedence chain:
+          1. per-call kwargs (extracted from ``**write_kwargs`` at __init__)
+          2. ``DataContext.iceberg_config.catalog_*`` (if explicitly set)
+          3. ``DataContext.table_write_config`` (the shared cross-format default)
+        """
+        ctx = self._data_context
+        iceberg_cfg = ctx.iceberg_config
+        shared = ctx.table_write_config
+
+        max_attempts = (
+            self._commit_retry_max_attempts
+            if self._commit_retry_max_attempts is not None
+            else iceberg_cfg.catalog_max_attempts
+            if iceberg_cfg.catalog_max_attempts is not None
+            else shared.max_attempts
+        )
+        max_backoff_s = (
+            self._commit_retry_max_backoff_s
+            if self._commit_retry_max_backoff_s is not None
+            else iceberg_cfg.catalog_retry_max_backoff_s
+            if iceberg_cfg.catalog_retry_max_backoff_s is not None
+            else shared.max_backoff_s
+        )
+        retried_errors = (
+            self._commit_retried_errors
+            if self._commit_retried_errors is not None
+            else iceberg_cfg.catalog_retried_errors
+            if iceberg_cfg.catalog_retried_errors is not None
+            else shared.retried_errors
+        )
+        return max_attempts, max_backoff_s, list(retried_errors)
+
     def _with_retry(self, func: Callable, description: str) -> Any:
-        cfg = self._data_context.iceberg_config
+        max_attempts, max_backoff_s, retried_errors = self._resolved_retry_config()
         return call_with_retry(
             func,
             description=description,
-            match=cfg.catalog_retried_errors,
-            max_attempts=cfg.catalog_max_attempts,
-            max_backoff_s=cfg.catalog_retry_max_backoff_s,
+            match=retried_errors,
+            max_attempts=max_attempts,
+            max_backoff_s=max_backoff_s,
         )
 
     def _get_catalog(self) -> "Catalog":
