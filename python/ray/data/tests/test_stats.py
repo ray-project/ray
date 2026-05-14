@@ -198,7 +198,7 @@ def gen_expected_metrics(
             "'num_output_blocks_per_task_s': N",
             "'average_total_task_completion_time_s': N",
             "'average_task_scheduling_time_s': N",
-            "'average_task_output_backpressure_time_s': Z",
+            f"'average_task_output_backpressure_time_s': {'N' if task_output_backpressure else 'Z'}",
             "'average_task_completion_time_excl_backpressure_s': N",
             "'average_task_block_gen_and_ser_time_s': N",
             "'average_bytes_per_output': N",
@@ -258,7 +258,7 @@ def gen_expected_metrics(
             "'task_completion_time_s': N",
             "'task_worker_completion_time_s': N",
             "'task_scheduling_time_s': N",
-            "'task_output_backpressure_time_s': Z",
+            f"'task_output_backpressure_time_s': {'N' if task_output_backpressure else 'Z'}",
             "'task_completion_time': (samples: N, avg: N)",
             "'block_completion_time': (samples: N, avg: N)",
             "'task_block_gen_and_ser_time_s': N",
@@ -380,8 +380,11 @@ def gen_runtime_metrics_str(op_names: List[str], verbose: bool) -> str:
     if not verbose:
         return ""
     out = "\nRuntime Metrics:\n"
-    for op in op_names + ["Scheduling", "Total"]:
+    for op in op_names:
         out += f"* {op}: T (N%)\n"
+    out += "* Scheduling (avg per iteration): T (N%)\n"
+    out += "*   scheduling iteration: min T, pN T, pN T, max T\n"
+    out += "* Total: T (N%)\n"
     return out
 
 
@@ -546,9 +549,14 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE  # .replace(
-    #     "'obj_store_mem_used': A", "'obj_store_mem_used': Z"
-    # )
+    extra_metrics_1 = gen_expected_metrics(
+        is_map=True,
+        task_backpressure=True,
+        task_output_backpressure=True,
+        extra_metrics=[
+            "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+        ],
+    )
     extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
