@@ -264,6 +264,92 @@ def test_task_pool_resource_reporting_with_dynamic_remote_args(
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
 
 
+@pytest.mark.parametrize(
+    "ray_remote_args,ray_remote_args_fn,expected",
+    [
+        # ray_remote_args_fn adds a memory override that static args don't specify.
+        (
+            {"num_cpus": 1},
+            lambda: {"memory": 4_000_000_000},
+            ExecutionResources(cpu=1, gpu=0, memory=4_000_000_000),
+        ),
+        # ray_remote_args_fn overrides num_cpus.
+        (
+            {"num_cpus": 1},
+            lambda: {"num_cpus": 4},
+            ExecutionResources(cpu=4, gpu=0, memory=0),
+        ),
+        # ray_remote_args_fn overrides num_gpus.
+        (
+            {"num_cpus": 1},
+            lambda: {"num_gpus": 2},
+            ExecutionResources(cpu=1, gpu=2, memory=0),
+        ),
+        # No ray_remote_args_fn: ensure static behavior is unchanged.
+        (
+            {"num_cpus": 2, "memory": 500},
+            None,
+            ExecutionResources(cpu=2, gpu=0, memory=500),
+        ),
+    ],
+)
+def test_task_pool_per_task_resource_allocation_reflects_dynamic_args(
+    ray_start_10_cpus_shared, ray_remote_args, ray_remote_args_fn, expected
+):
+    """Test that resource estimates reflect `ray_remote_args_fn` overrides
+    before any task is submitted."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(10)])
+    )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        data_context=DataContext.get_current(),
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args=ray_remote_args,
+        ray_remote_args_fn=ray_remote_args_fn,
+    )
+
+    # Estimate must be correct before any task is submitted
+    assert op.per_task_resource_allocation() == expected
+    assert op.incremental_resource_usage() == expected
+    assert op.min_scheduling_resources() == expected
+
+
+def test_task_pool_per_task_resource_allocation_refreshes_after_schedule(
+    ray_start_10_cpus_shared,
+):
+    """Test that `per_task_resource_allocation` reflects the latest
+    `ray_remote_args_fn` result after each task is scheduled."""
+    cpus_per_call = iter([2, 4])
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(10)])
+    )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        data_context=DataContext.get_current(),
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_cpus": 1},
+        ray_remote_args_fn=lambda: {"num_cpus": next(cpus_per_call)},
+    )
+
+    # Priming in __init__ consumes the first fn() call -> 2 CPUs.
+    assert op.per_task_resource_allocation() == ExecutionResources(cpu=2, gpu=0, memory=0)
+
+    # add_input triggers _try_schedule_task, which consumes the second fn() call
+    # and refreshes _dynamic_ray_remote_args -> 4 CPUs.
+    op.start(ExecutionOptions())
+    op.add_input(input_op.get_next(), 0)
+    assert op.per_task_resource_allocation() == ExecutionResources(cpu=4, gpu=0, memory=0)
+    assert op.incremental_resource_usage() == ExecutionResources(cpu=4, gpu=0, memory=0)
+
+    run_op_tasks_sync(op)
+
+
 def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
