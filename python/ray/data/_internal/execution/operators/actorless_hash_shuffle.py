@@ -250,11 +250,10 @@ def _shuffle_reduce(
 ) -> Generator[Union[Block, BlockMetadataWithSchema], None, None]:
     """Reduce stage: process shards for a group of partitions.
 
-    Uses a hybrid strategy:
-    - **Accumulate** (fast): when partition fits in node memory, or sort is
-      required.  One big ray.get + concat per partition.
-    - **Streaming** (memory-safe): when partition exceeds node memory.
-      Batched ray.get, accumulate shards up to ~128MB, yield incrementally.
+    Strategies:
+    - **Streaming** (default): batched ray.get, accumulate up to ~1GB,
+      yield incrementally.  1 CPU, minimal memory.
+    - **Accumulate**: full partition in memory, for sort.
 
     Args:
         group_refs: Object references to grouped shard dicts from all mappers.
@@ -272,14 +271,18 @@ def _shuffle_reduce(
     if not group_refs or not partition_ids:
         return
 
-    # Decide strategy: accumulate if partition fits in node memory (fast),
-    # streaming if it doesn't (memory-safe).
     use_accumulate = should_sort
-    if not use_accumulate and estimated_group_bytes > 0 and node_memory > 0:
-        # Accumulate needs ~2x group bytes (decompressed + output).
-        use_accumulate = estimated_group_bytes * 2 <= node_memory
 
-    if use_accumulate:
+    strategy = "accumulate" if use_accumulate else "streaming"
+
+    logger.info(
+        f"Reduce strategy: {strategy} "
+        f"(should_sort={should_sort}, estimated_group_bytes="
+        f"{estimated_group_bytes / 1e9:.1f}GB, node_memory="
+        f"{node_memory / 1e9:.1f}GB)"
+    )
+
+    if strategy == "accumulate":
         yield from _shuffle_reduce_accumulate(
             group_refs,
             partition_ids,
@@ -613,6 +616,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         # -- Timing -----------------------------------------------------------
         self._start_time: float = time.perf_counter()
         self._reduce_start_time: Optional[float] = None
+        self._num_nodes: int = 1  # set at reduce start via ray.nodes()
 
         # -- Stats ------------------------------------------------------------
         self._total_input_rows: int = 0
@@ -811,14 +815,20 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             task.get_requested_resource_bundle()
         )
 
-        # Update shuffle metrics — use metadata from the first input bundle.
-        first_meta = input_bundles[0].metadata[0] if input_bundles else None
-        if first_meta is not None:
+        # Update shuffle metrics — pass ALL input blocks so that
+        # average_num_inputs_per_task reflects pre-map-merge batching.
+        # Without this, estimate_total_num_of_blocks divides upstream block
+        # count by 1 instead of the actual merge factor, inflating the
+        # progress bar denominator by ~merge_factor×.
+        all_blocks_meta = [
+            (ref, meta)
+            for bundle in input_bundles
+            for ref, meta in zip(bundle.block_refs, bundle.metadata)
+        ]
+        if all_blocks_meta:
             self._shuffle_metrics.on_task_submitted(
                 cur_task_idx,
-                RefBundle(
-                    [(block_refs[0], first_meta)], schema=None, owns_blocks=False
-                ),
+                RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
                 task_id=task.get_task_id(),
             )
 
@@ -835,6 +845,11 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def has_next(self) -> bool:
         self._try_reduce()
+        if self._should_sort and len(self._reduce_tasks) > 0:
+            # For sort, hold all output until all reduce tasks complete.
+            # This prevents downstream ops from competing for resources
+            # during the memory-intensive accumulate reduce phase.
+            return False
         return len(self._output_queue) > 0
 
     def _get_next_inner(self) -> RefBundle:
@@ -867,16 +882,16 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _auto_derive_reduce_cpus(self) -> float:
         """Derive reduce_task_num_cpus from partition sizes and cluster shape.
 
-        Each reducer task processes ONE group of ``shard_group_size``
-        partitions packed in a single ZSTD IPC stream.  Peak heap is the
-        group's uncompressed bytes for decompressed inputs plus the
-        output blocks during build/yield (~2x).
+        For streaming reduce (hash shuffle), memory is minimal so we use
+        1 CPU to maximize concurrency and pipeline with downstream.
 
-        Per-node concurrency is controlled by mapping CPU reservation
-        proportionally to memory needs.  This ensures no idle workers
-        can co-exist on the node during the memory-intensive reduce phase.
+        For accumulating reduce (sort), peak heap is the group's
+        uncompressed bytes × 2, so we reserve CPUs proportionally.
         """
         import math
+
+        if not self._should_sort:
+            return self._DEFAULT_REDUCE_TASK_NUM_CPUS
 
         if not self._partition_bytes:
             return self._DEFAULT_REDUCE_TASK_NUM_CPUS
@@ -971,6 +986,19 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             maps_done = self._next_map_task_idx - len(self._map_tasks)
             maps_total = self._next_map_task_idx
 
+            # Cache live worker node count once at reduce start.
+            # Exclude the head node using the same pattern as datasource/util.py.
+            try:
+                self._num_nodes = sum(
+                    1
+                    for n in ray.nodes()
+                    if n.get("Alive", False)
+                    and "node:__internal_head__" not in n.get("Resources", {})
+                )
+            except Exception:
+                self._num_nodes = 1
+            self._num_nodes = max(1, self._num_nodes)
+
             # Auto-derive reduce_task_num_cpus from actual partition sizes
             # and cluster resources, unless overridden by config.
             if self._reduce_task_num_cpus_override is not None:
@@ -982,12 +1010,18 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 f"Reduce starting: map_elapsed={map_elapsed:.1f}s, "
                 f"maps_completed={maps_done}/{maps_total}, "
                 f"maps_still_running={len(self._map_tasks)}, "
-                f"reduce_task_num_cpus={self._reduce_task_num_cpus}"
+                f"reduce_task_num_cpus={self._reduce_task_num_cpus}, "
+                f"num_nodes={self._num_nodes}"
             )
 
         target_max_block_size = self._data_context.target_max_block_size
 
+        max_concurrent_reducers = self._get_reduce_concurrency_limit()
+        slots_available = max_concurrent_reducers - len(self._reduce_tasks)
+
         for group_id in list(self._pending_reduce_group_ids):
+            if slots_available <= 0:
+                break
             group_refs = self._group_buffers.get(group_id, [])
 
             # Compute which partition IDs belong to this group.
@@ -1087,6 +1121,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
             self._reduce_tasks[group_id] = data_task
             self._pending_reduce_group_ids.discard(group_id)
+            slots_available -= 1
 
             # Release driver-side refs to intermediate group objects now that
             # the reduce task has been submitted.
@@ -1153,8 +1188,37 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     # -- Resource accounting --------------------------------------------------
 
+    def _get_reduce_concurrency_limit(self) -> int:
+        """Max concurrent reduce tasks for this scheduling iteration.
+
+        Limits to 1 reducer per live node.  This prevents all reducers from
+        launching in a single burst (which floods the object store before the
+        downstream write stage can drain), while still keeping all nodes busy.
+        As each reducer finishes, _try_reduce() will schedule the next wave.
+
+        Users can override via config:
+            actorless_shuffle_max_concurrent_reducers = N
+        """
+        override = self._data_context.get_config(
+            "actorless_shuffle_max_concurrent_reducers", None
+        )
+        if override is not None:
+            return int(override)
+
+        return self._num_nodes
+
+    def num_output_rows_total(self) -> Optional[int]:
+        # Shuffle is a repartition — output rows == input rows.
+        # _total_input_rows accumulates as map tasks complete, giving an
+        # accurate running estimate (exact once all map tasks are done).
+        return self._total_input_rows if self._total_input_rows > 0 else None
+
     def current_logical_usage(self) -> ExecutionResources:
-        return self._map_resource_usage
+        # Include active reduce tasks so the resource manager sees their CPU
+        # usage.  Without this, reduce CPUs are invisible to the budget system,
+        # causing it to over-estimate available CPUs for downstream operators.
+        reduce_cpu = len(self._reduce_tasks) * self._reduce_task_num_cpus
+        return self._map_resource_usage.add(ExecutionResources(cpu=reduce_cpu))
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(cpu=self._DEFAULT_MAP_TASK_NUM_CPUS)
