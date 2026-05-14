@@ -37,12 +37,8 @@ def test_scaling_config_validation():
 
 
 def test_label_selector_per_worker():
-    # None -> list of empty dicts of length num_workers.
-    assert ScalingConfig(num_workers=3)._label_selector_per_worker(3) == [
-        {},
-        {},
-        {},
-    ]
+    # None -> None (no constraint; downstream consumers handle this directly).
+    assert ScalingConfig(num_workers=3)._label_selector_per_worker(3) is None
 
     # Dict -> replicated per worker, decoupled from the original.
     cfg = ScalingConfig(num_workers=2, label_selector={"zone": "a"})

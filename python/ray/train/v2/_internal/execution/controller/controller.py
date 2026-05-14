@@ -424,7 +424,7 @@ class TrainController:
                 scaling_config=scaling_config, num_workers=num_workers
             )
             if selector:
-                if any(label_selector):
+                if label_selector:
                     logger.warning(
                         f"Overriding `ScalingConfig.label_selector` {label_selector} "
                         f"with label_selector returned by user-specified callback {selector}"

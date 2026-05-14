@@ -741,8 +741,9 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
 @pytest.mark.parametrize(
     "label_selector, expected_label_selectors",
     [
-        # No label_selector — should send a list of empty dicts.
-        (None, [{}, {}]),
+        # No label_selector — passed through as None; the coordinator
+        # auto-fills to a list of empty dicts internally.
+        (None, None),
         # Single dict — replicated per worker.
         (
             {"instance-type": "m6i.xlarge"},

@@ -165,7 +165,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         num_workers = self._get_num_workers_for_resource_request()
         label_selectors = self.scaling_config._label_selector_per_worker(num_workers)
-        if any(label_selectors):
+        if label_selectors:
             logger.info(
                 f"Requesting resources: {resources_per_worker} * {num_workers} "
                 f"with label_selectors={label_selectors}"
