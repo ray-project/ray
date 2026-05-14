@@ -2023,8 +2023,8 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
         call_count["count"] == 3
     ), f"Expected 3 calls (2 retries + 1 success), got {call_count['count']}"
 
-    # Verify write result has data files
-    assert len(result.data_files) > 0, "Expected data files in result"
+    # Verify write result has file actions (DataFile metadata per table framework)
+    assert len(result.file_actions) > 0, "Expected file actions in result"
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ python/ray/data/_internal/datasource/csv_datasource.py
 python/ray/data/_internal/datasource/delta_sharing_datasource.py
 python/ray/data/_internal/datasource/hudi_datasource.py
 python/ray/data/_internal/datasource/huggingface_datasource.py
+python/ray/data/_internal/datasource/iceberg_adapter.py
 python/ray/data/_internal/datasource/iceberg_datasink.py
 python/ray/data/_internal/datasource/iceberg_datasource.py
 python/ray/data/_internal/datasource/image_datasink.py
