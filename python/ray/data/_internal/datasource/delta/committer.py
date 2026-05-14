@@ -135,9 +135,10 @@ def commit_to_existing_table(
     schema: Optional[pa.Schema],
     filesystem: pa_fs.FileSystem,
 ) -> None:
-    """Commit ``file_actions`` to an existing Delta table (APPEND only in MVP).
+    """Commit ``file_actions`` to an existing Delta table.
 
-    PR 4 adds OVERWRITE; PR 5 adds dynamic partition overwrite.
+    Supports APPEND and OVERWRITE (static -- deletes all data before
+    writing). PR 5 adds dynamic partition overwrite.
     """
     existing_schema = to_pyarrow_schema(table.schema())
     if file_actions:
@@ -152,6 +153,11 @@ def commit_to_existing_table(
         incoming = schema
     if incoming is not None and len(incoming) > 0:
         validate_schema_type_compatibility(existing_schema, incoming)
+
+    if inputs.mode == "overwrite":
+        # Static partition overwrite: delete all existing data first.
+        # Dynamic partition overwrite arrives in PR 5.
+        table.delete()
 
     table.create_write_transaction(
         actions=file_actions,

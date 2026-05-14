@@ -74,6 +74,7 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         # Driver-side state.
         self._mode: Optional[SaveMode] = None
         self._table_existed_at_start: bool = False
+        self._skip_write: bool = False
 
         # Worker-side state.
         self._worker_fs: Optional[pa_fs.FileSystem] = None
@@ -103,7 +104,12 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
     # ------------------------------------------------------------------
     @property
     def supported_modes(self) -> Set[SaveMode]:
-        return {SaveMode.APPEND}
+        return {
+            SaveMode.APPEND,
+            SaveMode.OVERWRITE,
+            SaveMode.ERROR,
+            SaveMode.IGNORE,
+        }
 
     # NOTE: this adapter intentionally does NOT implement the
     # ``SupportsUpserts`` Protocol — UPSERT is out of scope for the current
@@ -142,8 +148,16 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
 
         existing = try_get_deltatable(self.table_uri, self.storage_options)
         self._table_existed_at_start = existing is not None
-        # PRs 4 / 6 add ERROR-mode rejection, schema-evolution planning,
-        # partition-column validation.
+
+        if mode == SaveMode.ERROR and existing is not None:
+            raise ValueError(
+                f"Delta table already exists at {self.table_uri}. "
+                "Use APPEND or OVERWRITE."
+            )
+
+        self._skip_write = mode == SaveMode.IGNORE and existing is not None
+        # PR 6 adds schema-evolution planning; PR 5 adds partition-column
+        # validation against the existing table.
 
     def on_write_start(
         self, schema_from_first_bundle: Optional[pa.Schema] = None
@@ -155,6 +169,8 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
     # Worker lifecycle.
     # ------------------------------------------------------------------
     def start_task(self, ctx: TaskContext) -> None:
+        if self._skip_write:
+            return
         if self._worker_fs is None:
             self._worker_fs = worker_filesystem(self._fs_config)
         if self._local_filesystem_root:
@@ -174,7 +190,7 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
     def write_block(
         self, arrow_table: pa.Table
     ) -> Tuple[List["AddAction"], pa.Schema, Optional[pa.Table]]:
-        if self._writer is None:
+        if self._skip_write or self._writer is None:
             return ([], arrow_table.schema, None)
         actions = self._writer.add_table(arrow_table, self._task_idx)
         return (actions, arrow_table.schema, None)
@@ -197,25 +213,21 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         file_actions: List["AddAction"],
         unified_schema: Optional[pa.Schema],
     ) -> None:
-        if not file_actions:
-            # Empty write: create empty table if needed (no existing one),
-            # otherwise no-op for APPEND.
-            if not self._table_existed_at_start and self.schema is not None:
-                inputs = CommitInputs(
-                    table_uri=self.table_uri,
-                    mode=SaveMode.APPEND.value,
-                    partition_cols=self.partition_cols,
-                    storage_options=self.storage_options,
-                    write_kwargs=dict(self.write_kwargs),
-                    local_filesystem_root=self._local_filesystem_root,
-                )
-                create_table_with_files(inputs, [], self.schema, self._driver_fs())
+        # IGNORE against an existing table: framework still calls commit_append
+        # but ``_skip_write`` was set in preflight, so no-op here.
+        if self._skip_write:
             return
 
         existing = try_get_deltatable(self.table_uri, self.storage_options)
-        validate_file_actions(
-            file_actions, self._driver_fs(), self._local_filesystem_root
-        )
+        # Race: ERROR mode passed preflight because no table existed then, but a
+        # concurrent writer created one before our commit. Refuse to silently
+        # append to it (ERROR semantics: the table must not already exist).
+        if self._mode == SaveMode.ERROR and existing is not None:
+            raise ValueError(
+                f"Delta table at {self.table_uri} was created by a concurrent "
+                f"writer after this mode='error' write started; refusing to "
+                f"append. Re-run with mode='append' to add to the existing table."
+            )
         inputs = CommitInputs(
             table_uri=self.table_uri,
             mode=SaveMode.APPEND.value,
@@ -223,6 +235,16 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
             storage_options=self.storage_options,
             write_kwargs=dict(self.write_kwargs),
             local_filesystem_root=self._local_filesystem_root,
+        )
+
+        if not file_actions:
+            # Empty write: create empty table if needed.
+            if not self._table_existed_at_start and self.schema is not None:
+                create_table_with_files(inputs, [], self.schema, self._driver_fs())
+            return
+
+        validate_file_actions(
+            file_actions, self._driver_fs(), self._local_filesystem_root
         )
         if existing:
             commit_to_existing_table(
@@ -234,16 +256,16 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
             )
 
     # ------------------------------------------------------------------
-    # OVERWRITE — implemented in PR 4. PR 3 declares ``supported_modes ==
-    # {APPEND}`` so the framework never routes OVERWRITE here; the stubs
-    # exist only to satisfy the abstract base class.
+    # OVERWRITE. Static overwrite: delete all rows in the existing table,
+    # then append. Dynamic partition overwrite arrives in PR 5.
     # ------------------------------------------------------------------
     def build_overwrite_predicate(
         self, overwrite_filter: Optional[Any]
     ) -> Optional[str]:
-        raise NotImplementedError(
-            "DeltaAdapter does not support OVERWRITE in this PR; " "comes in PR 4."
-        )
+        # Static overwrite: the committer handles the delete via
+        # ``table.delete()`` (no predicate needed); dynamic partition
+        # overwrite (PR 5) will return a per-partition SQL predicate here.
+        return None
 
     def commit_overwrite(
         self,
@@ -251,9 +273,45 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         unified_schema: Optional[pa.Schema],
         delete_predicate: Optional[str],
     ) -> None:
-        raise NotImplementedError(
-            "DeltaAdapter does not support OVERWRITE in this PR; " "comes in PR 4."
+        if self._skip_write:
+            return
+
+        existing = try_get_deltatable(self.table_uri, self.storage_options)
+        inputs = CommitInputs(
+            table_uri=self.table_uri,
+            mode=SaveMode.OVERWRITE.value,
+            partition_cols=self.partition_cols,
+            storage_options=self.storage_options,
+            write_kwargs=dict(self.write_kwargs),
+            local_filesystem_root=self._local_filesystem_root,
         )
+
+        if not file_actions:
+            # OVERWRITE with no data: truncate but keep schema if table
+            # exists, else create empty table.
+            if self._table_existed_at_start and existing is not None:
+                commit_to_existing_table(
+                    inputs, existing, [], self.schema, self._driver_fs()
+                )
+                return
+            if not self._table_existed_at_start and self.schema is not None:
+                create_table_with_files(inputs, [], self.schema, self._driver_fs())
+            return
+
+        validate_file_actions(
+            file_actions, self._driver_fs(), self._local_filesystem_root
+        )
+        if existing:
+            # Either the table existed at start, or it appeared between
+            # preflight and commit; in both cases OVERWRITE delete+append
+            # is the correct outcome.
+            commit_to_existing_table(
+                inputs, existing, file_actions, self.schema, self._driver_fs()
+            )
+        else:
+            create_table_with_files(
+                inputs, file_actions, self.schema, self._driver_fs()
+            )
 
     # ------------------------------------------------------------------
     # Helpers.

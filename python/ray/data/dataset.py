@@ -4688,21 +4688,30 @@ class Dataset:
         concurrency: Optional[int] = None,
         **write_kwargs,
     ) -> None:
-        """Write the dataset to a Delta Lake table (APPEND mode only).
+        """Write the dataset to a Delta Lake table.
 
-        This MVP build supports only ``mode="append"``. Subsequent PRs add
-        OVERWRITE / ERROR / IGNORE, partition columns, schema evolution,
-        and cloud storage authentication.
+        Supports ``"append"``, ``"overwrite"``, ``"error"``, and ``"ignore"``
+        modes. Partitioning lands in PR 5, schema evolution in PR 6, cloud
+        storage authentication in PR 7. UPSERT is intentionally not part of
+        this delivery train.
 
         Examples:
 
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.write_delta("/tmp/my-delta-table")  # doctest: +SKIP
+            >>> ds.write_delta("/tmp/my-delta-table", mode="overwrite")  # doctest: +SKIP
 
         Args:
             path: Path to the Delta table.
-            mode: Write mode; only ``"append"`` is supported in this build.
+            mode: One of:
+
+                * ``"append"`` (default): add data to the table, creating it
+                  if it doesn't exist.
+                * ``"overwrite"``: replace all data in the table (creates
+                  the table if it doesn't exist).
+                * ``"error"``: raise if the table already exists.
+                * ``"ignore"``: skip the write if the table already exists.
             filesystem: Optional PyArrow filesystem.
             schema: Optional explicit schema.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
@@ -4713,7 +4722,8 @@ class Dataset:
 
         Raises:
             ImportError: If ``deltalake`` is not installed.
-            ValueError: If ``mode`` is not ``"append"``.
+            ValueError: If ``mode="error"`` and the table already exists,
+                or if ``mode`` is unrecognised.
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 

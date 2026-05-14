@@ -136,11 +136,98 @@ def test_multiple_blocks_commit_in_single_version(temp_delta_path):
     assert len(_read_all(temp_delta_path)) == 20
 
 
-def test_unsupported_mode_raises_clear_error(temp_delta_path):
-    """OVERWRITE/ERROR/IGNORE land in PR 4 -- until then they must be
-    rejected cleanly by the framework."""
+def test_upsert_mode_rejected(temp_delta_path):
+    """UPSERT is intentionally out of scope; the framework must reject it."""
     with pytest.raises(ValueError, match="does not support mode"):
-        ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="overwrite")
+        ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="upsert")
+
+
+# ----------------------------------------------------------------------
+# PR 4 -- OVERWRITE / ERROR / IGNORE.
+# ----------------------------------------------------------------------
+
+
+def test_error_mode_against_existing_table_raises(temp_delta_path):
+    _write_append([{"id": 1}], temp_delta_path)
+    with pytest.raises(ValueError, match="already exists"):
+        ray.data.from_items([{"id": 2}]).write_delta(temp_delta_path, mode="error")
+
+
+def test_error_mode_against_new_path_succeeds(temp_delta_path):
+    ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="error")
+    assert _log_exists(temp_delta_path)
+
+
+def test_ignore_mode_against_existing_table_is_noop(temp_delta_path):
+    _write_append([{"id": 1, "v": "first"}], temp_delta_path)
+    ray.data.from_items([{"id": 2, "v": "second"}]).write_delta(
+        temp_delta_path, mode="ignore"
+    )
+    # Only the original row should be present.
+    out = _read_all(temp_delta_path)
+    assert len(out) == 1
+    assert out[0]["v"] == "first"
+
+
+def test_ignore_mode_against_new_path_creates_table(temp_delta_path):
+    ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="ignore")
+    assert _log_exists(temp_delta_path)
+
+
+def test_overwrite_replaces_existing_data(temp_delta_path):
+    _write_append([{"id": i, "v": "old"} for i in range(3)], temp_delta_path)
+    ray.data.from_items([{"id": i, "v": "new"} for i in range(2)]).write_delta(
+        temp_delta_path, mode="overwrite"
+    )
+    out = _read_all(temp_delta_path)
+    assert len(out) == 2
+    assert all(r["v"] == "new" for r in out)
+
+
+def test_overwrite_creates_table_when_missing(temp_delta_path):
+    ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="overwrite")
+    assert _log_exists(temp_delta_path)
+
+
+def test_overwrite_empty_dataset_truncates_table(temp_delta_path):
+    schema = pa.schema([("id", pa.int64())])
+    _write_append([{"id": 1}, {"id": 2}], temp_delta_path)
+    ray.data.from_items([], override_num_blocks=1).write_delta(
+        temp_delta_path, mode="overwrite", schema=schema
+    )
+    assert _read_all(temp_delta_path) == []
+
+
+def test_error_mode_race_table_appears_after_preflight(temp_delta_path, monkeypatch):
+    """If a table is created concurrently between preflight (sees no
+    table) and commit (sees one), ERROR mode must NOT silently append.
+    We assert *some* exception bubbles up rather than a silent success."""
+    from ray.data._internal.datasource.delta import (
+        adapter as _delta_adapter,
+        utils as _delta_utils,
+    )
+
+    real_get = _delta_utils.try_get_deltatable
+    n = {"calls": 0}
+
+    def racy_get(table_uri, storage_options=None):
+        n["calls"] += 1
+        if n["calls"] == 1:
+            return None
+        if not os.path.isdir(os.path.join(table_uri, "_delta_log")):
+            from deltalake import write_deltalake
+
+            write_deltalake(
+                table_uri,
+                pa.table({"id": pa.array([0], type=pa.int64())}),
+            )
+        return real_get(table_uri, storage_options)
+
+    monkeypatch.setattr(_delta_utils, "try_get_deltatable", racy_get)
+    monkeypatch.setattr(_delta_adapter, "try_get_deltatable", racy_get)
+
+    with pytest.raises(Exception):
+        ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="error")
 
 
 if __name__ == "__main__":
