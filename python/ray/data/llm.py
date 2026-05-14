@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
@@ -577,9 +577,24 @@ class PrepareImageStageConfig(_PrepareImageStageConfig):
     pass
 
 
+# Union of every user-facing processor config. Each specialized public config
+# (e.g. vLLMEngineProcessorConfig) is a subclass of its own internal base and
+# therefore does not statically satisfy ``isinstance(_, ProcessorConfig)`` even
+# though it is a valid argument at runtime. Annotating the build functions with
+# this union lets type-checkers accept the specialized configs without forcing a
+# multiple-inheritance change to the public class hierarchy.
+AnyProcessorConfig = Union[
+    ProcessorConfig,
+    HttpRequestProcessorConfig,
+    vLLMEngineProcessorConfig,
+    SGLangEngineProcessorConfig,
+    ServeDeploymentProcessorConfig,
+]
+
+
 @Deprecated(new="build_processor", error=False)
 def build_llm_processor(
-    config: ProcessorConfig,
+    config: AnyProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
     preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
@@ -601,7 +616,7 @@ def build_llm_processor(
 
 @PublicAPI(stability="beta")
 def build_processor(
-    config: ProcessorConfig,
+    config: AnyProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
     preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
