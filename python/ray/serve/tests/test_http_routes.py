@@ -245,8 +245,12 @@ def test_default_error_handling(serve_instance):
 
     serve.run(h.bind())
     # Error is raised before the request reaches the deployed replica as the replica does not exist.
+    # With `retry-on conn-failure` in the HAProxy defaults block, HAProxy retries
+    # past the dead slot until all slots are exhausted and returns its built-in
+    # 503 "Service Unavailable" (which is not routed through the 502/504
+    # errorfile). Without retries, the failed connect surfaces as 502 → 500.
     r = httpx.get("http://localhost:8000/h")
-    assert r.status_code == 500
+    assert r.status_code in (500, 503)
 
 
 if __name__ == "__main__":
