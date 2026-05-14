@@ -32,6 +32,7 @@
 #include "ray/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/clock.h"
 #include "ray/util/env.h"
@@ -248,8 +249,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                ResourceSet(),
+                                nullptr,
+                                callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -303,8 +308,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                ResourceSet(),
+                                nullptr,
+                                callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -363,8 +372,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                ResourceSet(),
+                                nullptr,
+                                callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -426,8 +439,12 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                ResourceSet(),
+                                nullptr,
+                                callback);
 
   ioc.run();
 

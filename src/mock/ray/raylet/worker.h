@@ -86,6 +86,20 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(rpc::CoreWorkerClientInterface *, rpc_client, (), (override));
   MOCK_METHOD(bool, SetJobId, (const JobID &job_id), (override));
   MOCK_METHOD(const ActorID &, GetRootDetachedActorId, (), (override));
+  MOCK_METHOD(void,
+              SetStartupAllocatedInstances,
+              (const std::shared_ptr<TaskResourceInstances> &allocated_instances),
+              (override));
+  MOCK_METHOD(std::shared_ptr<TaskResourceInstances>,
+              GetStartupAllocatedInstances,
+              (),
+              (const, override));
+  MOCK_METHOD(void, ClearStartupAllocatedInstances, (), (override));
+  MOCK_METHOD(const ResourceSet &, GetResourceRequirements, (), (const, override));
+  MOCK_METHOD(void,
+              SetResourceRequirements,
+              (const ResourceSet &resource_requirements),
+              (override));
 };
 
 }  // namespace raylet

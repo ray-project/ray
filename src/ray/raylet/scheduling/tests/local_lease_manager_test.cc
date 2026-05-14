@@ -44,7 +44,10 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
+  using WorkerPoolInterface::PopWorker;
+
   void PopWorker(const LeaseSpecification &lease_spec,
+                 const std::shared_ptr<TaskResourceInstances> &allocated_instances,
                  const PopWorkerCallback &callback) override {
     num_pops++;
     const int runtime_env_hash = lease_spec.GetRuntimeEnvHash();
