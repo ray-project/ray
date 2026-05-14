@@ -1153,11 +1153,29 @@ class DatasetStats:
                 # Single operator scenario: input rows = total output from all parent nodes
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
-        streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.get()
-            if self.streaming_exec_schedule_s
-            else 0
-        )
+        # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
+        # ``runtime_metrics()`` can still divide by total_wall_time and
+        # produce a meaningful percentage. Per-iteration avg/max are
+        # exposed separately.
+        #
+        # The ``streaming_exec_schedule_s`` field is annotated as ``Timer``
+        # but in practice can be ``None`` — see
+        # ``StreamingExecutor._generate_stats`` which explicitly assigns
+        # ``None`` when ``_initial_stats`` is falsy. We also explicitly
+        # handle the zero-iteration case (e.g., non-streaming execution);
+        # ``Timer.avg()`` returns ``float("inf")`` when no samples have
+        # been recorded, which would break JSON serialization in
+        # release-test output and produce nonsense in
+        # ``runtime_metrics()``.
+        schedule_timer = self.streaming_exec_schedule_s
+        if schedule_timer is not None and schedule_timer._total_count > 0:
+            streaming_exec_schedule_s = schedule_timer.get()
+            streaming_exec_schedule_avg_s = schedule_timer.avg()
+            streaming_exec_schedule_max_s = schedule_timer.max()
+        else:
+            streaming_exec_schedule_s = 0
+            streaming_exec_schedule_avg_s = 0
+            streaming_exec_schedule_max_s = 0
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1171,6 +1189,8 @@ class DatasetStats:
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
+            streaming_exec_schedule_avg_s,
+            streaming_exec_schedule_max_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1206,6 +1226,8 @@ class DatasetStatsSummary:
     global_bytes_restored: int
     dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
+    streaming_exec_schedule_avg_s: float
+    streaming_exec_schedule_max_s: float
 
     def to_string(
         self,
