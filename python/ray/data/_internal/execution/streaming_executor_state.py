@@ -51,6 +51,9 @@ logger = logging.getLogger(__name__)
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
+# Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
+WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
+
 
 class OpBufferQueue:
     """A FIFO queue to buffer RefBundles between upstream and downstream operators.
@@ -482,7 +485,7 @@ def process_completed_tasks(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=0.1,
+            timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
         )
 
         # Organize tasks by the operator they belong to, and sort them by task index.

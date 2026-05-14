@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/asio/fake_periodical_runner.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
