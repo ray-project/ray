@@ -1493,9 +1493,16 @@ class ActorReplicaWrapper:
 
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
+        stopped = False
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-            stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
+            if self._graceful_shutdown_ref is None:
+                # graceful_stop() failed to set the shutdown ref (e.g., the
+                # actor was not found at that time). Treat as not yet stopped;
+                # the next reconcile iteration will retry.
+                stopped = False
+            else:
+                stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
             if stopped:
                 try:
                     ray.get(self._graceful_shutdown_ref)
