@@ -316,9 +316,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict will
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                prior to initializing the worker. It is also called once during
+                operator construction to prime the scheduler's resource estimate.
+                Args returned from this dict will always override the args in
+                ``ray_remote_args``. Note: this is an advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             per_block_limit: Maximum number of rows to process per block, for early termination.
             on_start: Optional callback invoked with the schema from the first input

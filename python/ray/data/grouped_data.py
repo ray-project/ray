@@ -195,9 +195,10 @@ class GroupedData:
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor or task, and will be called each time prior
-                to initializing the worker. Args returned from this dict will always
-                override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                to initializing the worker. It is also called once during operator
+                construction to prime the scheduler's resource estimate. Args returned
+                from this dict will always override the args in ``ray_remote_args``.
+                Note: this is an advanced, experimental feature.
             concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
