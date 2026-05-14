@@ -102,10 +102,14 @@ def _build_promql(metric: str, agg: str, window_s: int, session_name: str) -> st
     ``session_name`` filters to this Ray session via the ``SessionName`` label
     that ``ReporterAgent`` stamps on every metric (see
     ``dashboard/modules/reporter/reporter_agent.py``'s ``record_and_export``
-    call with ``global_tags={"SessionName": ...}``). Without this filter, a
-    Prometheus shared across clusters — or one retaining stale series from a
-    previous ``ray start`` on the same host — would leak unrelated data into
-    the batch we forward.
+    call with ``global_tags={"SessionName": ...}``).
+
+    The filter is essential, not defensive. Managed environments expose a
+    shared Prometheus-compatible ingress that carries series from many
+    clusters in the same organization (e.g. Anyscale's customer monitoring
+    endpoint on workspaces returns thousands of series per metric across
+    every running cluster). Without ``{SessionName='<our session>'}`` we
+    would exfiltrate metrics from unrelated tenants on every cycle.
     """
     selector = f"{metric}{{SessionName='{session_name}'}}"
     window = f"[{window_s}s]"
