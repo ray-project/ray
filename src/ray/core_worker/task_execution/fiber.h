@@ -160,6 +160,10 @@ class FiberState {
         pre();
       }
       callback();
+      FiberPostCallback post = fiber_post_callback_;
+      if (post != nullptr) {
+        post();
+      }
       rate_limiter_.Release();
     });
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
@@ -181,10 +185,23 @@ class FiberState {
   using FiberPreCallback = void (*)();
   static void SetFiberPreCallback(FiberPreCallback cb) { fiber_pre_callback_ = cb; }
 
+  /// Optional hook invoked inside every fiber, after the user callback returns
+  /// and before Release(). Used on CPython 3.14 to Detach this OS thread's
+  /// PyThreadState so the next fiber (or a sibling fiber resuming from
+  /// `with nogil:`) sees a NULL `current_fast_get()` and can call
+  /// `_PyThreadState_Attach` without tripping the new
+  /// "non-NULL old thread state" fatal check. Boost fibers cooperatively share
+  /// the OS thread's `_Thread_local` Python state, so a fiber that returns
+  /// without an outer `with nogil:` would otherwise leave `current_fast` set,
+  /// breaking the sibling's resumption. Pure-C++ targets keep it null.
+  using FiberPostCallback = void (*)();
+  static void SetFiberPostCallback(FiberPostCallback cb) { fiber_post_callback_ = cb; }
+
  private:
   static constexpr size_t kStackSize = 1024 * 256;
 
   inline static FiberPreCallback fiber_pre_callback_ = nullptr;
+  inline static FiberPostCallback fiber_post_callback_ = nullptr;
 
   // The fiber stack allocator.
   boost::fibers::fixedsize_stack allocator_;

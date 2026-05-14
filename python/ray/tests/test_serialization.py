@@ -345,6 +345,21 @@ def test_inspect_serialization(enable_pickle_debug):
     results = inspect_serializability(test_class)
     assert list(results[1])[0].obj == lock, results
 
+    # Test path tracking
+    results = inspect_serializability(test_func, name="my_func")
+    failures = list(results[1])
+    assert len(failures) == 1
+    path = failures[0].path
+    assert "my_func" in path
+    assert "lock" in path
+
+    results = inspect_serializability(test_class, name="my_class")
+    failures = list(results[1])
+    assert len(failures) == 1
+    path = failures[0].path
+    assert "my_class" in path
+    assert "lock" in path
+
 
 def test_serialization_final_fallback(ray_start_regular):
     pytest.importorskip("catboost")
