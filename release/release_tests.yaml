@@ -1467,7 +1467,7 @@
 ########################
 
 - name: pytest_serve_scale_replicas
-  python: "3.10"
+  python: "3.14"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1495,7 +1495,7 @@
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_multi_deployment_1k_noop_replica
-  python: "3.10"
+  python: "3.14"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1574,7 +1574,7 @@
             - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
 
 - name: serve_controller_benchmark_haproxy
-  python: "3.10"
+  python: "3.14"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1618,7 +1618,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
-  python: "3.10"
+  python: "3.14"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1646,7 +1646,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_throughput_optimized_microbenchmarks
-  python: "3.10"
+  python: "3.14"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1679,7 +1679,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_router_benchmark
-  python: "3.10"
+  python: "3.14"
   group: Serve tests
   working_dir: serve_tests
 
@@ -2455,7 +2455,7 @@
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: compiled_graphs_GPU
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2472,7 +2472,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2527,7 +2527,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: rdt_single_node_T4_microbenchmark
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2583,7 +2583,7 @@
 #     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
-  python: "3.14"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
