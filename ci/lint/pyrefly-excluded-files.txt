@@ -32,6 +32,7 @@ python/ray/data/_internal/datasource/parquet_datasink.py
 python/ray/data/_internal/datasource/parquet_datasource.py
 python/ray/data/_internal/datasource/range_datasource.py
 python/ray/data/_internal/datasource/sql_datasource.py
+python/ray/data/_internal/datasource/table/file_writer.py
 python/ray/data/_internal/datasource/tfrecords_datasink.py
 python/ray/data/_internal/datasource/tfrecords_datasource.py
 python/ray/data/_internal/datasource/torch_datasource.py
@@ -215,6 +216,8 @@ python/ray/data/tests/datasource/test_numpy.py
 python/ray/data/tests/datasource/test_pandas.py
 python/ray/data/tests/datasource/test_parquet.py
 python/ray/data/tests/datasource/test_snowflake.py
+python/ray/data/tests/datasource/test_table_datasink.py
+python/ray/data/tests/datasource/test_table_datasink_integration.py
 python/ray/data/tests/datasource/test_text.py
 python/ray/data/tests/datasource/test_tf.py
 python/ray/data/tests/datasource/test_tfrecords.py
