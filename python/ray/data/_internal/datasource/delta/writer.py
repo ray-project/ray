@@ -9,29 +9,24 @@ PyArrow Parquet: https://arrow.apache.org/docs/python/parquet.html
 
 import logging
 import time
-import uuid
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
-import pyarrow.parquet as pq
 
-from ray._common.retry import call_with_retry
+from ray.data._internal.datasource._parquet_io import (
+    build_uuid_filename,
+    write_parquet_with_retry,
+)
 from ray.data._internal.datasource.delta.utils import (
     build_partition_path,
     compute_parquet_statistics,
-    get_file_info_with_retry,
     resolve_under_table_root,
     safe_dirname,
     validate_file_path,
     validate_partition_value,
 )
-from ray.data._internal.datasource.parquet_datasink import (
-    WRITE_FILE_MAX_ATTEMPTS,
-    WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
-)
-from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -291,15 +286,9 @@ class DeltaFileWriter:
         )
 
     def _filename(self, task_idx: int, block_idx: int) -> str:
-        uid = uuid.uuid4().hex[:16]
-        prefix = self.write_uuid or "00000000"
-        prefix = prefix[:8].ljust(8, "0")
-        return f"part-{prefix}-{task_idx:05d}-{block_idx:05d}-{uid}.parquet"
+        return build_uuid_filename(self.write_uuid, task_idx, block_idx)
 
     def _write_parquet(self, table: pa.Table, rel_path: str) -> int:
-        compression = self.write_kwargs.get("compression", "snappy")
-        write_statistics = self.write_kwargs.get("write_statistics", True)
-
         phys_path = resolve_under_table_root(self._local_filesystem_root, rel_path)
         parent = safe_dirname(rel_path)
         phys_parent = (
@@ -307,37 +296,19 @@ class DeltaFileWriter:
             if self._local_filesystem_root and parent
             else parent
         )
-        if phys_parent:
-            try:
-                self.filesystem.create_dir(phys_parent, recursive=True)
-            except Exception:
-                pass
 
-        ctx = DataContext.get_current()
-        result = {"size": 0}
-
-        def _write_and_verify() -> None:
-            pq.write_table(
-                table,
-                phys_path,
-                filesystem=self.filesystem,
-                compression=compression,
-                write_statistics=write_statistics,
-            )
-            info = get_file_info_with_retry(self.filesystem, phys_path)
-            if info.size == 0:
+        def _ensure_parent() -> None:
+            if phys_parent:
                 try:
-                    self.filesystem.delete_file(phys_path)
+                    self.filesystem.create_dir(phys_parent, recursive=True)
                 except Exception:
                     pass
-                raise RuntimeError(f"Written file is empty: {phys_path}")
-            result["size"] = info.size
 
-        call_with_retry(
-            _write_and_verify,
-            description=f"write Parquet file '{phys_path}'",
-            match=ctx.retried_io_errors,
-            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-            max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+        return write_parquet_with_retry(
+            table,
+            phys_path,
+            self.filesystem,
+            compression=self.write_kwargs.get("compression", "snappy"),
+            write_statistics=self.write_kwargs.get("write_statistics", True),
+            on_each_attempt=_ensure_parent,
         )
-        return result["size"]
