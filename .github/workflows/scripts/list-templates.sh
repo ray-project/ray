@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Emit a JSON array of {name, dir} entries for every template in
-# anyscale/templates/BUILD.yaml on main. Designed to run from CI: pulls the
-# file straight from raw.githubusercontent.com so we don't need a local clone
-# (and don't need to provision a checkout of anyscale/templates in the runner).
-#
-# BUILD_URL is overridable for local testing against a fork or branch.
+# Emit JSON array of {name, dir} from anyscale/templates/BUILD.yaml on main.
+# Pulled via raw.githubusercontent.com so CI doesn't need a checkout.
+# BUILD_URL overridable for local testing.
 set -euo pipefail
 
 BUILD_URL="${BUILD_URL:-https://raw.githubusercontent.com/anyscale/templates/main/BUILD.yaml}"

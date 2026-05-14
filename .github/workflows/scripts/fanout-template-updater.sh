@@ -11,26 +11,20 @@ if [[ -z "$WEBHOOK_URL" || -z "$WEBHOOK_AUTH_TOKEN" ]]; then
   exit 1
 fi
 
-# Resolve target Ray version once. The agent's PR titles use a bare "2.x.y"
-# (e.g. "[ray-update-2.55.1] Update foo to Ray 2.55.1"), so strip the "ray-"
-# prefix off the GitHub release tag (which looks like "ray-2.55.1").
+# Strip the "ray-" prefix; agent PR titles use the bare "2.x.y" form.
 TARGET_RAY="${TARGET_RAY:-$(gh release view --repo ray-project/ray --json tagName --jq .tagName | sed 's/^ray-//')}"
 echo "target_ray=$TARGET_RAY" >&2
 
-# Skip-list: open OR merged PRs against anyscale/templates whose title contains
-# the [ray-update-<TARGET_RAY>] marker (the agent's own convention). A merged
-# PR means the bump already shipped — re-triggering would be a no-op. An open
-# PR means a run is already in flight. Closed-not-merged are deliberately NOT
-# in the skip-list (those are abandoned attempts worth re-firing).
-# Merged entries are added first so they win on lookup if both states exist.
+# Skip-list: open + merged [ray-update-$TARGET_RAY] PRs on anyscale/templates.
+# Merged added first so it wins on lookup. Closed-not-merged are intentionally
+# excluded — those are abandoned attempts worth re-firing.
 echo "skip-list (open + merged PRs already bumping to $TARGET_RAY):" >&2
 skip_list=""
 for state in merged open; do
   while IFS=$'\t' read -r title url; do
     [[ -z "$title" ]] && continue
-    # TODO(hardening): dots in ${TARGET_RAY} (e.g. 2.55.1) are interpolated raw
-    # and act as regex wildcards. Real agent PR titles won't false-match; if we
-    # ever take user-supplied versions, escape the dots before splicing.
+    # TODO(hardening): dots in $TARGET_RAY are raw regex here. Safe today (the
+    # workflow sets the value); escape if we ever take user input.
     name="$(printf '%s' "$title" | sed -nE "s/^\[ray-update-${TARGET_RAY}\] Update (.+) to Ray ${TARGET_RAY}.*$/\1/p")"
     if [[ -z "$name" ]]; then
       echo "  WARN unparseable PR title: $title ($url)" >&2
@@ -44,14 +38,11 @@ if [[ -z "$skip_list" ]]; then
   echo "  (none)" >&2
 fi
 
-# Lookup helper: echoes "<state>: <url>" for a template name if present.
-# Merged wins over open because we add merged first and exit on first match.
 skip_entry_for() {
   local n="$1"
   printf '%s' "$skip_list" | awk -v n="$n" -F'\t' '$1 == n { print $2 ": " $3; exit }'
 }
 
-# Per-run dir for captured response bodies. Created lazily on first real call.
 RUNS_DIR="$HERE/runs/$(date -u +%Y%m%dT%H%M%SZ)"
 
 ok=0
@@ -64,7 +55,6 @@ while IFS= read -r entry; do
   name="$(jq -r '.name' <<<"$entry")"
   dir="$(jq -r '.dir' <<<"$entry")"
 
-  # Optional one-template filter (used by smoke test).
   if [[ -n "${SMOKE_TEMPLATE:-}" && "$SMOKE_TEMPLATE" != "$name" ]]; then
     continue
   fi

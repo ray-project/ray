@@ -1,19 +1,6 @@
-# Fires the Cursor "template-updater" fan-out webhook for every template in
-# anyscale/templates/BUILD.yaml whenever a Ray .0 release is published, so the
-# agent can open per-template `[ray-update-<target>]` PRs that bump each
-# template's Ray image pin.
-#
-# Required repository secrets (Settings → Secrets and variables → Actions):
-#   CURSOR_TEMPLATE_UPDATER_WEBHOOK     Cursor Cloud webhook URL
-#   CURSOR_TEMPLATE_UPDATER_AUTH_TOKEN  Bearer token for the webhook
-#
-# Patch-zero filter: only releases whose tag parses to MAJOR.MINOR.0 trigger
-# the fan-out (e.g. ray-2.55.0 fires, ray-2.55.1 does not). Patch bumps rarely
-# justify refreshing every template image and the agent cycles get noisy.
-#
-# Prereleases are filtered at the job level so the run shows as skipped in the
-# Actions UI rather than burning a runner. workflow_dispatch always proceeds
-# (useful for smoke runs once secrets are provisioned).
+# POSTs to the Cursor template-updater webhook for each entry in
+# anyscale/templates/BUILD.yaml on Ray .0 releases.
+# Requires repo secrets: CURSOR_TEMPLATE_UPDATER_WEBHOOK, CURSOR_TEMPLATE_UPDATER_AUTH_TOKEN.
 
 name: Anyscale Template Fan-out
 
@@ -27,15 +14,11 @@ on:
         required: false
         type: string
 
-# Minimum required: this workflow only reads from this repo (vendored scripts)
-# and reads cross-repo public PR metadata via gh pr list. It never writes to
-# the current repo. GITHUB_TOKEN can stay locked down to contents: read.
 permissions:
   contents: read
 
 jobs:
   fanout:
-    # workflow_dispatch always runs; release events skip when prerelease=true.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease != true }}
     runs-on: ubuntu-latest
     steps:
