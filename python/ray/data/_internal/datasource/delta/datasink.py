@@ -28,6 +28,7 @@ class DeltaDatasink(TableDatasink["AddAction", str]):
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional[pa_fs.FileSystem] = None,
         schema: Optional[pa.Schema] = None,
+        schema_mode: str = "error",
         **write_kwargs,
     ):
         adapter = DeltaAdapter(
@@ -35,6 +36,7 @@ class DeltaDatasink(TableDatasink["AddAction", str]):
             partition_cols=partition_cols,
             filesystem=filesystem,
             schema=schema,
+            schema_mode=schema_mode,
             **write_kwargs,
         )
         coerced_mode = TableDatasink._coerce_mode(mode)

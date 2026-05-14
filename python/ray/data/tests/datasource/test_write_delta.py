@@ -510,6 +510,122 @@ def test_write_statistics_parametrize(temp_delta_path, write_statistics):
     assert out == rows
 
 
+# ----------------------------------------------------------------------
+# PR 6 -- Schema evolution.
+# ----------------------------------------------------------------------
+
+
+def test_schema_mode_error_rejects_new_column(temp_delta_path):
+    _write_append([{"id": 1, "v": "x"}], temp_delta_path)
+    schema_with_extra = pa.schema(
+        [("id", pa.int64()), ("v", pa.string()), ("extra", pa.string())]
+    )
+    with pytest.raises(ValueError, match="New columns detected"):
+        ray.data.from_items([{"id": 2, "v": "y", "extra": "z"}]).write_delta(
+            temp_delta_path, schema=schema_with_extra, schema_mode="error"
+        )
+
+
+def test_schema_mode_merge_adds_new_column(temp_delta_path):
+    _write_append([{"id": 1, "v": "x"}], temp_delta_path)
+    schema_with_extra = pa.schema(
+        [("id", pa.int64()), ("v", pa.string()), ("extra", pa.string())]
+    )
+    ray.data.from_items([{"id": 2, "v": "y", "extra": "z"}]).write_delta(
+        temp_delta_path, schema=schema_with_extra, schema_mode="merge"
+    )
+    out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
+    assert len(out) == 2
+    assert "extra" in out[1]
+
+
+def test_invalid_schema_mode_value_rejected(temp_delta_path):
+    _write_append([{"id": 1}], temp_delta_path)
+    extra = pa.schema([("id", pa.int64()), ("x", pa.string())])
+    with pytest.raises(ValueError, match="Invalid schema_mode"):
+        ray.data.from_items([{"id": 2, "x": "v"}]).write_delta(
+            temp_delta_path, schema=extra, schema_mode="bogus"
+        )
+
+
+def test_existing_column_type_mismatch_rejected(temp_delta_path):
+    _write_append([{"id": 1, "v": "string"}], temp_delta_path)
+    mismatched = pa.schema([("id", pa.int64()), ("v", pa.int64())])
+    with pytest.raises(ValueError, match="type mismatches"):
+        ray.data.from_items([{"id": 2, "v": 99}]).write_delta(
+            temp_delta_path, schema=mismatched, schema_mode="merge"
+        )
+
+
+# ---- PR 6: schema-evolution edge cases -----------------------------------
+
+
+def test_block_missing_required_column_raises(temp_delta_path):
+    schema = pa.schema([("id", pa.int64()), ("v", pa.string())])
+    table = pa.table({"id": pa.array([1, 2], type=pa.int64())})  # missing "v"
+    with pytest.raises(ValueError, match="Missing columns"):
+        ray.data.from_arrow(table).write_delta(temp_delta_path, schema=schema)
+
+
+def test_all_null_column_writes_to_nullable_existing_column(temp_delta_path):
+    _write_append([{"id": 1, "v": "x"}], temp_delta_path)
+    table = pa.table(
+        {
+            "id": pa.array([2, 3], type=pa.int64()),
+            "v": pa.array([None, None], type=pa.null()),
+        }
+    )
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+    out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
+    assert len(out) == 3
+    assert all(r["v"] is None for r in out if r["id"] in (2, 3))
+
+
+def test_complex_types_round_trip(temp_delta_path):
+    schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            ("tags", pa.list_(pa.string())),
+            ("nested", pa.struct([("a", pa.int64()), ("b", pa.string())])),
+        ]
+    )
+    table = pa.table(
+        {
+            "id": pa.array([1, 2], type=pa.int64()),
+            "tags": pa.array([["x", "y"], ["z"]], type=pa.list_(pa.string())),
+            "nested": pa.array(
+                [{"a": 1, "b": "p"}, {"a": 2, "b": "q"}],
+                type=pa.struct([("a", pa.int64()), ("b", pa.string())]),
+            ),
+        },
+        schema=schema,
+    )
+    ray.data.from_arrow(table).write_delta(temp_delta_path, schema=schema)
+    out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
+    assert len(out) == 2
+    assert out[0]["tags"] == ["x", "y"]
+    assert out[0]["nested"] == {"a": 1, "b": "p"}
+    assert out[1]["nested"] == {"a": 2, "b": "q"}
+
+
+def test_cross_worker_type_promotion_int32_int64(temp_delta_path):
+    """Two workers emit blocks with int32 and int64 columns named `v`.
+
+    The framework's schema-reconciliation at commit time promotes to int64
+    (the wider type). The per-block validator only fires when the user
+    declared an explicit schema, so we declare ``int64`` so that the
+    narrower int32 block is accepted (narrower-into-wider is always
+    compatible) and the wider int64 block matches the declared type.
+    """
+    block_a = pa.table({"v": pa.array([1, 2, 3], type=pa.int32())})
+    block_b = pa.table({"v": pa.array([10, 20], type=pa.int64())})
+    declared = pa.schema([("v", pa.int64())])
+    ds = ray.data.from_arrow(block_a).union(ray.data.from_arrow(block_b))
+    ds.write_delta(temp_delta_path, schema=declared)
+    out = _read_all(temp_delta_path)
+    assert sorted(r["v"] for r in out) == [1, 2, 3, 10, 20]
+
+
 if __name__ == "__main__":
     import sys
 

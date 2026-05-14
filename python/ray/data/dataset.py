@@ -4685,6 +4685,7 @@ class Dataset:
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "error",
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_kwargs,
@@ -4720,6 +4721,12 @@ class Dataset:
                 literal ``"NaN"``.
             filesystem: Optional PyArrow filesystem.
             schema: Optional explicit schema.
+            schema_mode: How to handle schema changes when writing to an
+                existing table.
+
+                * ``"error"`` (default) -- reject new columns.
+                * ``"merge"`` -- add new columns via
+                  ``DeltaTable.alter.add_columns``.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
             concurrency: Maximum number of concurrent write tasks.
             **write_kwargs: Additional Delta writer options
@@ -4740,6 +4747,7 @@ class Dataset:
             partition_cols=partition_cols,
             filesystem=filesystem,
             schema=schema,
+            schema_mode=schema_mode,
             **write_kwargs,
         )
         self.write_datasink(

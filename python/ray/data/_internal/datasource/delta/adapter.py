@@ -17,6 +17,7 @@ import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 
 from ray.data._internal.datasource.delta.committer import (
@@ -27,6 +28,13 @@ from ray.data._internal.datasource.delta.committer import (
     validate_partition_columns_match_existing,
 )
 from ray.data._internal.datasource.delta.fs import make_fs_config, worker_filesystem
+from ray.data._internal.datasource.delta.schema import (
+    SchemaPolicy,
+    evolve_schema,
+    existing_table_pyarrow_schema,
+    reconcile_worker_schemas,
+    validate_and_plan_evolution,
+)
 from ray.data._internal.datasource.delta.utils import (
     get_storage_options,
     try_get_deltatable,
@@ -58,6 +66,7 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional[pa_fs.FileSystem] = None,
         schema: Optional[pa.Schema] = None,
+        schema_mode: str = "error",
         **write_kwargs,
     ):
         _check_import(self, module="deltalake", package="deltalake")
@@ -68,6 +77,7 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         )
         self.schema = schema
         self.write_kwargs = dict(write_kwargs)
+        self._schema_policy = SchemaPolicy(mode=schema_mode.lower())
 
         target = write_kwargs.get("target_file_size_bytes")
         if target is not None and target <= 0:
@@ -166,6 +176,14 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
             else:
                 validate_partition_columns_match_existing(existing, self.partition_cols)
 
+            if self.schema is not None:
+                existing_schema = existing_table_pyarrow_schema(existing)
+                new_fields = validate_and_plan_evolution(
+                    self._schema_policy, existing_schema, self.schema
+                )
+                if new_fields:
+                    evolve_schema(existing, new_fields)
+
         if mode == SaveMode.ERROR and existing is not None:
             raise ValueError(
                 f"Delta table already exists at {self.table_uri}. "
@@ -173,7 +191,6 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
             )
 
         self._skip_write = mode == SaveMode.IGNORE and existing is not None
-        # PR 6 adds schema-evolution planning.
 
     def on_write_start(
         self, schema_from_first_bundle: Optional[pa.Schema] = None
@@ -211,8 +228,42 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         if self._skip_write or self._writer is None:
             return ([], arrow_table.schema, None)
         validate_partition_columns_in_table(self.partition_cols, arrow_table)
+        self._validate_block_against_declared_schema(arrow_table)
         actions = self._writer.add_table(arrow_table, self._task_idx)
         return (actions, arrow_table.schema, None)
+
+    def _validate_block_against_declared_schema(self, table: pa.Table) -> None:
+        """Raise if the incoming block is missing a declared schema column or
+        contains a type-incompatible value for an existing column.
+
+        Partition columns are exempt (they are stripped from the on-disk
+        payload by the writer). All-null columns against a nullable declared
+        type are also accepted.
+        """
+        schema = self.schema
+        if not schema:
+            return
+        from ray.data._internal.datasource.delta.utils import types_compatible
+
+        table_cols: Set[str] = set(table.column_names)
+        missing: Set[str] = set(schema.names) - table_cols
+        if missing:
+            raise ValueError(
+                f"Missing columns: {sorted(missing)}. "
+                f"Table has: {sorted(table_cols)}"
+            )
+
+        for f in schema:
+            if f.name in table_cols and f.name not in self.partition_cols:
+                col = table[f.name]
+                if f.nullable and pa.types.is_null(col.type):
+                    if pc.all(pc.is_null(col)).as_py():
+                        continue
+                if not types_compatible(f.type, col.type):
+                    raise ValueError(
+                        f"Type mismatch for '{f.name}': "
+                        f"expected {f.type}, got {col.type}"
+                    )
 
     def finalize_task(self) -> Tuple[List["AddAction"], List[pa.Schema]]:
         if self._skip_write or self._writer is None:
@@ -227,8 +278,20 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
     # Driver finalization.
     # ------------------------------------------------------------------
     def reconcile_schema(self, unified_schema: Optional[pa.Schema]) -> None:
-        if unified_schema is not None:
-            self.schema = unified_schema
+        """Driver-side schema reconciliation.
+
+        The framework hands us the already-promoted union of every worker's
+        schema. We additionally fold in the existing table's schema (if any)
+        via ``reconcile_worker_schemas`` so type promotions across workers +
+        table are handled consistently.
+        """
+        if unified_schema is None:
+            return
+        existing = try_get_deltatable(self.table_uri, self.storage_options)
+        existing_schema = existing_table_pyarrow_schema(existing) if existing else None
+        merged = reconcile_worker_schemas([unified_schema], existing_schema)
+        if merged is not None:
+            self.schema = merged
 
     def commit_append(
         self,
