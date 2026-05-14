@@ -593,7 +593,9 @@ class SlicePlacementGroup:
                 slice_name, head_pg = reservation
                 self._head_pgs.append(head_pg)
 
-                dynamic_labels = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
+                tpu_slice_name_label = {
+                    ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name
+                }
 
                 for bundle_idx in range(bundles_per_slice):
                     global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
@@ -603,8 +605,8 @@ class SlicePlacementGroup:
                         if global_bundle_idx < len(self._user_bundle_label_selector)
                         else {}
                     )
-                    # Dynamic TPU slice labels take precedence; user labels fill in the rest.
-                    merged_labels = {**user_labels, **dynamic_labels}
+                    # TPU slice name label takes precedence; user labels fill in the rest.
+                    merged_labels = {**user_labels, **tpu_slice_name_label}
                     self._bundle_label_selector.append(merged_labels)
 
                 bundles += [
