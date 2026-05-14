@@ -165,8 +165,10 @@ def get_tpu_worker_resources(
         if chips_per_vm is not None
         else get_chips_per_host(topology, accelerator_version)
     )
-    total_chips_per_slice = get_num_chips_from_topology(topology)
+    if resolved_chips_per_vm <= 0:
+        raise ValueError("chips_per_vm must be positive.")
 
+    total_chips_per_slice = get_num_chips_from_topology(topology)
     total_chips_available = total_chips_per_slice * num_slices
 
     # Calculate the per-unit resources based on the TPU topology.
@@ -523,6 +525,8 @@ class SlicePlacementGroup:
             if chips_per_vm is not None
             else get_chips_per_host(self._topology, self._accelerator_version)
         )
+        if self._chips_per_host <= 0:
+            raise ValueError("chips_per_vm must be positive.")
 
         # Within Ray, a "host" corresponds to a user-visible compute VM.
         # This may differ from the physical hardware host definitions in GCP/GKE docs.
