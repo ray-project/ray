@@ -279,6 +279,7 @@ global
     server-state-base /tmp/haproxy-serve
     server-state-file /tmp/haproxy-serve/server-state
     hard-stop-after 120s
+    tune.bufsize 16384
 defaults
     mode http
     option log-health-checks
