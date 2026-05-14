@@ -4682,6 +4682,7 @@ class Dataset:
         path: str,
         *,
         mode: str = "append",
+        partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -4712,13 +4713,19 @@ class Dataset:
                   the table if it doesn't exist).
                 * ``"error"``: raise if the table already exists.
                 * ``"ignore"``: skip the write if the table already exists.
+            partition_cols: Hive-style partition columns. Partition columns
+                are dropped from the on-disk Parquet payload and encoded in
+                directory names (``col=val/``). NULL values use
+                ``__HIVE_DEFAULT_PARTITION__``; float NaN values use the
+                literal ``"NaN"``.
             filesystem: Optional PyArrow filesystem.
             schema: Optional explicit schema.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
             concurrency: Maximum number of concurrent write tasks.
             **write_kwargs: Additional Delta writer options
                 (``compression``, ``write_statistics``, ``name``, ``description``,
-                ``configuration``, ``storage_options``).
+                ``configuration``, ``storage_options``, ``target_file_size_bytes``,
+                ``partition_overwrite_mode``).
 
         Raises:
             ImportError: If ``deltalake`` is not installed.
@@ -4730,6 +4737,7 @@ class Dataset:
         datasink = DeltaDatasink(
             path,
             mode=mode,
+            partition_cols=partition_cols,
             filesystem=filesystem,
             schema=schema,
             **write_kwargs,

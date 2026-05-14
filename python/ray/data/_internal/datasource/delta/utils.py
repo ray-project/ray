@@ -12,7 +12,8 @@ import json
 import math
 import os
 import posixpath
-from typing import TYPE_CHECKING, Any, Dict, Optional
+import urllib.parse
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -20,6 +21,121 @@ import pyarrow.fs as pa_fs
 
 if TYPE_CHECKING:
     from deltalake import DeltaTable
+
+
+# ----------------------------------------------------------------------
+# Partitioning constants and helpers.
+# ----------------------------------------------------------------------
+
+MAX_PARTITION_PATH_LENGTH = 200
+MAX_PARTITION_COLUMNS = 10
+
+
+def build_partition_path(
+    cols: List[str], values: tuple
+) -> Tuple[str, Dict[str, Optional[str]]]:
+    """Build a Hive-style partition path (``col1=val1/col2=val2/``).
+
+    NULL values use ``__HIVE_DEFAULT_PARTITION__``; float NaN uses the
+    literal string ``"NaN"`` (distinct from string ``"NaN"``).
+    """
+    if not cols or not values:
+        return "", {}
+
+    parts = []
+    part_dict: Dict[str, Optional[str]] = {}
+    for col, val in zip(cols, values):
+        if val is None:
+            parts.append(f"{col}=__HIVE_DEFAULT_PARTITION__")
+            part_dict[col] = None
+        elif isinstance(val, float) and math.isnan(val):
+            parts.append(f"{col}=NaN")
+            part_dict[col] = "NaN"
+        else:
+            validate_partition_value(val)
+            encoded_val = urllib.parse.quote(str(val), safe="")
+            parts.append(f"{col}={encoded_val}")
+            part_dict[col] = str(val)
+
+    path = "/".join(parts) + "/"
+    if len(path) > MAX_PARTITION_PATH_LENGTH:
+        raise ValueError(f"Partition path too long: {len(path)} chars")
+    return path, part_dict
+
+
+def validate_partition_value(value: Any) -> None:
+    """Validate a partition value is safe for use in paths."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return
+    val_str = str(value)
+    if not val_str:
+        raise ValueError("Partition value cannot be empty string")
+    if ".." in val_str or "/" in val_str or "\\" in val_str:
+        raise ValueError(f"Partition value contains invalid characters: {value}")
+    if "\x00" in val_str:
+        raise ValueError(f"Partition value contains null byte: {value}")
+    if len(val_str) > MAX_PARTITION_PATH_LENGTH:
+        raise ValueError(f"Partition value too long ({len(val_str)} chars)")
+
+
+def validate_partition_column_names(cols: List[str]) -> List[str]:
+    """Validate partition column names."""
+    if not isinstance(cols, list):
+        raise ValueError(f"Partition columns must be a list, got {type(cols).__name__}")
+    if len(cols) > MAX_PARTITION_COLUMNS:
+        raise ValueError(f"Too many partition columns ({len(cols)})")
+    seen = set()
+    for col in cols:
+        if not isinstance(col, str) or not col.strip():
+            raise ValueError(f"Invalid partition column name: {col}")
+        if "/" in col or "\\" in col or ".." in col or "=" in col:
+            raise ValueError(f"Invalid characters in partition column name: {col}")
+        if col in seen:
+            raise ValueError(f"Duplicate partition column: {col}")
+        seen.add(col)
+    return cols
+
+
+def validate_partition_columns_in_table(cols: List[str], table: pa.Table) -> None:
+    """Validate partition columns exist in table with valid types."""
+    if not cols:
+        return
+    missing = [c for c in cols if c not in table.column_names]
+    if missing:
+        raise ValueError(f"Missing partition columns: {missing}")
+    for col in cols:
+        col_type = table.schema.field(col).type
+        if pa.types.is_nested(col_type):
+            raise ValueError(f"Partition column '{col}' has nested type {col_type}")
+        if pa.types.is_dictionary(col_type):
+            raise ValueError(f"Partition column '{col}' has dictionary type")
+
+
+def infer_partition_type(value: Any) -> pa.DataType:
+    """Infer PyArrow type from a partition value (best-effort)."""
+    if value is None:
+        return pa.string()
+    if isinstance(value, bool):
+        return pa.bool_()
+    if isinstance(value, int):
+        return pa.int64()
+    if isinstance(value, float):
+        return pa.float64()
+    if isinstance(value, str):
+        if value.lower() in ("true", "false"):
+            return pa.bool_()
+        try:
+            int(value)
+            if "." not in value and "e" not in value.lower():
+                return pa.int64()
+        except ValueError:
+            pass
+        try:
+            float(value)
+            return pa.float64()
+        except ValueError:
+            pass
+    return pa.string()
 
 
 # ----------------------------------------------------------------------

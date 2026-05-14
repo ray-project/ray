@@ -25,12 +25,14 @@ class DeltaDatasink(TableDatasink["AddAction", str]):
         path: str,
         *,
         mode: Any = SaveMode.APPEND,
+        partition_cols: Optional[List[str]] = None,
         filesystem: Optional[pa_fs.FileSystem] = None,
         schema: Optional[pa.Schema] = None,
         **write_kwargs,
     ):
         adapter = DeltaAdapter(
             path,
+            partition_cols=partition_cols,
             filesystem=filesystem,
             schema=schema,
             **write_kwargs,
@@ -39,6 +41,7 @@ class DeltaDatasink(TableDatasink["AddAction", str]):
         super().__init__(
             adapter,
             coerced_mode,
+            partition_cols=partition_cols,
             declared_schema=schema,
             name="Delta",
         )

@@ -230,6 +230,286 @@ def test_error_mode_race_table_appears_after_preflight(temp_delta_path, monkeypa
         ray.data.from_items([{"id": 1}]).write_delta(temp_delta_path, mode="error")
 
 
+# ----------------------------------------------------------------------
+# PR 5 -- Partitioning + dynamic overwrite + buffered writes.
+# ----------------------------------------------------------------------
+
+
+def test_single_column_partition(temp_delta_path):
+    rows = [{"year": 2024, "id": i, "v": f"r{i}"} for i in range(3)] + [
+        {"year": 2025, "id": i, "v": f"r{i}"} for i in range(2)
+    ]
+    ray.data.from_items(rows).write_delta(temp_delta_path, partition_cols=["year"])
+    # Partition directories must exist.
+    assert os.path.isdir(os.path.join(temp_delta_path, "year=2024"))
+    assert os.path.isdir(os.path.join(temp_delta_path, "year=2025"))
+    out = _read_all(temp_delta_path)
+    assert len(out) == 5
+
+
+def test_multi_column_partition(temp_delta_path):
+    rows = [
+        {"year": 2024, "month": 1, "id": 1},
+        {"year": 2024, "month": 2, "id": 2},
+        {"year": 2025, "month": 1, "id": 3},
+    ]
+    ray.data.from_items(rows).write_delta(
+        temp_delta_path, partition_cols=["year", "month"]
+    )
+    assert os.path.isdir(os.path.join(temp_delta_path, "year=2024", "month=1"))
+    assert os.path.isdir(os.path.join(temp_delta_path, "year=2024", "month=2"))
+    assert os.path.isdir(os.path.join(temp_delta_path, "year=2025", "month=1"))
+
+
+def test_invalid_partition_column_name(temp_delta_path):
+    with pytest.raises(ValueError, match="Invalid characters in partition column"):
+        ray.data.from_items([{"a/b": 1}]).write_delta(
+            temp_delta_path, partition_cols=["a/b"]
+        )
+
+
+def test_partition_column_mismatch_with_existing_table(temp_delta_path):
+    ray.data.from_items([{"year": 2024, "id": 1}]).write_delta(
+        temp_delta_path, partition_cols=["year"]
+    )
+    with pytest.raises(ValueError, match="Partition columns mismatch"):
+        ray.data.from_items([{"year": 2024, "id": 2}]).write_delta(
+            temp_delta_path, partition_cols=["id"]
+        )
+
+
+def test_dynamic_partition_overwrite_only_replaces_affected_partitions(temp_delta_path):
+    rows_initial = [
+        {"year": 2024, "id": 1, "v": "a"},
+        {"year": 2024, "id": 2, "v": "b"},
+        {"year": 2025, "id": 3, "v": "c"},
+    ]
+    ray.data.from_items(rows_initial).write_delta(
+        temp_delta_path, partition_cols=["year"]
+    )
+    # Overwrite only 2024.
+    ray.data.from_items([{"year": 2024, "id": 99, "v": "new"}]).write_delta(
+        temp_delta_path,
+        mode="overwrite",
+        partition_cols=["year"],
+        partition_overwrite_mode="dynamic",
+    )
+    out = sorted(_read_all(temp_delta_path), key=lambda r: (r["year"], r["id"]))
+    # 2025 partition should be intact; 2024 should have only the new row.
+    assert len(out) == 2
+    assert {r["year"] for r in out} == {2024, 2025}
+
+
+def test_static_partition_overwrite_replaces_everything(temp_delta_path):
+    ray.data.from_items([{"year": 2024, "id": 1}, {"year": 2025, "id": 2}]).write_delta(
+        temp_delta_path, partition_cols=["year"]
+    )
+    ray.data.from_items([{"year": 2026, "id": 99}]).write_delta(
+        temp_delta_path,
+        mode="overwrite",
+        partition_cols=["year"],
+        partition_overwrite_mode="static",
+    )
+    out = _read_all(temp_delta_path)
+    assert len(out) == 1
+    assert out[0]["year"] == 2026
+
+
+def test_target_file_size_bytes_validates_positive(temp_delta_path):
+    with pytest.raises(ValueError, match="target_file_size_bytes must be > 0"):
+        ray.data.from_items([{"id": 1}]).write_delta(
+            temp_delta_path, target_file_size_bytes=0
+        )
+
+
+# ---- PR 5: partition edge cases & writer knobs ---------------------------
+
+
+def test_partition_column_string(temp_delta_path):
+    rows = [
+        {"region": "us", "id": 1},
+        {"region": "eu", "id": 2},
+        {"region": "us", "id": 3},
+    ]
+    ray.data.from_items(rows).write_delta(temp_delta_path, partition_cols=["region"])
+    assert os.path.isdir(os.path.join(temp_delta_path, "region=us"))
+    assert os.path.isdir(os.path.join(temp_delta_path, "region=eu"))
+
+
+def test_partition_column_bool(temp_delta_path):
+    rows = [{"flag": True, "id": 1}, {"flag": False, "id": 2}]
+    ray.data.from_items(rows).write_delta(temp_delta_path, partition_cols=["flag"])
+    children = set(os.listdir(temp_delta_path))
+    children.discard("_delta_log")
+    assert any(d.lower().startswith("flag=true") for d in children)
+    assert any(d.lower().startswith("flag=false") for d in children)
+
+
+def test_multi_column_partition_round_trip_values(temp_delta_path):
+    rows = [
+        {"year": 2024, "month": 1, "id": 1},
+        {"year": 2024, "month": 2, "id": 2},
+        {"year": 2025, "month": 1, "id": 3},
+    ]
+    ray.data.from_items(rows).write_delta(
+        temp_delta_path, partition_cols=["year", "month"]
+    )
+    out = sorted(
+        _read_all(temp_delta_path), key=lambda r: (r["year"], r["month"], r["id"])
+    )
+    assert [(r["year"], r["month"], r["id"]) for r in out] == [
+        (2024, 1, 1),
+        (2024, 2, 2),
+        (2025, 1, 3),
+    ]
+
+
+def test_null_partition_value(temp_delta_path):
+    schema = pa.schema([("region", pa.string()), ("id", pa.int64())])
+    table = pa.table(
+        {"region": pa.array(["us", None, "eu"]), "id": pa.array([1, 2, 3])},
+        schema=schema,
+    )
+    ray.data.from_arrow(table).write_delta(
+        temp_delta_path, partition_cols=["region"], schema=schema
+    )
+    assert os.path.isdir(
+        os.path.join(temp_delta_path, "region=__HIVE_DEFAULT_PARTITION__")
+    )
+    out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
+    null_row = next(r for r in out if r["id"] == 2)
+    assert null_row["region"] is None
+
+
+def test_nan_partition_value_distinct_from_string_nan(temp_delta_path):
+    schema = pa.schema([("v", pa.float64()), ("id", pa.int64())])
+    table = pa.table(
+        {"v": pa.array([1.5, float("nan"), 2.5]), "id": pa.array([1, 2, 3])},
+        schema=schema,
+    )
+    ray.data.from_arrow(table).write_delta(
+        temp_delta_path, partition_cols=["v"], schema=schema
+    )
+    assert os.path.isdir(os.path.join(temp_delta_path, "v=NaN"))
+
+
+def test_partition_column_dropped_from_on_disk_payload(temp_delta_path):
+    import pyarrow.parquet as pq
+
+    rows = [
+        {"year": 2024, "id": 1, "v": "a"},
+        {"year": 2025, "id": 2, "v": "b"},
+    ]
+    ray.data.from_items(rows).write_delta(temp_delta_path, partition_cols=["year"])
+    part_dir = os.path.join(temp_delta_path, "year=2024")
+    pq_files = [f for f in os.listdir(part_dir) if f.endswith(".parquet")]
+    assert pq_files, "expected at least one parquet file in partition dir"
+    on_disk_schema = pq.read_schema(os.path.join(part_dir, pq_files[0]))
+    assert "year" not in on_disk_schema.names
+    assert "id" in on_disk_schema.names and "v" in on_disk_schema.names
+
+
+@pytest.mark.parametrize("bad_value", ["a/b", "..", "", "x\x00y"])
+def test_invalid_partition_value_rejected(temp_delta_path, bad_value):
+    rows = [{"col": bad_value, "id": 1}]
+    with pytest.raises(ValueError):
+        ray.data.from_items(rows).write_delta(temp_delta_path, partition_cols=["col"])
+
+
+def test_max_partitions_cap(tmp_path, monkeypatch):
+    """Unit test the per-task partition cap directly on ``DeltaFileWriter``.
+
+    The cap is enforced inside ``partition_table`` which runs in a worker
+    process. A monkeypatch of ``_MAX_PARTITIONS`` at the test-process module
+    level does not propagate to those workers, so this test exercises the
+    cap by calling the writer directly in-process.
+    """
+    import pyarrow.fs as pa_fs
+
+    from ray.data._internal.datasource.delta import writer as _writer
+
+    monkeypatch.setattr(_writer, "_MAX_PARTITIONS", 4)
+
+    table_root = str(tmp_path / "delta")
+    os.makedirs(table_root, exist_ok=True)
+    w = _writer.DeltaFileWriter(
+        filesystem=pa_fs.LocalFileSystem(),
+        partition_cols=["col"],
+        write_uuid="test",
+        write_kwargs={},
+        written_files=set(),
+        local_filesystem_root=table_root,
+    )
+
+    table = pa.table({"col": pa.array([str(i) for i in range(6)])})
+    with pytest.raises(ValueError, match="Too many partition"):
+        w.partition_table(table, ["col"])
+
+
+def test_default_writer_one_file_per_partition_per_block(temp_delta_path):
+    import json
+
+    rows = [{"region": "us", "id": i} for i in range(3)] + [
+        {"region": "eu", "id": i} for i in range(2)
+    ]
+    ray.data.from_items(rows, override_num_blocks=1).write_delta(
+        temp_delta_path, partition_cols=["region"]
+    )
+    log = os.path.join(temp_delta_path, "_delta_log", "00000000000000000000.json")
+    add_count = 0
+    with open(log) as f:
+        for line in f:
+            if "add" in json.loads(line):
+                add_count += 1
+    assert add_count == 2, f"expected 2 AddActions (one per partition), got {add_count}"
+
+
+def test_target_file_size_bytes_buffers_and_flushes(temp_delta_path):
+    """With buffering enabled, a multi-block write to a single partition
+    should not produce one file per block — the buffer merges them."""
+    import json
+
+    rows = [{"v": i} for i in range(200)]
+    ray.data.from_items(rows, override_num_blocks=4).write_delta(
+        temp_delta_path,
+        target_file_size_bytes=100_000,
+    )
+    log = os.path.join(temp_delta_path, "_delta_log", "00000000000000000000.json")
+    add_count = 0
+    with open(log) as f:
+        for line in f:
+            if "add" in json.loads(line):
+                add_count += 1
+    assert add_count <= 4
+    assert len(_read_all(temp_delta_path)) == 200
+
+
+@pytest.mark.parametrize(
+    "compression,should_raise",
+    [("snappy", False), ("zstd", False), ("not-a-codec", True)],
+)
+def test_compression_parametrize(temp_delta_path, compression, should_raise):
+    rows = [{"id": 1, "v": "x"}]
+    if should_raise:
+        with pytest.raises(ValueError, match="Invalid compression"):
+            ray.data.from_items(rows).write_delta(
+                temp_delta_path, compression=compression
+            )
+    else:
+        ray.data.from_items(rows).write_delta(temp_delta_path, compression=compression)
+        assert _read_all(temp_delta_path) == rows
+
+
+@pytest.mark.parametrize("write_statistics", [True, False])
+def test_write_statistics_parametrize(temp_delta_path, write_statistics):
+    rows = [{"id": i, "v": f"r{i}"} for i in range(4)]
+    ray.data.from_items(rows).write_delta(
+        temp_delta_path, write_statistics=write_statistics
+    )
+    out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
+    assert out == rows
+
+
 if __name__ == "__main__":
     import sys
 

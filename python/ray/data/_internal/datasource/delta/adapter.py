@@ -24,11 +24,14 @@ from ray.data._internal.datasource.delta.committer import (
     commit_to_existing_table,
     create_table_with_files,
     validate_file_actions,
+    validate_partition_columns_match_existing,
 )
 from ray.data._internal.datasource.delta.fs import make_fs_config, worker_filesystem
 from ray.data._internal.datasource.delta.utils import (
     get_storage_options,
     try_get_deltatable,
+    validate_partition_column_names,
+    validate_partition_columns_in_table,
 )
 from ray.data._internal.datasource.delta.writer import DeltaFileWriter
 from ray.data._internal.datasource.table import (
@@ -52,6 +55,7 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         self,
         path: str,
         *,
+        partition_cols: Optional[List[str]] = None,
         filesystem: Optional[pa_fs.FileSystem] = None,
         schema: Optional[pa.Schema] = None,
         **write_kwargs,
@@ -59,9 +63,16 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         _check_import(self, module="deltalake", package="deltalake")
 
         self.table_uri = path
-        self.partition_cols: List[str] = []
+        self.partition_cols = validate_partition_column_names(
+            list(partition_cols or [])
+        )
         self.schema = schema
         self.write_kwargs = dict(write_kwargs)
+
+        target = write_kwargs.get("target_file_size_bytes")
+        if target is not None and target <= 0:
+            raise ValueError("target_file_size_bytes must be > 0")
+        self._target_file_size_bytes: Optional[int] = target
 
         self.storage_options = get_storage_options(
             self.table_uri, write_kwargs.get("storage_options")
@@ -149,6 +160,12 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         existing = try_get_deltatable(self.table_uri, self.storage_options)
         self._table_existed_at_start = existing is not None
 
+        if existing is not None:
+            if not self.partition_cols:
+                self.partition_cols = list(existing.metadata().partition_columns) or []
+            else:
+                validate_partition_columns_match_existing(existing, self.partition_cols)
+
         if mode == SaveMode.ERROR and existing is not None:
             raise ValueError(
                 f"Delta table already exists at {self.table_uri}. "
@@ -156,8 +173,7 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
             )
 
         self._skip_write = mode == SaveMode.IGNORE and existing is not None
-        # PR 6 adds schema-evolution planning; PR 5 adds partition-column
-        # validation against the existing table.
+        # PR 6 adds schema-evolution planning.
 
     def on_write_start(
         self, schema_from_first_bundle: Optional[pa.Schema] = None
@@ -181,9 +197,11 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
         self._task_written_files = set()
         self._writer = DeltaFileWriter(
             filesystem=self._worker_fs,
+            partition_cols=self.partition_cols,
             write_uuid=self._task_write_uuid,
             write_kwargs=self.write_kwargs,
             written_files=self._task_written_files,
+            target_file_size_bytes=self._target_file_size_bytes,
             local_filesystem_root=self._local_filesystem_root,
         )
 
@@ -192,11 +210,15 @@ class DeltaAdapter(TableAdapter["AddAction", str]):
     ) -> Tuple[List["AddAction"], pa.Schema, Optional[pa.Table]]:
         if self._skip_write or self._writer is None:
             return ([], arrow_table.schema, None)
+        validate_partition_columns_in_table(self.partition_cols, arrow_table)
         actions = self._writer.add_table(arrow_table, self._task_idx)
         return (actions, arrow_table.schema, None)
 
     def finalize_task(self) -> Tuple[List["AddAction"], List[pa.Schema]]:
-        return ([], [])
+        if self._skip_write or self._writer is None:
+            return ([], [])
+        tail = self._writer.flush(self._task_idx)
+        return (tail, [])
 
     def task_metadata(self) -> Dict[str, Any]:
         return {}
