@@ -581,11 +581,6 @@ def _print_dict_as_table(
 class ProgressReporter(Callback):
     """Periodically prints out status update."""
 
-    # Default heartbeat cadence in seconds. Subclasses may override this
-    # class attribute; individual instances can further override via the
-    # ``heartbeat_freq`` ctor argument (plumbed from
-    # ``RunConfig.progress_report_interval_s``).
-    _heartbeat_freq = 30  # every 30 sec
     # to be updated by subclasses.
     _heartbeat_threshold = None
     _start_end_verbosity = None
@@ -596,7 +591,7 @@ class ProgressReporter(Callback):
         self,
         verbosity: AirVerbosity,
         progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-        heartbeat_freq: Optional[float] = None,
+        heartbeat_freq: float = 30,
     ):
         """
 
@@ -605,18 +600,14 @@ class ProgressReporter(Callback):
             progress_metrics: Optional list of metrics to include in the
                 intermediate progress output.
             heartbeat_freq: Minimum interval in seconds between status-table
-                heartbeats. If ``None`` (the default), falls back to the
-                class-level ``_heartbeat_freq`` (30s) so existing subclass
-                overrides are preserved.
+                heartbeats. Defaults to 30 seconds.
         """
         self._verbosity = verbosity
         self._start_time = time.time()
         self._last_heartbeat_time = float("-inf")
-        self._start_time = time.time()
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
-        if heartbeat_freq is not None:
-            self._heartbeat_freq = heartbeat_freq
+        self._heartbeat_freq = heartbeat_freq
 
         self._in_block = None
 
@@ -814,7 +805,7 @@ def _detect_reporter(
     mode: Optional[str] = None,
     config: Optional[Dict] = None,
     progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-    heartbeat_freq: Optional[float] = None,
+    heartbeat_freq: float = 30,
 ):
     if entrypoint in {
         AirEntrypoint.TUNE_RUN,
@@ -854,7 +845,7 @@ class TuneReporterBase(ProgressReporter):
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
         progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-        heartbeat_freq: Optional[float] = None,
+        heartbeat_freq: float = 30,
     ):
         self._num_samples = num_samples
         self._metric = metric

@@ -415,7 +415,7 @@ class ProgressReporterTest(unittest.TestCase):
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                self._max_report_freqency = 0
+                self._max_report_frequency = 0
 
             def report(self, *args, **kwargs):
                 progress_str = self._progress_str(*args, **kwargs)
@@ -592,7 +592,7 @@ class ProgressReporterTest(unittest.TestCase):
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                self._max_report_freqency = 0
+                self._max_report_frequency = 0
 
             def report(self, *args, **kwargs):
                 progress_str = self._progress_str(*args, **kwargs)
@@ -633,7 +633,7 @@ class ProgressReporterTest(unittest.TestCase):
         class TestReporter(CLIReporter):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                self._max_report_freqency = 0
+                self._max_report_frequency = 0
                 self._output = ""
 
             def report(self, *args, **kwargs):
@@ -808,11 +808,11 @@ class ProgressReporterTest(unittest.TestCase):
     def testReporterDetectionMaxReportFrequency(self):
         """``_detect_reporter`` forwards ``max_report_frequency`` to ctor."""
         reporter = _detect_reporter(max_report_frequency=42)
-        self.assertEqual(reporter._max_report_freqency, 42)
+        self.assertEqual(reporter._max_report_frequency, 42)
 
         with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
             reporter = _detect_reporter(max_report_frequency=17)
-            self.assertEqual(reporter._max_report_freqency, 17)
+            self.assertEqual(reporter._max_report_frequency, 17)
 
     def testProgressReporterAPI(self):
         class CustomReporter(ProgressReporter):

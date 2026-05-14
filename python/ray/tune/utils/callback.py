@@ -95,6 +95,9 @@ def _create_default_callbacks(
             _detect_reporter as _detect_air_reporter,
         )
 
+        air_reporter_kwargs = {}
+        if progress_report_interval_s is not None:
+            air_reporter_kwargs["heartbeat_freq"] = progress_report_interval_s
         air_progress_reporter = _detect_air_reporter(
             air_verbosity,
             num_samples=1,  # Update later with setup()
@@ -103,7 +106,7 @@ def _create_default_callbacks(
             mode=mode,
             config=config,
             progress_metrics=progress_metrics,
-            heartbeat_freq=progress_report_interval_s,
+            **air_reporter_kwargs,
         )
         callbacks.append(air_progress_reporter)
     elif not has_trial_progress_callback:  # old flow

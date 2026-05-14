@@ -349,9 +349,9 @@ def test_heartbeat_reset(progress_reporter_cls):
 
 @pytest.mark.parametrize("progress_reporter_cls", [TrainReporter, TuneTerminalReporter])
 def test_heartbeat_freq_configurable(progress_reporter_cls):
-    """A per-instance ``heartbeat_freq`` overrides the class-level default."""
+    """A per-instance ``heartbeat_freq`` overrides the 30s default."""
     default_reporter = progress_reporter_cls(verbosity=AirVerbosity.VERBOSE)
-    class_default = type(default_reporter)._heartbeat_freq
+    assert default_reporter._heartbeat_freq == 30
 
     # Shorter-than-default cadence: second tick must flush.
     fast_reporter = progress_reporter_cls(
@@ -367,25 +367,19 @@ def test_heartbeat_freq_configurable(progress_reporter_cls):
         fast_reporter.print_heartbeat([])
         assert fast_reporter._print_heartbeat.call_count == 2
 
-    # Much-longer-than-default cadence: ticking past the class default
-    # should not trigger a second heartbeat.
+    # Much-longer-than-default cadence: ticking past the default should not
+    # trigger a second heartbeat.
     slow_reporter = progress_reporter_cls(
-        verbosity=AirVerbosity.VERBOSE, heartbeat_freq=class_default * 10
+        verbosity=AirVerbosity.VERBOSE, heartbeat_freq=300
     )
     slow_reporter._print_heartbeat = mock.MagicMock()
 
     with freeze_time() as frozen:
         slow_reporter.print_heartbeat([])
         assert slow_reporter._print_heartbeat.call_count == 1
-        frozen.tick(class_default + 1)
+        frozen.tick(31)
         slow_reporter.print_heartbeat([])
         assert slow_reporter._print_heartbeat.call_count == 1
-
-    # ``heartbeat_freq=None`` preserves the class-level default.
-    noop_reporter = progress_reporter_cls(
-        verbosity=AirVerbosity.VERBOSE, heartbeat_freq=None
-    )
-    assert noop_reporter._heartbeat_freq == class_default
 
 
 if __name__ == "__main__":

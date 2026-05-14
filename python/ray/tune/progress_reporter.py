@@ -203,7 +203,7 @@ class TuneReporterBase(ProgressReporter):
         else:
             self._print_intermediate_tables = print_intermediate_tables
 
-        self._max_report_freqency = max_report_frequency
+        self._max_report_frequency = max_report_frequency
         self._last_report_time = 0
 
         self._start_time = time.time()
@@ -254,7 +254,7 @@ class TuneReporterBase(ProgressReporter):
             self._start_time = timestamp
 
     def should_report(self, trials: List[Trial], done: bool = False):
-        if time.time() - self._last_report_time > self._max_report_freqency:
+        if time.time() - self._last_report_time > self._max_report_frequency:
             self._last_report_time = time.time()
             return True
         return done
