@@ -19,6 +19,7 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
+from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
 
@@ -274,10 +275,14 @@ class CheckpointManager(abc.ABC):
         # Note: the convert is very time-consuming.
         # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
+        ctx_label_selector = DataContext.get_current().execution_options.label_selector
+        task = convert_and_sort_checkpointed_ids
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
         (
             checkpointed_ids_ref,
             checkpoint_size_ref,
-        ) = convert_and_sort_checkpointed_ids.remote(block_ref, self.id_column)
+        ) = task.remote(block_ref, self.id_column)
 
         checkpoint_size = ray.get(checkpoint_size_ref)
 
@@ -312,9 +317,13 @@ class CheckpointManager(abc.ABC):
             return
         if data_file_filesystem is None:
             data_file_filesystem = self.filesystem
+        ctx_label_selector = DataContext.get_current().execution_options.label_selector
+        task = _clean_pending_checkpoints_task
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
         try:
             cleaned_count = ray.get(
-                _clean_pending_checkpoints_task.remote(
+                task.remote(
                     self.checkpoint_path_unwrapped,
                     self.filesystem,
                     _unwrap_protocol(data_file_dir),
