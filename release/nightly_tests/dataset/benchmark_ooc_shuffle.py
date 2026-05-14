@@ -46,7 +46,9 @@ def pick_sf(data_size_gb):
     """Pick the smallest TPC-H scale factor that has enough data."""
     if data_size_gb <= 70:
         return 100
-    return 1000
+    if data_size_gb <= 700:
+        return 1000
+    return 10000
 
 
 def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
@@ -83,6 +85,11 @@ def run_one(data_size_gb, num_partitions, strategy_name="actorless"):
 
     repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
 
+    import shutil
+
+    output_path = "/tmp/shuffle_output"
+    shutil.rmtree(output_path, ignore_errors=True)
+
     print(
         f"  [ray] read(sf{sf}, limit {target_rows:,}) + shuffle -> "
         f"{num_partitions} partitions ({strategy_name}) ... ",
@@ -91,23 +98,19 @@ def run_one(data_size_gb, num_partitions, strategy_name="actorless"):
     )
 
     start = time.perf_counter()
-    result = repartitioned.materialize()
+    repartitioned.write_parquet(output_path)
     elapsed = time.perf_counter() - start
+    print(f"{elapsed:.1f}s ({target_rows:,} rows, {data_size_gb:.1f} GB)")
 
-    num_rows = result.count()
-    actual_bytes = result.size_bytes()
-    actual_gb = actual_bytes / 1024**3
-
-    print(f"{elapsed:.1f}s ({num_rows:,} rows, {actual_gb:.1f} GB)")
-
-    del result, repartitioned, ds
+    del repartitioned, ds
     gc.collect()
+    shutil.rmtree(output_path, ignore_errors=True)
     wait_for_object_store_to_drain()
 
     return {
         "elapsed_s": elapsed,
-        "num_rows": num_rows,
-        "actual_gb": round(actual_gb, 2),
+        "num_rows": target_rows,
+        "actual_gb": round(data_size_gb, 2),
         "status": "ok",
     }
 

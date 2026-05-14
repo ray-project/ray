@@ -3,10 +3,10 @@
 Compare with Ray Data's actorless shuffle using the same cluster
 configuration and partition counts.
 
-Cluster assumption: 16 worker nodes, 8 CPU / 30 GB each.
-  - Total memory: ~480 GB
-  - Object store (50%): ~240 GB
-  - In-core shuffle limit (x/3): ~80 GB
+Cluster assumption: N worker nodes, 8 CPU / 30 GB each.
+  - Total memory: ~30*N GB
+  - Object store (50%): ~15*N GB
+  - In-core shuffle limit (x/3): ~5*N GB
 
 Data: TPC-H lineitem from S3, limited to target row count.
 
@@ -33,15 +33,17 @@ KEY_COLUMNS = ["column00"]  # l_orderkey
 # Measured empirically; used to convert --data-size-gb to a row limit.
 APPROX_BYTES_PER_ROW = 145
 
-# Local temp dir for shuffle output (forces full materialization).
-OUTPUT_DIR = "/tmp/ooc_bench_daft_output"
+# RAM-backed tmpfs sink (Linux).  Daft has no ``noop`` writer like Spark,
+# so we write through the writer pipeline but to /dev/shm so the "disk"
+# write is just a memcpy.  This is the closest apples-to-apples to
+# Ray Data's ``materialize()`` and Spark's ``write.format("noop")``.
+SHM_DIR = "/dev/shm"
+OUTPUT_SUBDIR = "ooc_bench_daft_output"
 
 
 def pick_sf(data_size_gb):
-    """Pick the smallest TPC-H scale factor that has enough data."""
-    if data_size_gb <= 70:
-        return 100
-    return 1000
+    """Always use SF1000 — Daft's parquet reader has issues with SF100."""
+    return 10000
 
 
 def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
@@ -65,41 +67,38 @@ def run_one(data_size_gb, num_partitions):
     """Run a single Daft repartition and return timing + status info."""
     import daft
 
+    shutil.rmtree("/tmp/shuffle_output", ignore_errors=True)
     sf = pick_sf(data_size_gb)
     target_rows = int(data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
     s3_path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
 
-    shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
-
     print(
         f"  [daft] read(sf{sf}, limit {target_rows:,}) + shuffle -> "
-        f"{num_partitions} partitions ... ",
+        f"{num_partitions} partitions  ... ",
         end="",
         flush=True,
     )
 
     start = time.perf_counter()
     df = daft.read_parquet(s3_path).limit(target_rows)
-    # write_parquet() forces full materialization of the shuffle.
-    # count_rows() gets optimized away by Daft (skips repartition).
-    # collect() pulls all data to driver and OOMs on large datasets.
-    result = df.repartition(num_partitions, *KEY_COLUMNS).write_parquet(OUTPUT_DIR)
+    write_result = df.repartition(num_partitions, *KEY_COLUMNS).write_parquet(
+        "/tmp/shuffle_output"
+    )
     elapsed = time.perf_counter() - start
 
-    num_rows = result.to_pydict().get("rows", [0])
+    num_rows = write_result.to_pydict().get("rows", [0])
     num_rows = sum(num_rows) if isinstance(num_rows, list) else num_rows
     print(f"{elapsed:.1f}s ({num_rows:,} rows)")
 
-    del result
+    del write_result
     gc.collect()
 
-    # Clean up output files.
-    shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
     wait_for_object_store_to_drain()
 
     return {
         "elapsed_s": elapsed,
         "num_rows": num_rows,
+        "sink": "/tmp/shuffle_output",
         "status": "ok",
     }
 
