@@ -4677,6 +4677,61 @@ class Dataset:
 
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
+    def write_delta(
+        self,
+        path: str,
+        *,
+        mode: str = "append",
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional["pyarrow.Schema"] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        **write_kwargs,
+    ) -> None:
+        """Write the dataset to a Delta Lake table (APPEND mode only).
+
+        This MVP build supports only ``mode="append"``. Subsequent PRs add
+        OVERWRITE / ERROR / IGNORE, partition columns, schema evolution,
+        and cloud storage authentication.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_delta("/tmp/my-delta-table")  # doctest: +SKIP
+
+        Args:
+            path: Path to the Delta table.
+            mode: Write mode; only ``"append"`` is supported in this build.
+            filesystem: Optional PyArrow filesystem.
+            schema: Optional explicit schema.
+            ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
+            concurrency: Maximum number of concurrent write tasks.
+            **write_kwargs: Additional Delta writer options
+                (``compression``, ``write_statistics``, ``name``, ``description``,
+                ``configuration``, ``storage_options``).
+
+        Raises:
+            ImportError: If ``deltalake`` is not installed.
+            ValueError: If ``mode`` is not ``"append"``.
+        """
+        from ray.data._internal.datasource.delta import DeltaDatasink
+
+        datasink = DeltaDatasink(
+            path,
+            mode=mode,
+            filesystem=filesystem,
+            schema=schema,
+            **write_kwargs,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    @ConsumptionAPI
     def write_images(
         self,
         path: str,

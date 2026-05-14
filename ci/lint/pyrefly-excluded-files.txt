@@ -14,6 +14,10 @@ python/ray/data/_internal/datasource/binary_datasource.py
 python/ray/data/_internal/datasource/clickhouse_datasink.py
 python/ray/data/_internal/datasource/csv_datasink.py
 python/ray/data/_internal/datasource/csv_datasource.py
+python/ray/data/_internal/datasource/delta/adapter.py
+python/ray/data/_internal/datasource/delta/committer.py
+python/ray/data/_internal/datasource/delta/utils.py
+python/ray/data/_internal/datasource/delta/writer.py
 python/ray/data/_internal/datasource/delta_sharing_datasource.py
 python/ray/data/_internal/datasource/hudi_datasource.py
 python/ray/data/_internal/datasource/huggingface_datasource.py
@@ -226,6 +230,7 @@ python/ray/data/tests/datasource/test_torch.py
 python/ray/data/tests/datasource/test_turbopuffer_datasink.py
 python/ray/data/tests/datasource/test_uc_datasource.py
 python/ray/data/tests/datasource/test_webdataset.py
+python/ray/data/tests/datasource/test_write_delta.py
 python/ray/data/tests/expressions/test_arithmetic.py
 python/ray/data/tests/expressions/test_boolean.py
 python/ray/data/tests/expressions/test_cast.py
