@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -242,10 +242,17 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     )
 
 
-def get_controller_impl():
+def get_controller_impl(controller_options: Optional["ControllerOptions"] = None):
+    """Build the Ray actor class for the Serve controller.
+
+    ``controller_options`` is the validated ``ControllerOptions`` model from
+    ``serve.start`` / ``serve.run`` / the YAML schema. Today only its
+    ``runtime_env`` field is consumed; future fields (num_cpus, resources,
+    max_concurrency overrides) slot in here.
+    """
     from ray.serve._private.controller import ServeController
 
-    controller_impl = ray.remote(
+    actor_options = dict(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
@@ -255,9 +262,17 @@ def get_controller_impl():
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    )(ServeController)
+    )
+    if controller_options is not None and controller_options.runtime_env:
+        # The validator on ControllerOptions guarantees this is a dict
+        # containing only the ``env_vars`` key with str->str entries.
+        actor_options["runtime_env"] = controller_options.runtime_env
 
-    return controller_impl
+    return ray.remote(**actor_options)(ServeController)
+
+
+if TYPE_CHECKING:
+    from ray.serve.config import ControllerOptions  # noqa: F401
 
 
 def get_proxy_actor_class():
