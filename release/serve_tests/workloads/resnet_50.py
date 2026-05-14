@@ -9,8 +9,8 @@ from PIL import Image
 import starlette.requests
 import torch
 import torchvision.models as models
+from torchvision.models import ResNet50_Weights
 import torchvision.transforms as transforms
-import numpy as np
 
 from ray import serve
 
@@ -139,11 +139,13 @@ def _fetch_image_ssrf_safe(uri: str):
 @serve.deployment
 class Model:
     def __init__(self):
-        self.model = models.resnet50(pretrained=True)
-        self.model.eval()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = (
+            models.resnet50(weights=ResNet50_Weights.DEFAULT).eval().to(self.device)
+        )
         self.preprocessor = transforms.Compose(
             [
-                transforms.Resize(224),
+                transforms.Resize(256),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 transforms.Normalize(
@@ -165,7 +167,7 @@ class Model:
             return
 
         with torch.no_grad():
-            output = self.model(torch.stack([image]))
+            output = self.model(torch.stack([image]).to(self.device))
 
         return str(torch.argmax(output, dim=1).tolist())
 
