@@ -3,7 +3,7 @@ import functools
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
@@ -43,8 +43,9 @@ class OngoingRequest:
     # Resources that are already allocated to the requester.
     allocated_resources: List[ResourceDict]
     # Per-bundle label selectors, parallel to ``requested_resources``.
-    # Empty dicts (or empty list) mean no label constraint.
-    requested_label_selectors: List[Dict[str, str]] = field(default_factory=list)
+    # Empty dicts mean no label constraint on that bundle. Required to have
+    # the same length as ``requested_resources``.
+    requested_label_selectors: List[Dict[str, str]]
 
     def __lt__(self, other):
         """Used to sort requests when allocating resources.
@@ -156,6 +157,19 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         return self._cached_allocated_resources
 
 
+def _default_send_resources_request(
+    bundles: List[ResourceDict],
+    label_selectors: Optional[List[Dict[str, str]]] = None,
+) -> None:
+    """Default ``send_resources_request`` implementation for the actor."""
+    if label_selectors is None:
+        ray.autoscaler.sdk.request_resources(bundles=bundles)
+    else:
+        ray.autoscaler.sdk.request_resources(
+            bundles=bundles, bundle_label_selectors=label_selectors
+        )
+
+
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -171,13 +185,7 @@ class _AutoscalingCoordinatorActor:
         get_current_time: Callable[[], float] = time.time,
         send_resources_request: Callable[
             [List[ResourceDict], Optional[List[Dict[str, str]]]], None
-        ] = lambda bundles, label_selectors=None: (
-            ray.autoscaler.sdk.request_resources(
-                bundles=bundles, bundle_label_selectors=label_selectors
-            )
-            if label_selectors
-            else ray.autoscaler.sdk.request_resources(bundles=bundles)
-        ),
+        ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
     ):
         self._get_current_time = get_current_time
@@ -295,11 +303,7 @@ class _AutoscalingCoordinatorActor:
         merged_selectors: List[Dict[str, str]] = []
         for req in self._ongoing_reqs.values():
             merged_req.extend(req.requested_resources)
-            # Backfill empty selectors for legacy requesters that didn't set any.
-            if req.requested_label_selectors:
-                merged_selectors.extend(req.requested_label_selectors)
-            else:
-                merged_selectors.extend({} for _ in req.requested_resources)
+            merged_selectors.extend(req.requested_label_selectors)
         if any(merged_selectors):
             self._send_resources_request(merged_req, label_selectors=merged_selectors)
         else:
