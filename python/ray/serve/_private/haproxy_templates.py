@@ -61,9 +61,14 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
     {%- endif %}
-    tune.bufsize 65536
-    tune.h2.initial-window-size 1048576
-    tune.h2.max-frame-size 65536
+    tune.bufsize {{ config.bufsize }}
+    {%- if config.grpc_enabled %}
+    tune.h2.max-frame-size {{ config.h2_max_frame_size }}
+    tune.h2.be.initial-window-size {{config.h2_be_initial_window_size}}
+    tune.h2.be.max-concurrent-streams {{config.h2_be_max_concurrent_streams}}
+    tune.h2.fe.initial-window-size {{config.h2_fe_initial_window_size}}
+    tune.h2.fe.max-concurrent-streams {{config.h2_fe_max_concurrent_streams}}
+    {%- endif %}
 defaults
     mode http
     option log-health-checks
