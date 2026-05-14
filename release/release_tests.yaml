@@ -2099,30 +2099,6 @@
       num_nodes: 2
   alert: default
 
-- name: train_colocate_trainer
-  python: "3.10"
-  group: Train tests
-  working_dir: train_tests/colocate_trainer
-
-  # Ray Train V2 doesn't support colocation.
-  # TODO: Decide whether to remove this test or re-enable it if we add support again.
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: compute_aws.yaml
-
-  run:
-    timeout: 3000
-    script: pytest -v test_colocate_trainer.py -s
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: default
-
-
 - name: torch_local_mode
   python: "3.10"
   group: Train tests
@@ -4652,7 +4628,7 @@
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57222
-  frequency: manual
+  frequency: weekly
   python: "3.12"
   group: ray-examples
   team: ml
@@ -4672,7 +4648,7 @@
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
@@ -5030,8 +5006,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_audio
-  # https://github.com/ray-project/ray/issues/57220
-  frequency: manual
+  frequency: weekly
   python: "3.12"
   group: ray-examples
   team: ml
@@ -5078,8 +5053,7 @@
     - __suffix__: aws
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57219
-  frequency: manual
+  frequency: weekly
   python: "3.12"
   group: ray-examples
   team: ml
@@ -5099,13 +5073,12 @@
     - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: object_detection  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57228
-  frequency: manual
+  frequency: weekly
   python: "3.12"
   group: ray-examples
   team: ml
@@ -5130,8 +5103,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_rag  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57224
-  frequency: manual
+  frequency: weekly
   python: "3.12"
   group: ray-examples
   team: ml

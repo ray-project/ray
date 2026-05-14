@@ -9,6 +9,7 @@ set -euxo pipefail
 # Use the AWS CLI to fetch BRAVE_API_KEY from Secrets Manager.
 # Replace 'my-brave-api-key-secret' with the actual secret name.
 BRAVE_API_KEY=$(aws secretsmanager get-secret-value \
+  --region us-west-2 \
   --secret-id brave-search-api-key \
   --query SecretString \
   --output text)
