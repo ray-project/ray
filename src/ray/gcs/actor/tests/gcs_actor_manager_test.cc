@@ -24,7 +24,8 @@
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -33,8 +34,11 @@
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
@@ -125,11 +129,13 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
+        /*get_time_ms=*/[this]() -> double { return clock_.NowUnixMicros(); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(publisher));
+    observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
@@ -155,7 +161,9 @@ class GcsActorManagerTest : public ::testing::Test {
         *fake_ray_event_recorder_,
         "test_session_name",
         fake_actor_by_state_gauge_,
-        fake_gcs_actor_by_state_gauge_);
+        fake_gcs_actor_by_state_gauge_,
+        observability_publisher_.get(),
+        clock_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -289,6 +297,7 @@ class GcsActorManagerTest : public ::testing::Test {
     }
   }
 
+  FakeClock clock_;
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -301,6 +310,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;
@@ -1579,7 +1589,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
     if (event->GetEventType() != rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT) {
       continue;
     }
-    auto ray_event = std::move(*event).Serialize();
+    auto ray_event = std::move(*event).Serialize().value();
     const auto &lifecycle_event = ray_event.actor_lifecycle_event();
     if (lifecycle_event.state_transitions_size() == 0) {
       continue;

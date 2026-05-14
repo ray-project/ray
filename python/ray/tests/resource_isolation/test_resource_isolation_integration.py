@@ -326,10 +326,9 @@ def assert_cgroup_hierarchy_exists_for_node(
     assert non_ray_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
-    # Verify memory.max for default mode.
     total_memory = ray._common.utils.get_system_memory()
-    with open(user_cgroup / "memory.max", "r") as memory_max_file:
-        contents = memory_max_file.read().strip()
+    with open(user_cgroup / "memory.high", "r") as memory_high_file:
+        contents = memory_high_file.read().strip()
         assert contents == str(
             total_memory
             - resource_isolation_config.system_reserved_memory

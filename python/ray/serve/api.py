@@ -306,7 +306,7 @@ def get_deployment_actor(actor_name: str):
 
 
 @PublicAPI(stability="stable")
-def ingress(app: Union[ASGIApp, Callable]) -> Callable:
+def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     """Wrap a deployment class with an ASGI application for HTTP request parsing.
     There are a few different ways to use this functionality.
 
@@ -382,6 +382,9 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
         app: the FastAPI app to wrap this class with.
             Can be any ASGI-compatible callable.
             You can also pass in a builder function that returns an ASGI app.
+            Pass nothing to defer the app to replica init time; in that mode
+            the class must define ``__serve_build_asgi_app__``, which is
+            invoked after the user constructor and must return an ASGI app.
     """
 
     def decorator(cls: Optional[Type[Any]] = None) -> Callable:
@@ -401,16 +404,24 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                 "Classes passed to @serve.ingress may not have __call__ method."
             )
 
+        if app is None and not hasattr(cls, "__serve_build_asgi_app__"):
+            raise ValueError(
+                "serve.ingress() called without an app argument requires "
+                f"{cls.__name__} to define `__serve_build_asgi_app__`."
+            )
+
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         if isinstance(app, (FastAPI, APIRouter)):
             make_fastapi_class_based_view(app, cls)
 
-        frozen_app_or_func: Union[ASGIApp, Callable] = None
+        # Late-bound (`app is None`): the class's `__serve_build_asgi_app__`
+        # produces the real app at replica init time.
+        frozen_app_or_func: Optional[Union[ASGIApp, Callable]] = None
 
         if inspect.isfunction(app):
             frozen_app_or_func = app
-        else:
+        elif app is not None:
             # Free the state of the app so subsequent modification won't affect
             # this ingress deployment. We don't use copy.copy here to avoid
             # recursion issue.
