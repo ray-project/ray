@@ -532,7 +532,7 @@ class SplitCoordinator:
             self._report_prefetched_bytes_to_executor()
 
             if (
-                len(self._finished_splits) >= self._n
+                len(self._finished_splits) == self._n
                 and self._current_executor is not None
             ):
                 executor_to_shutdown = self._current_executor
