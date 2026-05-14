@@ -291,6 +291,12 @@ defaults
     log global
     option httplog
     option abortonclose
+    # Retry a request to a different slot when a slot is momentarily down.
+    # Restrict to retries that cannot have leaked a partial body to the client:
+    # connection failures (no bytes sent) and empty responses (slot died
+    # before responding). Streamed/partial responses are left alone.
+    option redispatch
+    retry-on conn-failure empty-response
     option idle-close-on-response
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
     errorfile 502 {temp_dir}/500.http

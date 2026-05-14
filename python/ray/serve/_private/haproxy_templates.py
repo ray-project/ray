@@ -51,6 +51,12 @@ defaults
     log global
     option httplog
     option abortonclose
+    # Retry a request to a different slot when a slot is momentarily down.
+    # Restrict to retries that cannot have leaked a partial body to the client:
+    # connection failures (no bytes sent) and empty responses (slot died
+    # before responding). Streamed/partial responses are left alone.
+    option redispatch
+    retry-on conn-failure empty-response
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
