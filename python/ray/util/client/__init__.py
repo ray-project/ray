@@ -140,8 +140,11 @@ class _ClientContext:
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
             connection_retries: number of connection attempts to make
+            namespace: The namespace to connect to.
             ignore_version: whether to ignore Python or Ray version mismatches.
                 This should only be used for debugging purposes.
+            _credentials: Optional gRPC channel credentials for secure connection.
+            ray_init_kwargs: Optional additional keyword arguments for ray.init().
 
         Returns:
             Dictionary of connection info, e.g., {"num_clients": 1}.
