@@ -126,9 +126,10 @@ def test_include_paths_with_column_projection(
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
     pq.write_table(table, path)
 
-    # Under V1, ``include_paths=True`` implicitly retained ``path`` through
-    # ``.select_columns``. V2 respects ``.select_columns`` literally — the
-    # caller must include ``"path"`` explicitly when they want it.
+    # V2 ``select_columns`` is literal — ``"path"`` is dropped unless listed.
+    # V1 ``read_parquet(columns=[...], include_paths=True)`` retained ``"path"``
+    # automatically; the ``columns=`` deprecation message in ``read_api`` calls
+    # this out so callers know to thread ``"path"`` through their projection.
     ds = ray.data.read_parquet(path, include_paths=True).select_columns(["id", "path"])
 
     schema_names = ds.schema().names
@@ -3011,11 +3012,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     Regression test for https://github.com/ray-project/ray/issues/61675
     See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
     """
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "Nested-type (ARROW-5030) fallback reader is not yet ported to "
-            "the DataSourceV2 path."
-        )
     data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
     ds = ray.data.read_parquet(data_dir)
     total_rows = 0
@@ -3024,6 +3020,44 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
         assert "id" in batch.column_names
         assert "nested_col" in batch.column_names
     assert total_rows == num_rows
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
+@pytest.mark.timeout(300)
+def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_column(
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
+):
+    """When the projection excludes the large nested column but the filter
+    references it, the V2 reader must still trigger the fallback because the
+    scanner would otherwise hit ARROW-5030 while decoding the column for
+    row-level filter evaluation.
+    """
+    from unittest.mock import patch
+
+    from ray.data import DataContext
+    from ray.data.expressions import col
+
+    if not DataContext.get_current().use_datasource_v2:
+        pytest.skip("V2-only: fallback decision lives in ParquetFileReader (V2).")
+
+    data_dir, _, _, _ = nested_parquet_exceeding_2gb
+
+    with patch(
+        "ray.data._internal.datasource.parquet_datasource"
+        "._get_safe_batch_size_for_nested_types"
+    ) as mock_safe:
+        ds = (
+            ray.data.read_parquet(data_dir)
+            .filter(col("nested_col").is_not_null())
+            .select_columns(["id"])
+        )
+        # Materialize a single batch — enough to ensure the per-fragment
+        # decision is exercised — without paying for the whole 2 GB file.
+        next(iter(ds.iter_batches(batch_format="pyarrow", batch_size=10)))
+        mock_safe.assert_called()
 
 
 @pytest.mark.skipif(

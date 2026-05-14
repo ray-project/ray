@@ -23,31 +23,9 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner_interface.h"
 
 namespace ray {
-
-/// \class PeriodicalRunnerInterface
-/// Interface for periodical runner functionality.
-class PeriodicalRunnerInterface {
- public:
-  virtual ~PeriodicalRunnerInterface() = default;
-
-  virtual void RunFnPeriodically(std::function<void()> fn,
-                                 uint64_t period_ms,
-                                 std::string name) = 0;
-
- protected:
-  virtual void DoRunFnPeriodically(
-      std::function<void()> fn,
-      boost::posix_time::milliseconds period,
-      std::shared_ptr<boost::asio::deadline_timer> timer) = 0;
-
-  virtual void DoRunFnPeriodicallyInstrumented(
-      std::function<void()> fn,
-      boost::posix_time::milliseconds period,
-      std::shared_ptr<boost::asio::deadline_timer> timer,
-      std::string name) = 0;
-};
 
 /// \class PeriodicalRunner
 /// A periodical runner attached with an io_context.

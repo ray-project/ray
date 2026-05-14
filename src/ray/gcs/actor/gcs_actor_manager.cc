@@ -29,7 +29,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 
 namespace {
 /// The error message constructed from below methods is user-facing, so please avoid
@@ -234,7 +233,8 @@ GcsActorManager::GcsActorManager(
     const std::string &session_name,
     ray::observability::MetricInterface &actor_by_state_gauge,
     ray::observability::MetricInterface &gcs_actor_by_state_gauge,
-    pubsub::ObservabilityPublisher *observability_publisher)
+    pubsub::ObservabilityPublisher *observability_publisher,
+    ClockInterface &clock)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
@@ -251,7 +251,8 @@ GcsActorManager::GcsActorManager(
       usage_stats_client_(nullptr),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
       actor_by_state_gauge_(actor_by_state_gauge),
-      gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge) {
+      gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge),
+      clock_(clock) {
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
@@ -714,7 +715,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             << actor->GetRayNamespace() << "\", ...)";
 
         auto error_data = CreateErrorTableData(
-            "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
+            "detached_actor_anonymous_namespace", stream.str(), clock_.Now(), job_id);
 
         RAY_LOG(WARNING) << error_data.SerializeAsString();
         observability_publisher_->PublishError(job_id.Hex(), std::move(error_data));
@@ -862,7 +863,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
-      current_sys_time_ms());
+      clock_.NowUnixMillis());
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
@@ -1005,7 +1006,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
 
   gcs_actor_scheduler_->OnActorDestruction(it->second);
 
-  it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
+  it->second->GetMutableActorTableData()->set_timestamp(clock_.NowUnixMillis());
   const auto actor = it->second;
 
   // Cancel existing timer only on force_kill to interrupt graceful shutdown.
@@ -1091,7 +1092,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  auto time = current_sys_time_ms();
+  auto time = clock_.NowUnixMillis();
   if (actor->GetState() != rpc::ActorTableData::DEAD) {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->set_end_time(time);
@@ -1548,7 +1549,7 @@ void GcsActorManager::RestartActor(
   } else {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
-    auto time = current_sys_time_ms();
+    auto time = clock_.NowUnixMillis();
     mutable_actor_table_data->set_end_time(time);
     mutable_actor_table_data->set_timestamp(time);
 
@@ -1661,7 +1662,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
 
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  auto time = current_sys_time_ms();
+  auto time = clock_.NowUnixMillis();
   mutable_actor_table_data->set_timestamp(time);
   if (actor->GetState() != rpc::ActorTableData::RESTARTING) {
     mutable_actor_table_data->set_start_time(time);
