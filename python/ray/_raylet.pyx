@@ -2082,9 +2082,6 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Environmental variable restriction for GPUs and thread count is now handled
-    # statically at worker startup by the Raylet and RuntimeEnvAgent.
-
     # Initialize the actor if this is an actor creation task. We do this here
     # before setting the current task ID so that we can get the execution info,
     # in case executing the main task throws an exception.

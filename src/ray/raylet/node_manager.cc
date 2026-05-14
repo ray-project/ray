@@ -1921,8 +1921,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                                         rpc::PrestartWorkersReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  ResourceSet resource_requirements;
-  resource_requirements.Set(scheduling::ResourceID::CPU(), 1.0);
+  ResourceSet default_resource_requirements;
+  default_resource_requirements.Set(scheduling::ResourceID::CPU(), 1.0);
 
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
       request.language(),
@@ -1946,7 +1946,7 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
             << ", runtime_env_setup_error_message " << runtime_env_setup_error_message;
         return false;
       },
-      resource_requirements);
+      default_resource_requirements);
 
   for (uint64_t i = 0; i < request.num_workers(); i++) {
     worker_pool_.StartNewWorker(pop_worker_request);
