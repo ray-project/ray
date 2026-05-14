@@ -43,7 +43,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) {
+    const MemoryUsageSnapshot &memory_usage_snapshot) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
   std::vector<std::string> alive_worker_debug_strings;
   for (const auto &worker_being_killed_or_should_retry : workers_being_killed_) {
@@ -60,7 +60,7 @@ TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
   workers_being_killed_ = remaining_alive_targets;
   if (workers_being_killed_.empty()) {
     workers_being_killed_ =
-        Policy(workers, process_memory_snapshot, system_memory_snapshot);
+        Policy(workers, process_memory_snapshot, memory_usage_snapshot);
     if (workers_being_killed_.empty()) {
       RAY_LOG_EVERY_MS(WARNING, 5000)
           << "Worker killer did not select any workers to "
@@ -81,7 +81,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) const {
+    const MemoryUsageSnapshot &memory_usage_snapshot) const {
   if (workers.empty()) {
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
@@ -139,7 +139,7 @@ TimeBasedWorkerKillingPolicy::Policy(
   // continue to select workers until the memory to free is reached
   auto sorted_worker_it = sorted_workers.begin();
   int64_t memory_to_free_bytes =
-      system_memory_snapshot.used_bytes - threshold_bytes_ + kill_buffer_bytes_;
+      memory_usage_snapshot.used_bytes - threshold_bytes_ + kill_buffer_bytes_;
   int64_t memory_left_to_free = memory_to_free_bytes;
 
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
@@ -164,7 +164,11 @@ TimeBasedWorkerKillingPolicy::Policy(
   }
 
   RAY_LOG(DEBUG) << absl::StrFormat(
+      "Currently used memory: %d bytes, threshold: %d bytes, kill buffer: %d bytes. "
       "Needed to free %d bytes. Selected %d workers to kill: %s",
+      memory_usage_snapshot.used_bytes,
+      threshold_bytes_,
+      kill_buffer_bytes_,
       memory_to_free_bytes,
       workers_to_kill.size(),
       PolicyDebugString(workers_to_kill, process_memory_snapshot));

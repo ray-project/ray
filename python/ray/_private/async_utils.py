@@ -21,7 +21,13 @@
 
 import asyncio
 import asyncio.events
-from typing import Callable, Optional
+from typing import Callable, Optional, Set
+
+# Strong references to background tasks to prevent them from being garbage
+# collected mid-execution. The asyncio event loop only keeps weak references
+# to tasks, so a task with no other strong references can be collected at
+# any time. See https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_BACKGROUND_TASKS: Set[asyncio.Task] = set()
 
 
 def enable_monitor_loop_lag(
@@ -49,4 +55,7 @@ def enable_monitor_loop_lag(
             lag = loop.time() - t0 - interval_s  # Should be close to zero.
             callback(lag)
 
-    loop.create_task(monitor(), name="async_utils.monitor_loop_lag")
+    task = loop.create_task(monitor(), name="async_utils.monitor_loop_lag")
+    # Keep a strong reference so the task isn't garbage collected mid-execution.
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)

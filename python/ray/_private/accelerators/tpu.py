@@ -378,9 +378,16 @@ class TPUAcceleratorManager(AcceleratorManager):
         Returns:
             The number of TPUs if any were detected, otherwise 0.
         """
-        accel_files = glob.glob("/dev/accel*")
-        if accel_files:
-            return len(accel_files)
+        # Real TPU chips are exposed as character devices at /dev/accel0,
+        # /dev/accel1, etc. NVIDIA drivers 570.x and later (Blackwell-class
+        # GPUs such as the RTX 5090) instead create /dev/accel as a *directory*
+        # containing /dev/accel/accel0, which the non-recursive glob below
+        # would otherwise miscount as a TPU chip. Filter directory entries out
+        # so both GKE and GCE TPU detection keep working while rejecting the
+        # NVIDIA false positive.
+        accel_chips = [p for p in glob.glob("/dev/accel*") if not os.path.isdir(p)]
+        if accel_chips:
+            return len(accel_chips)
 
         try:
             vfio_entries = os.listdir("/dev/vfio")

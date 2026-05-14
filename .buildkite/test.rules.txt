@@ -20,6 +20,13 @@
 ! linux_wheels macos_wheels docker doc python_dependencies min_build tools
 ! release_tests spark_on_ray
 
+# NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
+# from blocking premerge for these changes. We can remove this pass block once effort concludes,
+# or earlier should regressions become an issue.
+doc/*.rst
+# pass
+;
+
 python/ray/air/
 @ ml train train_gpu tune data linux_wheels
 ;
