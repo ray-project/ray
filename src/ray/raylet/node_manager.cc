@@ -2637,8 +2637,6 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   const auto owner_node_id = NodeID::FromBinary(request.owner_address().node_id());
   if (failed_workers_cache_.contains(owner_worker_id) ||
       failed_nodes_cache_.contains(owner_node_id)) {
-    RAY_LOG(INFO).WithField(owner_worker_id).WithField(owner_node_id)
-        << "Skipping PinObjectIDs because owner is already dead.";
     for (size_t i = 0; i < object_ids.size(); ++i) {
       reply->add_successes(false);
     }
