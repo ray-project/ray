@@ -75,7 +75,7 @@ TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
   MakeThresholdMemoryMonitor(
       0 /*memory_usage_threshold_bytes*/,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](const std::string &) { has_checked_once->count_down(); },
+      [has_checked_once](std::string) { has_checked_once->count_down(); },
       "" /*root_cgroup_path*/);
   has_checked_once->wait();
 }
@@ -105,7 +105,7 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [has_checked_once](const std::string &) { has_checked_once->count_down(); },
+      [has_checked_once](std::string) { has_checked_once->count_down(); },
       cgroup_dir /*root_cgroup_path*/);
 
   has_checked_once->wait();
@@ -137,7 +137,7 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [callback_triggered](const std::string &) { callback_triggered->store(true); },
+      [callback_triggered](std::string) { callback_triggered->store(true); },
       cgroup_dir /*root_cgroup_path*/);
 
   std::this_thread::sleep_for(std::chrono::seconds(5));
