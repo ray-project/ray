@@ -48,41 +48,40 @@ def _get_pip_hash(pip_dict: Dict) -> str:
     
     while packages_to_process:
         pkg, parent_dir = packages_to_process.pop()
+
+        file_path = None
         if pkg.startswith("-r"):
-            # This handles both "-r <file>" and "-r<file>"
             file_path = pkg[2:].lstrip()
         elif pkg.startswith("--requirement"):
             file_path = pkg[len("--requirement"):].lstrip()
-            # Handle --requirement=file.txt format
             if file_path.startswith("="):
                 file_path = file_path[1:].lstrip()
         else:
             expanded_packages.append(pkg)
             continue
-        
-        # Resolve relative paths against the parent file's directory
-        if parent_dir and not os.path.isabs(file_path):
-            file_path = os.path.join(parent_dir, file_path)
-        
-        # Get absolute path to normalize for circular reference detection
-        try:
-            abs_file_path = os.path.abspath(file_path)
-        except Exception:
-            default_logger.warning(f"Invalid path: {file_path}")
-            continue
-        
-        if abs_file_path in visited_files:
-            default_logger.warning(f"Skipping circular reference to {abs_file_path}")
-            continue
-        visited_files.add(abs_file_path)
-        
-        # Get the directory of this file for resolving relative paths in nested files
-        file_dir = os.path.dirname(abs_file_path)
-        
-        # Extend the stack with packages from the file, reversed to maintain order.
-        packages_from_file = _parse_requirements_file(abs_file_path)
-        # Add each package with the current file's directory as parent_dir
-        packages_to_process.extend([(p, file_dir) for p in reversed(packages_from_file)])
+
+        if file_path is not None:
+            if parent_dir and not os.path.isabs(file_path):
+                file_path = os.path.join(parent_dir, file_path)
+
+            try:
+                abs_file_path = os.path.abspath(file_path)
+            except Exception:
+                default_logger.warning(f"Invalid path: {file_path}")
+                continue
+
+            if abs_file_path in visited_files:
+                default_logger.warning(
+                    f"Skipping circular reference to {abs_file_path}"
+                )
+                continue
+            visited_files.add(abs_file_path)
+
+            file_dir = os.path.dirname(abs_file_path)
+            packages_from_file = _parse_requirements_file(abs_file_path)
+            packages_to_process.extend(
+                [(p, file_dir) for p in reversed(packages_from_file)]
+            )
     pip_dict_copy["packages"] = expanded_packages
     serialized_pip_spec = json.dumps(pip_dict_copy, sort_keys=True)
     hash_val = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
