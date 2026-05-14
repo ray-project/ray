@@ -94,30 +94,39 @@ def _prometheus_host() -> str:
 # --- PromQL construction --------------------------------------------------
 
 
-def _build_promql(metric: str, agg: str, window_s: int) -> str:
+def _build_promql(metric: str, agg: str, window_s: int, session_name: str) -> str:
     """Return the PromQL string that yields one value per series for ``agg``.
 
     ``window_s`` is rendered as ``[<N>s]`` and applied as a range selector.
+
+    ``session_name`` filters to this Ray session via the ``SessionName`` label
+    that ``ReporterAgent`` stamps on every metric (see
+    ``dashboard/modules/reporter/reporter_agent.py``'s ``record_and_export``
+    call with ``global_tags={"SessionName": ...}``). Without this filter, a
+    Prometheus shared across clusters — or one retaining stale series from a
+    previous ``ray start`` on the same host — would leak unrelated data into
+    the batch we forward.
     """
+    selector = f"{metric}{{SessionName='{session_name}'}}"
     window = f"[{window_s}s]"
     if agg == "avg":
-        return f"avg_over_time({metric}{window})"
+        return f"avg_over_time({selector}{window})"
     if agg == "max":
-        return f"max_over_time({metric}{window})"
+        return f"max_over_time({selector}{window})"
     if agg == "min":
-        return f"min_over_time({metric}{window})"
+        return f"min_over_time({selector}{window})"
     if agg == "last":
-        return f"last_over_time({metric}{window})"
+        return f"last_over_time({selector}{window})"
     if agg == "p50":
-        return f"quantile_over_time(0.5, {metric}{window})"
+        return f"quantile_over_time(0.5, {selector}{window})"
     if agg == "p95":
-        return f"quantile_over_time(0.95, {metric}{window})"
+        return f"quantile_over_time(0.95, {selector}{window})"
     if agg == "p99":
-        return f"quantile_over_time(0.99, {metric}{window})"
+        return f"quantile_over_time(0.99, {selector}{window})"
     if agg == "rate":
-        return f"rate({metric}{window})"
+        return f"rate({selector}{window})"
     if agg == "increase":
-        return f"increase({metric}{window})"
+        return f"increase({selector}{window})"
     raise ValueError(f"Unsupported aggregation: {agg!r}")
 
 
@@ -212,7 +221,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
         samples: List[Dict[str, Any]] = []
         for spec in METRIC_ALLOWLIST:
             for agg in spec.aggs:
-                query = _build_promql(spec.name, agg, interval_s)
+                query = _build_promql(spec.name, agg, interval_s, self.session_name)
                 try:
                     result = self._query_prometheus(query, eval_ts_s)
                 except Exception as e:
