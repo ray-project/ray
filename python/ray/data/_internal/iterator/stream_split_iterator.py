@@ -544,7 +544,7 @@ class SplitCoordinator:
             logger.debug(
                 f"All splits finished epoch {epoch_id}; shutting down " "executor."
             )
-            executor_to_shutdown.shutdown(force=False)
+            executor_to_shutdown.shutdown(force=True)
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
