@@ -172,7 +172,7 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeResourceIsolatedThresholdMemoryMonitor(
       threshold_bytes,
       1 /*refresh_interval_ms*/,
-      [has_checked_once]() { has_checked_once->count_down(); },
+      [has_checked_once](std::string) { has_checked_once->count_down(); },
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir);
@@ -213,7 +213,7 @@ TEST_F(
   MakeResourceIsolatedThresholdMemoryMonitor(
       threshold_bytes,
       1 /*refresh_interval_ms*/,
-      [has_checked_once]() { has_checked_once->count_down(); },
+      [has_checked_once](std::string) { has_checked_once->count_down(); },
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir);
@@ -253,7 +253,7 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeResourceIsolatedThresholdMemoryMonitor(
       threshold_bytes,
       1 /*refresh_interval_ms*/,
-      [callback_triggered]() { callback_triggered->store(true); },
+      [callback_triggered](std::string) { callback_triggered->store(true); },
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir);
