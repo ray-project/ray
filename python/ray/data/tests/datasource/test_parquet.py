@@ -509,7 +509,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=2).filter(
-        expr=col("two") == "a"
+        expr=col("two") == lit("a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
