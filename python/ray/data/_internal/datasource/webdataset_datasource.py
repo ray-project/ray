@@ -147,6 +147,7 @@ def _group_by_keys(
     """
     meta = meta or {}
     current_sample = None
+    seen_prefixes = set()
     for filesample in data:
         assert isinstance(filesample, dict)
         fname, value = filesample["fname"], filesample["data"]
@@ -155,8 +156,19 @@ def _group_by_keys(
             continue
         if current_sample is None or prefix != current_sample["__key__"]:
             if _valid_sample(current_sample):
+                seen_prefixes.add(current_sample["__key__"])
                 current_sample.update(meta)
                 yield current_sample
+            if prefix in seen_prefixes:
+                raise ValueError(
+                    f"Tar file {meta.get('__url__', '<unknown>')} is not "
+                    f"ordered by WebDataset key: entry {fname!r} re-uses "
+                    f"prefix {prefix!r} after that prefix was already "
+                    f"emitted as a sample. The WebDataset format requires "
+                    f"that all files sharing a key prefix be stored "
+                    f"contiguously in the tar archive. Re-create the tar "
+                    f"with entries sorted by name before reading."
+                )
             current_sample = dict(__key__=prefix)
             if "__url__" in filesample:
                 current_sample["__url__"] = filesample["__url__"]

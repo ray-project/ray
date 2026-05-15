@@ -272,6 +272,65 @@ def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_pe
         assert len(list(dataset)) == min_rows_per_file
 
 
+def _write_tar(path, entries):
+    """Write a tar archive with the given (name, payload) entries in order."""
+    with tarfile.open(path, "w") as tar:
+        for name, payload in entries:
+            info = tarfile.TarInfo(name=name)
+            info.size = len(payload)
+            tar.addfile(info, io.BytesIO(payload))
+
+
+@pytest.mark.parametrize(
+    "entries,expect_error",
+    [
+        # Interleaved prefixes violate the WebDataset adjacency requirement
+        # and used to silently produce 4 broken samples instead of 2.
+        (
+            [
+                ("0.a", b"zero-a"),
+                ("1.a", b"one-a"),
+                ("0.b", b"zero-b"),
+                ("1.b", b"one-b"),
+            ],
+            True,
+        ),
+        # Same data, spec-compliant ordering, must still produce 2 samples.
+        (
+            [
+                ("0.a", b"zero-a"),
+                ("0.b", b"zero-b"),
+                ("1.a", b"one-a"),
+                ("1.b", b"one-b"),
+            ],
+            False,
+        ),
+    ],
+    ids=["interleaved_raises", "ordered_succeeds"],
+)
+def test_webdataset_key_ordering(ray_start_2_cpus, tmp_path, entries, expect_error):
+    """Issue #44068: read_webdataset must fail loudly on tars whose entries
+    are not contiguous by WebDataset key prefix, rather than silently
+    emitting partial samples."""
+    path = os.path.join(tmp_path, "shard_000000.tar")
+    _write_tar(path, entries)
+
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
+    if expect_error:
+        with pytest.raises(Exception) as exc_info:
+            ds.take_all()
+        msg = str(exc_info.value)
+        assert "not ordered by WebDataset key" in msg
+    else:
+        samples = ds.take_all()
+        assert len(samples) == 2
+        by_key = {s["__key__"]: s for s in samples}
+        assert by_key["0"]["a"] == b"zero-a"
+        assert by_key["0"]["b"] == b"zero-b"
+        assert by_key["1"]["a"] == b"one-a"
+        assert by_key["1"]["b"] == b"one-b"
+
+
 if __name__ == "__main__":
     import sys
 
