@@ -602,7 +602,7 @@ def test_projection_and_predicate_pushdown(
         # Test 7: Rename + Select + Filter (all three together).
         # Filter references a selected column (the renamed ``column_a``);
         # filtering on a column the select dropped is not a valid plan
-        # under the DataFusion-aligned optimizer.
+        # after projection pushdown.
         (
             {"col_a": "column_a", "col_b": "column_b"},
             ["column_a", "column_b"],
@@ -665,9 +665,7 @@ def test_rename_select_filter_combinations(
 
     # Pure column selection (no renames) is subsumed by the scan's column
     # pruning, so no ``Project`` remains. Renames stay as a ``Project`` of
-    # ``AliasExpr``s above the (pruned) scan — this matches DataFusion's
-    # ``PushDownFilter``, where ``Projection: a AS b`` is left above
-    # ``TableScan`` after filter pushdown.
+    # ``AliasExpr``s above the pruned scan after filter pushdown.
     if rename_map is not None:
         assert _has_operator_type(
             optimized_plan, Project

@@ -370,9 +370,7 @@ def test_pushdown_with_rename_and_filter(
     result = ds.take_all()
 
     # Filters are pushed into the scan; renames stay as a ``Project`` of
-    # ``AliasExpr``s above the (pruned) scan. This matches DataFusion's
-    # ``PushDownFilter`` shape (``Projection: a AS b`` above ``TableScan``
-    # with ``full_filters``).
+    # ``AliasExpr``s above the pruned scan.
     _check_plan_with_flexible_read(ds, "Project[Project]", result)
 
     ds1 = ray.data.read_parquet(path).filter(expr=expected_filter_expr)
@@ -839,10 +837,9 @@ class TestProjectionWithFilterEdgeCases:
         #   1. ``has_filter=False, has_project=False`` — both pushed into a
         #      legacy Read (rare; happens when neither rename nor filter
         #      survives optimization).
-        #   2. ``has_filter=False, has_project=True`` — DataFusion-aligned
-        #      shape for file-based reads: filter pushed into the scan,
-        #      rename ``Project`` left above (mirrors DataFusion's
-        #      ``Projection: a AS b / TableScan: …, full_filters=[…]``).
+        #   2. ``has_filter=False, has_project=True`` - file-based reads
+        #      can push the filter into the scan and leave the rename
+        #      ``Project`` above it.
         #   3. ``has_filter=True, has_project=True`` — source doesn't
         #      support predicate pushdown (e.g. in-memory); filter at
         #      least pushed below the rename ``Project``.

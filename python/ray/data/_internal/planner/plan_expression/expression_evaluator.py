@@ -858,6 +858,7 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         for expr in projection_exprs[1:]:
             if (
                 isinstance(expr, AliasExpr)
+                and expr._is_rename
                 and isinstance(expr.expr, ColumnExpr)
                 and expr.expr.name in input_column_rename_map
             ):
