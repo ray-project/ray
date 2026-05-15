@@ -134,6 +134,8 @@ def get_default_settings() -> Dict:
         "ray_test_branch": None,
         "priority": Priority.DEFAULT,
         "no_concurrency_limit": False,
+        "image_uris": None,
+        "image_override_json": None,
     }
     return settings
 
@@ -176,6 +178,12 @@ def update_settings_from_environment(settings: Dict) -> Dict:
     if "NO_CONCURRENCY_LIMIT" in os.environ:
         settings["no_concurrency_limit"] = bool(int(os.environ["NO_CONCURRENCY_LIMIT"]))
 
+    if "RELEASE_TEST_IMAGE_URIS" in os.environ:
+        settings["image_uris"] = os.environ["RELEASE_TEST_IMAGE_URIS"]
+
+    if "RELEASE_TEST_IMAGE_OVERRIDE" in os.environ:
+        settings["image_override_json"] = os.environ["RELEASE_TEST_IMAGE_OVERRIDE"]
+
     return settings
 
 
@@ -209,5 +217,13 @@ def update_settings_from_buildkite(settings: Dict):
     no_concurrency_limit = get_buildkite_prompt_value("release-no-concurrency-limit")
     if no_concurrency_limit == "yes":
         settings["no_concurrency_limit"] = True
+
+    image_uris = get_buildkite_prompt_value("release-test-image-uris")
+    if image_uris:
+        settings["image_uris"] = image_uris
+
+    image_override_json = get_buildkite_prompt_value("release-test-image-override")
+    if image_override_json:
+        settings["image_override_json"] = image_override_json
 
     return settings

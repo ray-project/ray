@@ -84,6 +84,12 @@ class BuildkiteSettingsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.buildkite = {}
         self.buildkite_mock = MockBuildkiteAgent(self.buildkite)
+        # Snapshot env so per-test mutations don't leak into other tests.
+        self._original_environ = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._original_environ)
 
     def testSplitRayRepoStr(self):
         url, branch = split_ray_repo_str("https://github.com/ray-project/ray.git")
@@ -204,6 +210,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
                 "no_concurrency_limit": False,
+                "image_uris": None,
+                "image_override_json": None,
             },
         )
 
@@ -219,6 +227,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
                 "no_concurrency_limit": False,
+                "image_uris": None,
+                "image_override_json": None,
             },
         )
 
@@ -366,6 +376,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
                     "no_concurrency_limit": False,
+                    "image_uris": None,
+                    "image_override_json": None,
                 },
             )
 
@@ -382,8 +394,47 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
                     "no_concurrency_limit": False,
+                    "image_uris": None,
+                    "image_override_json": None,
                 },
             )
+
+    def testImageUrisFromEnv(self):
+        settings = get_default_settings()
+        assert settings["image_uris"] is None
+        assert settings["image_override_json"] is None
+
+        os.environ.clear()
+        os.environ["RELEASE_TEST_IMAGE_URIS"] = "uri-a uri-b"
+        update_settings_from_environment(settings)
+        assert settings["image_uris"] == "uri-a uri-b"
+
+    def testImageOverrideFromEnv(self):
+        settings = get_default_settings()
+        os.environ.clear()
+        os.environ["RELEASE_TEST_IMAGE_OVERRIDE"] = '{"uri-a": ["t"]}'
+        update_settings_from_environment(settings)
+        assert settings["image_override_json"] == '{"uri-a": ["t"]}'
+
+    def testImageUrisFromBuildkiteMetaData(self):
+        settings = get_default_settings()
+        self.buildkite["release-test-image-uris"] = "uri-a uri-b"
+        with patch(
+            "ray_release.buildkite.settings.get_buildkite_prompt_value",
+            self.buildkite_mock,
+        ):
+            update_settings_from_buildkite(settings)
+        assert settings["image_uris"] == "uri-a uri-b"
+
+    def testImageOverrideFromBuildkiteMetaData(self):
+        settings = get_default_settings()
+        self.buildkite["release-test-image-override"] = '{"uri-a": ["t"]}'
+        with patch(
+            "ray_release.buildkite.settings.get_buildkite_prompt_value",
+            self.buildkite_mock,
+        ):
+            update_settings_from_buildkite(settings)
+        assert settings["image_override_json"] == '{"uri-a": ["t"]}'
 
     def _filter_names(self, *args, **kwargs):
         filtered = filter_tests(*args, **kwargs)
