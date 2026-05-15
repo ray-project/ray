@@ -1056,14 +1056,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             max_resource_usage = op_max_resources[op]
 
             # Step 1: cap op_proportional so reserved + proportional <= max_resource_usage.
-            op_reserved = (
-                self._op_reserved[op]
-                if max_resource_usage != ExecutionResources.inf()
-                else None
-            )
-            if op_reserved is not None:
+            is_capped = max_resource_usage != ExecutionResources.inf()
+            if is_capped:
                 op_proportional = op_proportional.min(
-                    max_resource_usage.subtract(op_reserved).max(
+                    max_resource_usage.subtract(self._op_reserved[op]).max(
                         ExecutionResources.zero()
                     )
                 )
@@ -1081,9 +1077,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 op_shared = op_shared.add(shortfall)
 
             # Step 3: cap op_shared so total grant <= max_resource_usage.
-            if op_reserved is not None:
+            if is_capped:
                 op_usage = self._resource_manager.get_op_usage(op)
-                current_allocation = op_reserved.add(op_proportional).max(op_usage)
+                current_allocation = (
+                    self._op_reserved[op].add(op_proportional).max(op_usage)
+                )
                 op_shared = op_shared.min(
                     max_resource_usage.subtract(current_allocation).max(
                         ExecutionResources.zero()
