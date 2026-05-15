@@ -718,15 +718,10 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
-# Minimum spacing between HAProxy reloads. Under autoscaling churn the
-# Serve controller can emit back-to-back broadcasts only tens of ms apart,
-# and reloading HAProxy that fast is harmful: each reload spawns a new
-# proc via `-sf`, the old proc has to drain in-flight requests, and the
-# admin socket / data-plane briefly contend with the handoff. Reloading
-# at controller-broadcast speed bursts these handoffs and saturates the
-# proxy actor's event loop. This setting batches all broadcasts that
-# arrive inside the window into one apply, capping reloads at roughly
-# 1/window per second.
+# Minimum spacing between HAProxy reloads. Broadcasts arriving inside
+# the window are batched into one apply; without it, autoscaling churn
+# can fire reloads tens of ms apart and overlapping `-sf` handoffs
+# saturate the proxy actor's event loop.
 RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = float(
     os.environ.get("RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", "0.1")
 )
