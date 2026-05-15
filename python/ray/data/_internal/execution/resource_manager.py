@@ -390,16 +390,16 @@ class ResourceManager:
                 allocation = self._op_resource_allocator.get_allocation(op)
                 if allocation:
                     usage_str += f", alloc=(cpu={allocation.cpu:.1f}"
+                    usage_str += f",mem={allocation.memory_str()}"
                     usage_str += f",gpu={allocation.gpu:.1f}"
-                    usage_str += f",obj_store={allocation.object_store_memory_str()}"
-                    usage_str += f",mem={allocation.memory_str()})"
+                    usage_str += f",obj_store={allocation.object_store_memory_str()})"
 
                 budget = self._op_resource_allocator.get_budget(op)
                 if budget:
                     usage_str += f", budget=(cpu={budget.cpu:.1f}"
+                    usage_str += f",mem={budget.memory_str()}"
                     usage_str += f",gpu={budget.gpu:.1f}"
                     usage_str += f",obj_store={budget.object_store_memory_str()}"
-                    usage_str += f",mem={budget.memory_str()}"
 
                     # Remaining memory budget for producing new task outputs.
                     if isinstance(
