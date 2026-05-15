@@ -16,6 +16,7 @@ tf-keras==2.20.0
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 
 torch==2.9.0
+torchft-nightly==2026.5.15
 torchmetrics==0.10.3
 torchtext==0.18.0
 torchvision==0.24.0

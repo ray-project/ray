@@ -1,5 +1,4 @@
 --index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/cu130
 --extra-index-url https://download.pytorch.org/whl/cu128
 --find-links https://data.pyg.org/whl/torch-2.9.0+cu128.html
 

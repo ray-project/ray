@@ -8,7 +8,6 @@ ARG PYTHON
 ARG BUILD_VARIANT=build
 ARG PYTHON_DEPSET=python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
 ARG THIRDPARTY_DEPSET=python/deplocks/ci/ci_ml_thirdparty_depset_py$PYTHON.lock
-ARG INSTALL_TORCHFT_NIGHTLY=false
 
 SHELL ["/bin/bash", "-ice"]
 
@@ -43,15 +42,6 @@ uv pip install -r /home/ray/thirdparty_depset.lock --no-deps --target=python/ray
 
 # Install Python dependencies from depset lock file
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
-
-# Install torchft nightly when this image is built from torch.build.wanda.yaml
-# (which passes INSTALL_TORCHFT_NIGHTLY=true).
-if [[ "${INSTALL_TORCHFT_NIGHTLY-false}" == "true" ]]; then
-  uv pip install --system \
-    --prerelease=allow \
-    --no-deps \
-    torchft-nightly
-fi
 
 # Inject our own mirror for the CIFAR10 dataset
 SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
