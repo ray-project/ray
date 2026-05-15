@@ -1192,7 +1192,10 @@ def untar_package(
             member_path = os.path.join(target_dir, member.name)
             resolved = os.path.realpath(member_path)
             target_real = os.path.realpath(target_dir)
-            if not resolved.startswith(target_real + os.sep) and resolved != target_real:
+            if (
+                not resolved.startswith(target_real + os.sep)
+                and resolved != target_real
+            ):
                 logger.warning(f"Skipping unsafe path in tar: {member.name}")
                 continue
 
@@ -1206,9 +1209,10 @@ def untar_package(
                 parent_dir = os.path.dirname(member_path)
                 if parent_dir:
                     os.makedirs(parent_dir, exist_ok=True)
-                with tar.extractfile(member) as source, open(
-                    member_path, "wb"
-                ) as target:
+                with (
+                    tar.extractfile(member) as source,
+                    open(member_path, "wb") as target,
+                ):
                     shutil.copyfileobj(source, target)
                 os.chmod(member_path, member.mode)
 
