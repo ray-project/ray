@@ -776,21 +776,6 @@ class HAProxyApi(ProxyApi):
             logger.error(f"HAProxy graceful reload failed: {e}")
             raise
 
-    def _read_stderr_log_tail(self, path: str, max_bytes: int = 4096) -> str:
-        """Tail of an HAProxy stderr log, for inclusion in crash messages.
-
-        When stderr is redirected to a file at spawn (rather than piped back
-        to us), `proc.stderr` is None — so on a startup crash we need to
-        read the file instead of the pipe to recover the diagnostic.
-        """
-        try:
-            with open(path, "rb") as f:
-                f.seek(0, 2)
-                f.seek(max(0, f.tell() - max_bytes))
-                return f.read().decode("utf-8", errors="ignore").strip()
-        except OSError:
-            return ""
-
     async def _wait_for_hap_availability(
         self, proc: asyncio.subprocess.Process, timeout_s: int = 5
     ) -> None:
@@ -807,8 +792,20 @@ class HAProxyApi(ProxyApi):
                         .strip()
                     )
                 else:
+                    # stderr was redirected to a file at spawn; read the
+                    # tail of that file to recover the diagnostic.
+                    stderr_text = ""
                     path = getattr(proc, "_stderr_path", None)
-                    stderr_text = self._read_stderr_log_tail(path) if path else ""
+                    if path:
+                        try:
+                            with open(path, "rb") as f:
+                                f.seek(0, 2)
+                                f.seek(max(0, f.tell() - 4096))
+                                stderr_text = (
+                                    f.read().decode("utf-8", errors="ignore").strip()
+                                )
+                        except OSError:
+                            pass
                 output = stderr_text or stdout.decode("utf-8", errors="ignore").strip()
 
                 raise RuntimeError(
