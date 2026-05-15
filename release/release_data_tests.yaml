@@ -542,6 +542,34 @@
     timeout: 1200
     script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}}
 
+# Wide-schema variant of the worker_scaling test. Each map output block
+# carries a 276-column mixed-type schema modeled after production
+# reference data (20 scalar float32 + 27 float32[64] + 229 float32[32]).
+# Stresses the per-block ``BlockMetadataWithSchema`` propagation path on
+# the driver — ``ray.get(meta_ref)`` + schema deserialization in
+# ``on_data_ready`` — which dominates large-schema production workloads.
+- name: worker_scaling_wide_schema_{{num_workers}}_{{worker_type}}
+  python: "3.10"
+  frequency: weekly
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_1000_cpu_compute.yaml
+
+  matrix:
+    setup:
+      num_workers: [1000]
+      worker_type: [actors, tasks]
+
+  run:
+    timeout: 1800
+    script: >
+      python worker_scaling_benchmark.py
+      --num-workers {{num_workers}}
+      --worker-type {{worker_type}}
+      --num-scalar-cols 20
+      --num-array64-cols 27
+      --num-array32-cols 229
+
 
 ########################
 # Sort and shuffle tests
