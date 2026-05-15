@@ -940,6 +940,22 @@ class AsyncioRouter:
                 f"Request failed because {replica_id} is temporarily unavailable."
             )
 
+        # Check for gRPC call failure (gRPC transport path).
+        # When using _by_reference=False (gRPC transport), result is a
+        # grpc.aio.Call object. If the call failed, the queue-length cache
+        # must be invalidated so power-of-2-choices doesn't route to the
+        # failed replica.
+        if hasattr(result, 'exception') and callable(result.exception):
+            grpc_error = result.exception()
+            if grpc_error is not None:
+                if self.request_router:
+                    self.request_router.on_replica_actor_unavailable(
+                        replica_id
+                    )
+                logger.warning(
+                    f"gRPC request to {replica_id} failed: {grpc_error}"
+                )
+
     def _get_actor_died_error(
         self, result: Union[Any, RayError]
     ) -> Optional[ActorDiedError]:
