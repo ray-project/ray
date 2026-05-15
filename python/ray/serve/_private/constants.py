@@ -754,9 +754,7 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
 # more data or the delayed-ACK timer, which lands as added TTFT. Set to "0"
 # only if you have a non-streaming HAProxy workload that benefits from
 # packet coalescing.
-RAY_SERVE_HAPROXY_TCP_NODELAY = (
-    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "1") == "1"
-)
+RAY_SERVE_HAPROXY_TCP_NODELAY = get_env_bool("RAY_SERVE_HAPROXY_TCP_NODELAY", "1")
 
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
