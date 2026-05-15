@@ -972,9 +972,9 @@ class ControllerOptions(BaseModel):
                 "controller actor."
             )
 
-        env_vars = v.get("env_vars")
-        if env_vars is None:
+        if "env_vars" not in v:
             return v
+        env_vars = v["env_vars"]
         if not isinstance(env_vars, dict):
             raise ValueError(
                 "runtime_env.env_vars must be a dict[str, str], got "

@@ -29,7 +29,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _coerce_controller_options(
-    controller_options: Union[None, Dict, ControllerOptions],
+    controller_options: Union[None, dict, ControllerOptions],
 ) -> ControllerOptions:
     """Normalize an optional dict / model into a validated ControllerOptions."""
     if controller_options is None:

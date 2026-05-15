@@ -1410,6 +1410,14 @@ class TestControllerOptions:
             ControllerOptions(runtime_env={"env_vars": ["FOO=bar"]})
         assert "env_vars must be a dict" in str(exc.value)
 
+    def test_rejects_env_vars_explicit_none(self):
+        # Explicit ``env_vars: null`` (e.g., from YAML) is distinct from the
+        # key being absent; reject it so a bad config fails locally instead of
+        # surfacing later from the Ray runtime_env layer.
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": None})
+        assert "env_vars must be a dict" in str(exc.value)
+
     @pytest.mark.parametrize(
         "bad_value",
         [1, 3.14, True, None, ["1"], {"nested": "value"}],
