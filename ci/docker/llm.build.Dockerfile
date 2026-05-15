@@ -22,10 +22,5 @@ pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CU
 
 EOF
 
-# vLLM 0.17.0 eagerly imports xgrammar -> ICU 78 -> CXXABI_1.3.15.
-# System libstdc++ only has 1.3.13; we need conda's newer copy.
-# Only expose libstdc++ — putting all of anaconda/lib on LD_LIBRARY_PATH
-# overrides system OpenSSL and breaks ssh-keygen (version mismatch).
-RUN mkdir -p /home/ray/lib-overrides && \
-    ln -sf /home/ray/anaconda3/lib/libstdc++.so.6 /home/ray/lib-overrides/libstdc++.so.6
-ENV LD_LIBRARY_PATH=/home/ray/lib-overrides${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+# Use the revamped ray executor backend in vLLM
+ENV VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1

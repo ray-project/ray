@@ -160,6 +160,9 @@ class RayTrainWorker:
             return result
 
         # Create and start the training thread.
+        logger.debug(
+            f"Rank {get_train_context().get_world_rank()}: Launching training function."
+        )
         get_train_context().execution_context.training_thread_runner.run(
             train_fn_with_final_checkpoint_flush
         )
@@ -206,6 +209,23 @@ class RayTrainWorker:
             training_report=training_report,
             return_value=return_value,
         )
+
+    def clear_result_queue(self) -> bool:
+        """Drain the result queue, discarding any pending training reports.
+
+        Returns:
+            True if the queue had at least one result, False if it was empty.
+        """
+        execution_context = get_train_context().execution_context
+        had_result = False
+        while True:
+            try:
+                execution_context.result_queue.get_nowait()
+                execution_context.result_queue.task_done()
+                had_result = True
+            except queue.Empty:
+                break
+        return had_result
 
     def shutdown(self):
         """Shutdown the worker.

@@ -5,7 +5,7 @@
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },
-    "python": ["3.10", "3.11", "3.12", "3.13"],
+    "python": ["3.10", "3.11", "3.12", "3.13", "3.14"],
     "architectures": ["x86_64", "aarch64"],
     "exceptions": [
       {
@@ -40,12 +40,12 @@
   },
   "ray-llm": {
     "defaults": {
-      "python": "3.11",
-      "gpu_platform": "cu12.8.1-cudnn",
+      "python": "3.12",
+      "gpu_platform": "cu13.0.0-cudnn",
       "architecture": "x86_64"
     },
-    "python": ["3.11", "3.12"],
+    "python": ["3.12"],
     "architectures": ["x86_64"],
-    "platforms": ["cu12.8.1-cudnn", "cu12.9.1-cudnn", "cu13.0.0-cudnn"]
+    "platforms": ["cu13.0.0-cudnn"]
   }
 }
