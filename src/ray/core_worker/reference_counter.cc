@@ -849,7 +849,7 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   // also reach this code path when their local refs drop to zero, but they
   // must not tell the cluster to evict an object that is still owned
   // elsewhere.
-  if (spread_free_local_objects_ && it->second.owned_by_us_) {
+  if (spread_free_local_objects_ && it->second.owned_by_us_ && !locations.empty()) {
     spread_free_local_objects_(it->first, locations);
   }
 
