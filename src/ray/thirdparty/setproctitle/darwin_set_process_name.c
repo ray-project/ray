@@ -153,17 +153,22 @@ static bool darwin_pthread_setname_np(const char* name) {
 
 
 bool darwin_set_process_title(const char * title) {
-    // RAY CODEBASE CUSTOMIZATION:
+    /*
+     * BEGIN RAY PATCH
+     */
+
     // Skip the expensive Launch Services IPC calls (LSSetApplicationInformationItem)
     // which cause system hangs when called frequently. Just set the thread name
     // which is sufficient for Ray's needs and is a cheap local operation.
-    // This function's implementation now departs significantly from setproctitle's
-    // implementation; the original body is preserved below under `#if 0` for
-    // reference.
+    // The original implementation is preserved below under `#if 0`.
 
     // darwin_pthread_setname_np returns nonzero (true) on failure, matching
     // pthread_setname_np's convention, so invert to report success.
     return !darwin_pthread_setname_np(title);
+
+    /*
+     * END RAY PATCH
+     */
 
 #if 0
     enum {
