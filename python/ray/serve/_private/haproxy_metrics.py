@@ -43,7 +43,7 @@ class ParsedMetrics:
     """One per-request observation, parsed from the SD section."""
 
     app: Optional[str]
-    intended_replica: Optional[str]
+    intended_server: Optional[str]
     actual_server: Optional[str]
     router_latency_us: Optional[int]
     body_truncated_full_length: Optional[int]
@@ -92,10 +92,11 @@ class HAProxyMetricsCollector:
         self.latency_histogram = metrics.Histogram(
             "serve_haproxy_ingress_router_latency_ms",
             description=(
-                "Wall-clock time (in milliseconds) HAProxy spent calling "
-                "the ingress request router."
+                "Wall-clock time (in milliseconds) HAProxy spent to resolve"
+                "the request to a server via the ingress request router. "
+                "Only include successful router consultations."
             ),
-            boundaries=self._LATENCY_BUCKETS_S,
+            boundaries=self._LATENCY_BUCKETS_MS,
             tag_keys=("application",),
         )
         self.replica_mismatches_counter = metrics.Counter(
@@ -107,6 +108,21 @@ class HAProxyMetricsCollector:
                 "option redispatch picked another)."
             ),
             tag_keys=("application",),
+        )
+        self.failures_counter = metrics.Counter(
+            "serve_haproxy_ingress_router_failures",
+            description=(
+                "Count of ingress-request-router consultations that failed "
+                "to pin a replica, broken down by reason. Possible reasons: "
+                "'router_unreachable' (socket connect/send/recv failed), "
+                "'router_non_200' (router returned a non-200 status), "
+                "'unparseable_replica_id' (router 200 but response body "
+                "did not contain a string replica_id), "
+                "'unknown_replica_id' (router returned a replica_id not "
+                "present in the current replica map). Each failure causes "
+                "HAProxy to return 503 to the client."
+            ),
+            tag_keys=("application", "reason"),
         )
 
     @staticmethod
@@ -140,7 +156,7 @@ class HAProxyMetricsCollector:
 
         return ParsedMetrics(
             app=kv.get("app"),
-            intended_replica=kv.get("intended"),
+            intended_server=kv.get("intended"),
             actual_server=kv.get("actual"),
             router_latency_us=as_int("router_latency_us"),
             body_truncated_full_length=as_int("body_truncated_full_length"),
@@ -152,19 +168,31 @@ class HAProxyMetricsCollector:
     def record(self, parsed: ParsedMetrics) -> None:
         """Update metrics from one parsed observation.
 
-        Only requests that actually went through the router path
-        (`via_router` true) contribute. Failed routes (router unreachable,
-        bad response, unknown replica) never reached a backend, so the
-        mismatch counter would be misleading; we keep the latency histogram
-        observation regardless because timing is still meaningful.
+        Three disjoint cases:
+        - ``failed`` set: the Lua action set ``txn.ingress_request_router_failed``
+          and returned early. Bump the failures counter with the reason; no
+          replica was pinned, so other metrics don't apply.
+        - ``via_router`` true: the Lua action successfully pinned a replica.
+          Record latency, truncation, and replica-mismatch as applicable.
+        - Neither: the request didn't go through the router path at all
+          (no router-bearing app matched, or router state not yet pushed).
+          Nothing to record.
         """
+        # `application` tag is required by the metric definitions; default
+        # to "unknown" rather than dropping the observation, so misconfigured
+        # frontends still show up in the data.
+        app_tag = parsed.app or "unknown"
+
+        if parsed.failed:
+            self.failures_counter.inc(
+                tags={"application": app_tag, "reason": parsed.failed}
+            )
+            return
+
         if not parsed.via_router:
             return
 
-        # `application` tag is required by the metric definition; default
-        # to "unknown" rather than dropping the observation, so misconfigured
-        # frontends still show up in the data.
-        tags = {"application": parsed.app or "unknown"}
+        tags = {"application": app_tag}
 
         if parsed.router_latency_us is not None:
             self.latency_histogram.observe(
@@ -180,11 +208,10 @@ class HAProxyMetricsCollector:
         # server selection (e.g. queued and aborted), HAProxy logs "<NOSRV>"
         # for %s — we treat that as "not a mismatch, not a match".
         if (
-            not parsed.failed
-            and parsed.intended_replica
+            parsed.intended_server
             and parsed.actual_server
             and parsed.actual_server != "<NOSRV>"
-            and parsed.intended_replica != parsed.actual_server
+            and parsed.intended_server != parsed.actual_server
         ):
             self.replica_mismatches_counter.inc(tags=tags)
 

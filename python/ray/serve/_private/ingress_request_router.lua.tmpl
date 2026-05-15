@@ -89,6 +89,8 @@ end
 -- Failure-mode bucketing belongs in observability (response header label,
 -- metric label), not in the data plane.
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
+    ${METRICS_PRE_CALL_ROUTER}
+
     local app = txn:get_var("txn.ingress_request_router_app")
     if not app then
         return
@@ -120,9 +122,7 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         end
     end
 
-    ${METRICS_PRE_CALL_ROUTER}
     local response = call_router(router, body, truncated)
-    ${METRICS_POST_CALL_ROUTER}
     if not response then
         txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
         return
@@ -146,4 +146,6 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
 
     txn:set_var("txn.ingress_request_router_target", server_name)
     txn:set_var("txn.via_ingress_request_router", true)
+
+    ${METRICS_POST_CALL_ROUTER}
 end, 0)
