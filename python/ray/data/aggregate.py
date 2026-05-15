@@ -345,7 +345,9 @@ class Count(AggregateFnV2[int, int]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Counting all rows:
@@ -415,7 +417,9 @@ class AsList(AggregateFnV2[List, List]):
 
             ds = ray.data.range(10)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Listing all elements per group:
@@ -473,7 +477,9 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Summing all rows per group:
@@ -525,7 +531,9 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Finding the minimum value per group:
@@ -586,7 +594,9 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Finding the maximum value per group:
@@ -647,7 +657,9 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the mean value per group:
@@ -733,7 +745,9 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the standard deviation per group:
@@ -833,7 +847,9 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the absolute maximum value per group:
@@ -900,7 +916,9 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the 50th percentile (median) per group:
@@ -1010,7 +1028,9 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             from ray.data.aggregate import Unique
 
             ds = ray.data.range(100)
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
 
             # Calculating the unique values per group:
             result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
