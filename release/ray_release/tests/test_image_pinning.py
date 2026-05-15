@@ -1,6 +1,12 @@
+import json
+
 import pytest
 
-from ray_release.buildkite.image_pinning import match_uris_to_tests, shape_of
+from ray_release.buildkite.image_pinning import (
+    match_uris_to_tests,
+    parse_override,
+    shape_of,
+)
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.test import BUILD_ID_PLACEHOLDER
 from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX
@@ -166,3 +172,63 @@ class TestMatchUrisToTests:
             ],
         )
         assert result == {"cpu_test": "ecr/anyscale/ray:other-py310-cpu"}
+
+
+class TestParseOverride:
+    def test_happy_path_single_uri(self):
+        raw = json.dumps({"ecr/r:bid-py310-cpu": ["test_a", "test_b"]})
+        result = parse_override(raw)
+        assert result == {
+            "test_a": "ecr/r:bid-py310-cpu",
+            "test_b": "ecr/r:bid-py310-cpu",
+        }
+
+    def test_happy_path_multiple_uris(self):
+        raw = json.dumps(
+            {
+                "ecr/r:bid-py310-cpu": ["a"],
+                "ecr/r:bid-py311-cpu": ["b", "c"],
+            }
+        )
+        result = parse_override(raw)
+        assert result == {
+            "a": "ecr/r:bid-py310-cpu",
+            "b": "ecr/r:bid-py311-cpu",
+            "c": "ecr/r:bid-py311-cpu",
+        }
+
+    def test_json_parse_failure(self):
+        with pytest.raises(ReleaseTestConfigError, match="Invalid JSON"):
+            parse_override("not-json")
+
+    def test_top_level_not_dict(self):
+        with pytest.raises(ReleaseTestConfigError, match="must be a JSON object"):
+            parse_override(json.dumps(["a", "b"]))
+
+    def test_value_not_list(self):
+        with pytest.raises(
+            ReleaseTestConfigError, match="must be a list of test names"
+        ):
+            parse_override(json.dumps({"uri-a": "not-a-list"}))
+
+    def test_value_contains_non_string(self):
+        with pytest.raises(
+            ReleaseTestConfigError, match="must be a list of test names"
+        ):
+            parse_override(json.dumps({"uri-a": ["ok", 123]}))
+
+    def test_duplicate_test_name(self):
+        raw = json.dumps({"uri-a": ["dup", "x"], "uri-b": ["y", "dup"]})
+        with pytest.raises(ReleaseTestConfigError) as exc:
+            parse_override(raw)
+        msg = str(exc.value)
+        assert "dup" in msg
+        assert "uri-a" in msg and "uri-b" in msg
+
+    def test_empty_payload(self):
+        with pytest.raises(ReleaseTestConfigError, match="contains no tests to run"):
+            parse_override(json.dumps({}))
+
+    def test_all_values_empty(self):
+        with pytest.raises(ReleaseTestConfigError, match="contains no tests to run"):
+            parse_override(json.dumps({"uri-a": []}))

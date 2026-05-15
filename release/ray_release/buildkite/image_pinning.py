@@ -4,6 +4,7 @@ Shape comparison (see `shape_of`) is how user-supplied override URIs are
 matched against the set of tests scheduled in a release-test build.
 """
 
+import json
 import re
 from typing import Dict, List
 
@@ -81,5 +82,53 @@ def match_uris_to_tests(
             f"Cannot resolve image URIs for {len(failures)} test(s):\n"
             + "\n".join(failures)
             + f"\n(provided URIs: {provided})"
+        )
+    return result
+
+
+def parse_override(raw_json: str) -> Dict[str, str]:
+    """Parse the `release-test-image-override` JSON meta-data into `{test_name: image_uri}`.
+
+    Input is `{image_uri: [test_name, ...]}`. Each test name must appear
+    exactly once across all values. Raises `ReleaseTestConfigError` for
+    JSON parse failures, type errors, duplicate test names, or empty
+    payloads.
+    """
+    try:
+        parsed = json.loads(raw_json)
+    except json.JSONDecodeError as e:
+        raise ReleaseTestConfigError(
+            f"Invalid JSON in release-test-image-override: {e}"
+        )
+    if not isinstance(parsed, dict):
+        raise ReleaseTestConfigError(
+            f"release-test-image-override must be a JSON object; got "
+            f"{type(parsed).__name__}"
+        )
+    result: Dict[str, str] = {}
+    duplicates: Dict[str, List[str]] = {}
+    for uri, names in parsed.items():
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            raise ReleaseTestConfigError(
+                f"release-test-image-override value for URI {uri!r} must be a "
+                f"list of test names; got {names!r}"
+            )
+        for name in names:
+            if name in result:
+                # First duplicate captures original; later ones append.
+                duplicates.setdefault(name, [result[name]]).append(uri)
+            else:
+                result[name] = uri
+    if duplicates:
+        lines = [
+            f"  - Test {name!r} is mapped to multiple URIs: {', '.join(uris)}"
+            for name, uris in duplicates.items()
+        ]
+        raise ReleaseTestConfigError(
+            "release-test-image-override has duplicate test names:\n" + "\n".join(lines)
+        )
+    if not result:
+        raise ReleaseTestConfigError(
+            "release-test-image-override contains no tests to run."
         )
     return result
