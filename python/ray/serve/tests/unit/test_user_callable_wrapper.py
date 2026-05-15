@@ -762,7 +762,8 @@ class TestSeparateThread:
         for _ in range(100):
             # If this called something on the event loop, it'd be blocked.
             # Instead, call_user_health_check returns None when there's no user
-            # health check configured and the watchdog is disabled (MAX_FAIL=0).
+            # health check configured and the probe counter hasn't exceeded the
+            # threshold.
             assert user_callable_wrapper.call_user_health_check() is None
 
         sync_event.set()

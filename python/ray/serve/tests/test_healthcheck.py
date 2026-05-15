@@ -300,8 +300,8 @@ def test_replica_stalled_in_user_code_marked_unhealthy(serve_instance):
     cause call_user_health_check() to raise, the controller marks the replica unhealthy,
     and a fresh replica is started (issue #61263).
 
-    The watchdog is opt-in (default MAX_FAIL=0). We enable it here via runtime_env
-    env vars with short intervals so the test completes quickly.
+    The watchdog is on by default (MAX_FAIL=3). We use short intervals here so probe
+    failures accumulate quickly within the test window.
     """
     # threading.Event.wait() blocks the asyncio event loop (unlike asyncio.Event which
     # yields control). This simulates a replica stuck in a long synchronous call.

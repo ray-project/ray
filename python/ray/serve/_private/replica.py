@@ -1995,8 +1995,9 @@ class Replica:
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
-            # unresponsive (RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0), raises
-            # immediately. If the watchdog is disabled (default), returns None.
+            # unresponsive, raises immediately. If the watchdog is disabled
+            # (MAX_FAIL=0) or the fail counter hasn't reached the threshold yet,
+            # returns None.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -3137,6 +3138,9 @@ class UserCallableWrapper:
         if self._user_loop_probe_task is not None:
             self._user_loop_probe_task.cancel()
             self._user_loop_probe_task = None
+        # Reset so a subsequent start_user_loop_watchdog() doesn't begin with a stale
+        # fail count that would immediately trip call_user_health_check().
+        self._user_loop_probe_consecutive_fail_count = 0
 
     async def _user_loop_probe_loop(self) -> None:
         while True:
