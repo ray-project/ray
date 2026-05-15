@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -42,6 +42,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
+from ray.serve.config import ControllerOptions
 from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
@@ -242,7 +243,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     )
 
 
-def get_controller_impl(controller_options: Optional["ControllerOptions"] = None):
+def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
     """Build the Ray actor class for the Serve controller.
 
     ``controller_options`` is the validated ``ControllerOptions`` model from
@@ -269,10 +270,6 @@ def get_controller_impl(controller_options: Optional["ControllerOptions"] = None
         actor_options["runtime_env"] = controller_options.runtime_env
 
     return ray.remote(**actor_options)(ServeController)
-
-
-if TYPE_CHECKING:
-    from ray.serve.config import ControllerOptions  # noqa: F401
 
 
 def get_proxy_actor_class():
