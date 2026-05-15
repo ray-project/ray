@@ -818,6 +818,27 @@ RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
     "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
 )
 
+# Emit per-request metrics from the ingress-request-router data path:
+# - truncated body counter
+# - router consultation latency histogram
+# - replica-id mismatch counter (router pinned X, HAProxy used Y after fallthrough)
+#
+# When enabled, HAProxy logs an RFC 5424 line with metric fields in the
+# structured-data section to RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH, and the
+# HAProxy proxy actor parses each datagram into ray.serve.metrics Counter /
+# Histogram objects. When disabled, neither the log target nor the Lua timing
+# calls are rendered into the generated config -- there is no runtime cost.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", True
+)
+
+# Unix dgram socket that HAProxy writes the structured metric log lines to.
+# Bound by the proxy actor before HAProxy is started. Only consulted when
+# RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED is true.
+RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
+)
+
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )

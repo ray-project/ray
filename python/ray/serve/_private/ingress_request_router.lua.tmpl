@@ -115,11 +115,14 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
                 core.log(core.warning,
                     "ingress_request_router: forwarding truncated body to router ("
                         .. #body .. "/" .. truncated .. " bytes)")
+                ${METRICS_SET_TRUNCATED}
             end
         end
     end
 
+    ${METRICS_PRE_CALL_ROUTER}
     local response = call_router(router, body, truncated)
+    ${METRICS_POST_CALL_ROUTER}
     if not response then
         txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
         return

@@ -46,6 +46,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
+    RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
@@ -57,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -538,6 +540,14 @@ class HAProxyConfig:
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
+    # Per-request metrics for the ingress request router data path.
+    # When false, no metric log target / log-format-sd is rendered, the Lua
+    # template skips the timing+truncation set_vars, and HAProxyManager does
+    # not bind the dgram socket. The generated config is byte-identical to
+    # the pre-feature build.
+    metrics_enabled: bool = RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
+    metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
+
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
     is_head: bool = False
@@ -803,11 +813,34 @@ class HAProxyApi(ProxyApi):
         if not routers:
             return None
 
+        # When metrics are enabled, render the two timing hooks and the
+        # truncation set_var; when disabled, all three substitute to empty
+        # strings so the Lua file is identical to the pre-feature build.
+        if self.cfg.metrics_enabled:
+            metrics_pre = "local _metrics_t0 = core.now()"
+            metrics_post = (
+                "local _metrics_t1 = core.now(); "
+                "txn:set_var(\"txn.ingress_request_router_latency_us\", "
+                "(_metrics_t1.sec - _metrics_t0.sec) * 1000000 "
+                "+ (_metrics_t1.usec - _metrics_t0.usec))"
+            )
+            metrics_set_truncated = (
+                "txn:set_var(\"txn.ingress_request_router_truncated_full_length\", "
+                "truncated)"
+            )
+        else:
+            metrics_pre = ""
+            metrics_post = ""
+            metrics_set_truncated = ""
+
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
+            METRICS_PRE_CALL_ROUTER=metrics_pre,
+            METRICS_POST_CALL_ROUTER=metrics_post,
+            METRICS_SET_TRUNCATED=metrics_set_truncated,
         )
 
         lua_path = os.path.join(
@@ -877,6 +910,8 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_forward_body": (
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
+                    "metrics_enabled": self.cfg.metrics_enabled,
+                    "metrics_socket_path": self.cfg.metrics_socket_path,
                 }
             )
 
@@ -1199,9 +1234,42 @@ class HAProxyManager(ProxyActorInterface):
                     RAY_SERVE_HAPROXY_SERVER_STATE_BASE, self._node_id
                 ),
                 server_state_file=_per_node(RAY_SERVE_HAPROXY_SERVER_STATE_FILE),
+                metrics_socket_path=_per_node(RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH),
             ),
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
+
+        # Bind the metrics dgram socket BEFORE HAProxy starts so its first
+        # log sendto succeeds. The socket is owned by HAProxyManager and
+        # survives HAProxy reloads. We bind synchronously here so the kernel
+        # is already buffering dgrams by the time HAProxy emits anything;
+        # the asyncio reader gets attached on the event loop separately.
+        self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
+        self._metrics_transport: Optional[asyncio.DatagramTransport] = None
+        self._metrics_attach_task: Optional[asyncio.Task] = None
+        if self._haproxy.cfg.metrics_enabled:
+            from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
+
+            os.makedirs(
+                os.path.dirname(self._haproxy.cfg.metrics_socket_path), exist_ok=True
+            )
+            try:
+                self._metrics_collector = HAProxyMetricsCollector()
+                metrics_sock = HAProxyMetricsCollector.bind_socket(
+                    self._haproxy.cfg.metrics_socket_path
+                )
+                self._metrics_attach_task = self.event_loop.create_task(
+                    self._metrics_collector.attach_to_loop(
+                        metrics_sock, loop=self.event_loop
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to bind ingress-request-router metrics socket; "
+                    "metrics will not be emitted. HAProxy will continue normally."
+                )
+                self._metrics_collector = None
+
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
     async def shutdown(self) -> None:
@@ -1218,6 +1286,10 @@ class HAProxyManager(ProxyActorInterface):
 
             await self._haproxy.stop()
 
+            if self._metrics_transport is not None:
+                self._metrics_transport.close()
+                self._metrics_transport = None
+
             logger.info(
                 f"Successfully stopped HAProxy process on node {self._node_id}.",
                 extra={"log_to_stderr": False},
@@ -1230,6 +1302,19 @@ class HAProxyManager(ProxyActorInterface):
             # Wait for haproxy to start. Internally, this starts the process and
             # waits for it to be running by querying the stats socket.
             await self._haproxy_start_task
+            # Attach the metrics datagram reader. The socket was already bound
+            # synchronously in __init__, so kernel-level dgram buffering has
+            # been in effect since before HAProxy spawned; this just wires
+            # asyncio to drain it.
+            if self._metrics_attach_task is not None:
+                try:
+                    self._metrics_transport = await self._metrics_attach_task
+                except Exception:
+                    logger.exception(
+                        "Failed to attach metrics dgram reader; metrics "
+                        "will not be drained."
+                    )
+                    self._metrics_collector = None
         except Exception as e:
             logger.exception("Failed to start HAProxy.")
             raise e from None

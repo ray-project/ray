@@ -74,6 +74,13 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if metrics_enabled %}
+    # Per-request metrics for the ingress request router. Goes only to the
+    # rfc5424 target below; the inherited rfc3164 targets do not include the
+    # SD section, so their byte stream is unchanged.
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
+    log-format-sd "[serve@1 app=\"%[var(txn.ingress_request_router_app),-]\" intended=\"%[var(txn.ingress_request_router_target),-]\" actual=\"%s\" router_latency_us=\"%[var(txn.ingress_request_router_latency_us),-]\" body_truncated_full_length=\"%[var(txn.ingress_request_router_truncated_full_length),-]\" via_router=\"%[var(txn.via_ingress_request_router),-]\" failed=\"%[var(txn.ingress_request_router_failed),-]\"]"
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
