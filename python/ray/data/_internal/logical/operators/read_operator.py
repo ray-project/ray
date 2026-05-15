@@ -255,7 +255,6 @@ class ReadFiles(
     bucket via ``scanner.create_reader().read(manifest)``.
     """
 
-    input_op: InitVar[LogicalOperator]
     datasource_name: str
     scanner: "Scanner"
     schema: "pa.Schema"
@@ -272,15 +271,22 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read and before column renames.
     block_udf: Optional[Callable[[Block], Block]] = None
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args_fn: None = field(init=False, default=None)
+    # Declared so the inherited ``AbstractMap._get_args`` can resolve it; V2
+    # limit pushdown is applied via ``scanner.push_limit`` (see
+    # ``LimitPushdownRule._apply_per_block_limit_if_supported``), not this field.
+    per_block_limit: Optional[int] = field(init=False, default=None)
     _name: str = field(init=False, repr=False)
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, repr=False, default=None)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(
+            self.input_dependencies[0], LogicalOperator
+        ), self.input_dependencies[0]
         if self.compute is None:
             from ray.data._internal.compute import TaskPoolStrategy
 
@@ -288,23 +294,7 @@ class ReadFiles(
         if self.ray_remote_args is None:
             object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    @property
-    def input_dependency(self) -> LogicalOperator:
-        return self.input_dependencies[0]
-
-    def _apply_transform(
-        self, transform: "Callable[[LogicalOperator], LogicalOperator]"
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
     def infer_schema(self) -> "pa.Schema":
         # Scanner schema reflects any applied projection pushdown
@@ -396,7 +386,6 @@ class ReadFiles(
         merged = {orig: out for orig, out in original_to_new.items() if orig != out}
         return replace(
             self,
-            input_op=self.input_dependency,
             scanner=new_scanner,
             column_renames=merged or None,
         )
@@ -431,7 +420,7 @@ class ReadFiles(
 
         if not partition_cols:
             new_scanner, _residual = self.scanner.push_filters(predicate_expr)
-            return replace(self, input_op=self.input_dependency, scanner=new_scanner)
+            return replace(self, scanner=new_scanner)
 
         split = _split_predicate_by_columns(predicate_expr, partition_cols)
 
@@ -447,7 +436,7 @@ class ReadFiles(
         if split.data_predicate is not None:
             new_scanner, _residual = new_scanner.push_filters(split.data_predicate)
 
-        new_op = replace(self, input_op=self.input_dependency, scanner=new_scanner)
+        new_op = replace(self, scanner=new_scanner)
 
         if split.residual_predicate is None:
             return new_op
