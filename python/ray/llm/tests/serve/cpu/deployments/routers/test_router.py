@@ -21,6 +21,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+from ray.serve._private.common import DeploymentID
+from ray.serve.exceptions import DeploymentUnavailableError
 
 
 class _DirectRouterReplicaId:
@@ -153,6 +155,17 @@ class TestDirectStreamingLLMRouter:
             await router.route(_FakeRequest(b"{}"))
         assert exc_info.value.status_code == 503
         assert "no replicas" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_route_returns_503_on_deployment_unavailable(self):
+        err = DeploymentUnavailableError(DeploymentID(name="LLMServer:test"))
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(side_effect=err)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 503
+        assert "LLMServer:test" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_pick_replica_returns_backend_endpoint_from_handle(self):

@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
@@ -18,10 +19,9 @@ class LLMRouter:
     deployment to get a data plane replica, then forwards traffic directly
     to the matching LLMServer replica's backend HTTP port.
 
-    The routing policy is round-robin, configured by the underlying LLMServer
-    deployment via ``request_router_class``. This class just delegates each pick
-    to ``DeploymentHandle.choose_replica`` and translates the resulting selection
-    into a backend HTTP endpoint.
+    Replica selection is delegated to the underlying deployment's configured
+    request router, and this class translates the resulting pick into a backend
+    HTTP endpoint.
 
     /internal/route HTTP contract
     -----------------------------
@@ -62,7 +62,7 @@ class LLMRouter:
             host, port, replica_id = await self._pick_replica(
                 request_body=body, body_truncated=body_truncated
             )
-        except RuntimeError as e:
+        except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
         return {"host": host, "port": port, "replica_id": replica_id}
 

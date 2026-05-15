@@ -392,13 +392,8 @@ class TestBuildOpenaiApp:
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
         assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
 
-        # The LLMServer deployment now owns the routing policy: LLMRouter
-        # delegates each pick to handle.choose_replica, which runs
-        # ``RoundRobinRouter`` inside the AsyncioRouter event loop. Swapping
-        # the policy is therefore a config change on the inner deployment.
-        #
-        # `RequestRouterConfig._serialize_request_router_cls` normalises the
-        # class to its import path at config-build time, so compare strings.
+        # `RequestRouterConfig._serialize_request_router_cls` normalizes the
+        # class to its import path at config-build time.
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
@@ -410,10 +405,8 @@ class TestBuildOpenaiApp:
         self, llm_config, disable_placement_bundles, monkeypatch
     ):
         """A user-supplied ``request_router_config`` on ``LLMConfig`` must
-        survive direct-streaming wiring. Regression guard for the time when
-        the builder unconditionally forced ``RoundRobinRouter`` and silently
-        broke ``ConsistentHashRouter`` / ``PrefixCacheAffinityRouter``
-        deployments configured via the public LLMConfig API.
+        survive direct-streaming wiring rather than being overwritten with the
+        default.
         """
         monkeypatch.setattr(
             "ray.llm._internal.serve.core.ingress.builder."

@@ -35,14 +35,9 @@ def _build_direct_streaming_llm_deployment(llm_config: LLMConfig) -> Application
     The real ASGI app (vLLM FastAPI) is constructed inside
     `LLMServer.__serve_build_asgi_app__` after the engine starts.
 
-    LLMRouter delegates each replica pick to ``DeploymentHandle.choose_replica``,
-    so the LLMServer deployment's ``request_router_class`` is what actually
-    decides the policy. Default to ``RoundRobinRouter`` to preserve the
-    pre-`choose_replica` behavior, but never overwrite a value the user
-    already set on ``llm_config.deployment_config.request_router_config`` —
-    that would silently break ``ConsistentHashRouter`` /
-    ``PrefixCacheAffinityRouter`` deployments configured per the public
-    LLMConfig API.
+    Replica selection is driven by the deployment's ``request_router_config``.
+    Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise
+    leave their configured value untouched.
     """
     server_cls = llm_config.server_cls or LLMServer
     override_serve_options: Optional[dict] = None
