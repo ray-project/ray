@@ -369,14 +369,16 @@ class FileReader(Reader[FileManifest]):
 
         When ``RAY_DATA_READ_FILES_NUM_THREADS > 1`` and
         ``execution_options.preserve_order`` is False, fragments are
-        read concurrently via :func:`make_async_gen` with
-        ``preserve_ordering=True``. Deterministic output ordering is
-        required so that Ray Data task retries (block reconstruction)
-        produce identical block sequences. The ``preserve_ordering=True``
-        path drains the input iterator eagerly; for our use that's
-        bounded by the manifest size (already materialized upstream
-        in the listing op) so the up-front cost is ``O(num_fragments)``
-        Fragment-object constructions — no per-fragment I/O.
+        read concurrently via :func:`make_async_gen`. We still pass
+        ``preserve_ordering=True`` so concurrent reads emit blocks in
+        fragment order; otherwise Ray Data task retries (block
+        reconstruction) could produce a different block sequence.
+
+        ``make_async_gen`` consumes the whole input iterator up front
+        when preserving order. That is acceptable here because the input
+        is the finite fragment manifest from ``dataset.get_fragments()``,
+        which we materialize below anyway. File data is still read lazily
+        by the worker threads.
         """
         ctx = DataContext.get_current()
 
