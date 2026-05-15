@@ -1,26 +1,39 @@
-"""Dashboard head module that forwards Ray Prometheus metrics to Databricks.
+"""Dashboard head module that periodically queries Prometheus for an
+allowlisted set of hourly aggregates and dumps the result to a file in the
+session directory.
 
 Lifecycle is modeled on ``UsageStatsHead``: a periodic loop driven by
-``async_loop_forever`` runs a blocking ``_forward_sync`` in a thread pool. On
-each cycle the module:
+``async_loop_forever`` runs a blocking ``_collect_sync`` in a thread pool.
+On each cycle the module:
 
   1. issues PromQL aggregate queries against the local Prometheus (one per
      ``(metric, agg)`` pair in the allowlist),
   2. flattens the matrix-of-series response into long-table sample rows,
-  3. POSTs the batch JSON to the ingest endpoint with the bearer token,
-  4. writes a status mirror file into ``session_dir`` regardless of outcome.
+  3. writes the batch JSON to ``<session_dir>/databricks_telemetry_latest_batch.json``,
+  4. writes a status mirror to ``<session_dir>/databricks_telemetry_status.json``.
 
-Failures are dropped (no retry, no disk queue). The next cycle re-queries
-Prometheus over a fresh window; in practice Prometheus's local retention
-(default 15d) means we lose nothing unless the ingest is down for that long.
+**Scope note.** v1 only collects locally — no HTTPS POST, no bearer token,
+no endpoint configuration. The forward-to-server piece will be added in a
+follow-up commit once the matching server-side route lands in
+``ray-project/telemetry``. The on-disk batch file is the operator's audit
+trail and the foundation that the future POST will read.
+
+Failures on individual PromQL queries are logged at DEBUG and skipped so a
+single missing series does not abort the whole batch. A failed batch
+assembly (network error against Prometheus, JSON parse error) is counted
+in ``total_failed`` and surfaced via ``last_error`` in the status file.
+The next cycle re-queries Prometheus over a fresh window.
 """
 
 import asyncio
+import json
 import logging
 import os
 import random
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -29,62 +42,36 @@ import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.modules.databricks_telemetry.constants import (
+    BATCH_FILE,
     DATABRICKS_TELEMETRY_ENABLED_ENV_VAR,
-    DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR,
     DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR,
-    DATABRICKS_TELEMETRY_TOKEN_FILE_ENV_VAR,
-    DEFAULT_ENDPOINT,
     DEFAULT_INTERVAL_S,
     DEFAULT_PROMETHEUS_HOST,
     METRIC_ALLOWLIST,
     PROMETHEUS_HOST_ENV_VAR,
     SCHEMA_VERSION,
-    SOURCE,
+    STATUS_FILE,
     MetricSpec,
-)
-from ray.dashboard.modules.databricks_telemetry.forwarder_client import (
-    ForwarderClient,
 )
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
 
-# --- Env-var readers (instantiated per call so changes take effect) -------
+# --- Env-var readers (evaluated per call so changes take effect) ---------
 
 
-def _forwarder_enabled() -> bool:
+def _collector_enabled() -> bool:
     return os.getenv(DATABRICKS_TELEMETRY_ENABLED_ENV_VAR, "1") == "1"
 
 
-def _forwarder_endpoint() -> str:
-    return os.getenv(DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR, DEFAULT_ENDPOINT)
-
-
-def _forwarder_interval_s() -> int:
+def _collector_interval_s() -> int:
     try:
         return int(
             os.getenv(DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR, DEFAULT_INTERVAL_S)
         )
     except ValueError:
         return DEFAULT_INTERVAL_S
-
-
-def _forwarder_token() -> Optional[str]:
-    """Read the bearer token from the configured file path, or return None.
-
-    Reread on every call so operators can rotate the token by replacing the
-    file contents without restarting the dashboard.
-    """
-    path = os.getenv(DATABRICKS_TELEMETRY_TOKEN_FILE_ENV_VAR)
-    if not path:
-        return None
-    try:
-        with open(path) as f:
-            return f.read().strip() or None
-    except OSError as e:
-        logger.warning("Failed to read Databricks telemetry token at %s: %s", path, e)
-        return None
 
 
 def _prometheus_host() -> str:
@@ -109,7 +96,7 @@ def _build_promql(metric: str, agg: str, window_s: int, session_name: str) -> st
     clusters in the same organization (e.g. Anyscale's customer monitoring
     endpoint on workspaces returns thousands of series per metric across
     every running cluster). Without ``{SessionName='<our session>'}`` we
-    would exfiltrate metrics from unrelated tenants on every cycle.
+    would collect metrics from unrelated tenants on every cycle.
     """
     selector = f"{metric}{{SessionName='{session_name}'}}"
     window = f"[{window_s}s]"
@@ -134,16 +121,36 @@ def _build_promql(metric: str, agg: str, window_s: int, session_name: str) -> st
     raise ValueError(f"Unsupported aggregation: {agg!r}")
 
 
-class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
-    """Periodic Prometheus → Databricks-ingest forwarder.
+# --- Atomic file write ----------------------------------------------------
 
-    Lives inside the dashboard process; no separate subprocess or Ray actor.
+
+def _atomic_write_json(dir_path: str, file_name: str, data: Dict[str, Any]) -> None:
+    """Write ``data`` to ``<dir_path>/<file_name>`` atomically.
+
+    Uses a temp-then-rename pattern so concurrent readers never see a
+    partially written file.
+    """
+    dir_obj = Path(dir_path)
+    destination = dir_obj / file_name
+    temp = dir_obj / f"{file_name}.tmp"
+    with temp.open("w") as f:
+        f.write(json.dumps(data))
+    if sys.platform == "win32":
+        destination.unlink(missing_ok=True)
+    temp.rename(destination)
+
+
+class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
+    """Periodic Prometheus-aggregate collector.
+
+    Runs inside the dashboard process on the head node; no subprocess, no
+    Ray actor. Output lands in the session directory; nothing leaves the
+    cluster in this v1.
     """
 
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
-        self.enabled = _forwarder_enabled()
-        self.client = ForwarderClient()
+        self.enabled = _collector_enabled()
         self.total_success = 0
         self.total_failed = 0
         self.seq_no = 0
@@ -151,7 +158,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
         self.last_success_ts_ms: Optional[int] = None
         self.last_sample_count: Optional[int] = None
 
-    # --- Prometheus query ---------------------------------------------
+    # --- Prometheus query --------------------------------------------
 
     def _query_prometheus(
         self,
@@ -162,7 +169,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
 
         Returns the raw ``data.result`` array. Raises on transport or
         non-success Prometheus response so the caller can account the
-        failure once for the whole batch rather than per-query.
+        failure per-query and continue with the rest of the batch.
         """
         url = f"{_prometheus_host()}/api/v1/query"
         params = {"query": query, "time": eval_ts_s}
@@ -176,7 +183,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             )
         return payload.get("data", {}).get("result", []) or []
 
-    # --- Batch assembly -----------------------------------------------
+    # --- Batch assembly ----------------------------------------------
 
     def _flatten_result(
         self,
@@ -201,7 +208,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             except (TypeError, ValueError):
                 # Prometheus returns "NaN" / "+Inf" / "-Inf" as strings; skip.
                 continue
-            # Drop NaN/Inf so the Delta side doesn't have to filter.
+            # Drop NaN/Inf so the consumer side does not have to filter.
             if value != value or value in (float("inf"), float("-inf")):
                 continue
 
@@ -219,7 +226,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
     def _build_batch(self) -> Dict[str, Any]:
         eval_ts_s = int(time.time())
         eval_ts_ms = eval_ts_s * 1000
-        interval_s = _forwarder_interval_s()
+        interval_s = _collector_interval_s()
         window_start_ms = eval_ts_ms - interval_s * 1000
 
         samples: List[Dict[str, Any]] = []
@@ -239,7 +246,6 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
 
         return {
             "schema_version": SCHEMA_VERSION,
-            "source": SOURCE,
             "cluster_id": self.gcs_client.cluster_id.hex(),
             "ray_version": ray.__version__,
             "session_name": self.session_name,
@@ -254,8 +260,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
     def _status(self) -> Dict[str, Any]:
         return {
             "enabled": self.enabled,
-            "endpoint": _forwarder_endpoint(),
-            "interval_s": _forwarder_interval_s(),
+            "interval_s": _collector_interval_s(),
             "prometheus_host": _prometheus_host(),
             "seq_no": self.seq_no,
             "total_success": self.total_success,
@@ -266,7 +271,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             "allowlist": [spec.name for spec in METRIC_ALLOWLIST],
         }
 
-    def _forward_sync(self) -> None:
+    def _collect_sync(self) -> None:
         if not self.enabled:
             return
 
@@ -274,67 +279,67 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             batch = self._build_batch()
             sample_count = len(batch["samples"])
             try:
-                self.client.post(_forwarder_endpoint(), batch, _forwarder_token())
+                _atomic_write_json(self.session_dir, BATCH_FILE, batch)
             except Exception as e:
-                self.last_error = str(e)
-                self.total_failed += 1
-                logger.info(
-                    "Databricks telemetry forward failed (seq=%d, samples=%d): %s",
-                    self.seq_no,
-                    sample_count,
-                    e,
-                )
-            else:
-                self.last_error = None
-                self.last_success_ts_ms = batch["batch_window_end_ms"]
-                self.last_sample_count = sample_count
-                self.total_success += 1
-                logger.info(
-                    "Databricks telemetry forwarded %d samples (seq=%d) to %s",
-                    sample_count,
-                    self.seq_no,
-                    _forwarder_endpoint(),
-                )
+                # Treat a failure to persist the batch as a cycle failure —
+                # we have no other side effect to call this cycle a success.
+                raise RuntimeError(f"failed to write {BATCH_FILE}: {e}") from e
+            self.last_error = None
+            self.last_success_ts_ms = batch["batch_window_end_ms"]
+            self.last_sample_count = sample_count
+            self.total_success += 1
+            logger.info(
+                "Databricks telemetry collected %d samples (seq=%d) → %s",
+                sample_count,
+                self.seq_no,
+                BATCH_FILE,
+            )
+        except Exception as e:
+            self.last_error = str(e)
+            self.total_failed += 1
+            logger.info(
+                "Databricks telemetry collection failed (seq=%d): %s",
+                self.seq_no,
+                e,
+            )
         finally:
             self.seq_no += 1
             try:
-                self.client.write_status_mirror(self.session_dir, self._status())
+                _atomic_write_json(self.session_dir, STATUS_FILE, self._status())
             except Exception as e:
                 logger.debug("Failed to write status mirror: %s", e)
 
-    async def _forward_async(self) -> None:
+    async def _collect_async(self) -> None:
         if not self.enabled:
             return
         loop = get_or_create_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
-            await loop.run_in_executor(executor, self._forward_sync)
+            await loop.run_in_executor(executor, self._collect_sync)
 
-    @async_loop_forever(_forwarder_interval_s())
-    async def periodically_forward(self) -> None:
-        await self._forward_async()
+    @async_loop_forever(_collector_interval_s())
+    async def periodically_collect(self) -> None:
+        await self._collect_async()
 
     async def run(self) -> None:
         if not self.enabled:
-            logger.info("Databricks telemetry forwarder is disabled.")
+            logger.info("Databricks telemetry collector is disabled.")
             return
 
-        interval_s = _forwarder_interval_s()
+        interval_s = _collector_interval_s()
         logger.info(
-            "Databricks telemetry forwarder enabled. "
-            "endpoint=%s prometheus=%s interval=%ds",
-            _forwarder_endpoint(),
+            "Databricks telemetry collector enabled. prometheus=%s interval=%ds",
             _prometheus_host(),
             interval_s,
         )
 
-        # Same warmup shape as UsageStatsHead: wait briefly so the cluster
-        # has steady-state metrics, do an initial forward, then add a
-        # random offset before settling into the periodic loop. The offset
-        # de-correlates many clusters posting at the same wall-clock minute.
+        # Same warmup shape as UsageStatsHead: brief sleep so the cluster
+        # has steady-state metrics, an initial collect, a random offset to
+        # de-correlate many clusters running at the same wall-clock minute,
+        # then the periodic loop.
         await asyncio.sleep(min(60, interval_s))
-        await self._forward_async()
+        await self._collect_async()
         await asyncio.sleep(random.randint(0, interval_s))
-        await asyncio.gather(self.periodically_forward())
+        await asyncio.gather(self.periodically_collect())
 
     @staticmethod
     def is_minimal_module() -> bool:

@@ -1,8 +1,16 @@
-"""Constants and metric allowlist for the Databricks telemetry forwarder.
+"""Constants and metric allowlist for the Prometheus telemetry collector.
 
-This module is intentionally small: it is the audited surface for what leaves
-the cluster. Reviewers should treat additions to ``METRIC_ALLOWLIST`` with the
-same care as additions to ``src/ray/protobuf/usage.proto``'s ``TagKey`` enum.
+This module is intentionally small: it is the audited surface for what we
+read from Prometheus and write to disk. Reviewers should treat additions to
+``METRIC_ALLOWLIST`` with the same care as additions to
+``src/ray/protobuf/usage.proto``'s ``TagKey`` enum.
+
+Scope note: this v1 only **collects** metrics by querying the local
+Prometheus and writing the result to a file in the session directory. It
+does not POST anywhere. The forward-to-endpoint surface (endpoint URL,
+bearer token, server-side schema) is deliberately omitted and will be
+added in a follow-up alongside the server-side route in
+``ray-project/telemetry``.
 """
 
 from dataclasses import dataclass, field
@@ -11,8 +19,6 @@ from typing import List, Tuple
 # --- Env vars --------------------------------------------------------------
 
 DATABRICKS_TELEMETRY_ENABLED_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENABLED"
-DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENDPOINT"
-DATABRICKS_TELEMETRY_TOKEN_FILE_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_TOKEN_FILE"
 DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_INTERVAL_S"
 
 # Reused from the existing Grafana/Prometheus integration.
@@ -23,22 +29,17 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 DEFAULT_INTERVAL_S = 3600
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 
-# Pre-baked production endpoint, sibling path under the existing usage-stats
-# domain. Operators can override via ``RAY_DATABRICKS_TELEMETRY_ENDPOINT``.
-DEFAULT_ENDPOINT = "https://usage-stats.ray.io/v1/metrics"
+# --- Local output files ----------------------------------------------------
 
-# --- Local mirror file -----------------------------------------------------
-
-# Written into ``session_dir`` after every forward attempt so operators can
-# audit exactly what's leaving and whether it succeeded.
+# Operational status (success/failure counts, last error, allowlist).
 STATUS_FILE = "databricks_telemetry_status.json"
+
+# Full samples dump from the most recent successful cycle. Lets operators
+# audit exactly what the collector pulled.
+BATCH_FILE = "databricks_telemetry_latest_batch.json"
 
 # Wire format version. Bumped if the payload schema changes incompatibly.
 SCHEMA_VERSION = "0.1"
-
-# Identifies the producer for the server-side router. Distinct from
-# usage-stats' ``"OSS"`` source.
-SOURCE = "ray-prometheus-forwarder"
 
 # --- Allowlist -------------------------------------------------------------
 
@@ -56,8 +57,7 @@ class MetricSpec:
     Attributes:
         name: Prometheus metric name, including the ``ray_`` prefix.
         type: ``"gauge"`` or ``"counter"``. Used only to pick sensible
-            default aggregations and to document intent; the server is told
-            via the ``agg`` field on each sample.
+            default aggregations and to document intent.
         aggs: Aggregation functions to compute over the report window.
     """
 
