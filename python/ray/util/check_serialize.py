@@ -65,8 +65,13 @@ class FailureTuple:
 
 
 def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer, path=()):
-    """Adds the first-found non-serializable element to the failure_set."""
+    """Adds the first-found non-serializable element to the failure_set.
+
+    Prints the qualified name of the function whose closure is being
+    inspected so nested closures are identifiable in the traversal output.
+    """
     assert inspect.isfunction(base_obj)
+    printer.print(f"Inspecting closure of '{base_obj.__qualname__}':")
     closure = inspect.getclosurevars(base_obj)
     found = False
     if closure.globals:
