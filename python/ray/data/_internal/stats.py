@@ -191,17 +191,18 @@ class Timer:
     def max(self) -> float:
         return self._max
 
-    def avg(self) -> float:
-        """Per-sample average. Returns 0 when no samples have been recorded.
+    def avg(self, default: float = float("inf")) -> float:
+        """Per-sample average; ``default`` is returned when no samples
+        have been recorded.
 
-        Matches the zero-sample semantics of ``get()`` and ``max()``: a
-        Timer with no samples reports 0 across the board. (The previous
-        behavior of returning ``float("inf")`` made consumers — JSON
-        serialization, runtime_metrics() formatting — handle the empty
-        case specially.)
+        The default of ``float("inf")`` preserves the historical
+        empty-Timer signal (well-suited for "undefined" semantics in
+        display contexts that already render ``inf`` legibly). Callers
+        that need a JSON-safe / arithmetic-safe value can override —
+        e.g. ``timer.avg(default=0.0)``.
         """
         if not self._total_count:
-            return 0.0
+            return default
         return self._total / self._total_count
 
 
@@ -1166,13 +1167,14 @@ class DatasetStats:
         # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
         # ``runtime_metrics()`` can still divide by total_wall_time and
         # produce a meaningful percentage. Per-iteration avg/max are
-        # exposed separately. ``StreamingExecutor._generate_stats`` now
-        # always assigns a ``Timer`` (never ``None``), and the Timer's
-        # zero-sample semantics return 0 across get/avg/max — so this
-        # call site no longer needs any guard or private-attribute peek.
+        # exposed separately. ``StreamingExecutor._generate_stats``
+        # always assigns a ``Timer`` (never ``None``), so this call site
+        # needs no guard; we pass ``default=0.0`` to ``avg()`` so the
+        # JSON-emitted release-test metric stays a finite number when no
+        # scheduling iterations have been recorded.
         schedule_timer = self.streaming_exec_schedule_s
         streaming_exec_schedule_s = schedule_timer.get()
-        streaming_exec_schedule_avg_s = schedule_timer.avg()
+        streaming_exec_schedule_avg_s = schedule_timer.avg(default=0.0)
         streaming_exec_schedule_max_s = schedule_timer.max()
         return DatasetStatsSummary(
             operators_stats,
