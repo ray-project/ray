@@ -575,12 +575,14 @@ class StreamingExecutor(Executor, threading.Thread):
         running_usage = self._resource_manager.get_global_running_usage()
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
-        resources_status = "Active & requested resources: "
+        resources_status = (
+            f"Active & requested resources: "
+            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+        )
         if running_usage.memory > 0:
             resources_status += (
                 f"{running_usage.memory_str()}/{limits.memory_str()} memory, "
             )
-        resources_status += f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         if running_usage.gpu > 0:
             resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
         resources_status += (
@@ -590,10 +592,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Only include pending section when there are pending resources.
         pending_parts = []
-        if pending_usage.memory:
-            pending_parts.append(f"{pending_usage.memory_str()} memory")
         if pending_usage.cpu:
             pending_parts.append(f"{pending_usage.cpu:.4g} CPU")
+        if pending_usage.memory:
+            pending_parts.append(f"{pending_usage.memory_str()} memory")
         if pending_usage.gpu:
             pending_parts.append(f"{pending_usage.gpu:.4g} GPU")
         if pending_parts:

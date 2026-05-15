@@ -370,10 +370,9 @@ class ResourceManager:
         if op not in self._op_running_usages:
             usage_str = "n/a"
         else:
-            usage_str = ""
+            usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
             if self._op_running_usages[op].memory:
-                usage_str += f"{self._op_running_usages[op].memory_str()} memory, "
-            usage_str += f"{self._op_running_usages[op].cpu:.1f} CPU"
+                usage_str += f", {self._op_running_usages[op].memory_str()} memory"
             if self._op_running_usages[op].gpu:
                 usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
             usage_str += f", {self._op_running_usages[op].object_store_memory_str()} object store"
