@@ -32,6 +32,17 @@ steps:
         - "3.12"
     tags: cibase
 
+  - name: torchbuild
+    label: "wanda: torchbuild-py3.10"
+    wanda: ci/docker/torch.build.wanda.yaml
+    depends_on: oss-ci-base_ml-multipy(python=3.10)
+    env:
+      PYTHON: "3.10"
+      BASE_TYPE: "ml"
+      BUILD_VARIANT: "build"
+      RAYCI_IS_GPU_BUILD: "false"
+    tags: cibase
+
   - name: mllightning1gpubuild
     wanda: ci/docker/ml.build.wanda.yaml
     env:
@@ -78,8 +89,18 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --python-version 3.10 --build-name mlbuild-py3.10
         --only-tags train_v2
-        --except-tags needs_credentials,data_integration
+        --except-tags needs_credentials,data_integration,torchft
     depends_on: [ "mlbuild-multipy(python=3.10)", "forge" ]
+
+  - label: ":bullettrain_front: ml: train v2 torch trainer tests (torchft image)"
+    tags: train
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
+        --python-version 3.10 --build-name torchbuild-py3.10
+        --only-tags torchft
+        --except-tags needs_credentials,data_integration
+    depends_on: [ "torchbuild", "forge" ]
 
   - label: ":bullettrain_front: ml: train v2 gpu tests"
     tags:

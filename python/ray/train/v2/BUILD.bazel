@@ -699,6 +699,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "torchft",
         "train_v2",
     ],
     deps = [

@@ -68,6 +68,7 @@ python/ray/train/
 .buildkite/ml.rayci.yml
 ci/docker/ml.build.wanda.yaml
 ci/docker/mllightning2gpu.build.wanda.yaml
+ci/docker/torch.build.wanda.yaml
 ci/docker/ml.build.Dockerfile
 ci/ray_ci/ml.tests.yml
 @ ml train train_gpu tune
