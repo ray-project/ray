@@ -1993,10 +1993,10 @@ class Replica:
 
     async def check_health(self):
         try:
-            # Always run health check on the user execution path (user method or
-            # no-op probe). So if the user code / event loop is blocked, this
-            # will not complete and the controller will see a timeout and mark
-            # the replica unhealthy.
+            # Runs the user-defined check_health on the user code loop if defined.
+            # Otherwise, if the background watchdog has detected the user loop is
+            # unresponsive (RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0), raises
+            # immediately. If the watchdog is disabled (default), returns None.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -3110,7 +3110,7 @@ class UserCallableWrapper:
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
 
-    def _user_loop_probe_watchdog_applies(self) -> bool:
+    def _user_loop_watchdog_enabled(self) -> bool:
         """Whether we run the optional background user-loop probe (and may fast-fail HC)."""
         return (
             self._run_user_code_in_separate_thread
@@ -3127,7 +3127,7 @@ class UserCallableWrapper:
         RPC timeout. Applies even when ``RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1``: async
         work on that loop stays observable regardless of sync thread-pool idle/busy mix.
         """
-        if not self._user_loop_probe_watchdog_applies():
+        if not self._user_loop_watchdog_enabled():
             return
         if self._user_loop_probe_task is not None:
             return
@@ -3140,10 +3140,7 @@ class UserCallableWrapper:
 
     async def _user_loop_probe_loop(self) -> None:
         while True:
-            try:
-                await asyncio.sleep(USER_HEALTH_CHECK_PROBE_INTERVAL_S)
-            except asyncio.CancelledError:
-                return
+            await asyncio.sleep(USER_HEALTH_CHECK_PROBE_INTERVAL_S)
 
             fut = asyncio.run_coroutine_threadsafe(
                 asyncio.sleep(0), self._user_code_event_loop
@@ -3154,7 +3151,6 @@ class UserCallableWrapper:
                     timeout=USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
                 )
             except asyncio.TimeoutError:
-                fut.cancel()
                 self._user_loop_probe_consecutive_fail_count += 1
                 logger.warning(
                     "User event loop probe timed out "
@@ -3165,8 +3161,6 @@ class UserCallableWrapper:
                 )
                 continue
             except Exception as e:
-                if not fut.done():
-                    fut.cancel()
                 self._user_loop_probe_consecutive_fail_count += 1
                 logger.warning(
                     "User event loop probe failed: "
@@ -3480,7 +3474,7 @@ class UserCallableWrapper:
         # When there is no user-defined health check, health is determined by the
         # optional watchdog fail counter.
         if (
-            self._user_loop_probe_watchdog_applies()
+            self._user_loop_watchdog_enabled()
             and self._user_loop_probe_consecutive_fail_count
             >= USER_HEALTH_CHECK_PROBE_MAX_FAIL
         ):

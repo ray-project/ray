@@ -25,6 +25,14 @@ Serve provides some [fault tolerance](serve-ft-detail) features out of the box. 
 
 By default, the Serve controller periodically health-checks each Serve deployment replica and restarts it on failure.
 
+When user code runs in a separate thread (the default when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`) and no custom `check_health` is defined, Serve runs a background watchdog that periodically probes the user code event loop. If the loop is unresponsive—for example, because a request is blocking it with a long synchronous call—the probe times out. After a configurable number of consecutive timeouts, the replica immediately fails its next health check and is restarted. You can tune this behavior with the following environment variables:
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S` | `60` | How often (seconds) the watchdog probes the user loop. |
+| `RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S` | `300` | How long (seconds) each probe waits before counting as a failure. |
+| `RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL` | `3` | Consecutive probe failures before the replica fails its health check. Set to `0` to disable the watchdog. |
+
 You can define custom application-level health-checks and adjust their frequency and timeout.
 To define a custom health-check, add a `check_health` method to your deployment class.
 This method should take no arguments and return no result, and it should raise an exception if Ray Serve considers the replica unhealthy.
