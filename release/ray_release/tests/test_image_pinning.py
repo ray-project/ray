@@ -1,6 +1,6 @@
 import pytest
 
-from ray_release.buildkite.image_pinning import _shape_of
+from ray_release.buildkite.image_pinning import shape_of
 from ray_release.test import BUILD_ID_PLACEHOLDER
 
 
@@ -33,15 +33,20 @@ class TestShapeOf:
         ],
     )
     def test_shape_of(self, uri, expected):
-        assert _shape_of(uri) == expected
+        assert shape_of(uri) == expected
 
     def test_shape_of_rejects_uri_without_tag(self):
         with pytest.raises(ValueError, match="missing ':<tag>'"):
-            _shape_of("ecr/anyscale/ray")
+            shape_of("ecr/anyscale/ray")
+
+    def test_shape_of_rejects_uri_with_empty_tag(self):
+        with pytest.raises(ValueError, match="empty tag"):
+            shape_of("ecr/anyscale/ray:")
 
     def test_shape_of_no_py_segment(self):
-        # When no segment matches py<N>, the whole tag collapses to placeholder.
+        # Released-image tests' shapes have no py<N>; placeholder-only matches
+        # what Test.get_anyscale_byod_image_shape() produces in that branch.
         assert (
-            _shape_of("ecr/anyscale/ray:single")
+            shape_of("ecr/anyscale/ray:single")
             == f"ecr/anyscale/ray:{BUILD_ID_PLACEHOLDER}"
         )
