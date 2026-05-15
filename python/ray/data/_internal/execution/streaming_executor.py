@@ -579,6 +579,10 @@ class StreamingExecutor(Executor, threading.Thread):
             f"Active & requested resources: "
             f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         )
+        if running_usage.memory > 0:
+            resources_status += (
+                f"{running_usage.memory_str()}/{limits.memory_str()} memory, "
+            )
         if running_usage.gpu > 0:
             resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
         resources_status += (
@@ -587,16 +591,15 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
         # Only include pending section when there are pending resources.
-        if pending_usage.cpu or pending_usage.gpu:
-            if pending_usage.cpu and pending_usage.gpu:
-                pending_str = (
-                    f"{pending_usage.cpu:.4g} CPU, {pending_usage.gpu:.4g} GPU"
-                )
-            elif pending_usage.cpu:
-                pending_str = f"{pending_usage.cpu:.4g} CPU"
-            else:
-                pending_str = f"{pending_usage.gpu:.4g} GPU"
-            resources_status += f" (pending: {pending_str})"
+        pending_parts = []
+        if pending_usage.cpu:
+            pending_parts.append(f"{pending_usage.cpu:.4g} CPU")
+        if pending_usage.memory:
+            pending_parts.append(f"{pending_usage.memory_str()} memory")
+        if pending_usage.gpu:
+            pending_parts.append(f"{pending_usage.gpu:.4g} GPU")
+        if pending_parts:
+            resources_status += f" (pending: {', '.join(pending_parts)})"
 
         self._progress_manager.update_total_resource_status(resources_status)
 
