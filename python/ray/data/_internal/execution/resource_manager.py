@@ -1011,38 +1011,47 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             ExecutionResources.zero()
         )
 
-        # For over-subscribed dimensions (collective usage > shared pool, e.g. after a
-        # cluster shrink), distribute the shared pool proportionally to each op's usage
-        # so that planned grants reflect relative demand rather than collapsing to the
-        # reserved floor.
-        op_proportional_grants: Dict[PhysicalOperator, ExecutionResources] = {}
+        # In the normal case, the loop below splits the remaining shared pool across ops.
+        # But if ops' collective usage exceeds the shared pool for a given dimension
+        # (e.g. CPU after a cluster shrink), remaining_shared is zero for that dimension
+        # and the loop gives nothing. In that case, op_proportional_allocs distributes
+        # the shared pool in proportion to each op's excess usage, so every op still
+        # gets a non-zero allocation that reflects its relative demand.
+        # op_proportional_allocs is non-zero only for over-subscribed dimensions;
+        # for others it is zero and the loop below handles distribution.
+        op_proportional_allocs: Dict[PhysicalOperator, ExecutionResources] = {}
         for op in eligible_ops:
-            u = op_shared_usage[op]
-            op_proportional_grants[op] = ExecutionResources(
+            op_proportional_allocs[op] = ExecutionResources(
                 cpu=_proportional_share(
-                    self._total_shared.cpu, u.cpu, total_shared_usage.cpu
+                    self._total_shared.cpu,
+                    op_shared_usage[op].cpu,
+                    total_shared_usage.cpu,
                 ),
                 gpu=_proportional_share(
-                    self._total_shared.gpu, u.gpu, total_shared_usage.gpu
+                    self._total_shared.gpu,
+                    op_shared_usage[op].gpu,
+                    total_shared_usage.gpu,
                 ),
                 object_store_memory=_proportional_share(
                     self._total_shared.object_store_memory,
-                    u.object_store_memory,
+                    op_shared_usage[op].object_store_memory,
                     total_shared_usage.object_store_memory,
                 ),
                 memory=_proportional_share(
-                    self._total_shared.memory, u.memory, total_shared_usage.memory
+                    self._total_shared.memory,
+                    op_shared_usage[op].memory,
+                    total_shared_usage.memory,
                 ),
             )
 
-        # Cache per-op max requirements for consistent cap values across both loops below.
+        # Precompute and record the maximum resource usages for better readability.
         op_max_resources = {
             op: op.min_max_resource_requirements()[1] for op in eligible_ops
         }
 
         # Allocate the remaining shared resources to each operator.
         for i, op in enumerate(reversed(eligible_ops)):
-            op_proportional = op_proportional_grants.get(op, ExecutionResources.zero())
+            op_proportional = op_proportional_allocs.get(op, ExecutionResources.zero())
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
             max_resource_usage = op_max_resources[op]
 
