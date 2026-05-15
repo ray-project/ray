@@ -215,6 +215,24 @@ class CheckpointManager(abc.ABC):
         if data_file_dir is not None:
             self._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
 
+        # If the checkpoint directory has no remaining data files (e.g., all
+        # entries were pending checkpoints that were just cleaned up), skip
+        # the inner ``read_parquet``. V2's ``read_parquet`` raises on empty
+        # directories while V1 returned a zero-row dataset; this pre-check
+        # keeps ``load_checkpoint`` behaving the same under both.
+        # Recurse when a partition filter is configured because committed
+        # files live under Hive-partitioned subdirectories rather than at
+        # the top level.
+        entries = self.filesystem.get_file_info(
+            FileSelector(
+                self.checkpoint_path_unwrapped,
+                recursive=self.checkpoint_path_partition_filter is not None,
+                allow_not_found=True,
+            )
+        )
+        if not any(f.type == FileType.File for f in entries):
+            return None, 0
+
         # Load the checkpoint data
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
             self.checkpoint_path,

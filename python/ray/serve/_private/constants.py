@@ -43,8 +43,7 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Host
-DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
+DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
@@ -747,9 +746,15 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
 # setting TCP_NODELAY on both client and server connections.
-RAY_SERVE_HAPROXY_TCP_NODELAY = (
-    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
-)
+#
+# Default is ON. The streaming serving case (the dominant Ray Serve workload
+# today -- streaming LLM completions, SSE, gRPC streaming) is hostile to
+# Nagle's algorithm: when the upstream emits a small first chunk (e.g. the
+# first SSE event), Nagle holds it in the kernel buffer waiting for either
+# more data or the delayed-ACK timer, which lands as added TTFT. Set to "0"
+# only if you have a non-streaming HAProxy workload that benefits from
+# packet coalescing.
+RAY_SERVE_HAPROXY_TCP_NODELAY = get_env_bool("RAY_SERVE_HAPROXY_TCP_NODELAY", "1")
 
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
@@ -800,8 +805,23 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # active. Bodies longer than this are truncated; the Lua forwards what it has
 # with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
 # do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
+# Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+)
+
+# Escape hatch: when true, HAProxy forwards the (possibly truncated) request
+# body to /internal/route and the router reads it. Off by default because for
+# large payloads the body buffering / re-emit cost adds noticeable time-to-
+# first-response. Skipping the forward is fine for any policy whose decision
+# does not depend on the request body: round-robin and power-of-two ignore
+# the body entirely, and session-aware policies key on the ``x-session-id``
+# header (forwarded with the request line) rather than the body.
+#
+# Flip this to true if the configured request router needs the body for its
+# decision, e.g. prefix-aware / prefix-cache routing.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(

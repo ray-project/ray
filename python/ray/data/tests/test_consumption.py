@@ -93,7 +93,6 @@ def test_schema_no_execution(ray_start_regular):
         last_snapshot,
     )
     # We do not kick off the read task by default.
-    assert not ds.has_started_execution
     schema = ds.schema()
     assert schema.names == ["id"]
 
@@ -103,7 +102,6 @@ def test_schema_no_execution(ray_start_regular):
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
     # Fetching the schema should not trigger execution of extra read tasks.
-    assert not ds.has_started_execution
 
 
 def test_schema_cached(ray_start_regular):
@@ -194,7 +192,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
     uuid = ds._get_uuid()
-    plan_uuid = ds._plan._dataset_uuid
+    plan_uuid = ds._uuid
 
     serialized_ds = ds.serialize_lineage()
 
@@ -204,7 +202,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
     assert ds._get_uuid() == uuid
-    assert ds._plan._dataset_uuid == plan_uuid
+    assert ds._uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
@@ -369,7 +367,7 @@ def test_schema_repr(ray_start_regular_shared):
 def _check_none_computed(ds):
     # In streaming executor, ds.take() will not invoke partial execution
     # in LazyBlocklist.
-    assert not ds.has_started_execution
+    assert not ds._has_computed_output()
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):

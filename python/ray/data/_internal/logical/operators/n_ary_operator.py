@@ -7,6 +7,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
+from ray.util.annotations import PublicAPI
 
 __all__ = [
     "Mix",
@@ -17,6 +18,7 @@ __all__ = [
 ]
 
 
+@PublicAPI(stability="alpha")
 class MixStoppingCondition(enum.Enum):
     """Controls when a mix pipeline terminates.
 

@@ -3,6 +3,7 @@ import concurrent.futures
 import logging
 import time
 import warnings
+from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncIterator,
@@ -18,6 +19,8 @@ from typing import (
     Union,
     cast,
 )
+
+from typing_extensions import AsyncContextManager
 
 import ray
 from ray import serve
@@ -40,6 +43,7 @@ from ray.serve._private.handle_options import (
     InitHandleOptionsBase,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -182,6 +186,24 @@ class _DeploymentHandleBase(Generic[T]):
             return False
         return self.init_options._run_router_in_separate_loop
 
+    def _init_router(self) -> Router:
+        if not self.is_initialized:
+            self._init()
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        return self._router
+
+    def _init_router_and_get_metadata(self) -> Tuple[Router, RequestMetadata]:
+        router = self._init_router()
+
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
+        )
+
+        return router, metadata
+
     def _options(
         self, _prefer_local_routing=DEFAULT.VALUE, **kwargs
     ) -> "DeploymentHandle[T]":
@@ -216,12 +238,7 @@ class _DeploymentHandleBase(Generic[T]):
         args: Tuple[Any],
         kwargs: Dict[str, Any],
     ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
-        if not self.is_initialized:
-            self._init()
-
-        metadata = serve._private.default_impl.get_request_metadata(
-            self.init_options, self.handle_options
-        )
+        router, metadata = self._init_router_and_get_metadata()
 
         self.request_counter.inc(
             tags={
@@ -229,10 +246,47 @@ class _DeploymentHandleBase(Generic[T]):
                 "application": metadata.app_name,
             }
         )
-        if self._router is None:
-            raise RuntimeError("Router is not initialized")
+        return router.assign_request(metadata, *args, **kwargs), metadata
 
-        return self._router.assign_request(metadata, *args, **kwargs), metadata
+    @asynccontextmanager
+    async def _choose_replica(
+        self,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Execute the request router to select a replica without dispatching."""
+        router, metadata = self._init_router_and_get_metadata()
+
+        # Call the router's choose_replica and inject the deployment handle
+        async with router.choose_replica(metadata, *args, **kwargs) as selection:
+            # Record the owning deployment for dispatch-time validation.
+            selection._deployment_id = self.deployment_id
+            yield selection
+
+    def _dispatch(
+        self,
+        selection: ReplicaSelection,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
+    ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
+        """Dispatch a request to a previously selected replica."""
+        # Validate that the selection was produced for this deployment
+        if selection._deployment_id != self.deployment_id:
+            raise ValueError(
+                f"Cannot dispatch a selection created for a different deployment. "
+                f"This handle is for {self.deployment_id}, but the selection was created "
+                f"for {selection._deployment_id}."
+            )
+
+        metadata = selection._request_metadata
+        self.request_counter.inc(
+            tags={
+                "route": metadata.route,
+                "application": metadata.app_name,
+            }
+        )
+        router = self._init_router()
+        return router.dispatch(selection, metadata, *args, **kwargs), metadata
 
     def options(
         self,
@@ -1116,6 +1170,84 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
+            return DeploymentResponseGenerator(
+                future,
+                request_metadata,
+                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            )
+        else:
+            return DeploymentResponse(
+                future,
+                request_metadata,
+                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            )
+
+    def choose_replica(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> AsyncContextManager[ReplicaSelection]:
+        """Execute the request router to select a replica without dispatching.
+
+        This method runs the full routing logic (load balancing, locality awareness,
+        queue length probing, etc.) and returns an async context manager that yields
+        a ReplicaSelection. A request slot is reserved on the selected replica,
+        guaranteeing that dispatch will succeed.
+
+        The context manager ensures proper cleanup:
+        - If dispatch() is called, the slot is consumed normally.
+        - If the context exits without dispatch (e.g., exception, early return), the slot is released.
+
+        The method name is determined at ``choose_replica`` time. Any method name on
+        the handle passed to ``dispatch`` is ignored.
+
+        Args:
+            *args: Arguments that may influence routing decisions
+            **kwargs: Keyword arguments that may influence routing decisions.
+
+        Returns:
+            AsyncContextManager[ReplicaSelection] - must be used with async with.
+        """
+        return self._choose_replica(args, kwargs)
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
+        """Dispatch a request to a previously selected replica.
+
+        By default, the result is a `DeploymentResponse` that can be awaited to fetch
+        the result of the call. Like `.remote()`, `DeploymentResponse` objects can be
+        passed as arguments for deployment composition.
+
+        If `handle.options(stream=True)` is set and a generator method is called, this
+        returns a `DeploymentResponseGenerator` instead.
+        If the selected replica becomes unavailable before dispatch executes,
+        ``ReplicaUnavailableError`` is propagated from the router dispatch path.
+
+        The returned response must be awaited before the ``choose_replica`` context
+        exits. The router fires ``on_request_completed`` exactly once per dispatched
+        request to decrement its queue-length cache. Exiting the context with an
+        unawaited response fires it twice — once during context cleanup, then again
+        when the deferred dispatch task eventually completes — leaving the cache
+        under-counted.
+
+        Args:
+            selection: A ReplicaSelection from choose_replica() context manager.
+            *args: The request arguments to send to the replica.
+            **kwargs: The request keyword arguments to send to the replica.
+
+        Returns:
+            DeploymentResponse or DeploymentResponseGenerator (if streaming).
+
+        Raises:
+            ValueError: If selection was created by a different DeploymentHandle.
+        """
+        future, request_metadata = self._dispatch(selection, args, kwargs)
+        # Use the stream flag captured at choose_replica time
+        if request_metadata.is_streaming:
             return DeploymentResponseGenerator(
                 future,
                 request_metadata,

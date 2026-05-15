@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "absl/time/time.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/rpc/event_aggregator_client.h"

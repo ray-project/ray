@@ -172,12 +172,7 @@ def start_service(
 def get_service_compute_config(
     compute_config: Optional[str] = None,
 ) -> str:
-    """Get the compute config to use when starting the Anyscale Service.
-
-    Release jobs pass the current job's compute config name through the
-    environment. Using that name avoids querying the Jobs API from inside the
-    cluster, where only the cluster CLI token may be available.
-    """
+    """Get the compute config to use when starting the Anyscale Service."""
     service_compute_config = compute_config or os.environ.get(
         ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR
     )
