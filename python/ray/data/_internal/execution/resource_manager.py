@@ -827,7 +827,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
-        # Planned resource grants for each operator, excluding `_reserved_for_op_outputs`.
+        # Planned resource allocations for each operator, excluding `_reserved_for_op_outputs`.
         self._op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
