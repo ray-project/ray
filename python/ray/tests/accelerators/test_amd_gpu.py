@@ -15,9 +15,7 @@ from ray._private.accelerators import (
     "ray._private.accelerators.AMDGPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
     return_value=4,
 )
-def test_visible_amd_gpu_ids(
-    mock_get_num_accelerators, monkeypatch, shutdown_only
-):
+def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_only):
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
     # Delete the cache so it can be re-populated the next time
     # we call get_accelerator_manager_for_resource
@@ -50,9 +48,7 @@ def test_visible_amd_gpu_type_bad_device_id(mock_get_num_accelerators, shutdown_
     assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
-def test_get_current_process_visible_accelerator_ids(
-    monkeypatch
-):
+def test_get_current_process_visible_accelerator_ids(monkeypatch):
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
         "0",
