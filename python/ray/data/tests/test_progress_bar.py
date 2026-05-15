@@ -11,6 +11,12 @@ from ray.data._internal.progress.base_progress import (
     SubProgressUpdater,
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
+from ray.data._internal.progress.rich_progress import RichSubProgressBar
+
+
+class _FakeRichProgress:
+    def update(self, *args, **kwargs):
+        pass
 
 
 @fixture(params=[True, False])
@@ -101,6 +107,16 @@ def test_sub_progress_updater_updates_metrics_and_notifies_callback():
         name="Shuffle", total=10, completed=3
     )
     assert snapshots == [ProgressMetrics(name="Shuffle", total=10, completed=3)]
+
+
+def test_rich_sub_progress_bar_starts_timer_on_first_progress_update():
+    progress_bar = RichSubProgressBar("Shuffle", progress=_FakeRichProgress(), tid=0)
+
+    progress_bar.update_absolute(0, None)
+    assert progress_bar._start_time is None
+
+    progress_bar.update_absolute(1, 10)
+    assert progress_bar._start_time is not None
 
 
 @pytest.mark.parametrize(

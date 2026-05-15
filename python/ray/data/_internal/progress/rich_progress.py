@@ -89,9 +89,10 @@ class RichSubProgressBar(BaseProgressBar):
 
     def _update(self, completed: int, total: Optional[int] = None) -> None:
         assert self._enabled
-        if self._start_time is None:
+        if self._start_time is None and completed > 0:
             self._start_time = time.time()
-        metrics = _get_progress_metrics(self._start_time, completed, total)
+        start_time = self._start_time if self._start_time is not None else time.time()
+        metrics = _get_progress_metrics(start_time, completed, total)
         self._progress.update(
             self._tid,
             completed=metrics.completed,
