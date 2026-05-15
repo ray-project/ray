@@ -720,8 +720,7 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
 
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
-# can fire reloads tens of ms apart and overlapping `-sf` handoffs
-# saturate the proxy actor's event loop.
+# can fire reloads tens of ms apart.
 RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = float(
     os.environ.get("RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", "0.1")
 )
