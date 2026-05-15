@@ -1489,15 +1489,21 @@ class HAProxyManager(ProxyActorInterface):
             )
 
     async def _coalesce_and_apply(self) -> None:
-        # Wait the coalesce window, then drain whatever updates accumulated.
-        # Looping lets us absorb broadcasts that land during the apply itself.
+        # Loop absorbs broadcasts that arrive during apply. On failure,
+        # re-arm `_update_pending` for up to 2 retries; past that, give up
+        # and wait for the next broadcast rather than busy-looping.
+        consecutive_failures = 0
         while self._update_pending:
             await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
             self._update_pending = False
             try:
                 self._update_haproxy_backends()
+                consecutive_failures = 0
             except Exception as e:
                 logger.exception(f"Coalesced HAProxy update failed: {e}")
+                consecutive_failures += 1
+                if consecutive_failures < 3:
+                    self._update_pending = True
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""
