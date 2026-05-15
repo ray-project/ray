@@ -541,10 +541,10 @@ class HAProxyConfig:
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
     # Per-request metrics for the ingress request router data path.
-    # When false, no metric log target / log-format-sd is rendered, the Lua
-    # template skips the timing+truncation set_vars, and HAProxyManager does
-    # not bind the dgram socket. The generated config is byte-identical to
-    # the pre-feature build.
+    # When metrics are disabled, there is no additional overhead:
+    #  1) no metric log target / log-format-sd is rendered,
+    #  2) the Lua template skips the timing+truncation set_vars, and
+    #  3) HAProxyManager does not bind the dgram socket.
     metrics_enabled: bool = RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
@@ -815,7 +815,7 @@ class HAProxyApi(ProxyApi):
 
         # When metrics are enabled, render the two timing hooks and the
         # truncation set_var; when disabled, all three substitute to empty
-        # strings so the Lua file is identical to the pre-feature build.
+        # strings to avoid any additional overhead.
         if self.cfg.metrics_enabled:
             metrics_pre = "local _metrics_t0 = core.now()"
             metrics_post = (
@@ -1239,13 +1239,10 @@ class HAProxyManager(ProxyActorInterface):
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
 
-        # Bind the metrics dgram socket BEFORE HAProxy starts so its first
-        # log sendto succeeds. The socket is owned by HAProxyManager and
-        # survives HAProxy reloads. We bind synchronously here so the kernel
-        # is already buffering dgrams by the time HAProxy emits anything;
-        # the asyncio reader gets attached on the event loop separately.
+        # Start the metrics collector for the ingress request router. The
+        # collector owns its own dgram socket and transport lifecycle; we
+        # only hold a reference so we can close it on shutdown.
         self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
-        self._metrics_transport: Optional[asyncio.DatagramTransport] = None
         self._metrics_attach_task: Optional[asyncio.Task] = None
         if self._haproxy.cfg.metrics_enabled:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
@@ -1255,18 +1252,17 @@ class HAProxyManager(ProxyActorInterface):
             )
             try:
                 self._metrics_collector = HAProxyMetricsCollector()
-                metrics_sock = HAProxyMetricsCollector.bind_socket(
-                    self._haproxy.cfg.metrics_socket_path
-                )
                 self._metrics_attach_task = self.event_loop.create_task(
-                    self._metrics_collector.attach_to_loop(
-                        metrics_sock, loop=self.event_loop
+                    self._metrics_collector.bind_and_attach(
+                        self._haproxy.cfg.metrics_socket_path,
+                        loop=self.event_loop,
                     )
                 )
             except Exception:
                 logger.exception(
-                    "Failed to bind ingress-request-router metrics socket; "
-                    "metrics will not be emitted. HAProxy will continue normally."
+                    "Failed to construct ingress-request-router metrics "
+                    "collector; metrics will not be emitted. HAProxy will "
+                    "continue normally."
                 )
                 self._metrics_collector = None
 
@@ -1286,9 +1282,9 @@ class HAProxyManager(ProxyActorInterface):
 
             await self._haproxy.stop()
 
-            if self._metrics_transport is not None:
-                self._metrics_transport.close()
-                self._metrics_transport = None
+            if self._metrics_collector is not None:
+                self._metrics_collector.close()
+                self._metrics_collector = None
 
             logger.info(
                 f"Successfully stopped HAProxy process on node {self._node_id}.",
@@ -1302,19 +1298,21 @@ class HAProxyManager(ProxyActorInterface):
             # Wait for haproxy to start. Internally, this starts the process and
             # waits for it to be running by querying the stats socket.
             await self._haproxy_start_task
-            # Attach the metrics datagram reader. The socket was already bound
-            # synchronously in __init__, so kernel-level dgram buffering has
-            # been in effect since before HAProxy spawned; this just wires
-            # asyncio to drain it.
+            # Surface metrics bind failures here. HAProxy startup is much
+            # slower than the bind (subprocess vs. one syscall), so by the
+            # time we get here the attach task has either succeeded or
+            # raised; awaiting it is just collecting the result.
             if self._metrics_attach_task is not None:
                 try:
-                    self._metrics_transport = await self._metrics_attach_task
+                    await self._metrics_attach_task
                 except Exception:
                     logger.exception(
-                        "Failed to attach metrics dgram reader; metrics "
-                        "will not be drained."
+                        "Failed to bind/attach metrics dgram reader; "
+                        "metrics will not be drained."
                     )
-                    self._metrics_collector = None
+                    if self._metrics_collector is not None:
+                        self._metrics_collector.close()
+                        self._metrics_collector = None
         except Exception as e:
             logger.exception("Failed to start HAProxy.")
             raise e from None
