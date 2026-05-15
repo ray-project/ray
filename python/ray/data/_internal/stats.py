@@ -192,7 +192,17 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._total / self._total_count if self._total_count else float("inf")
+        """Per-sample average. Returns 0 when no samples have been recorded.
+
+        Matches the zero-sample semantics of ``get()`` and ``max()``: a
+        Timer with no samples reports 0 across the board. (The previous
+        behavior of returning ``float("inf")`` made consumers — JSON
+        serialization, runtime_metrics() formatting — handle the empty
+        case specially.)
+        """
+        if not self._total_count:
+            return 0.0
+        return self._total / self._total_count
 
 
 class _DatasetStatsBuilder:
@@ -1156,26 +1166,14 @@ class DatasetStats:
         # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
         # ``runtime_metrics()`` can still divide by total_wall_time and
         # produce a meaningful percentage. Per-iteration avg/max are
-        # exposed separately.
-        #
-        # The ``streaming_exec_schedule_s`` field is annotated as ``Timer``
-        # but in practice can be ``None`` — see
-        # ``StreamingExecutor._generate_stats`` which explicitly assigns
-        # ``None`` when ``_initial_stats`` is falsy. We also explicitly
-        # handle the zero-iteration case (e.g., non-streaming execution);
-        # ``Timer.avg()`` returns ``float("inf")`` when no samples have
-        # been recorded, which would break JSON serialization in
-        # release-test output and produce nonsense in
-        # ``runtime_metrics()``.
+        # exposed separately. ``StreamingExecutor._generate_stats`` now
+        # always assigns a ``Timer`` (never ``None``), and the Timer's
+        # zero-sample semantics return 0 across get/avg/max — so this
+        # call site no longer needs any guard or private-attribute peek.
         schedule_timer = self.streaming_exec_schedule_s
-        if schedule_timer is not None and schedule_timer._total_count > 0:
-            streaming_exec_schedule_s = schedule_timer.get()
-            streaming_exec_schedule_avg_s = schedule_timer.avg()
-            streaming_exec_schedule_max_s = schedule_timer.max()
-        else:
-            streaming_exec_schedule_s = 0
-            streaming_exec_schedule_avg_s = 0
-            streaming_exec_schedule_max_s = 0
+        streaming_exec_schedule_s = schedule_timer.get()
+        streaming_exec_schedule_avg_s = schedule_timer.avg()
+        streaming_exec_schedule_max_s = schedule_timer.max()
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
