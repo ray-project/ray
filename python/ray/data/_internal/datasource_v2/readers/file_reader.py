@@ -397,7 +397,6 @@ class FileReader(Reader[FileManifest]):
 
         # Set `preserve_ordering=True` to ensure deterministic output ordering.
         # This is required so that Ray Data task retries (block reconstruction)
-        # produce identical block sequences.
         yield from make_async_gen(
             base_iterator=iter(fragments),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
