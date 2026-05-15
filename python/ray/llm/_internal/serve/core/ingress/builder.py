@@ -22,7 +22,9 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 logger = get_logger(__name__)
 
@@ -32,11 +34,28 @@ def _build_direct_streaming_llm_deployment(llm_config: LLMConfig) -> Application
 
     The real ASGI app (vLLM FastAPI) is constructed inside
     `LLMServer.__serve_build_asgi_app__` after the engine starts.
+
+    LLMRouter delegates each replica pick to ``DeploymentHandle.choose_replica``,
+    so the LLMServer deployment's ``request_router_class`` is what actually
+    decides the policy. Default to ``RoundRobinRouter`` to preserve the
+    pre-`choose_replica` behavior, but never overwrite a value the user
+    already set on ``llm_config.deployment_config.request_router_config`` —
+    that would silently break ``ConsistentHashRouter`` /
+    ``PrefixCacheAffinityRouter`` deployments configured per the public
+    LLMConfig API.
     """
     server_cls = llm_config.server_cls or LLMServer
+    override_serve_options: Optional[dict] = None
+    if "request_router_config" not in llm_config.deployment_config:
+        override_serve_options = {
+            "request_router_config": RequestRouterConfig(
+                request_router_class=RoundRobinRouter,
+            ),
+        }
     return build_llm_deployment(
         llm_config,
         deployment_cls=serve.ingress()(server_cls),
+        override_serve_options=override_serve_options,
     )
 
 
