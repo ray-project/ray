@@ -166,6 +166,10 @@ if BaseModel is not None:
         cpu: float  # CPU usage percentage
         cpus: Tuple[int, int]  # (logicalCpuCount, physicalCpuCount)
         mem: MemoryUsage  # (total, available, percent, used) in bytes
+        hostMem: Tuple[int, int]  # host physical memory (used, totall) in bytes
+        cgroupMem: Optional[
+            Tuple[int, int]
+        ] = None  # (used, total) from cgroup, or None
         shm: Optional[int] = None  # shared memory in bytes, None if not available
         workers: List[ProcessInfo]
         raylet: Optional[ProcessInfo] = None

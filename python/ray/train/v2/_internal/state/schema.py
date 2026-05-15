@@ -1,13 +1,68 @@
+import math
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util.annotations import DeveloperAPI
 
 MAX_ERROR_STACK_TRACE_LENGTH = 50000
+
+
+def _to_json_serializable_value(value: Any, *, max_depth: int = 3) -> Any:
+    """Recursively coerce a value into a human-readable, JSON serializable representation.
+
+    If ``value`` is a list or dict, this function walks through it and replaces non-JSON
+    serializable fields (e.g. custom objects, modules, tensors, callables, etc.) with a
+    human-readable string representation.
+
+    Args:
+        value: Any Python value. Primitives pass through; collections recurse;
+            other types are stringified.
+        max_depth: Truncates dicts nested beyond ``max_depth`` to ``"..."``.
+            Lists do not consume depth.
+
+    Returns:
+        The JSON serializable representation of the value.
+    """
+    if max_depth <= 0:
+        raise ValueError("max_depth must be greater than 0")
+
+    def _safe_str(v):
+        try:
+            return str(v)
+        except Exception:
+            return type(v).__name__
+
+    def _walk(value, depth):
+        if value is None or isinstance(value, (bool, int, str)):
+            return value
+        if isinstance(value, float):
+            return str(value) if not math.isfinite(value) else value
+        if isinstance(value, Mapping):
+            if depth <= 0:
+                return "..."
+            try:
+                items = list(value.items())
+            except Exception:
+                # Custom Mapping subclass with a broken `.items()`.
+                return type(value).__name__
+            return {_safe_str(k): _walk(v, depth - 1) for k, v in items}
+
+        # Tuples, sets, and frozensets all become lists in JSON.
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return [_walk(v, depth) for v in value]
+
+        cls = type(value)
+        # Use class name if no custom string representation is defined.
+        if cls.__str__ is object.__str__ and cls.__repr__ is object.__repr__:
+            return cls.__name__
+        return _safe_str(value)
+
+    return _walk(value, max_depth)
 
 
 @DeveloperAPI
@@ -220,14 +275,59 @@ class DecoratedTrainRunAttempt(TrainRunAttempt):
 
 
 @DeveloperAPI
+class ExecutionOptions(BaseModel):
+    """ExecutionOptions for a single Ray Data ingest pipeline."""
+
+    resource_limits: Dict[str, Any] = Field(
+        description="The resource limits applied to the Ray Data execution plan."
+    )
+    exclude_resources: Dict[str, Any] = Field(
+        description="The resources excluded from the Ray Data execution plan "
+        "(e.g. resources reserved by Ray Train workers)."
+    )
+
+    @field_validator("resource_limits", "exclude_resources", mode="before")
+    @classmethod
+    def _sanitize_dict(cls, v):
+        return _to_json_serializable_value(v)
+
+    preserve_order: bool = Field(
+        description="Whether to preserve the order of outputs across operators."
+    )
+    actor_locality_enabled: bool = Field(
+        description="Whether actor-based locality optimizations are enabled."
+    )
+    verbose_progress: bool = Field(
+        description="Whether verbose progress reporting is enabled."
+    )
+
+
+@DeveloperAPI
+class DataExecutionOptions(BaseModel):
+    """ExecutionOptions for a Ray Train run, split into defaults and per-dataset overrides."""
+
+    default: ExecutionOptions = Field(
+        description="Execution options applied to any dataset without a per-dataset override."
+    )
+    per_dataset_execution_options: Dict[str, ExecutionOptions] = Field(
+        default_factory=dict,
+        description="Per-dataset execution option overrides, keyed by dataset name.",
+    )
+
+
+@DeveloperAPI
 class DataConfig(BaseModel):
     """Configuration for dataset splitting and execution options within Ray Train."""
 
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
-        description="Which datasets to split; either 'all' or a list of dataset names.",
+        description="Which datasets to split; either 'all' or a list of dataset names."
     )
     execution_options: Optional[Dict] = Field(
-        None, description="Data execution options"
+        default=None,
+        deprecated="DEPRECATED: Use data_execution_options instead.",
+    )
+    data_execution_options: DataExecutionOptions = Field(
+        description="Data execution options"
     )
     enable_shard_locality: bool = Field(
         description="Whether to enable shard locality optimization."
@@ -299,6 +399,12 @@ class RunConfig(BaseModel):
     worker_runtime_env: Dict[str, Any] = Field(
         description="The worker runtime env for a Train run."
     )
+
+    @field_validator("worker_runtime_env", mode="before")
+    @classmethod
+    def _sanitize_worker_runtime_env(cls, v):
+        return _to_json_serializable_value(v)
+
     checkpoint_config: CheckpointConfig = Field(
         description="The checkpoint config for a Train run."
     )
@@ -306,6 +412,11 @@ class RunConfig(BaseModel):
     storage_filesystem: Optional[str] = Field(
         None, description="The storage filesystem for a Train run."
     )
+
+    @field_validator("storage_filesystem", mode="before")
+    @classmethod
+    def _sanitize_storage_filesystem(cls, v):
+        return _to_json_serializable_value(v)
 
 
 @DeveloperAPI
@@ -319,6 +430,11 @@ class BackendConfig(BaseModel):
         description="Training framework-specific configuration fields."
     )
 
+    @field_validator("config", mode="before")
+    @classmethod
+    def _sanitize_config(cls, v):
+        return _to_json_serializable_value(v)
+
 
 @DeveloperAPI
 class RunSettings(BaseModel):
@@ -331,6 +447,12 @@ class RunSettings(BaseModel):
     train_loop_config: Optional[Dict] = Field(
         None, description="The user defined train loop config for a Train run."
     )
+
+    @field_validator("train_loop_config", mode="before")
+    @classmethod
+    def _sanitize_train_loop_config(cls, v):
+        return _to_json_serializable_value(v)
+
     backend_config: BackendConfig = Field(
         description="The backend config for a Train run. Can vary with the framework (e.g. TorchConfig)"
     )

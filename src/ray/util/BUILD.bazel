@@ -14,6 +14,7 @@ ray_cc_library(
     name = "clock",
     hdrs = ["clock.h"],
     deps = [
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
 )

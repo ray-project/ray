@@ -25,6 +25,7 @@ import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import get_localhost_ip, is_localhost
 from ray._common.utils import (
     get_or_create_event_loop,
 )
@@ -163,6 +164,30 @@ METRICS_GAUGES = {
     "node_mem_shared_bytes": Gauge(
         "node_mem_shared_bytes",
         "Total shared memory usage on a ray node",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_mem_used_host": Gauge(
+        "node_mem_used_host",
+        "Host memory usage on a ray node",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_mem_total_host": Gauge(
+        "node_mem_total_host",
+        "Total host memory on a ray node",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_cgroup_mem_used": Gauge(
+        "node_cgroup_mem_used",
+        "Container memory usage on a ray node",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_cgroup_mem_total": Gauge(
+        "node_cgroup_mem_total",
+        "Container memory limit on a ray node",
         "bytes",
         NODE_TAG_KEYS,
     ),
@@ -472,7 +497,7 @@ class ReporterAgent(
                 prometheus_exporter.Options(
                     namespace="ray",
                     port=dashboard_agent.metrics_export_port,
-                    address="127.0.0.1" if self._ip == "127.0.0.1" else "",
+                    address=get_localhost_ip() if is_localhost(self._ip) else "",
                 )
             )
             dashboard_agent.metrics_export_port = stats_exporter.port
@@ -894,6 +919,11 @@ class ReporterAgent(
         return total, available, percent, used
 
     @staticmethod
+    def _get_host_mem_usage():
+        vmem = psutil.virtual_memory()
+        return vmem.used, vmem.total
+
+    @staticmethod
     def _get_disk_usage(temp_dir: str):
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
@@ -1144,6 +1174,8 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
+            "host_mem": self._get_host_mem_usage(),
+            "cgroup_mem": utils.get_cgroup_mem_stats(),
             "workers": await self._async_get_workers_and_agents(gpus),
             "raylet": raylet,
             "agent": self._get_agent(),
@@ -1513,6 +1545,40 @@ class ReporterAgent(
                 tags=node_tags,
             )
             records_reported.append(node_mem_shared)
+
+        host_mem_used, host_mem_total = stats["host_mem"]
+        records_reported.extend(
+            [
+                Record(
+                    gauge=METRICS_GAUGES["node_mem_used_host"],
+                    value=host_mem_used,
+                    tags=node_tags,
+                ),
+                Record(
+                    gauge=METRICS_GAUGES["node_mem_total_host"],
+                    value=host_mem_total,
+                    tags=node_tags,
+                ),
+            ]
+        )
+
+        cgroup_stats = stats["cgroup_mem"]
+        if cgroup_stats is not None:
+            cgroup_used, cgroup_total = cgroup_stats
+            records_reported.extend(
+                [
+                    Record(
+                        gauge=METRICS_GAUGES["node_cgroup_mem_used"],
+                        value=cgroup_used,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_cgroup_mem_total"],
+                        value=cgroup_total,
+                        tags=node_tags,
+                    ),
+                ]
+            )
 
         # The output example of GpuUtilizationInfo.
         """
