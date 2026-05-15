@@ -1545,7 +1545,7 @@ pandas==2.3.3
     #   utilsforecast
 pandocfilters==1.5.1
     # via nbconvert
-paramiko==3.5.1
+paramiko==5.0.0
     # via azure-cli-core
 parso==0.8.6
     # via jedi
