@@ -959,6 +959,81 @@ class TestImageShape:
         assert "leaked-real-tag" not in shape
 
 
+class TestStepImageOverride:
+    """Verify image_overrides parameter behavior in get_step."""
+
+    @pytest.fixture(autouse=True)
+    def patch_state(self, monkeypatch):
+        monkeypatch.setenv("RAYCI_BUILD_ID", "abc1234")
+        # Skip update_from_s3 to keep tests offline.
+        monkeypatch.setattr("ray_release.test.Test.update_from_s3", lambda self: None)
+        yield
+
+    def _test(self, name: str = "t") -> MockTest:
+        return MockTest(
+            {
+                "name": name,
+                "team": "reef",
+                "group": "g",
+                "frequency": "nightly",
+                "working_dir": "wd",
+                "python": "3.10",
+                "cluster": {"byod": {}, "cluster_compute": "c.yaml"},
+                "run": {"timeout": 60, "script": "echo hi"},
+            }
+        )
+
+    def test_pinned_mode_with_entry_adds_image_flag(self):
+        t = self._test("my_test")
+        step = get_step(
+            t,
+            test_collection_file=["release/release_tests.yaml"],
+            image_overrides={"my_test": "ecr/r:pinned-py310-cpu"},
+        )
+        cmd = step["commands"][0]
+        # shlex.quote only adds quotes when shell metachars are present; the
+        # image URI here has none, so the flag appears unquoted.
+        assert "--image ecr/r:pinned-py310-cpu" in cmd
+        assert step["depends_on"] is None
+
+    def test_pinned_mode_quotes_image_with_shell_metachars(self):
+        t = self._test("my_test")
+        step = get_step(
+            t,
+            test_collection_file=["release/release_tests.yaml"],
+            image_overrides={"my_test": "ecr/r:pinned py310 cpu"},
+        )
+        cmd = step["commands"][0]
+        # shlex.quote MUST escape whitespace so the shell sees one token.
+        assert "--image 'ecr/r:pinned py310 cpu'" in cmd
+
+    def test_pinned_mode_without_entry_omits_image_flag(self):
+        # Simulates a released-image test in URIs mode: pinned mode is
+        # active (image_overrides is a dict) but this test isn't in it.
+        t = self._test("released_test")
+        step = get_step(
+            t,
+            test_collection_file=["release/release_tests.yaml"],
+            image_overrides={},
+        )
+        cmd = step["commands"][0]
+        assert "--image" not in cmd
+        assert step["depends_on"] is None
+
+    def test_not_pinned_mode_uses_existing_depends_on(self):
+        # image_overrides=None means pre-existing dependency logic applies.
+        t = self._test("normal_test")
+        step = get_step(
+            t,
+            test_collection_file=["release/release_tests.yaml"],
+            image_overrides=None,
+            gpu_map={"cu123": "cu12.3.2-cudnn9"},
+        )
+        cmd = step["commands"][0]
+        assert "--image" not in cmd
+        assert step["depends_on"] is not None
+
+
 if __name__ == "__main__":
     import pytest
 

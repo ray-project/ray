@@ -80,6 +80,7 @@ def get_step_for_test_group(
     is_concurrency_limit: bool = True,
     block_step_key: Optional[str] = None,
     gpu_map: Optional[Dict[str, str]] = None,
+    image_overrides: Optional[Dict[str, str]] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -100,6 +101,7 @@ def get_step_for_test_group(
                     global_config=global_config,
                     block_step_key=block_step_key,
                     gpu_map=gpu_map,
+                    image_overrides=image_overrides,
                 )
 
                 if not is_concurrency_limit:
@@ -125,9 +127,15 @@ def get_step(
     global_config: Optional[str] = None,
     block_step_key: Optional[str] = None,
     gpu_map: Optional[Dict[str, str]] = None,
+    image_overrides: Optional[Dict[str, str]] = None,
 ):
     env = env or {}
     step = copy.deepcopy(_DEFAULT_STEP_TEMPLATE)
+
+    # Pinned mode is signaled by a dict (possibly empty); `None` means the
+    # caller did not opt into pinned mode and existing dependency logic applies.
+    pinned_mode = image_overrides is not None
+    image_override = image_overrides.get(test["name"]) if pinned_mode else None
 
     cmd = [
         "./release/run_release_test.sh",
@@ -145,6 +153,9 @@ def get_step(
 
     if smoke_test:
         cmd += ["--smoke-test"]
+
+    if image_override:
+        cmd += ["--image", shlex.quote(image_override)]
 
     num_retries = test.get("run", {}).get("num_retries")
     if num_retries:
@@ -199,18 +210,24 @@ def get_step(
 
     step["label"] = full_label
 
-    image = test.get_anyscale_byod_image()
-    base_image = test.get_anyscale_base_byod_image()
-    if test.require_custom_byod_image():
-        step["depends_on"] = generate_custom_build_step_key(image)
+    if pinned_mode:
+        # In pinned mode the block step is always suppressed (so block_step_key
+        # is None) and the pre-built image already exists in the registry, so
+        # the test step has no in-pipeline dependency.
+        step["depends_on"] = None
     else:
-        step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
-
-    if block_step_key:
-        if not step["depends_on"]:
-            step["depends_on"] = block_step_key
+        image = test.get_anyscale_byod_image()
+        base_image = test.get_anyscale_base_byod_image()
+        if test.require_custom_byod_image():
+            step["depends_on"] = generate_custom_build_step_key(image)
         else:
-            step["depends_on"] = [step["depends_on"], block_step_key]
+            step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
+
+        if block_step_key:
+            if not step["depends_on"]:
+                step["depends_on"] = block_step_key
+            else:
+                step["depends_on"] = [step["depends_on"], block_step_key]
     return step
 
 
