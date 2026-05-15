@@ -291,6 +291,8 @@ defaults
     log global
     option httplog
     option abortonclose
+    # Set TCP_NODELAY on all connections
+    option http-no-delay
     option idle-close-on-response
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
     errorfile 502 {temp_dir}/500.http
