@@ -19,6 +19,10 @@ For docs-only fixes, take the lightest path:
 
 For generated API docs that depend on Python source under `python/ray/...`, expect broader test runs. That's correct, not a misconfiguration.
 
+## DCO sign-off
+
+Every commit on a `ray-project/ray` PR needs a `Signed-off-by:` trailer (Developer Certificate of Origin). Pass `--signoff` to `git commit`, or `git commit --amend --signoff` to fix an unsigned commit. The DCO GitHub check fails the PR otherwise.
+
 ## When to revise the test rules
 
 If a docs-only PR hits unnecessarily broad tests, file a `.buildkite/test.rules.txt` PR (precedent: #63132) instead of working around it. Quick check: does the file change affect any non-`doc` build artifact, runtime behavior, or API surface? If no, tag it `doc`.
