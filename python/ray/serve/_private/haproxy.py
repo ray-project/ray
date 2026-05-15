@@ -658,6 +658,10 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        # Monotonic counter used to name per-spawn stderr log files. Pid
+        # would be unique too but isn't known until after fork, which
+        # forced a temp-name-then-rename dance; this is simpler.
+        self._spawn_seq: int = 0
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -709,21 +713,21 @@ class HAProxyApi(ProxyApi):
         # Add any extra args (like -sf for graceful reload)
         args.extend(extra_args)
 
-        logger.debug(f"Starting HAProxy with args: {args}")
-
         # Redirect stderr to a file (no pipe → no 64KB buffer to deadlock
-        # on). Open with a temp name pre-spawn, rename to the pid path
-        # after; safe because fds bind to inodes, not paths.
-        tmp_stderr_path = f"{self.cfg.socket_path}.stderr.starting.log"
-        with open(tmp_stderr_path, "ab", buffering=0) as stderr_file:
+        # on). Use a monotonic counter rather than pid so the path is known
+        # pre-spawn; the path travels with the proc for later diagnostics.
+        self._spawn_seq += 1
+        stderr_path = f"{self.cfg.socket_path}.stderr.{self._spawn_seq}.log"
+        with open(stderr_path, "ab", buffering=0) as stderr_file:
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=stderr_file,
             )
-        os.replace(
-            tmp_stderr_path,
-            f"{self.cfg.socket_path}.stderr.{proc.pid}.log",
+        proc._stderr_path = stderr_path
+        logger.info(
+            f"Starting HAProxy (spawn #{self._spawn_seq}, pid={proc.pid}, "
+            f"stderr={stderr_path}); args={args}"
         )
 
         try:
@@ -772,14 +776,13 @@ class HAProxyApi(ProxyApi):
             logger.error(f"HAProxy graceful reload failed: {e}")
             raise
 
-    def _read_stderr_log_tail(self, pid: int, max_bytes: int = 4096) -> str:
-        """Tail of the per-pid stderr log, for inclusion in crash messages.
+    def _read_stderr_log_tail(self, path: str, max_bytes: int = 4096) -> str:
+        """Tail of an HAProxy stderr log, for inclusion in crash messages.
 
         When stderr is redirected to a file at spawn (rather than piped back
         to us), `proc.stderr` is None — so on a startup crash we need to
         read the file instead of the pipe to recover the diagnostic.
         """
-        path = f"{self.cfg.socket_path}.stderr.{pid}.log"
         try:
             with open(path, "rb") as f:
                 f.seek(0, 2)
@@ -804,7 +807,8 @@ class HAProxyApi(ProxyApi):
                         .strip()
                     )
                 else:
-                    stderr_text = self._read_stderr_log_tail(proc.pid)
+                    path = getattr(proc, "_stderr_path", None)
+                    stderr_text = self._read_stderr_log_tail(path) if path else ""
                 output = stderr_text or stdout.decode("utf-8", errors="ignore").strip()
 
                 raise RuntimeError(
