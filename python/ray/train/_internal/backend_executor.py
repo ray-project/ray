@@ -391,8 +391,11 @@ class BackendExecutor:
             enable_sharing_env, True
         )
 
-    def _create_rank_world_size_mappings(self) -> List[Dict]:
+    def _create_rank_world_size_mappings(
+        self,
+    ) -> Tuple[Dict[int, int], Dict[int, int], Dict[int, int]]:
         """Create rank and world size mappings for workers.
+
         There are three maps returned:
             - local_rank_map, which maps from worker world_rank to local_rank.
             - local_world_size_map, which maps from world_rank to local_world_size
