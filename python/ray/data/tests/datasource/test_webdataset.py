@@ -317,10 +317,8 @@ def test_webdataset_key_ordering(ray_start_2_cpus, tmp_path, entries, expect_err
 
     ds = ray.data.read_webdataset(paths=[str(tmp_path)])
     if expect_error:
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="not ordered by WebDataset key"):
             ds.take_all()
-        msg = str(exc_info.value)
-        assert "not ordered by WebDataset key" in msg
     else:
         samples = ds.take_all()
         assert len(samples) == 2
