@@ -630,12 +630,12 @@ class TestGetPipHash:
             file_a = os.path.join(tmpdir, "a.txt")
             with open(file_a, "w") as f:
                 f.write("-r b.txt\nnumpy==1.21.0\n")
-            
+
             # Create file B
             file_b = os.path.join(tmpdir, "b.txt")
             with open(file_b, "w") as f:
                 f.write("-r a.txt\npandas==1.3.0\n")
-            
+
             pip_dict = {"packages": [f"-r {file_a}"]}
             hash_val = _get_pip_hash(pip_dict)
             assert isinstance(hash_val, str)
@@ -647,7 +647,7 @@ class TestGetPipHash:
             self_file = os.path.join(tmpdir, "self.txt")
             with open(self_file, "w") as f:
                 f.write("-r self.txt\nnumpy==1.21.0\n")
-            
+
             pip_dict = {"packages": [f"-r {self_file}"]}
             hash_val = _get_pip_hash(pip_dict)
             assert isinstance(hash_val, str)
@@ -658,21 +658,21 @@ class TestGetPipHash:
             # Create directory structure
             reqs_dir = os.path.join(tmpdir, "reqs")
             os.makedirs(reqs_dir)
-            
+
             # Create base.txt in reqs directory
             base_file = os.path.join(reqs_dir, "base.txt")
             with open(base_file, "w") as f:
                 f.write("-r extras.txt\nnumpy==1.21.0\n")
-            
+
             # Create extras.txt in the same directory (relative path)
             extras_file = os.path.join(reqs_dir, "extras.txt")
             with open(extras_file, "w") as f:
                 f.write("pandas==1.3.0\n")
-            
+
             # Test with absolute path to base.txt
             pip_dict = {"packages": [f"-r {base_file}"]}
             hash1 = _get_pip_hash(pip_dict)
-            
+
             # Test with relative path from tmpdir
             original_cwd = os.getcwd()
             try:
@@ -684,7 +684,7 @@ class TestGetPipHash:
                 assert hash1 == hash2
             finally:
                 os.chdir(original_cwd)
-            
+
             assert isinstance(hash1, str)
             assert len(hash1) == 40
 
@@ -693,16 +693,16 @@ class TestGetPipHash:
             # Create directory structure
             reqs_dir = os.path.join(tmpdir, "reqs")
             os.makedirs(reqs_dir)
-            
+
             # Create circular references with relative paths
             a_file = os.path.join(reqs_dir, "a.txt")
             with open(a_file, "w") as f:
                 f.write("-r b.txt\nnumpy==1.21.0\n")
-            
+
             b_file = os.path.join(reqs_dir, "b.txt")
             with open(b_file, "w") as f:
                 f.write("-r a.txt\npandas==1.3.0\n")
-            
+
             # This should not cause an infinite loop
             pip_dict = {"packages": [f"-r {a_file}"]}
             hash_val = _get_pip_hash(pip_dict)
@@ -710,7 +710,7 @@ class TestGetPipHash:
             assert len(hash_val) == 40
 
     def test_pip_hash_with_long_form_requirement(self):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("numpy==1.21.0\n")
             temp_file = f.name
 
@@ -724,7 +724,7 @@ class TestGetPipHash:
             os.unlink(temp_file)
 
     def test_pip_hash_with_long_form_requirement_equals(self):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("numpy==1.21.0\n")
             temp_file = f.name
 

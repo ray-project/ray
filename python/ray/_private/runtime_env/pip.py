@@ -20,19 +20,12 @@ default_logger = logging.getLogger(__name__)
 
 def _parse_requirements_file(file_path: str) -> List[str]:
     packages = []
-    try:
-        with open(file_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                packages.append(line)
-    except FileNotFoundError:
-        default_logger.warning(f"Requirements file not found: {file_path}")
-    except (PermissionError, IsADirectoryError, UnicodeDecodeError, IOError) as e:
-        default_logger.warning(f"Error reading requirements file {file_path}: {e}")
-    except Exception as e:
-        default_logger.warning(f"Unexpected error reading requirements file {file_path}: {e}")
+    with open(file_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            packages.append(line)
     return packages
 
 
@@ -45,7 +38,7 @@ def _get_pip_hash(pip_dict: Dict) -> str:
     expanded_packages = []
     # Track visited files using absolute paths to prevent circular references
     visited_files = set()
-    
+
     while packages_to_process:
         pkg, parent_dir = packages_to_process.pop()
 
