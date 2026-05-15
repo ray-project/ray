@@ -666,6 +666,44 @@ def test_init_image_override_mode_happy_path(mock_s3, mock_jailed):
 @patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
 @patch("ray_release.test.Test.update_from_s3", return_value=None)
 @patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+def test_init_image_uris_empty_after_split_fails(mock_s3, mock_jailed):
+    """If RELEASE_TEST_IMAGE_URIS contains only whitespace, init must fail
+    with a clear error rather than silently entering pinned mode with an
+    empty URI list."""
+    runner = CliRunner()
+    with patch.dict("os.environ", {"RELEASE_TEST_IMAGE_URIS": "   \n   "}):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--run-jailed-tests",
+                "--run-unstable-tests",
+                "--test-filters",
+                "prefix:hello_world",
+                "--custom-build-jobs-output-file",
+                "tmp_build_empty.yaml",
+                "--test-jobs-output-file",
+                "tmp_jobs_empty.json",
+                "--rayci-select-output-file",
+                "tmp_select_empty.txt",
+            ],
+            catch_exceptions=True,
+        )
+    assert result.exit_code != 0
+    assert "no URIs" in str(result.exception) or "contains no URIs" in str(
+        result.exception
+    )
+
+
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
 def test_init_both_modes_set_fails(mock_s3, mock_jailed):
     """Setting both meta-data fields must fail with a clear error."""
     runner = CliRunner()

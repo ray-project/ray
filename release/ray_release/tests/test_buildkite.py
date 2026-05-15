@@ -21,6 +21,7 @@ from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
     Frequency,
     Priority,
+    get_buildkite_prompt_value,
     get_default_settings,
     get_test_filters,
     split_ray_repo_str,
@@ -435,6 +436,24 @@ class BuildkiteSettingsTest(unittest.TestCase):
         ):
             update_settings_from_buildkite(settings)
         assert settings["image_override_json"] == '{"uri-a": ["t"]}'
+
+    def testGetBuildkitePromptValueStripsAndEmptyToNone(self):
+        # buildkite-agent meta-data get appends a trailing newline; a "blank"
+        # meta-data field returns "\n". Strip whitespace and treat empty
+        # values as None so callers don't mistake "\n" for a real value.
+        cases = [
+            ("  some-value  \n", "some-value"),
+            ("\n", None),
+            ("", None),
+            ("   \t  \n", None),
+        ]
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                with patch(
+                    "ray_release.buildkite.settings.subprocess.check_output",
+                    return_value=raw,
+                ):
+                    assert get_buildkite_prompt_value("key") == expected
 
     def _filter_names(self, *args, **kwargs):
         filtered = filter_tests(*args, **kwargs)

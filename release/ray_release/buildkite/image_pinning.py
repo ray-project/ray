@@ -35,7 +35,13 @@ def shape_of(uri: str) -> str:
 
 
 def _uses_released_image(test: Test) -> bool:
-    return test.get_anyscale_byod_image().startswith(_RELEASED_PREFIX)
+    # Pass BUILD_ID_PLACEHOLDER so this works even when RAYCI_BUILD_ID is
+    # unset; the released-vs-custom branch in get_anyscale_byod_image only
+    # depends on ray_version + require_custom_byod_image(), not on the
+    # build_id value, so the placeholder is safe.
+    return test.get_anyscale_byod_image(build_id=BUILD_ID_PLACEHOLDER).startswith(
+        _RELEASED_PREFIX
+    )
 
 
 def match_uris_to_tests(

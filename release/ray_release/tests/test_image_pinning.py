@@ -2,14 +2,17 @@ import json
 
 import pytest
 
+from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.image_pinning import (
+    _uses_released_image,
     match_uris_to_tests,
     parse_override,
     resolve_override_tests,
     shape_of,
 )
+from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.test import BUILD_ID_PLACEHOLDER
+from ray_release.test import BUILD_ID_PLACEHOLDER, Test
 from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX
 
 
@@ -290,3 +293,52 @@ class TestResolveOverrideTests:
         # should still behave sanely if it ever receives an empty map.
         result = resolve_override_tests(self._collection(["a"]), {})
         assert result == []
+
+
+def test_uses_released_image_does_not_require_rayci_build_id(monkeypatch):
+    """_uses_released_image must work in any environment, even when
+    RAYCI_BUILD_ID is unset.
+
+    The build_id is irrelevant to the released-vs-custom decision (which is
+    driven by ray_version + require_custom_byod_image()), so passing
+    BUILD_ID_PLACEHOLDER lets this module be called without first setting
+    the env var — which match_uris_to_tests relies on.
+    """
+    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+    monkeypatch.delenv("RAYCI_BUILD_ID", raising=False)
+
+    # Custom BYOD test (no ray_version): would previously raise ValueError
+    # because get_anyscale_byod_image(build_id=None) tries to read
+    # RAYCI_BUILD_ID. Must now succeed and return False.
+    t_custom = Test(
+        {
+            "name": "x",
+            "team": "reef",
+            "group": "g",
+            "frequency": "nightly",
+            "working_dir": "wd",
+            "python": "3.10",
+            "cluster": {"byod": {}, "cluster_compute": "c.yaml"},
+            "run": {"timeout": 60, "script": "echo hi"},
+        }
+    )
+    assert _uses_released_image(t_custom) is False
+
+    # A released-image test (ray_version set) is correctly identified.
+    t_released = Test(
+        {
+            "name": "y",
+            "team": "reef",
+            "group": "g",
+            "frequency": "nightly",
+            "working_dir": "wd",
+            "python": "3.10",
+            "cluster": {
+                "byod": {},
+                "cluster_compute": "c.yaml",
+                "ray_version": "2.55.1",
+            },
+            "run": {"timeout": 60, "script": "echo hi"},
+        }
+    )
+    assert _uses_released_image(t_released) is True

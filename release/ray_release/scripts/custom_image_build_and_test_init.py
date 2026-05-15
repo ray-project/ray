@@ -255,6 +255,10 @@ def main(
             )
         tests = [test for test, _ in filtered_tests]
         uri_list = [u for u in image_uris_raw.split() if u]
+        if not uri_list:
+            raise ReleaseTestCLIError(
+                "release-test-image-uris is set but contains no URIs."
+            )
         image_overrides = match_uris_to_tests(tests, uri_list)
         logger.info(
             f"[release-test-image-uris] matched {len(image_overrides)} test(s) "
