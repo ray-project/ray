@@ -1,11 +1,6 @@
 import copy
 import functools
 import logging
-<<<<<<< HEAD
-=======
-import math
-import os
->>>>>>> 2a191356c4 ([data] AutoscalingCoordinator _tick loop respects subcluster boundaries)
 import threading
 import time
 from dataclasses import dataclass
@@ -24,10 +19,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
-# Env var that drives the singleton actor's bucket key. Per-dataset
-# ``ExecutionOptions.subcluster_label_key`` is informational; the singleton
-# uses one key cluster-wide.
-RAY_DATA_SUBCLUSTER_LABEL_KEY_ENV = "RAY_DATA_SUBCLUSTER_LABEL_KEY"
 DEFAULT_SUBCLUSTER_LABEL_KEY = "subcluster"
 
 
@@ -82,8 +73,10 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         requester_id: str,
         autoscaling_coordinator_actor=None,  # For testing only: injects an actor instead of using the shared named singleton.
+        subcluster_label_key: str = DEFAULT_SUBCLUSTER_LABEL_KEY,
     ):
         self._requester_id = requester_id
+        self._subcluster_label_key = subcluster_label_key
         self._cached_allocated_resources: List[ResourceDict] = []
         # In-flight get_allocated_resources ref, or None if no request is pending.
         self._pending_allocated_resources: Optional[ray.ObjectRef] = None
@@ -94,8 +87,12 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
-        # Create the coordinator actor lazily rather than eagerly in the constructor.
-        return get_or_create_autoscaling_coordinator()
+        # Create the coordinator actor lazily rather than eagerly in the
+        # constructor. The first caller's ``subcluster_label_key`` wins (the
+        # actor is a named singleton fetched via ``get_if_exists=True``).
+        return get_or_create_autoscaling_coordinator(
+            subcluster_label_key=self._subcluster_label_key
+        )
 
     def request_resources(
         self,
@@ -429,22 +426,20 @@ class _AutoscalingCoordinatorActor:
 _get_or_create_lock = threading.Lock()
 
 
-def get_or_create_autoscaling_coordinator():
+def get_or_create_autoscaling_coordinator(
+    subcluster_label_key: str = DEFAULT_SUBCLUSTER_LABEL_KEY,
+):
     """Get or create the AutoscalingCoordinator actor.
 
-    The singleton's ``subcluster_label_key`` is read from
-    ``RAY_DATA_SUBCLUSTER_LABEL_KEY`` (default ``"subcluster"``). Per-Dataset
-    overrides via ``ExecutionOptions.subcluster_label_key`` only take effect
-    when they match the singleton's key; otherwise the singleton's key wins.
+    The singleton is name-scoped so ``subcluster_label_key`` is honored only
+    on the first creation (via ``get_if_exists=True``). All Datasets sharing
+    a Ray cluster should agree on this key.
     """
     # Create the actor on the local node,
     # to reduce network overhead.
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
         soft=False,
-    )
-    subcluster_label_key = os.environ.get(
-        RAY_DATA_SUBCLUSTER_LABEL_KEY_ENV, DEFAULT_SUBCLUSTER_LABEL_KEY
     )
     actor_cls = ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)(
         _AutoscalingCoordinatorActor

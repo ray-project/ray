@@ -167,6 +167,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         ),
         get_time: Callable[[], float] = time.time,
         label_selector: Optional[Dict[str, str]] = None,
+        subcluster_label_key: str = "subcluster",
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
@@ -202,7 +203,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._requester_id = f"data-{execution_id}"
         if autoscaling_coordinator is None:
             autoscaling_coordinator = DefaultAutoscalingCoordinator(
-                requester_id=self._requester_id
+                requester_id=self._requester_id,
+                subcluster_label_key=subcluster_label_key,
             )
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts

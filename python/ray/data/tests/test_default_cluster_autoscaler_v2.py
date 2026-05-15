@@ -1,10 +1,12 @@
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 import ray
 from ray.core.generated import autoscaler_pb2
+from ray.data._internal import cluster_autoscaler as ca_pkg
+from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
@@ -730,6 +732,64 @@ class TestClusterAutoscaling:
         scaling_records = [r for r in caplog.records if "Requesting" in r.message]
         assert len(scaling_records) == 1
         assert scaling_records[0].levelno == logging.DEBUG
+
+
+def test_v2_autoscaler_forwards_label_selector_per_bundle():
+    """``DefaultClusterAutoscalerV2`` tags every bundle with the
+    DataContext's label_selector when calling the coordinator."""
+    mock_coord = Mock()
+    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=Mock(),
+            execution_id="exec-1",
+            autoscaling_coordinator=mock_coord,
+            label_selector={"subcluster": "training"},
+        )
+    autoscaler._send_resource_request([{"CPU": 1}, {"CPU": 2}])
+    call_kwargs = mock_coord.request_resources.call_args.kwargs
+    assert call_kwargs["label_selectors"] == [
+        {"subcluster": "training"},
+        {"subcluster": "training"},
+    ]
+
+
+def test_v2_autoscaler_omits_label_selector_when_unset():
+    """No label_selector -> no per-bundle list (backwards compatible)."""
+    mock_coord = Mock()
+    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=Mock(),
+            execution_id="exec-1",
+            autoscaling_coordinator=mock_coord,
+        )
+    autoscaler._send_resource_request([{"CPU": 1}])
+    assert mock_coord.request_resources.call_args.kwargs["label_selectors"] is None
+
+
+def test_create_cluster_autoscaler_forwards_label_selector_and_key(monkeypatch):
+    """The factory reads ``label_selector`` and ``subcluster_label_key`` from
+    ``execution_options`` and forwards both to ``DefaultClusterAutoscalerV2``."""
+    captured = {}
+
+    class _StubV2:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(ca_pkg, "DefaultClusterAutoscalerV2", _StubV2)
+
+    data_context = Mock()
+    data_context.execution_options.resource_limits = Mock()
+    data_context.execution_options.label_selector = {"subcluster": "training"}
+    data_context.execution_options.subcluster_label_key = "tier"
+
+    create_cluster_autoscaler(
+        topology=Mock(),
+        resource_manager=Mock(),
+        data_context=data_context,
+        execution_id="exec-1",
+    )
+    assert captured["label_selector"] == {"subcluster": "training"}
+    assert captured["subcluster_label_key"] == "tier"
 
 
 if __name__ == "__main__":
