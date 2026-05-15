@@ -74,18 +74,19 @@ DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 _num_shutdown = 0
 
 
-_EXTRA_ENV_VARS = ("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",)
+# Ray Core env vars that affect Ray Data behavior.
+_RAY_CORE_DATA_ENV_VARS = ("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",)
 
 
 def _log_ray_data_env_vars() -> None:
     env_vars = {
         k: v
         for k, v in os.environ.items()
-        if k.startswith("RAY_DATA") or k in _EXTRA_ENV_VARS
+        if k.startswith("RAY_DATA") or k in _RAY_CORE_DATA_ENV_VARS
     }
     if env_vars:
         formatted = ", ".join(f"{k}={v}" for k, v in sorted(env_vars.items()))
-        logger.debug("RAY_DATA environment variables: %s", formatted)
+        logger.debug(f"RAY_DATA environment variables: {formatted}")
     else:
         logger.debug("No RAY_DATA environment variables set.")
 

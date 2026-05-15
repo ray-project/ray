@@ -43,7 +43,6 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
-    _log_ray_data_env_vars,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
@@ -1533,15 +1532,28 @@ class TestDataOpTask:
         assert bp_time == pytest.approx(4.0)
 
 
-def test_log_ray_data_env_vars(monkeypatch, caplog, propagate_logs):
+def test_streaming_executor_logs_relevant_env_vars(
+    monkeypatch, caplog, propagate_logs, ray_start_regular_shared
+):
     monkeypatch.setenv("RAY_DATA_TEST_FOO", "bar")
     monkeypatch.setenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.3")
 
+    ctx = DataContext.get_current()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    dag = InputDataBuffer(ctx, inputs)
+
+    executor = StreamingExecutor(ctx)
     with caplog.at_level(
         logging.DEBUG,
         logger="ray.data._internal.execution.streaming_executor",
     ):
-        _log_ray_data_env_vars()
+        output = executor.execute(dag)
+        # Drain the iterator to let execution complete.
+        try:
+            while True:
+                output.get_next()
+        except StopIteration:
+            pass
 
     assert "RAY_DATA_TEST_FOO=bar" in caplog.text
     assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
