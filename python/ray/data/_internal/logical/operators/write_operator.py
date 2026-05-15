@@ -2,7 +2,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorPreservesSchema,
+)
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
@@ -13,7 +16,7 @@ __all__ = [
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Write(AbstractMap):
+class Write(LogicalOperatorPreservesSchema, AbstractMap):
     """Logical operator for write."""
 
     datasink_or_legacy_datasource: Union[Datasink, Datasource]

@@ -219,3 +219,39 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         visitor = _ColumnReferenceCollector()
         visitor.visit(expr)
         return set(visitor.get_column_refs())
+
+    def infer_schema(self) -> Optional["Schema"]:
+        """Infer the output schema by running the shared ``join_tables``
+        utility on empty tables built from the input schemas. The same
+        utility runs at execution time, so plan-time and runtime schemas
+        agree by construction.
+        """
+        import pyarrow as pa
+
+        from ray.data._internal.execution.operators.join import join_tables
+
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+        if not isinstance(left_schema, pa.Schema) or not isinstance(
+            right_schema, pa.Schema
+        ):
+            return None
+
+        join_type_enum = (
+            self.join_type
+            if isinstance(self.join_type, JoinType)
+            else JoinType(self.join_type)
+        )
+        try:
+            joined = join_tables(
+                left_schema.empty_table(),
+                right_schema.empty_table(),
+                join_type=join_type_enum,
+                left_key_col_names=tuple(self.left_key_columns),
+                right_key_col_names=tuple(self.right_key_columns),
+                left_columns_suffix=self.left_columns_suffix,
+                right_columns_suffix=self.right_columns_suffix,
+            )
+        except Exception:
+            return None
+        return joined.schema

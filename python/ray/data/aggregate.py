@@ -19,6 +19,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -149,6 +150,17 @@ class AggregateFn:
     def _validate(self, schema: Optional["Schema"]) -> None:
         """Raise an error if this cannot be applied to the given schema."""
         pass
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        """Return the PyArrow ``Field`` this aggregator produces.
+
+        Returns ``None`` by default; subclasses that know their output
+        type override. Used by ``Aggregate.infer_schema()`` to compute
+        the post-aggregation schema without executing the plan. When
+        any aggregator returns ``None``, the entire ``Aggregate.infer_schema``
+        returns ``None`` (callers fall back to a ``limit(1)`` execution).
+        """
+        return None
 
 
 @PublicAPI(stability="alpha")
@@ -332,6 +344,34 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             SortKey(self._target_col_name).validate_schema(schema)
 
 
+def _agg_output_field(
+    name: str,
+    input_schema: "pa.Schema",
+    target_col: Optional[str],
+    kernel: Callable[[Any], Any],
+) -> Optional["pa.Field"]:
+    """Compute the output field of a scalar reduction aggregator by running
+    its PyArrow compute kernel on an empty array of the target column's type.
+
+    Returns ``None`` if the target column is missing or the kernel rejects
+    the column's type (e.g., ``pc.sum`` on a string column).
+    """
+    if target_col is None:
+        return None
+    try:
+        in_type = input_schema.field(target_col).type
+    except (KeyError, ValueError):
+        return None
+    try:
+        result = kernel(pa.array([], type=in_type))
+    except Exception:
+        return None
+    out_type = getattr(result, "type", None)
+    if out_type is None:
+        return None
+    return pa.field(name, out_type, nullable=True)
+
+
 @PublicAPI
 class Count(AggregateFnV2[int, int]):
     """Defines count aggregation.
@@ -397,6 +437,9 @@ class Count(AggregateFnV2[int, int]):
 
     def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.int64(), nullable=False)
 
 
 @PublicAPI
@@ -517,6 +560,9 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
     ) -> Union[int, float]:
         return current_accumulator + new
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
+
 
 @PublicAPI
 class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
@@ -580,6 +626,9 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
     ) -> SupportsRichComparisonType:
         return min(current_accumulator, new)
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(self.name, input_schema, self._target_col_name, pc.min)
+
 
 @PublicAPI
 class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
@@ -642,6 +691,9 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
         new: SupportsRichComparisonType,
     ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(self.name, input_schema, self._target_col_name, pc.max)
 
 
 @PublicAPI
@@ -723,6 +775,9 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
             return np.nan
 
         return accumulator[0] / accumulator[1]
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.float64(), nullable=True)
 
 
 @PublicAPI
@@ -833,6 +888,9 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
         # Standard deviation is the square root of variance (M2 / (count - ddof))
         return math.sqrt(M2 / (count - self._ddof))
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.float64(), nullable=True)
+
 
 @PublicAPI
 class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
@@ -901,6 +959,16 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
         new: SupportsRichComparisonType,
     ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        # AbsMax preserves the input column type (just takes abs of max/min).
+        if self._target_col_name is None:
+            return None
+        try:
+            field = input_schema.field(self._target_col_name)
+        except (KeyError, ValueError):
+            return None
+        return pa.field(self.name, field.type, nullable=True)
 
 
 @PublicAPI

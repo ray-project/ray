@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorPreservesSchema,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import NodeIdStr
@@ -12,7 +15,7 @@ __all__ = [
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class StreamingSplit(LogicalOperator):
+class StreamingSplit(LogicalOperatorPreservesSchema, LogicalOperator):
     """Logical operator that represents splitting the input data to `n` splits."""
 
     num_splits: int
