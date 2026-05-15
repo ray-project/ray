@@ -312,9 +312,12 @@ NIGHTLY_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0
 /opt/venv-master/bin/pip install pyarrow==24.0.0 pandas==3.0.2 numpy==2.4.4 psutil
 /opt/venv-master/bin/pip install torch freezegun rich pytest-timeout pytest-lazy-fixtures datasketches polars
 
-# 2. Clone the rebased fork.
+# 2. Clone the rebased fork. Subsequent steps assume `$REPO=$PWD` after
+#    `cd`ing into the clone — substitute your own path if you cloned
+#    elsewhere.
 git clone https://github.com/Glia-AI-External/ray.git ray-fork
 cd ray-fork
+REPO="$PWD"
 git checkout glia/scheduler-perf-v5-rebase
 
 # 3. Branch venv: editable install of the fork. Bazel builds the Cython
@@ -367,11 +370,52 @@ cd glia-bench
 # Phase 2: run the same tests against the branch and diff against baseline.
 # Writes results/optimization_gate_{baseline,m6}.json.
 PRISTINE_TREE=/tmp/ray-master-tree/python/ray \
-M6_TREE=/workspace/ray/glia-ray-fork/python/ray \
+M6_TREE="$REPO/python/ray" \
 ./run_optimization_gate.sh
 ```
 
 Both trees are run with library versions matched between their venvs; the Python source files under `python/ray/` are the only systematic difference — the perf and correctness deltas are attributable to Ray Data code-level changes between master and the rebased branch.
+
+## 6. Checkpoint: M5 reverted
+
+This branch tip reverts §2.5 (M5 — Incremental budget decrement). The remaining five optimizations (M1–M4, M6) are unchanged from §2.
+
+**Background.** In follow-up perf work after the original report, we identified that M5's static per-dispatch decrement on `_global_usage` leaves the cluster autoscaler's `RollingLogicalUtilizationGauge` reading stale CPU/GPU utilization across scheduling-step boundaries when actor pool scaling occurs mid-step.
+
+### 6.1 N=1 perf (master vs no_m5)
+
+Same hardware (24-vCPU devpod), same matched-libs venvs, same harness and workloads as §3.2. **Single rep per (config, workload)** — this is a fast checkpoint sweep; refer to §4.1 for the with-M5 N=3 baseline.
+
+| Workload | master wall | no_m5 wall | Δ wall | master tps | no_m5 tps | Δ tps | Output hash |
+|---|---|---|---|---|---|---|---|
+| synthetic          | 145.19 | 101.88 | **−29.8%** | 137.75 | 196.32 | **+42.5%** | ✓ `1589ce21a198` |
+| mixed_pipeline     | 182.26 | 119.45 | **−34.5%** | 109.74 | 167.43 | **+52.6%** | ✓ `1f98030ecc7d` |
+| medium_tasks       |  46.31 |  20.89 | **−54.9%** | 107.96 | 239.34 | **+121.7%** | ✓ `89081b43d8b8` |
+| long_tasks         |  92.92 |  87.12 | −6.2% (control) |  13.77 |  14.69 | +6.7% (control) | ✓ `aa861fa79507` |
+| actor_backpressure |  49.64 |  24.79 | **−50.1%** |  20.15 |  40.34 | **+100.2%** | ✓ `8f2d922dfded` |
+
+Output hashes are byte-identical between master and no_m5 on every workload. The four scheduler-bound workloads still show large speedups from the remaining five optimizations; `long_tasks` is flat as the control. Versus the §4.1 with-M5 numbers, removing M5 costs roughly 20% wall on `synthetic` and `mixed_pipeline` (the workloads with deep task-pool fan-out where M5's per-dispatch budget shortcut had the most amortization) and is within noise on the other three.
+
+Raw data: `glia-bench/results/optimization_perf_master_vs_no_m5.jsonl`. Reproduce with `./glia-bench/run_master_vs_no_m5.sh all 1`.
+
+### 6.2 Correctness gate
+
+The §3.4 gate was rerun against the no_m5 tree, reusing the existing master baseline (master tree is still at `a1ce262eff`). Same fractional-retry methodology, same `KNOWN_FLAKY_TESTS` set.
+
+**Gate summary** (26 files, baseline 470 tests, current 462):
+
+| Category | Count |
+|---|---|
+| Real regressions | 0 |
+| Real fixes | 2 |
+| Tests no longer in current (M5 symbols removed) | 8 |
+| Known-flaky noise | 1 |
+
+The 2 fixes are unchanged from §4.2: `test_streaming_executor::test_adapt_wait_timeout_halve_and_double` (M4) and `test_stats::test_sub_operator_num_rows` (pandas 3.0 read-only ndarray fix). The 8 baseline tests that no longer appear on the branch are the M5-specific tests added in §2.5 (`test_on_task_dispatched_*`, `test_m5_borrow_drift_*`, `test_execution_resources_subtract_clamp_zero`) — those symbols no longer exist on this branch, so they fall out of `current_total` exactly as they were absent from `baseline_total` against master.
+
+The single flagged "regression" is `test_consumption::test_read_write_local_node_ray_client` (8/10 vs baseline 10/10) — already on the `KNOWN_FLAKY_TESTS` list as a probabilistic Ray-client connectivity test; the 20% pass-rate gap is within the natural flake distribution and matches the original §4.2 treatment.
+
+**Net: 0 regressions, 2 fixes.** Raw artifacts at `glia-bench/results/optimization_gate_{baseline,m6}.json`.
 
 ## Appendix: Raw per-run data
 
