@@ -1738,13 +1738,11 @@ void ReferenceCounter::FillObjectInformationInternal(
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING).WithField(object_id)
-        << "Object locations requested for object, but ref already removed. This may be "
-           "a bug in the distributed "
-           "reference counting protocol.";
-    return;
-  }
+  RAY_CHECK(it != object_id_refs_.end())
+      << "Object locations requested for object " << object_id
+      << ", but ref already removed. This is a bug in the distributed reference "
+         "counting protocol. Please file a bug at "
+         "https://github.com/ray-project/ray/issues.";
 
   // Always publish the location when subscribed for the first time.
   // This will ensure that the subscriber will get the first snapshot of the
