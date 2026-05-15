@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.telemetry.collector import record_workload
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,12 @@ def _execute_dag(
     physical_plan, callbacks = get_execution_plan(plan._logical_plan)
     dag = physical_plan.dag
     stats = plan.initial_stats()
+
+    # Record telemetry workload entry. Executor already has its dataset_id
+    # assigned (set in ExecutionPlan.create_executor before this call), so
+    # the per-execution id is stable across the planning-side and
+    # callback-side writes.
+    record_workload(executor, plan._logical_plan)
 
     # Enforce to preserve ordering if the plan has operators
     # required to do so, such as Zip and Sort.
