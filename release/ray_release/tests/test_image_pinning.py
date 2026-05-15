@@ -5,6 +5,7 @@ import pytest
 from ray_release.buildkite.image_pinning import (
     match_uris_to_tests,
     parse_override,
+    resolve_override_tests,
     shape_of,
 )
 from ray_release.exception import ReleaseTestConfigError
@@ -241,3 +242,51 @@ class TestParseOverride:
             ReleaseTestConfigError, match="must be a list of test names"
         ):
             parse_override(raw)
+
+
+class _StubCollectionTest:
+    def __init__(self, name: str):
+        self._name = name
+
+    def get_name(self) -> str:
+        return self._name
+
+    def __getitem__(self, key):
+        if key == "name":
+            return self._name
+        raise KeyError(key)
+
+
+class TestResolveOverrideTests:
+    def _collection(self, names):
+        return [_StubCollectionTest(n) for n in names]
+
+    def test_happy_path(self):
+        coll = self._collection(["a", "b", "c"])
+        override = {"a": "uri1", "c": "uri2"}
+        result = resolve_override_tests(coll, override)
+        assert [t.get_name() for t in result] == ["a", "c"]
+
+    def test_unknown_name_raises_listing_all(self):
+        coll = self._collection(["a"])
+        override = {"a": "uri1", "ghost1": "uri2", "ghost2": "uri3"}
+        with pytest.raises(ReleaseTestConfigError) as exc:
+            resolve_override_tests(coll, override)
+        msg = str(exc.value)
+        assert "ghost1" in msg and "ghost2" in msg
+        # The known test 'a' should not appear in the missing-names section.
+        assert "a" not in msg.split("not found in test collection")[1]
+
+    def test_preserves_override_iteration_order(self):
+        # Test grouping in the UI follows user-provided JSON order,
+        # not collection order.
+        coll = self._collection(["a", "b", "c"])
+        override = {"c": "u3", "a": "u1"}
+        result = resolve_override_tests(coll, override)
+        assert [t.get_name() for t in result] == ["c", "a"]
+
+    def test_empty_override_returns_empty(self):
+        # Defensive: parse_override raises on empty, but resolve_override_tests
+        # should still behave sanely if it ever receives an empty map.
+        result = resolve_override_tests(self._collection(["a"]), {})
+        assert result == []

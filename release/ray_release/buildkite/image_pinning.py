@@ -132,3 +132,28 @@ def parse_override(raw_json: str) -> Dict[str, str]:
             "release-test-image-override contains no tests to run."
         )
     return result
+
+
+def resolve_override_tests(
+    test_collection: List[Test],
+    override_map: Dict[str, str],
+) -> List[Test]:
+    """Look up each test name in `override_map` against `test_collection`.
+
+    Returns the resolved tests in `override_map` iteration order. Raises
+    `ReleaseTestConfigError` listing every unknown name.
+    """
+    by_name = {t.get_name(): t for t in test_collection}
+    found: List[Test] = []
+    missing: List[str] = []
+    for name in override_map:
+        if name in by_name:
+            found.append(by_name[name])
+        else:
+            missing.append(name)
+    if missing:
+        raise ReleaseTestConfigError(
+            "release-test-image-override names not found in test collection:\n"
+            + "\n".join(f"  - {name}" for name in missing)
+        )
+    return found
