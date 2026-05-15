@@ -10,6 +10,8 @@ from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -1068,6 +1070,7 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
+    pq.write_table(pa.table({"value": [1]}), input_path / "data.parquet")
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
