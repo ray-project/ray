@@ -1091,14 +1091,30 @@ bool NodeManager::UpdateResourceUsage(
 void NodeManager::HandleClientConnectionError(
     const std::shared_ptr<ClientConnection> &client,
     const boost::system::error_code &error) {
-  const std::string err_msg = absl::StrCat(
+  std::string err_msg = absl::StrCat(
       "Worker unexpectedly exits with a connection error code ",
       error.value(),
       ". ",
       error.message(),
       ". Some common causes include: (1) the process was killed by the OOM killer "
       "due to high memory usage, (2) ray stop --force was called, or (3) the worker "
-      "crashed unexpectedly due to SIGSEGV or another unexpected error.");
+      "crashed unexpectedly due to SIGSEGV or another unexpected error. "
+      "If the process was killed by the kernel OOM killer (verifiable by "
+      "checking for OOM in dmesg of the OOMing node), ");
+  if (initial_config_.enable_resource_isolation) {
+    absl::StrAppend(&err_msg,
+                    "the system processes may be occupying more memory than what's "
+                    "reserved for them. "
+                    "Please consider passing a higher system reserved memory value via "
+                    "--system-reserved-memory "
+                    "in resource isolation mode.");
+  } else {
+    absl::StrAppend(
+        &err_msg,
+        "consider enabling resource isolation via --enable-resource-isolation "
+        "to prevent node deaths by resource contention and significant loss of "
+        "progress by uninformed kernel OOM killing.");
+  }
 
   // Disconnect the client and don't process more messages.
   DisconnectClient(
