@@ -820,12 +820,12 @@ class HAProxyApi(ProxyApi):
             metrics_pre = "local _metrics_t0 = core.now()"
             metrics_post = (
                 "local _metrics_t1 = core.now(); "
-                "txn:set_var(\"txn.ingress_request_router_latency_us\", "
+                'txn:set_var("txn.ingress_request_router_latency_us", '
                 "(_metrics_t1.sec - _metrics_t0.sec) * 1000000 "
                 "+ (_metrics_t1.usec - _metrics_t0.usec))"
             )
             metrics_set_truncated = (
-                "txn:set_var(\"txn.ingress_request_router_truncated_full_length\", "
+                'txn:set_var("txn.ingress_request_router_truncated_full_length", '
                 "truncated)"
             )
         else:
