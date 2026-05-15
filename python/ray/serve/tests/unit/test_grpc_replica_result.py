@@ -1,11 +1,14 @@
 import asyncio
 import sys
 import threading
+from typing import Callable, List
 
+import grpc
 import pytest
 
 from ray import ActorID, cloudpickle
 from ray._common.test_utils import wait_for_condition
+from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.replica_result import gRPCReplicaResult
 from ray.serve.generated import serve_pb2
@@ -130,6 +133,124 @@ class TestSameLoop:
         )
         with pytest.raises(RuntimeError, match="oh no!"):
             await replica_result.__anext__()
+
+
+class _ControllableFakeCall:
+    """Fake grpc.aio.Call that lets the test trigger done-callback firing."""
+
+    def __init__(self, *, exception: BaseException = None):
+        self._loop = asyncio.get_running_loop()
+        self._done = False
+        self._exception = exception
+        self._callbacks: List[Callable] = []
+
+    # gRPCReplicaResult inspects __aiter__ to decide whether to consume as a
+    # stream; returning False here keeps the result on the unary code path.
+    def __getattr__(self, name):
+        if name == "__aiter__":
+            raise AttributeError(name)
+        raise AttributeError(name)
+
+    def add_done_callback(self, cb: Callable) -> None:
+        if self._done:
+            cb(self)
+        else:
+            self._callbacks.append(cb)
+
+    def done(self) -> bool:
+        return self._done
+
+    def exception(self):
+        if not self._done:
+            raise asyncio.InvalidStateError("Call is not done.")
+        return self._exception
+
+    def cancelled(self) -> bool:
+        return False
+
+    def fire_done(self) -> None:
+        self._done = True
+        for cb in list(self._callbacks):
+            cb(self)
+        self._callbacks.clear()
+
+
+def _make_aio_rpc_error(code: grpc.StatusCode) -> grpc.aio.AioRpcError:
+    return grpc.aio.AioRpcError(
+        code=code,
+        initial_metadata=grpc.aio.Metadata(),
+        trailing_metadata=grpc.aio.Metadata(),
+        details="fake",
+    )
+
+
+@pytest.mark.asyncio
+class TestDoneCallbackTranslation:
+    """gRPCReplicaResult.add_done_callback should translate transport-level
+    failures into the same Ray error type the actor path delivers, so router
+    cache-invalidation branches fire uniformly across transports."""
+
+    def _make_result(self, fake_call: _ControllableFakeCall) -> gRPCReplicaResult:
+        return gRPCReplicaResult(
+            fake_call,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                is_streaming=False,
+                _on_separate_loop=False,
+            ),
+            actor_id=ActorID(b"2" * 16),
+            loop=asyncio.get_running_loop(),
+        )
+
+    async def test_unavailable_call_translated_to_actor_unavailable_error(self):
+        fake_call = _ControllableFakeCall(
+            exception=_make_aio_rpc_error(grpc.StatusCode.UNAVAILABLE)
+        )
+        result = self._make_result(fake_call)
+
+        received: List = []
+        result.add_done_callback(lambda r: received.append(r))
+
+        fake_call.fire_done()
+
+        # Filter out the in-flight-tracking callback's invocation (it was
+        # registered in gRPCReplicaResult.__init__ and also fires; its return
+        # value is unused). Our test callback is identified by the appended item.
+        assert len(received) == 1
+        assert isinstance(received[0], ActorUnavailableError)
+
+    async def test_successful_call_passes_through(self):
+        fake_call = _ControllableFakeCall(exception=None)
+        result = self._make_result(fake_call)
+
+        received: List = []
+        result.add_done_callback(lambda r: received.append(r))
+
+        fake_call.fire_done()
+
+        # A done-but-not-failed call should not be replaced with a Ray error;
+        # the call object itself is delivered (consumers that don't care can
+        # ignore it).
+        assert len(received) == 1
+        assert received[0] is fake_call
+
+    async def test_non_unavailable_failure_passes_through(self):
+        # CANCELLED is a client-initiated abort, not a replica problem. The
+        # translator should leave it alone and let upstream callers decide
+        # what to do.
+        fake_call = _ControllableFakeCall(
+            exception=_make_aio_rpc_error(grpc.StatusCode.CANCELLED)
+        )
+        result = self._make_result(fake_call)
+
+        received: List = []
+        result.add_done_callback(lambda r: received.append(r))
+
+        fake_call.fire_done()
+
+        assert len(received) == 1
+        assert received[0] is fake_call
 
 
 class TestSeparateLoop:

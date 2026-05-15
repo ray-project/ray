@@ -567,7 +567,43 @@ class gRPCReplicaResult(ReplicaResult):
             return await asyncio.wrap_future(fut)
 
     def add_done_callback(self, callback: Callable):
-        self._call.add_done_callback(callback)
+        """Register a done-callback that receives a translated result.
+
+        The actor-path ``add_done_callback`` (``ActorReplicaResult``) delivers
+        either the resolved value or a ``RayError`` subclass to its callback.
+        The raw gRPC done-callback instead delivers the ``grpc.aio.Call`` object
+        regardless of outcome, so routers consuming the callback can't tell a
+        transport failure apart from a successful response and skip cache
+        invalidation on replica unavailability. Translate transport-level
+        failures (currently ``UNAVAILABLE``) into the same Ray error type the
+        actor path raises so consumers see a uniform contract.
+        """
+
+        def _translating_callback(call: grpc.aio.Call) -> None:
+            translated: Any = call
+            try:
+                # ``exception()`` is only safe once the call is done and not
+                # cancelled (otherwise it raises ``InvalidStateError`` /
+                # ``CancelledError``). Cancellation is client-initiated and
+                # not a replica failure, so leave it alone.
+                if call.done() and not call.cancelled():
+                    exc = call.exception()
+                    if (
+                        isinstance(exc, grpc.aio.AioRpcError)
+                        and exc.code() == grpc.StatusCode.UNAVAILABLE
+                    ):
+                        translated = ActorUnavailableError(
+                            "Actor is unavailable.",
+                            self._actor_id.binary(),
+                        )
+            except Exception:
+                logger.exception(
+                    "Failed to translate gRPC done-callback result; "
+                    "passing the call object through."
+                )
+            callback(translated)
+
+        self._call.add_done_callback(_translating_callback)
 
     def cancel(self):
         self._call.cancel()
