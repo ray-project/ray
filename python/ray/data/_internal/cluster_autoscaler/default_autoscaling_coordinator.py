@@ -162,12 +162,9 @@ def _default_send_resources_request(
     label_selectors: Optional[List[Dict[str, str]]] = None,
 ) -> None:
     """Default ``send_resources_request`` implementation for the actor."""
-    if label_selectors is None:
-        ray.autoscaler.sdk.request_resources(bundles=bundles)
-    else:
-        ray.autoscaler.sdk.request_resources(
-            bundles=bundles, bundle_label_selectors=label_selectors
-        )
+    ray.autoscaler.sdk.request_resources(
+        bundles=bundles, bundle_label_selectors=label_selectors
+    )
 
 
 class _AutoscalingCoordinatorActor:
