@@ -8,7 +8,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
-from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
@@ -187,7 +187,18 @@ class VLLMEngineConfig(BaseModelExtended):
         if llm_config.model_loading_config.model_source is None:
             hf_model_id = llm_config.model_id
         elif isinstance(llm_config.model_loading_config.model_source, str):
-            hf_model_id = llm_config.model_loading_config.model_source
+            model_source = llm_config.model_loading_config.model_source
+            if is_remote_path(model_source):
+                # Remote URIs (s3://, gs://, …) are download addresses,
+                # not HuggingFace IDs.  Using the URI verbatim as
+                # hf_model_id propagates the scheme and slashes into the
+                # cache directory name (``models--s3:----bucket--…``).
+                # Use the user-supplied model_id as the identifier and
+                # treat the URI as a bucket mirror instead.
+                hf_model_id = llm_config.model_id
+                mirror_config = CloudMirrorConfig(bucket_uri=model_source)
+            else:
+                hf_model_id = model_source
         else:
             # If it's a CloudMirrorConfig (or subtype)
             mirror_config = llm_config.model_loading_config.model_source
