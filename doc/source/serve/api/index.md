@@ -94,6 +94,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
+   serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
