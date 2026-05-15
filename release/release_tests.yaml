@@ -1642,6 +1642,14 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+            - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+            - RAY_SERVE_ENABLE_HA_PROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual
