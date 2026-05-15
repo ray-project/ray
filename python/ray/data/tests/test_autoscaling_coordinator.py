@@ -505,6 +505,7 @@ def test_fractional_bundles_are_forwarded_unchanged():
     )
     mock_send.assert_called_once_with([{"CPU": 0.1}])
 
+
 def test_label_selectors_are_forwarded_to_sdk():
     """Test that label selectors are forwarded to the autoscaler SDK."""
     mock_send = Mock()
@@ -565,7 +566,6 @@ def test_label_selector_change_triggers_resend():
     )
     assert mock_send.call_count == 2
     mock_send.assert_called_with([{"CPU": 1}], label_selectors=[{"zone": "b"}])
-
 
 
 if __name__ == "__main__":
