@@ -191,19 +191,8 @@ class Timer:
     def max(self) -> float:
         return self._max
 
-    def avg(self, default: float = float("inf")) -> float:
-        """Per-sample average; ``default`` is returned when no samples
-        have been recorded.
-
-        The default of ``float("inf")`` preserves the historical
-        empty-Timer signal (well-suited for "undefined" semantics in
-        display contexts that already render ``inf`` legibly). Callers
-        that need a JSON-safe / arithmetic-safe value can override —
-        e.g. ``timer.avg(default=0.0)``.
-        """
-        if not self._total_count:
-            return default
-        return self._total / self._total_count
+    def avg(self) -> float:
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -1169,12 +1158,10 @@ class DatasetStats:
         # produce a meaningful percentage. Per-iteration avg/max are
         # exposed separately. ``StreamingExecutor._generate_stats``
         # always assigns a ``Timer`` (never ``None``), so this call site
-        # needs no guard; we pass ``default=0.0`` to ``avg()`` so the
-        # JSON-emitted release-test metric stays a finite number when no
-        # scheduling iterations have been recorded.
+        # needs no guard.
         schedule_timer = self.streaming_exec_schedule_s
         streaming_exec_schedule_s = schedule_timer.get()
-        streaming_exec_schedule_avg_s = schedule_timer.avg(default=0.0)
+        streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
         return DatasetStatsSummary(
             operators_stats,
