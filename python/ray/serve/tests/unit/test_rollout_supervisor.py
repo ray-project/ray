@@ -210,7 +210,7 @@ def test_rollback_ping_pong(deployed_all_running):
     check_supervisor_state(rs, fresh_config, None, RolloutState.WATCHING)
 
 
-def test_new_config_superseded_watching():
+def test_new_config_supersedes_watching():
     """Test that a new config submitted while WATCHING replaces the current
     config and stays in WATCHING.
     """
