@@ -370,12 +370,13 @@ class ResourceManager:
         if op not in self._op_running_usages:
             usage_str = "n/a"
         else:
-            usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
+            usage_str = ""
+            if self._op_running_usages[op].memory:
+                usage_str += f"{self._op_running_usages[op].memory_str()} memory, "
+            usage_str += f"{self._op_running_usages[op].cpu:.1f} CPU"
             if self._op_running_usages[op].gpu:
                 usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
             usage_str += f", {self._op_running_usages[op].object_store_memory_str()} object store"
-            if self._op_running_usages[op].memory:
-                usage_str += f", {self._op_running_usages[op].memory_str()} memory"
 
         # NOTE: Config can override requested verbosity level
         if LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE is not None:
