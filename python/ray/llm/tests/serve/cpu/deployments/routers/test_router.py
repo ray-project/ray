@@ -1,9 +1,12 @@
 import sys
+from contextlib import asynccontextmanager
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -15,8 +18,68 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+from ray.serve._private.common import DeploymentID
+from ray.serve.exceptions import DeploymentUnavailableError
+
+
+class _DirectRouterReplicaId:
+    def __init__(self, unique_id: str, full_id: Optional[str] = None):
+        self.unique_id = unique_id
+        self._full_id = full_id or unique_id
+
+    def to_full_id_str(self) -> str:
+        return self._full_id
+
+
+class _FakeRequest:
+    def __init__(self, body: bytes, headers: Optional[dict] = None):
+        self._body = body
+        self.headers = Headers(headers or {})
+
+    async def body(self) -> bytes:
+        return self._body
+
+
+class _DirectRouterReplica:
+    """RunningReplica stand-in for ``LLMRouter._pick_replica`` tests."""
+
+    def __init__(
+        self,
+        unique_id: str,
+        full_id: Optional[str] = None,
+        endpoint: Optional[tuple] = ("127.0.0.1", 8000),
+    ):
+        self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
+        self.backend_http_endpoint = endpoint
+
+
+def _new_direct_router(handle=None):
+    router = LLMRouter.__new__(LLMRouter)
+    router._handle = handle or MagicMock()
+    return router
+
+
+def _selection_for(replica):
+    """Build a ``ReplicaSelection``-shaped mock that ``_pick_replica`` reads."""
+    return MagicMock(replica_id=replica.replica_id.unique_id, _replica=replica)
+
+
+def _choose_replica_returning(*replicas):
+    """Patch ``handle.choose_replica`` to yield the given replicas in order.
+
+    Each call to ``choose_replica`` consumes one replica from the sequence and
+    yields its ``_DirectRouterReplica`` wrapped as a selection.
+    """
+    selections = iter(_selection_for(r) for r in replicas)
+
+    @asynccontextmanager
+    async def fake_choose_replica(*args, **kwargs):
+        yield next(selections)
+
+    return fake_choose_replica
 
 
 @pytest.fixture(name="llm_config")
@@ -59,6 +122,104 @@ def create_oai_client(llm_config: LLMConfig):
     yield client
 
     serve.shutdown()
+
+
+class TestDirectStreamingLLMRouter:
+    @pytest.mark.asyncio
+    async def test_route_forwards_body_and_truncation_signal(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+        )
+
+        body = b'{"model":"x","prompt":"' + (b"x" * 1024)
+        request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
+
+        result = await router.route(request)
+
+        assert result == {
+            "host": "127.0.0.1",
+            "port": 9001,
+            "replica_id": "DeploymentName#replica",
+        }
+        router._pick_replica.assert_called_once_with(
+            handle=router._handle, request_body=body, body_truncated=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_route_returns_503_on_pick_failure(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(side_effect=RuntimeError("no replicas"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 503
+        assert "no replicas" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_route_returns_503_on_deployment_unavailable(self):
+        err = DeploymentUnavailableError(DeploymentID(name="LLMServer:test"))
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(side_effect=err)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 503
+        assert "LLMServer:test" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_returns_backend_endpoint_from_handle(self):
+        """``_pick_replica`` reads the endpoint off the selection's replica."""
+        replica = _DirectRouterReplica(
+            "r1",
+            full_id="DeploymentName#r1",
+            endpoint=("10.0.0.1", 8123),
+        )
+        handle = MagicMock()
+        handle.choose_replica = _choose_replica_returning(replica)
+        router = _new_direct_router(handle)
+
+        host, port, replica_id = await router._pick_replica(handle=handle)
+
+        assert (host, port, replica_id) == ("10.0.0.1", 8123, "DeploymentName#r1")
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_forwards_body_to_choose_replica(self):
+        """``request_body`` / ``body_truncated`` reach the underlying router.
+
+        Future body-aware request routers read these off the PendingRequest.
+        """
+        replica = _DirectRouterReplica("r1", full_id="d#r1")
+
+        captured_kwargs = {}
+
+        @asynccontextmanager
+        async def fake_choose_replica(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            yield _selection_for(replica)
+
+        handle = MagicMock()
+        handle.choose_replica = fake_choose_replica
+        router = _new_direct_router(handle)
+
+        body = b'{"messages": [{"role": "user", "content": "hi"}]}'
+        await router._pick_replica(
+            handle=handle, request_body=body, body_truncated=True
+        )
+
+        assert captured_kwargs == {"request_body": body, "body_truncated": True}
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_raises_when_endpoint_missing(self):
+        """If the picked replica has no backend HTTP endpoint, surface a 503
+        via ``RuntimeError`` (same error contract as before)."""
+        replica = _DirectRouterReplica("r1", endpoint=None)
+        handle = MagicMock()
+        handle.choose_replica = _choose_replica_returning(replica)
+        router = _new_direct_router(handle)
+
+        with pytest.raises(RuntimeError, match="no backend HTTP endpoint"):
+            await router._pick_replica(handle=handle)
 
 
 class TestOpenAiIngress:

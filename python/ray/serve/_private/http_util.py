@@ -546,11 +546,21 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+    def __init__(self, app_or_func: Optional[Union[ASGIApp, Callable]]):
+        if app_or_func is None:
+            # Late-bound: `__serve_build_asgi_app__` will supply the app at
+            # replica init time. `__del__` tolerates the missing
+            # `_serve_asgi_lifespan` attribute.
+            return
         if inspect.isfunction(app_or_func):
-            self._asgi_app = app_or_func()
+            app = app_or_func()
         else:
-            self._asgi_app = app_or_func
+            app = app_or_func
+
+        self._set_asgi_app(app)
+
+    def _set_asgi_app(self, app: ASGIApp) -> None:
+        self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -803,18 +813,28 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
     )
 
 
-def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
-    """Return the SERVE_SESSION_ID header value, or '' if absent.
+def _matches_session_id_header(header_key: str) -> bool:
+    """True if ``header_key`` refers to the configured session-id header.
 
-    Accepts both the underscored constant form (``x_session_id``) and the
-    canonical hyphenated form (``x-session-id``) because intermediate proxies
-    (HAProxy, nginx, AWS API Gateway) canonicalize underscored header names
-    to the hyphenated form. ASGI lowercases header names per spec, so
-    case-folding is not needed here.
+    Compares case-insensitively and treats ``-`` and ``_`` as equivalent
+    so intermediate proxies that rewrite the separator (nginx, AWS API
+    Gateway, ...) don't silently drop session affinity. The header name
+    itself is whatever ``SERVE_SESSION_ID`` resolves to (set via the env
+    var ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
     """
-    for form in (SERVE_SESSION_ID, SERVE_SESSION_ID.replace("_", "-")):
-        value = headers.get(form.encode("utf-8"))
-        if value is not None:
+    return header_key.lower().replace("-", "_") == SERVE_SESSION_ID.lower().replace(
+        "-", "_"
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the configured session-id header value, or '' if absent.
+
+    Header name is whatever ``SERVE_SESSION_ID`` resolves to (set via
+    ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    for key, value in headers.items():
+        if _matches_session_id_header(key.decode("utf-8")):
             return value.decode("utf-8")
     return ""
 

@@ -192,7 +192,7 @@ void EventMemoryMonitor::MonitoringThreadMain() {
 
       if (high_modified && IsEnabled()) {
         Disable();
-        kill_workers_callback_();
+        kill_workers_callback_("user cgroup memory upper bound was met or exceeded");
       }
     } else {
       RAY_LOG(ERROR) << absl::StrFormat(

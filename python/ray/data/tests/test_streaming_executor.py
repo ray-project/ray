@@ -10,6 +10,8 @@ from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -54,7 +56,13 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators import MapRows, Read, Write
+from ray.data._internal.logical.operators import (
+    ListFiles,
+    MapRows,
+    Read,
+    ReadFiles,
+    Write,
+)
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
@@ -1062,6 +1070,7 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
+    pq.write_table(pa.table({"value": [1]}), input_path / "data.parquet")
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
@@ -1078,25 +1087,48 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     # Test inspecting the metadata of each operator.
     # E.g., the original input and output paths and the UDF.
     assert _executor is not None
-    assert len(_executor._topology) == 2
     physical_ops = list(_executor._topology.keys())
     assert isinstance(physical_ops[0], InputDataBuffer)
-    assert isinstance(physical_ops[1], MapOperator)
-    logical_ops = physical_ops[1]._logical_operators
+    if ctx.use_datasource_v2:
+        # V2 splits read into a ``ListFiles`` source op and a fused
+        # ``ReadFiles->Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
+        assert isinstance(physical_ops[1], MapOperator)
+        assert isinstance(physical_ops[2], MapOperator)
+        list_files_logical_ops = physical_ops[1]._logical_operators
+        assert len(list_files_logical_ops) == 1
+        assert isinstance(list_files_logical_ops[0], ListFiles)
 
-    assert len(logical_ops) == 3
-    assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0].datasource
-    assert isinstance(datasource, ParquetDatasource)
-    assert datasource._source_paths == input_path
+        read_logical_ops = physical_ops[2]._logical_operators
+        assert len(read_logical_ops) == 3
+        assert isinstance(read_logical_ops[0], ReadFiles)
+        assert read_logical_ops[0].datasource_name == "ParquetV2"
 
-    assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1].fn == udf
+        assert isinstance(read_logical_ops[1], MapRows)
+        assert read_logical_ops[1].fn == udf
 
-    assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2].datasink_or_legacy_datasource
-    assert isinstance(datasink, ParquetDatasink)
-    assert datasink.unresolved_path == output_path
+        assert isinstance(read_logical_ops[2], Write)
+        datasink = read_logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
+    else:
+        assert len(_executor._topology) == 2
+        assert isinstance(physical_ops[1], MapOperator)
+        logical_ops = physical_ops[1]._logical_operators
+
+        assert len(logical_ops) == 3
+        assert isinstance(logical_ops[0], Read)
+        datasource = logical_ops[0].datasource
+        assert isinstance(datasource, ParquetDatasource)
+        assert datasource._source_paths == input_path
+
+        assert isinstance(logical_ops[1], MapRows)
+        assert logical_ops[1].fn == udf
+
+        assert isinstance(logical_ops[2], Write)
+        datasink = logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
 
 
 def test_create_topology_metadata():

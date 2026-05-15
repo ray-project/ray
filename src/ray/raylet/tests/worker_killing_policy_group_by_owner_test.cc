@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
@@ -48,7 +48,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
       worker_to_kill_and_should_retry = worker_killing_policy_.SelectWorkersToKill(
-          workers, ProcessesMemorySnapshot(), SystemMemorySnapshot());
+          workers, ProcessesMemorySnapshot(), MemoryUsageSnapshot());
   ASSERT_TRUE(worker_to_kill_and_should_retry.empty());
 }
 
@@ -72,7 +72,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
     std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
         worker_killing_policy_
             .SelectWorkersToKill(
-                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+                workers, ProcessesMemorySnapshot(), MemoryUsageSnapshot())
             .front();
     std::shared_ptr<WorkerInterface> worker_to_kill =
         worker_to_kill_and_should_retry.first;
@@ -101,7 +101,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroupAndLIF
 
   std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
       worker_killing_policy_
-          .SelectWorkersToKill(workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+          .SelectWorkersToKill(workers, ProcessesMemorySnapshot(), MemoryUsageSnapshot())
           .front();
 
   std::shared_ptr<WorkerInterface> worker_to_kill = worker_to_kill_and_should_retry.first;
@@ -146,7 +146,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
     std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
         worker_killing_policy_
             .SelectWorkersToKill(
-                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+                workers, ProcessesMemorySnapshot(), MemoryUsageSnapshot())
             .front();
     std::shared_ptr<WorkerInterface> worker_to_kill =
         worker_to_kill_and_should_retry.first;
@@ -180,7 +180,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
     std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
         worker_killing_policy_
             .SelectWorkersToKill(
-                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+                workers, ProcessesMemorySnapshot(), MemoryUsageSnapshot())
             .front();
     std::shared_ptr<WorkerInterface> worker_to_kill =
         worker_to_kill_and_should_retry.first;
@@ -211,7 +211,7 @@ TEST_F(WorkerKillingGroupByOwnerTest,
     std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
         worker_killing_policy_
             .SelectWorkersToKill(
-                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+                workers, ProcessesMemorySnapshot(), MemoryUsageSnapshot())
             .front();
     std::shared_ptr<WorkerInterface> worker_to_kill =
         worker_to_kill_and_should_retry.first;
@@ -247,7 +247,7 @@ TEST_F(WorkerKillingGroupByOwnerTest,
   // worker with lease should be killed
   std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
       worker_killing_policy_
-          .SelectWorkersToKill(workers, process_memory_snapshot, SystemMemorySnapshot())
+          .SelectWorkersToKill(workers, process_memory_snapshot, MemoryUsageSnapshot())
           .front();
   std::shared_ptr<WorkerInterface> worker_to_kill = worker_to_kill_and_should_retry.first;
   bool retry = worker_to_kill_and_should_retry.second;
@@ -260,7 +260,7 @@ TEST_F(WorkerKillingGroupByOwnerTest,
   // worker without lease will not be selected for killing
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
       worker_to_kill_and_should_retry_list = worker_killing_policy_.SelectWorkersToKill(
-          workers, process_memory_snapshot, SystemMemorySnapshot());
+          workers, process_memory_snapshot, MemoryUsageSnapshot());
   ASSERT_EQ(worker_to_kill_and_should_retry_list.size(), 0);
 }
 
@@ -292,7 +292,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestKillingWorkerWithNoLeaseIfMemoryExceed
   for (const std::pair<std::shared_ptr<WorkerInterface>, bool> &entry : expected) {
     std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
         worker_killing_policy_
-            .SelectWorkersToKill(workers, process_memory_snapshot, SystemMemorySnapshot())
+            .SelectWorkersToKill(workers, process_memory_snapshot, MemoryUsageSnapshot())
             .front();
     std::shared_ptr<WorkerInterface> worker_to_kill =
         worker_to_kill_and_should_retry.first;

@@ -24,7 +24,8 @@
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -37,6 +38,7 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
@@ -127,7 +129,7 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
+        /*get_time_ms=*/[this]() -> double { return clock_.NowUnixMicros(); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
@@ -160,7 +162,8 @@ class GcsActorManagerTest : public ::testing::Test {
         "test_session_name",
         fake_actor_by_state_gauge_,
         fake_gcs_actor_by_state_gauge_,
-        observability_publisher_.get());
+        observability_publisher_.get(),
+        clock_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -294,6 +297,7 @@ class GcsActorManagerTest : public ::testing::Test {
     }
   }
 
+  FakeClock clock_;
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -417,6 +421,125 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   }
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 20);
+}
+
+TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {
+  auto job_id = JobID::FromInt(1);
+
+  // Register and Create Actor.
+  auto request = GenRegisterActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
+  auto actor_id =
+      ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
+
+  rpc::RegisterActorReply register_reply;
+  gcs_actor_manager_->HandleRegisterActor(
+      request, &register_reply, [](auto, auto, auto) {});
+  drain_io_context();
+
+  rpc::CreateActorRequest create_request;
+  create_request.mutable_task_spec()->CopyFrom(request.task_spec());
+  rpc::CreateActorReply create_reply;
+
+  bool callback_invoked = false;
+  gcs_actor_manager_->HandleCreateActor(
+      create_request, &create_reply, [&callback_invoked](Status status, auto, auto) {
+        callback_invoked = true;
+        ASSERT_TRUE(status.ok());
+      });
+
+  // Get the actor instance from the scheduler.
+  ASSERT_FALSE(mock_actor_scheduler_->actors.empty());
+  auto actor = mock_actor_scheduler_->actors.back();
+
+  // Manually simulate success state (ALIVE) without triggering storage write.
+  auto address = RandomAddress();
+  auto object_id = "test_object_id";
+  actor->UpdateAddress(address);
+  actor->UpdateState(rpc::ActorTableData::ALIVE);
+  google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount> borrowed_refs;
+  borrowed_refs.Add()->mutable_reference()->set_object_id(object_id);
+  actor->SetBorrowedRefsAtCreation(borrowed_refs);
+
+  // Verify it hasn't been invoked yet since OnActorCreationSuccess is not called.
+  ASSERT_FALSE(callback_invoked);
+
+  // Mock CancelOnWorker to return the actor_id, simulating worker death during creation.
+  EXPECT_CALL(*mock_actor_scheduler_,
+              CancelOnWorker(NodeID::FromBinary(address.node_id()),
+                             WorkerID::FromBinary(address.worker_id())))
+      .WillOnce(testing::Return(actor_id));
+
+  // Trigger worker death.
+  gcs_actor_manager_->OnWorkerDead(NodeID::FromBinary(address.node_id()),
+                                   WorkerID::FromBinary(address.worker_id()),
+                                   "127.0.0.1",
+                                   rpc::WorkerExitType::SYSTEM_ERROR,
+                                   "worker process has died.");
+
+  // Verify that callbacks are invoked.
+  ASSERT_TRUE(callback_invoked);
+  // Verify that the reply is correctly populated with the original created address and
+  // borrowed_refs.
+  ASSERT_EQ(create_reply.actor_address().worker_id(), address.worker_id());
+  ASSERT_EQ(create_reply.actor_address().node_id(), address.node_id());
+  ASSERT_EQ(create_reply.borrowed_refs().size(), 1);
+  ASSERT_EQ(create_reply.borrowed_refs(0).reference().object_id(), object_id);
+}
+
+TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestartActorNotAlive) {
+  auto job_id = JobID::FromInt(1);
+
+  // Register and Create Actor.
+  auto request = GenRegisterActorRequest(job_id, /*max_restarts=*/1, /*detached=*/false);
+  auto actor_id =
+      ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
+
+  rpc::RegisterActorReply register_reply;
+  gcs_actor_manager_->HandleRegisterActor(
+      request, &register_reply, [](auto, auto, auto) {});
+  drain_io_context();
+
+  rpc::CreateActorRequest create_request;
+  create_request.mutable_task_spec()->CopyFrom(request.task_spec());
+  rpc::CreateActorReply create_reply;
+
+  bool callback_invoked = false;
+  gcs_actor_manager_->HandleCreateActor(
+      create_request, &create_reply, [&callback_invoked](Status status, auto, auto) {
+        callback_invoked = true;
+        ASSERT_TRUE(status.ok());
+      });
+
+  // Get the actor instance from the scheduler.
+  ASSERT_FALSE(mock_actor_scheduler_->actors.empty());
+  auto actor = mock_actor_scheduler_->actors.back();
+
+  // Simulate a state where the actor is in PENDING_CREATION (not ALIVE yet).
+  auto address = RandomAddress();
+  actor->UpdateAddress(address);
+  actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
+
+  // Verify it hasn't been invoked yet.
+  ASSERT_FALSE(callback_invoked);
+
+  // Mock CancelOnWorker to return the actor_id, simulating worker death during creation.
+  EXPECT_CALL(*mock_actor_scheduler_,
+              CancelOnWorker(NodeID::FromBinary(address.node_id()),
+                             WorkerID::FromBinary(address.worker_id())))
+      .WillOnce(testing::Return(actor_id));
+
+  // Trigger worker death.
+  gcs_actor_manager_->OnWorkerDead(NodeID::FromBinary(address.node_id()),
+                                   WorkerID::FromBinary(address.worker_id()),
+                                   "127.0.0.1",
+                                   rpc::WorkerExitType::SYSTEM_ERROR,
+                                   "worker process has died.");
+
+  // Verify that the creation callback is NOT invoked early when the actor is not ALIVE.
+  ASSERT_FALSE(callback_invoked);
+  // Verify that the reply remains empty and unpopulated.
+  ASSERT_FALSE(create_reply.has_actor_address());
+  ASSERT_EQ(create_reply.borrowed_refs().size(), 0);
 }
 
 TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
@@ -1585,7 +1708,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
     if (event->GetEventType() != rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT) {
       continue;
     }
-    auto ray_event = std::move(*event).Serialize();
+    auto ray_event = std::move(*event).Serialize().value();
     const auto &lifecycle_event = ray_event.actor_lifecycle_event();
     if (lifecycle_event.state_transitions_size() == 0) {
       continue;
