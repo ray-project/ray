@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riva Models Demo - Astra All-Hands 2026</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .model-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .model-card h3 {
+            font-size: 0.9em;
+            margin-bottom: 5px;
+            color: #ffd700;
+        }
+        
+        .model-card p {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+        
+        .demo-section {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            color: #666;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.3s;
+        }
+        
+        .tab-button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .control-group select,
+        .control-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 600;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .button.recording {
+            background: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .result-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .result-box h4 {
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+        
+        .result-box p {
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+        
+        .loading:after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        .error {
+            background: #ffe6e6;
+            border-left-color: #e74c3c;
+            color: #e74c3c;
+        }
+        
+        .audio-player {
+            margin-top: 15px;
+            width: 100%;
+        }
+        
+        .pipeline-flow {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .flow-step {
+            background: #f0f0f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .flow-arrow {
+            color: #667eea;
+            font-size: 1.5em;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ Riva Models Showcase</h1>
+            <p>5 Speech AI Models on inference-api.nvidia.com</p>
+        </div>
+        
+        <div class="models-grid">
+            <div class="model-card">
+                <h3>Parakeet TDT 0.6B</h3>
+                <p>ASR - Automatic Speech Recognition</p>
+            </div>
+            <div class="model-card">
+                <h3>Parakeet 1.1B CTC</h3>
+                <p>ASR - English US</p>
+            </div>
+            <div class="model-card">
+                <h3>Parakeet 1.1B RNNT</h3>
+                <p>ASR - Multilingual</p>
+            </div>
+            <div class="model-card">
+                <h3>Magpie TTS 357M</h3>
+                <p>Text-to-Speech - Multilingual</p>
+            </div>
+            <div class="model-card">
+                <h3>Riva Translate 4B</h3>
+                <p>Neural Machine Translation</p>
+            </div>
+        </div>
+        
+        <div class="demo-section">
+            <div class="tab-buttons">
+                <button class="tab-button active" data-tab="full">🚀 Full Pipeline</button>
+                <button class="tab-button" data-tab="asr">🎤 ASR Only</button>
+                <button class="tab-button" data-tab="translate">🌍 Translate Only</button>
+                <button class="tab-button" data-tab="tts">🔊 TTS Only</button>
+            </div>
+            
+            <div class="tab-content active" id="tab-full">
+                <h2>Full Pipeline Demo</h2>
+                <p>Record audio → ASR → Translation → TTS</p>
+                
+                <div class="pipeline-flow">
+                    <span class="flow-step">🎤 Record</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-step">📝 Transcribe</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-step">🌍 Translate</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-step">🔊 Synthesize</span>
+                </div>
+                
+                <div class="control-group">
+                    <label>ASR Model:</label>
+                    <select id="pipeline-asr-model">
+                        <option value="parakeet_tdt_0_6b">Parakeet TDT 0.6B</option>
+                        <option value="parakeet_1_1b_ctc">Parakeet 1.1B CTC EN-US</option>
+                        <option value="parakeet_1_1b_rnnt">Parakeet 1.1B RNNT Multilingual</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>Translation:</label>
+                    <select id="pipeline-source-lang">
+                        <option value="English">English</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                    </select>
+                    →
+                    <select id="pipeline-target-lang">
+                        <option value="Spanish">Spanish</option>
+                        <option value="English">English</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                    </select>
+                </div>
+                
+                <div class="button-group">
+                    <button class="button" id="pipeline-record-btn">🎤 Start Recording</button>
+                    <button class="button" id="pipeline-run-btn" disabled>🚀 Run Pipeline</button>
+                </div>
+                
+                <div id="pipeline-results"></div>
+            </div>
+            
+            <div class="tab-content" id="tab-asr">
+                <h2>ASR (Automatic Speech Recognition)</h2>
+                <p>Test any of the three Parakeet models</p>
+                
+                <div class="control-group">
+                    <label>Select ASR Model:</label>
+                    <select id="asr-model">
+                        <option value="parakeet_tdt_0_6b">Parakeet TDT 0.6B</option>
+                        <option value="parakeet_1_1b_ctc">Parakeet 1.1B CTC EN-US</option>
+                        <option value="parakeet_1_1b_rnnt">Parakeet 1.1B RNNT Multilingual</option>
+                    </select>
+                </div>
+                
+                <div class="button-group">
+                    <button class="button" id="asr-record-btn">🎤 Start Recording</button>
+                    <button class="button" id="asr-transcribe-btn" disabled>📝 Transcribe</button>
+                </div>
+                
+                <div id="asr-results"></div>
+            </div>
+            
+            <div class="tab-content" id="tab-translate">
+                <h2>Translation (Riva Translate 4B)</h2>
+                <p>Neural machine translation via chat-completions API</p>
+                
+                <div class="control-group">
+                    <label>Input Text:</label>
+                    <input type="text" id="translate-input" placeholder="Enter text to translate...">
+                </div>
+                
+                <div class="control-group">
+                    <label>Translation:</label>
+                    <select id="translate-source-lang">
+                        <option value="English">English</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                    </select>
+                    →
+                    <select id="translate-target-lang">
+                        <option value="Spanish">Spanish</option>
+                        <option value="English">English</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                    </select>
+                </div>
+                
+                <button class="button" id="translate-btn">🌍 Translate</button>
+                
+                <div id="translate-results"></div>
+            </div>
+            
+            <div class="tab-content" id="tab-tts">
+                <h2>TTS (Text-to-Speech)</h2>
+                <p>Magpie TTS Multilingual 357M</p>
+                
+                <div class="control-group">
+                    <label>Text to Synthesize:</label>
+                    <input type="text" id="tts-input" placeholder="Enter text to convert to speech...">
+                </div>
+                
+                <button class="button" id="tts-synthesize-btn">🔊 Synthesize</button>
+                
+                <div id="tts-results"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordedAudio = null;
+        
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const tab = button.dataset.tab;
+                
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                button.classList.add('active');
+                document.getElementById(`tab-${tab}`).classList.add('active');
+            });
+        });
+        
+        function setupRecordButton(recordBtnId, onRecordingComplete) {
+            const recordBtn = document.getElementById(recordBtnId);
+            
+            recordBtn.addEventListener('click', async () => {
+                if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        mediaRecorder = new MediaRecorder(stream);
+                        audioChunks = [];
+                        
+                        mediaRecorder.ondataavailable = (event) => {
+                            audioChunks.push(event.data);
+                        };
+                        
+                        mediaRecorder.onstop = async () => {
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                recordedAudio = reader.result.split(',')[1];
+                                onRecordingComplete(recordedAudio);
+                            };
+                            reader.readAsDataURL(audioBlob);
+                            
+                            stream.getTracks().forEach(track => track.stop());
+                        };
+                        
+                        mediaRecorder.start();
+                        recordBtn.textContent = '⏹️ Stop Recording';
+                        recordBtn.classList.add('recording');
+                    } catch (err) {
+                        alert('Microphone access denied: ' + err.message);
+                    }
+                } else {
+                    mediaRecorder.stop();
+                    recordBtn.textContent = '🎤 Start Recording';
+                    recordBtn.classList.remove('recording');
+                }
+            });
+        }
+        
+        setupRecordButton('pipeline-record-btn', (audio) => {
+            document.getElementById('pipeline-run-btn').disabled = false;
+        });
+        
+        setupRecordButton('asr-record-btn', (audio) => {
+            document.getElementById('asr-transcribe-btn').disabled = false;
+        });
+        
+        document.getElementById('pipeline-run-btn').addEventListener('click', async () => {
+            const resultsDiv = document.getElementById('pipeline-results');
+            resultsDiv.innerHTML = '<div class="loading">Running full pipeline</div>';
+            
+            try {
+                const response = await fetch('/api/full-pipeline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        audio: recordedAudio,
+                        asr_model: document.getElementById('pipeline-asr-model').value,
+                        source_lang: document.getElementById('pipeline-source-lang').value,
+                        target_lang: document.getElementById('pipeline-target-lang').value
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="result-box">
+                            <h4>📝 Transcribed (${data.models_used.asr})</h4>
+                            <p>${data.transcribed}</p>
+                        </div>
+                        <div class="result-box">
+                            <h4>🌍 Translated (${data.models_used.translation})</h4>
+                            <p>${data.translated}</p>
+                        </div>
+                        <div class="result-box">
+                            <h4>🔊 Synthesized (${data.models_used.tts})</h4>
+                            <audio class="audio-player" controls>
+                                <source src="data:audio/wav;base64,${data.audio}" type="audio/wav">
+                            </audio>
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `<div class="result-box error">${data.error}</div>`;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `<div class="result-box error">Error: ${err.message}</div>`;
+            }
+        });
+        
+        document.getElementById('asr-transcribe-btn').addEventListener('click', async () => {
+            const resultsDiv = document.getElementById('asr-results');
+            resultsDiv.innerHTML = '<div class="loading">Transcribing</div>';
+            
+            try {
+                const response = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        audio: recordedAudio,
+                        model: document.getElementById('asr-model').value
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="result-box">
+                            <h4>📝 Transcribed Text (${data.model})</h4>
+                            <p>${data.text}</p>
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `<div class="result-box error">${data.error}</div>`;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `<div class="result-box error">Error: ${err.message}</div>`;
+            }
+        });
+        
+        document.getElementById('translate-btn').addEventListener('click', async () => {
+            const resultsDiv = document.getElementById('translate-results');
+            const text = document.getElementById('translate-input').value;
+            
+            if (!text) {
+                alert('Please enter text to translate');
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="loading">Translating</div>';
+            
+            try {
+                const response = await fetch('/api/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        source_lang: document.getElementById('translate-source-lang').value,
+                        target_lang: document.getElementById('translate-target-lang').value
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="result-box">
+                            <h4>🌍 Translation (${data.model})</h4>
+                            <p>${data.text}</p>
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `<div class="result-box error">${data.error}</div>`;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `<div class="result-box error">Error: ${err.message}</div>`;
+            }
+        });
+        
+        document.getElementById('tts-synthesize-btn').addEventListener('click', async () => {
+            const resultsDiv = document.getElementById('tts-results');
+            const text = document.getElementById('tts-input').value;
+            
+            if (!text) {
+                alert('Please enter text to synthesize');
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="loading">Synthesizing</div>';
+            
+            try {
+                const response = await fetch('/api/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="result-box">
+                            <h4>🔊 Synthesized Audio (${data.model})</h4>
+                            <audio class="audio-player" controls autoplay>
+                                <source src="data:audio/wav;base64,${data.audio}" type="audio/wav">
+                            </audio>
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `<div class="result-box error">${data.error}</div>`;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `<div class="result-box error">Error: ${err.message}</div>`;
+            }
+        });
+    </script>
+</body>
+</html>
