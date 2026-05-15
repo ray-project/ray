@@ -1743,15 +1743,6 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
         << "Object locations requested for object, but ref already removed. This may be "
            "a bug in the distributed "
            "reference counting protocol.";
-    // First let subscribers handle this error.
-    rpc::PubMessage pub_message;
-    pub_message.set_key_id(object_id.Binary());
-    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-    pub_message.mutable_worker_object_locations_message()->set_ref_removed(true);
-    object_info_publisher_->Publish(pub_message);
-    // Then, publish a failure to subscribers since this object is unreachable.
-    object_info_publisher_->PublishFailure(
-        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
   }
 
