@@ -1,5 +1,6 @@
 from ray.util.check_serialize import inspect_serializability
 
+
 def test_nested_closure_function_context_in_output():
     """
     Regression test for https://github.com/ray-project/ray/issues/48759.
