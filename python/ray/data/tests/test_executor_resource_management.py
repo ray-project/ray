@@ -338,13 +338,17 @@ def test_task_pool_per_task_resource_allocation_refreshes_after_schedule(
     )
 
     # Priming in __init__ consumes the first fn() call -> 2 CPUs.
-    assert op.per_task_resource_allocation() == ExecutionResources(cpu=2, gpu=0, memory=0)
+    assert op.per_task_resource_allocation() == ExecutionResources(
+        cpu=2, gpu=0, memory=0
+    )
 
     # add_input triggers _try_schedule_task, which consumes the second fn() call
     # and refreshes _dynamic_ray_remote_args -> 4 CPUs.
     op.start(ExecutionOptions())
     op.add_input(input_op.get_next(), 0)
-    assert op.per_task_resource_allocation() == ExecutionResources(cpu=4, gpu=0, memory=0)
+    assert op.per_task_resource_allocation() == ExecutionResources(
+        cpu=4, gpu=0, memory=0
+    )
     assert op.incremental_resource_usage() == ExecutionResources(cpu=4, gpu=0, memory=0)
 
     run_op_tasks_sync(op)

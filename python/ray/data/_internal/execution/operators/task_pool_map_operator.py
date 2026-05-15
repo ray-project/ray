@@ -95,9 +95,9 @@ class TaskPoolMapOperator(MapOperator):
         # Prime the resource estimate so `per_task_resource_allocation` reflects
         # `ray_remote_args_fn` overrides before the first task is submitted.
         # `_try_schedule_task` refreshes it on each submission.
-        self._dynamic_ray_remote_args: Dict[str, Any] = (
-            self._get_dynamic_ray_remote_args()
-        )
+        self._dynamic_ray_remote_args: Dict[
+            str, Any
+        ] = self._get_dynamic_ray_remote_args()
 
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
