@@ -90,7 +90,7 @@ class HAProxyMetricsCollector:
         self.latency_histogram = metrics.Histogram(
             "serve_haproxy_ingress_router_latency_ms",
             description=(
-                "Wall-clock time (in milliseconds) HAProxy spent to resolve"
+                "Wall-clock time (in milliseconds) HAProxy spent to resolve "
                 "the request to a server via the ingress request router. "
                 "Only includes successful routing attempts."
             ),
