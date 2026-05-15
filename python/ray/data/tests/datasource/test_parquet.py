@@ -1811,81 +1811,38 @@ def test_max_block_size_none_respects_override_num_blocks(
         assert set(expected_values) == set(actual_values)
 
 
-@pytest.mark.parametrize("min_rows_per_file", [5, 10])
-def test_write_partition_cols_with_min_rows_per_file(
+def test_write_partition_cols_with_min_rows_per_file_raises(
     tmp_path,
     ray_start_regular_shared,
-    min_rows_per_file,
-    target_max_block_size_infinite_or_default,
 ):
-    """Test write_parquet with both partition_cols and min_rows_per_file."""
+    ds = ray.data.range(10)
 
-    # Create dataset with 2 partitions, each having 20 rows
-    df = pd.DataFrame(
-        {
-            "partition_col": [0] * 20 + [1] * 20,  # 2 partitions with 20 rows each
-            "data": list(range(40)),
-        }
-    )
+    with pytest.raises(
+        ValueError,
+        match="min_rows_per_file is not supported when partition_cols is set",
+    ):
+        ds.write_parquet(tmp_path, partition_cols=["id"], min_rows_per_file=5)
 
-    ds = ray.data.from_pandas(df)
-    ds.write_parquet(
-        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
-    )
 
-    # Check partition directories exist
-    partition_0_dir = tmp_path / "partition_col=0"
-    partition_1_dir = tmp_path / "partition_col=1"
-    assert partition_0_dir.exists()
-    assert partition_1_dir.exists()
+def test_write_partition_cols_with_num_rows_per_file_raises(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    ds = ray.data.range(10)
 
-    # With the new implementation that tries to minimize file count,
-    # each partition (20 rows) should be written as a single file
-    # since 20 >= min_rows_per_file for both test cases (5 and 10)
-    for partition_dir in [partition_0_dir, partition_1_dir]:
-        parquet_files = list(partition_dir.glob("*.parquet"))
+    with pytest.warns(DeprecationWarning, match="num_rows_per_file"):
+        with pytest.raises(
+            ValueError,
+            match="min_rows_per_file is not supported when partition_cols is set",
+        ):
+            ds.write_parquet(tmp_path, partition_cols=["id"], num_rows_per_file=5)
 
-        # Verify total rows across all files in partition
-        total_rows = 0
-        file_sizes = []
-        for file_path in parquet_files:
-            table = pq.read_table(file_path)
-            file_size = len(table)
-            file_sizes.append(file_size)
-            total_rows += file_size
 
-        assert total_rows == 20  # Each partition should have 20 rows total
-
-        # Add explicit assertion about individual file sizes for clarity
-        print(
-            f"Partition {partition_dir.name} file sizes with min_rows_per_file={min_rows_per_file}: {file_sizes}"
-        )
-
-        # With the new optimization logic, we expect fewer files with larger sizes
-        # Each file should have at least min_rows_per_file rows
-        for file_size in file_sizes:
-            assert (
-                file_size >= min_rows_per_file
-            ), f"File size {file_size} is less than min_rows_per_file {min_rows_per_file}"
-
-    # Verify we can read back the data correctly
-    ds_read = ray.data.read_parquet(tmp_path)
-    assert ds_read.count() == 40
-    assert set(ds_read.schema().names) == {"partition_col", "data"}
-
-    # ------------------------------------------------------------------
-    # Verify that the data written and read back are identical
-    # ------------------------------------------------------------------
-    expected_df = df.sort_values("data").reset_index(drop=True)
-    actual_df = ds_read.to_pandas().sort_values("data").reset_index(drop=True)
-
-    # Parquet partition values are read back as strings; cast both sides.
-    actual_df["partition_col"] = actual_df["partition_col"].astype(str)
-    expected_df["partition_col"] = expected_df["partition_col"].astype(str)
-
-    # Align column order and compare.
-    actual_df = actual_df[expected_df.columns]
-    pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+def test_write_empty_partition_cols_with_min_rows_per_file(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    ray.data.range(10).write_parquet(tmp_path, partition_cols=[], min_rows_per_file=5)
 
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])

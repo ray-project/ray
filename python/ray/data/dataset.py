@@ -4313,7 +4313,8 @@ class Dataset:
                 rows to each file. If the number of rows per block is larger than the
                 specified value, Ray Data writes the number of rows per block to each file.
                 The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file.
+                might write more or fewer rows to each file. This option isn't
+                supported when ``partition_cols`` is set.
             max_rows_per_file: [Experimental] The target maximum number of rows to write
                 to each file. If ``None``, Ray Data writes a system-chosen number of
                 rows to each file. If the number of rows per block is smaller than the

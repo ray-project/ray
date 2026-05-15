@@ -121,6 +121,11 @@ class ParquetDatasink(_FileDatasink):
         self.max_rows_per_file = max_rows_per_file
         self.partition_cols = partition_cols
 
+        if self.partition_cols and self.min_rows_per_file is not None:
+            raise ValueError(
+                "min_rows_per_file is not supported when partition_cols is set."
+            )
+
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
             if self.min_rows_per_file > self.max_rows_per_file:
                 raise ValueError(
