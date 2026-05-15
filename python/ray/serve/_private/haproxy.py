@@ -733,10 +733,23 @@ class HAProxyApi(ProxyApi):
 
         logger.debug(f"Starting HAProxy with args: {args}")
 
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # Redirect HAProxy stderr to a file via dup2 at fork instead of
+        # piping it back to this process. Without a pipe, the 64KB kernel
+        # buffer that previously deadlocked admin-socket threads doesn't
+        # exist. We open the file with a temporary name (we don't know the
+        # child pid yet) and rename it to include the pid after spawn.
+        # Linux fds bind to inodes, not paths, so the rename doesn't
+        # disturb the child's writes.
+        tmp_stderr_path = f"{self.cfg.socket_path}.stderr.starting.log"
+        with open(tmp_stderr_path, "ab", buffering=0) as stderr_file:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=stderr_file,
+            )
+        os.replace(
+            tmp_stderr_path,
+            f"{self.cfg.socket_path}.stderr.{proc.pid}.log",
         )
 
         try:
@@ -748,42 +761,7 @@ class HAProxyApi(ProxyApi):
                 await proc.wait()
             raise
 
-        # HAProxy in -db mode emits hundreds of stderr lines/sec. If nothing
-        # reads from the pipe, the 64KB kernel buffer fills and HAProxy blocks
-        # on its next write — including from threads serving the admin socket,
-        # which makes runtime API calls appear to hang. Drain to a per-pid file.
-        asyncio.create_task(
-            self._drain_proc_stderr(proc, self._stderr_log_path_for(proc.pid))
-        )
-
         return proc
-
-    def _stderr_log_path_for(self, pid: int) -> str:
-        """Per-pid stderr log path co-located with the admin socket."""
-        return f"{self.cfg.socket_path}.stderr.{pid}.log"
-
-    async def _drain_proc_stderr(
-        self,
-        proc: asyncio.subprocess.Process,
-        log_path: str,
-        max_bytes: int = 10_000_000,
-    ) -> None:
-        """Drain `proc.stderr` to `log_path`, truncating when the file passes
-        `max_bytes` so a long-lived proc cannot fill the disk."""
-        if proc.stderr is None:
-            return
-        try:
-            with open(log_path, "ab", buffering=0) as f:
-                while True:
-                    chunk = await proc.stderr.read(65536)
-                    if not chunk:
-                        return
-                    f.write(chunk)
-                    if f.tell() > max_bytes:
-                        f.seek(0)
-                        f.truncate()
-        except Exception as e:
-            logger.warning(f"HAProxy stderr drain for pid={proc.pid} exited: {e}")
 
     async def _save_server_state(self) -> None:
         """Save the server state to the file."""
