@@ -157,11 +157,12 @@ bool darwin_set_process_title(const char * title) {
      * BEGIN RAY PATCH
      */
 
-    // Skip the expensive Launch Services IPC calls (LSSetApplicationInformationItem)
-    // which cause system hangs when called frequently. Just set the thread name
-    // which is sufficient for Ray's needs and is a cheap local operation.
-    // The original implementation is preserved below under `#if 0`.
-
+    // The original `setproctitle` source code calls expensive launch services APIs
+    // (LSSetApplicationInformationItem). This can cause hangs when called frequently.
+    // See: https://github.com/ray-project/ray/issues/59663
+    //
+    // For Ray's purposes we can get away with only setting the local thread name.
+    //
     // darwin_pthread_setname_np returns nonzero (true) on failure, matching
     // pthread_setname_np's convention, so invert to report success.
     return !darwin_pthread_setname_np(title);
@@ -169,31 +170,4 @@ bool darwin_set_process_title(const char * title) {
     /*
      * END RAY PATCH
      */
-
-#if 0
-    enum {
-        has_nothing,
-        has_launch_services
-    } state = has_nothing;
-    bool ret = false;
-
-    launch_services_t launch_services;
-
-    DONE_IF(!launch_services_init(&launch_services));
-    ++state;
-
-    DONE_IF(!launch_services_set_process_title(&launch_services, title));
-
-    (void)darwin_pthread_setname_np(title);
-
-    ret = true;
-
-done:
-    switch(state) {
-        case has_launch_services: launch_services_destroy(&launch_services);
-        case has_nothing: ;
-    }
-
-    return ret;
-#endif
 }
