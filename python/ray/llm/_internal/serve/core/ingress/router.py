@@ -1,24 +1,12 @@
-import asyncio
-import random
-import time
-from typing import FrozenSet, List, Optional, Tuple
+from typing import Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
-from ray.serve._private.common import ReplicaID
+from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
-
-# How long to wait for the underlying RequestRouter to be lazily created.
-# It's created on the first long-poll from the controller; that is normally
-# sub-second, but we allow up to a minute to ride out controller hiccups
-# before failing the constructor and letting Serve retry.
-_REQUEST_ROUTER_INIT_TIMEOUT_S = 60.0
-_REQUEST_ROUTER_INIT_POLL_INTERVAL_S = 0.05
-
-_ReplicaCacheSignature = FrozenSet[ReplicaID]
 
 router_app = FastAPI()
 
@@ -31,23 +19,25 @@ class LLMRouter:
     deployment to get a data plane replica, then forwards traffic directly
     to the matching LLMServer replica's backend HTTP port.
 
+    Replica selection is delegated to the underlying deployment's configured
+    request router, and this class translates the resulting pick into a backend
+    HTTP endpoint.
+
     /internal/route HTTP contract
     -----------------------------
     Request:
         POST /internal/route
         Content-Type: application/json
         Body: the target ChatCompletions / Completions request payload.
-            Today the router uses round-robin and ignores the body, but it
-            is plumbed through so future routing policies (e.g. prefix
-            cache aware) can score replicas against ``messages`` /
-            ``prompt``. HAProxy should continue forwarding the payload
-            (subject to truncation below).
+            The body is plumbed through to ``choose_replica`` so future
+            body-aware policies (e.g. prefix-cache-aware) can score replicas
+            against ``messages`` / ``prompt``.
 
     Truncated bodies:
         HAProxy may forward only a prefix of the request body for routing.
-        When it does, it must set the ``x-body-truncated`` header. The
-        router forwards both the body bytes and this signal to
-        ``_pick_replica`` for future body-aware policies.
+        When it does, it must set the ``x-body-truncated`` header; both the
+        body bytes and this signal are forwarded to ``choose_replica`` for
+        future body-aware policies.
 
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str}``: pick
@@ -61,55 +51,18 @@ class LLMRouter:
     """
 
     async def __init__(self, server: DeploymentHandle):
-        # Randomized so multiple LLMRouter replicas don't lockstep on the
-        # same replica sequence.
-        self._round_robin_counter = random.randrange(2**31)
-        self._cached_dict_id: Optional[int] = None
-        self._cached_replica_signature: Optional[_ReplicaCacheSignature] = None
-        self._cached_endpoints: List[Tuple[str, int, str]] = []
         self._handle: DeploymentHandle = server
-
-        # Initialize the handle and wait for its underlying RequestRouter to
-        # be lazily created. The RequestRouter is built on the first long-poll
-        # from the controller (which delivers the deployment config that
-        # selects the request-router class), so `_get_request_router()`
-        # returns None for a brief window after `_init()`.
-        # `curr_replicas` is populated by the same long-poll client; until it
-        # carries at least one ready endpoint, /internal/route returns 503
-        # (HAProxy retries). That keeps router liveness decoupled from
-        # LLMServer cold start.
         self._handle._init()
-        self._request_router = await self._wait_for_request_router(
-            _REQUEST_ROUTER_INIT_TIMEOUT_S
-        )
-
-    async def _wait_for_request_router(self, timeout_s: float):
-        deadline = time.monotonic() + timeout_s
-        while True:
-            request_router = self._handle._get_request_router()
-            if request_router is not None:
-                return request_router
-            if time.monotonic() >= deadline:
-                raise RuntimeError(
-                    "DeploymentHandle._get_request_router() still returned "
-                    f"None after {timeout_s}s. The Serve controller may be "
-                    "unreachable, or Serve internals may have changed."
-                )
-            await asyncio.sleep(_REQUEST_ROUTER_INIT_POLL_INTERVAL_S)
-
-    async def check_health(self):
-        if self._request_router is None:
-            raise RuntimeError("request router not initialized")
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         try:
-            host, port, replica_id = self._pick_replica(
+            host, port, replica_id = await self._pick_replica(
                 request_body=body, body_truncated=body_truncated
             )
-        except RuntimeError as e:
+        except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
         return {"host": host, "port": port, "replica_id": replica_id}
 
@@ -117,46 +70,27 @@ class LLMRouter:
     async def health(self):
         return {"status": "ok"}
 
-    def _ready_endpoints(self) -> List[Tuple[str, int, str]]:
-        """Backend (host, port, full_id) tuples, cached on replica-set change."""
-        curr_replicas = self._request_router.curr_replicas
-        # RequestRouter swaps the dict wholesale on every controller broadcast,
-        # so dict identity is a cheap "did anything change" check; the keyset
-        # check then filters out broadcasts that didn't actually change the
-        # replica set.
-        if id(curr_replicas) == self._cached_dict_id:
-            return self._cached_endpoints
-        signature = frozenset(curr_replicas.keys())
-        if signature != self._cached_replica_signature:
-            self._cached_replica_signature = signature
-            ready = sorted(
-                (r for r in curr_replicas.values() if r.backend_http_endpoint),
-                key=lambda r: r.replica_id.unique_id,
-            )
-            self._cached_endpoints = [
-                (*r.backend_http_endpoint, r.replica_id.to_full_id_str()) for r in ready
-            ]
-        self._cached_dict_id = id(curr_replicas)
-        return self._cached_endpoints
-
-    def _pick_replica(
+    async def _pick_replica(
         self,
         request_body: Optional[bytes] = None,
         body_truncated: bool = False,
     ) -> Tuple[str, int, str]:
-        """Pick a backend HTTP replica.
+        """Pick a backend HTTP replica via the deployment's request router.
 
-        Today this is plain round-robin and ignores the payload. The
         ``request_body`` (possibly a HAProxy-truncated prefix, indicated by
-        ``body_truncated``) is plumbed through so a future prefix cache aware
-        policy can score replicas against the request's prompt / messages
-        without changing the /internal/route contract or the call site.
+        ``body_truncated``) is forwarded to ``choose_replica`` so a future
+        body-aware policy can score replicas against the request's prompt /
+        messages without changing the /internal/route contract or the call
+        site.
         """
-        del request_body, body_truncated
-        candidates = self._ready_endpoints()
-        if not candidates:
-            raise RuntimeError("no backend-http replicas")
-
-        index = self._round_robin_counter % len(candidates)
-        self._round_robin_counter += 1
-        return candidates[index]
+        async with self._handle.choose_replica(
+            request_body=request_body, body_truncated=body_truncated
+        ) as selection:
+            replica = selection._replica
+            endpoint = replica.backend_http_endpoint
+            if endpoint is None:
+                raise RuntimeError(
+                    f"replica {selection.replica_id} has no backend HTTP endpoint"
+                )
+            host, port = endpoint
+            return host, port, replica.replica_id.to_full_id_str()

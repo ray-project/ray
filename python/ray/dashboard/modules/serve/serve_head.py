@@ -170,6 +170,7 @@ class ServeHead(SubprocessModule):
                 http_options=full_http_options,
                 grpc_options=grpc_options,
                 global_logging_config=config.logging_config,
+                controller_options=config.controller_options,
             )
 
         # Serve ignores HTTP options if it was already running when
