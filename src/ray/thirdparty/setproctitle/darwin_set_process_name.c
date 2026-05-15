@@ -157,8 +157,9 @@ bool darwin_set_process_title(const char * title) {
      * BEGIN RAY PATCH
      */
 
-    // The original `setproctitle` source code calls expensive launch services APIs
-    // (LSSetApplicationInformationItem). This can cause hangs when called frequently.
+    // The original `setproctitle` source code calls launch services APIs that make
+    // expensive IPCs to the OSX Launch Services Daemon (LSSetApplicationInformationItem).
+    // This can cause hangs when called frequently.
     // See: https://github.com/ray-project/ray/issues/59663
     //
     // For Ray's purposes we can get away with only setting the local thread name.
