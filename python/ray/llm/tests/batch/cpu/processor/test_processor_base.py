@@ -1,12 +1,16 @@
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
+from unittest.mock import patch
 
 import pydantic
 import pytest
 
 import ray
 from ray.data.llm import build_processor
-from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
+from ray.llm._internal.batch.processor import (
+    base as processor_base,
+    vLLMEngineProcessorConfig,
+)
 from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
@@ -384,6 +388,93 @@ class TestProcessorConfig:
     def test_with_tuple_concurrency(self, pair, expected):
         conf = ProcessorConfig(concurrency=pair)
         assert conf.get_concurrency() == expected
+
+
+class TestOfflineProcessorConfig:
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            ({"max_tasks_in_flight_per_actor": 10}, 10),
+            ({}, None),
+            # Field stays None; the formula runs in Ray Data, not here.
+            ({"max_concurrent_batches": 4}, None),
+        ],
+    )
+    def test_max_tasks_in_flight_per_actor_passthrough(self, kwargs, expected):
+        """Field passes through to ActorPoolStrategy; None defers resolution."""
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+            **kwargs,
+        )
+        assert config.max_tasks_in_flight_per_actor == expected
+        assert config.max_concurrent_batches == kwargs.get("max_concurrent_batches", 8)
+
+    def test_experimental_max_tasks_in_flight_per_actor_deprecated(self):
+        """Setting `experimental['max_tasks_in_flight_per_actor']` migrates to
+        the top-level field with a deprecation log; the explicit top-level
+        field overrides it but the warning still fires."""
+
+        def has_deprecation_log(warning_mock):
+            return any(
+                "max_tasks_in_flight_per_actor" in call.args[0]
+                and "deprecated" in call.args[0]
+                for call in warning_mock.call_args_list
+            )
+
+        # Migration: experimental → top-level field.
+        with patch.object(processor_base.logger, "warning") as warning_mock:
+            cfg = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                experimental={"max_tasks_in_flight_per_actor": 10},
+            )
+        assert cfg.max_tasks_in_flight_per_actor == 10
+        assert has_deprecation_log(warning_mock)
+
+        # Explicit top-level beats experimental, but warning still fires.
+        with patch.object(processor_base.logger, "warning") as warning_mock:
+            cfg = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                max_tasks_in_flight_per_actor=20,
+                experimental={"max_tasks_in_flight_per_actor": 10},
+            )
+        assert cfg.max_tasks_in_flight_per_actor == 20
+        assert has_deprecation_log(warning_mock)
+
+    def test_max_tasks_in_flight_under_max_concurrent_batches_warns(self):
+        with patch.object(processor_base.logger, "warning") as warning_mock:
+            cfg = vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                max_tasks_in_flight_per_actor=1,
+                max_concurrent_batches=8,
+            )
+
+        assert cfg.max_tasks_in_flight_per_actor == 1
+        assert cfg.max_concurrent_batches == 8
+        warning_messages = [call.args[0] for call in warning_mock.call_args_list]
+        assert any(
+            "max_tasks_in_flight_per_actor" in message
+            and "max_concurrent_batches" in message
+            and "underutilize" in message
+            for message in warning_messages
+        )
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},
+            {"max_tasks_in_flight_per_actor": 8, "max_concurrent_batches": 8},
+            {"max_tasks_in_flight_per_actor": 16, "max_concurrent_batches": 8},
+        ],
+    )
+    def test_max_tasks_in_flight_does_not_warn_when_not_underutilized(self, kwargs):
+        with patch.object(processor_base.logger, "warning") as warning_mock:
+            vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                **kwargs,
+            )
+
+        warning_messages = [call.args[0] for call in warning_mock.call_args_list]
+        assert not any("underutilize" in message for message in warning_messages)
 
 
 class TestMapKwargs:

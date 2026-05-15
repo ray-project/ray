@@ -1,7 +1,6 @@
 import copy
 import functools
 import logging
-import math
 import threading
 import time
 from dataclasses import dataclass
@@ -210,11 +209,6 @@ class _AutoscalingCoordinatorActor:
     ) -> None:
         logger.debug("Received request from %s: %s.", requester_id, resources)
         with self._lock:
-            # Round up the resource values to integers,
-            # because the Autoscaler SDK only accepts integer values.
-            for r in resources:
-                for k in r:
-                    r[k] = math.ceil(r[k])
             now = self._get_current_time()
             request_updated = False
             old_req = self._ongoing_reqs.get(requester_id)

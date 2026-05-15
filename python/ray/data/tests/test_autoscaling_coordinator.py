@@ -486,6 +486,26 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
     )
 
 
+def test_fractional_bundles_are_forwarded_unchanged():
+    """Fractional bundle values needs be forwarded to the autoscaler SDK as-is.
+
+    Previously the coordinator rounded each value up to the next integer
+    before forwarding (e.g. ``{"CPU": 0.1}`` became ``{"CPU": 1}``), which
+    inflated the autoscaler's demand view by up to N× when training launched
+    N workers with fractional ``resources_per_worker``."""
+    mock_send = Mock()
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=mock_send,
+        get_cluster_nodes=lambda: CLUSTER_NODES_WITHOUT_HEAD,
+    )
+
+    coord.request_resources(
+        requester_id="r", resources=[{"CPU": 0.1}], expire_after_s=1
+    )
+    mock_send.assert_called_once_with([{"CPU": 0.1}])
+
+
 if __name__ == "__main__":
     import sys
 

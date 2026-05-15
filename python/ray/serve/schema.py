@@ -686,6 +686,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
             deployment_actors.append(cfg_dict)
         schema.deployment_actors = deployment_actors
 
+    if info.replica_config.max_replicas_per_node is not None:
+        schema.max_replicas_per_node = info.replica_config.max_replicas_per_node
+
     return schema
 
 
@@ -734,9 +737,10 @@ class ServeApplicationSchema(BaseModel):
         default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "your Serve application has started running. The Serve application "
-            "must be shut down and restarted with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once your Serve application "
+            "has started running. The Serve application must be shut down and "
+            "restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -925,9 +929,9 @@ class HTTPOptionsSchema(BaseModel):
         default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "Serve has started running. Serve must be shut down and restarted "
-            "with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once Serve has started running. "
+            "Serve must be shut down and restarted with the new host instead."
         ),
     )
     port: int = Field(
