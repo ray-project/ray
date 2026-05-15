@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
@@ -39,6 +40,15 @@ class LLMRouter:
         body bytes and this signal are forwarded to ``choose_replica`` for
         future body-aware policies.
 
+    Session affinity:
+        If the client request carried the session-id header configured by
+        ``RAY_SERVE_SESSION_ID_HEADER_KEY`` (default ``x-session-id``),
+        HAProxy's Lua action forwards it to ``/internal/route`` on the same
+        name. This handler reads it and applies
+        ``handle.options(session_id=...)`` before calling
+        ``choose_replica`` so session-aware policies (e.g.
+        ``ConsistentHashRouter``) pin all turns of a session to one replica.
+
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str}``: pick
             succeeded.
@@ -58,9 +68,22 @@ class LLMRouter:
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
+        # HAProxy forwards the configured session header on the same name,
+        # but use the same case-insensitive, separator-tolerant matcher as
+        # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
+        # doesn't silently drop session affinity.
+        session_id = next(
+            (v for k, v in request.headers.items() if _matches_session_id_header(k)),
+            None,
+        )
+        handle = (
+            self._handle.options(session_id=session_id) if session_id else self._handle
+        )
         try:
             host, port, replica_id = await self._pick_replica(
-                request_body=body, body_truncated=body_truncated
+                handle=handle,
+                request_body=body,
+                body_truncated=body_truncated,
             )
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
@@ -72,10 +95,15 @@ class LLMRouter:
 
     async def _pick_replica(
         self,
+        handle: DeploymentHandle,
         request_body: Optional[bytes] = None,
         body_truncated: bool = False,
     ) -> Tuple[str, int, str]:
         """Pick a backend HTTP replica via the deployment's request router.
+
+        ``handle`` is the LLMServer deployment handle, optionally configured
+        with ``.options(session_id=...)`` by the caller so session-aware
+        routers see the session id on ``RequestMetadata``.
 
         ``request_body`` (possibly a HAProxy-truncated prefix, indicated by
         ``body_truncated``) is forwarded to ``choose_replica`` so a future
@@ -83,7 +111,7 @@ class LLMRouter:
         messages without changing the /internal/route contract or the call
         site.
         """
-        async with self._handle.choose_replica(
+        async with handle.choose_replica(
             request_body=request_body, body_truncated=body_truncated
         ) as selection:
             replica = selection._replica
