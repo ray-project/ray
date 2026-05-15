@@ -37,7 +37,7 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
+      MemoryMonitorFactory::Create([](std::string) {},
                                    /*resource_isolation_enabled=*/false,
                                    cgroup_manager);
 
@@ -51,7 +51,7 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
+      MemoryMonitorFactory::Create([](std::string) {},
                                    /*resource_isolation_enabled=*/true,
                                    cgroup_manager);
 

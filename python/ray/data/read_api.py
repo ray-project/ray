@@ -1325,6 +1325,11 @@ def read_parquet(
                 "path. Use `ray.data.read_parquet(path).select_columns([...])` "
                 "instead." + hint
             )
+        if "filter" in arrow_parquet_args:
+            raise NotImplementedError(
+                "`filter=` on `read_parquet` is not supported on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
+            )
 
         from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
             ParquetDatasourceV2,

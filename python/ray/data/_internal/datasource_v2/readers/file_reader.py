@@ -1,10 +1,9 @@
 from enum import Enum
-from functools import cached_property
+from functools import cached_property, partial
 from typing import Any, Iterator, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow import compute as pc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
@@ -14,6 +13,7 @@ from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 # Synthetic column name produced when ``include_paths=True``. Shared with
@@ -58,7 +58,7 @@ class FileReader(Reader[FileManifest]):
         format: FileFormat,
         batch_size: int = _ARROW_DEFAULT_BATCH_SIZE,
         columns: Optional[List[str]] = None,
-        predicate: Optional[pc.Expression] = None,
+        predicate: Optional[Expr] = None,
         limit: Optional[int] = None,
         filesystem: Optional[FileSystem] = None,
         partitioning: Optional[Partitioning] = None,
@@ -74,7 +74,8 @@ class FileReader(Reader[FileManifest]):
             format: Format of the files to read.
             batch_size: Number of rows per batch.
             columns: Columns to read. None means all columns.
-            predicate: PyArrow compute expression for filtering.
+            predicate: Ray Data expression for filtering. Converted to a
+                PyArrow expression at the scanner-kwargs boundary.
             limit: Maximum number of rows to read.
             filesystem: Filesystem for reading files.
             partitioning: Ray ``Partitioning`` object. Partition columns are
@@ -226,18 +227,17 @@ class FileReader(Reader[FileManifest]):
 
         scanner_kwargs = {
             "columns": columns_to_read_from_file,
-            "filter": self._predicate,
+            "filter": (
+                self._predicate.to_pyarrow() if self._predicate is not None else None
+            ),
             "batch_size": self._resolve_batch_size(dataset),
             "batch_readahead": _ARROW_SCANNER_BATCH_READAHEAD,
         }
         scanner_kwargs.update(self._arrow_scanner_kwargs())
 
-        ctx = DataContext.get_current()
         rows_read = 0
-        for table, fragment_path, fragment_row_offset in iterate_with_retry(
-            lambda: self._read_fragment_batches(dataset, scanner_kwargs),
-            "read batches",
-            match=ctx.retried_io_errors,
+        for table, fragment_path, fragment_row_offset in self._read_fragment_batches(
+            dataset, scanner_kwargs
         ):
             if self._limit is not None:
                 if rows_read >= self._limit:
@@ -340,33 +340,57 @@ class FileReader(Reader[FileManifest]):
         one fragment at a time.
 
         ``fragment_row_offset`` is the post-filter row position of the first
-        row of ``table`` within the current fragment. Tracking it inside the
-        generator means it resets correctly whenever ``iterate_with_retry``
-        recreates the generator on a retry — outer-loop state would otherwise
-        carry stale values from the failed attempt and corrupt row hashes.
+        row of ``table`` within the current fragment. ``iterate_with_retry``
+        skips already-yielded items on retry, so ``offset`` reflects only the
+        rows that actually surface to the caller — matching V1 row-hash
+        semantics even when a fragment fails partway through.
+
+        Retry is scoped per-fragment: if a fragment fails mid-read, only
+        that fragment is re-read (skipping batches already yielded).
+        Wrapping the whole manifest in a single retry would re-iterate
+        fragments that already succeeded and double-emit their batches.
 
         Each fragment gets its own scanner so pyarrow uses the native
         per-file schema. A cross-fragment scanner would force a unified
         schema cast, which refuses extension-to-extension conversion
         (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
         the same per-fragment pattern via ``fragment.to_batches``.
-
-        When a non-extension caller schema is available we pin it at the
-        scanner so pyarrow null-fills any column the unified schema names
-        but the fragment lacks (V1 parity). Falling back to the
-        per-fragment ``physical_schema`` preserves the variable-shape
-        tensor escape hatch already encoded in ``_file_dataset_schema``.
         """
+        ctx = DataContext.get_current()
         for fragment in dataset.get_fragments():
-            fragment_schema = (
-                self._file_dataset_schema
-                if self._file_dataset_schema is not None
-                else fragment.physical_schema
-            )
-            scanner = fragment.scanner(**scanner_kwargs, schema=fragment_schema)
             offset = 0
-            for tagged in scanner.scan_batches():
-                table = pa.Table.from_batches(batches=[tagged.record_batch])
+            for table in iterate_with_retry(
+                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
+                f"read fragment {fragment.path}",
+                match=ctx.retried_io_errors,
+            ):
                 if table.num_rows > 0:
                     yield table, fragment.path, offset
                     offset += table.num_rows
+
+    def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Yield Arrow tables for a single fragment.
+
+        Subclasses override this to swap in a format-specific reader for
+        fragments that don't fit the default scanner-based path (e.g.
+        Parquet's ARROW-5030 nested-type fallback).
+
+        When a non-extension caller schema is available we pin it at the
+        scanner so pyarrow null-fills any column the unified schema names
+        but the fragment lacks (V1 parity — ``ParquetDatasource`` passes
+        ``read_schema`` to ``fragment.to_batches``). Falling back to the
+        per-fragment ``physical_schema`` preserves the variable-shape
+        tensor escape hatch already encoded in ``_file_dataset_schema``.
+        """
+        fragment_schema = (
+            self._file_dataset_schema
+            if self._file_dataset_schema is not None
+            else fragment.physical_schema
+        )
+        scanner = fragment.scanner(**scanner_kwargs, schema=fragment_schema)
+        for tagged in scanner.scan_batches():
+            yield pa.Table.from_batches(batches=[tagged.record_batch])

@@ -1,4 +1,5 @@
 import sys
+from contextlib import asynccontextmanager
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,6 +21,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+from ray.serve._private.common import DeploymentID
+from ray.serve.exceptions import DeploymentUnavailableError
 
 
 class _DirectRouterReplicaId:
@@ -41,19 +44,42 @@ class _FakeRequest:
 
 
 class _DirectRouterReplica:
-    def __init__(self, unique_id: str, full_id: Optional[str] = None, port: int = 8000):
+    """RunningReplica stand-in for ``LLMRouter._pick_replica`` tests."""
+
+    def __init__(
+        self,
+        unique_id: str,
+        full_id: Optional[str] = None,
+        endpoint: Optional[tuple] = ("127.0.0.1", 8000),
+    ):
         self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
-        self.backend_http_endpoint = ("127.0.0.1", port)
+        self.backend_http_endpoint = endpoint
 
 
-def _new_direct_router(request_router=None):
+def _new_direct_router(handle=None):
     router = LLMRouter.__new__(LLMRouter)
-    router._round_robin_counter = 0
-    router._cached_dict_id = None
-    router._cached_replica_signature = None
-    router._cached_endpoints = []
-    router._request_router = request_router or MagicMock(curr_replicas={})
+    router._handle = handle or MagicMock()
     return router
+
+
+def _selection_for(replica):
+    """Build a ``ReplicaSelection``-shaped mock that ``_pick_replica`` reads."""
+    return MagicMock(replica_id=replica.replica_id.unique_id, _replica=replica)
+
+
+def _choose_replica_returning(*replicas):
+    """Patch ``handle.choose_replica`` to yield the given replicas in order.
+
+    Each call to ``choose_replica`` consumes one replica from the sequence and
+    yields its ``_DirectRouterReplica`` wrapped as a selection.
+    """
+    selections = iter(_selection_for(r) for r in replicas)
+
+    @asynccontextmanager
+    async def fake_choose_replica(*args, **kwargs):
+        yield next(selections)
+
+    return fake_choose_replica
 
 
 @pytest.fixture(name="llm_config")
@@ -102,7 +128,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_route_forwards_body_and_truncation_signal(self):
         router = _new_direct_router()
-        router._pick_replica = MagicMock(
+        router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
 
@@ -123,48 +149,75 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_route_returns_503_on_pick_failure(self):
         router = _new_direct_router()
-        router._pick_replica = MagicMock(side_effect=RuntimeError("no replicas"))
+        router._pick_replica = AsyncMock(side_effect=RuntimeError("no replicas"))
 
         with pytest.raises(HTTPException) as exc_info:
             await router.route(_FakeRequest(b"{}"))
         assert exc_info.value.status_code == 503
         assert "no replicas" in exc_info.value.detail
 
-    def test_ready_endpoints_sorts_and_caches_by_replica_id(self):
-        replica_a = _DirectRouterReplica("a", port=8001)
-        replica_b = _DirectRouterReplica("b", port=8002)
-        replica_c = _DirectRouterReplica("c", port=8003)
+    @pytest.mark.asyncio
+    async def test_route_returns_503_on_deployment_unavailable(self):
+        err = DeploymentUnavailableError(DeploymentID(name="LLMServer:test"))
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(side_effect=err)
 
-        request_router = MagicMock()
-        request_router.curr_replicas = {
-            "c": replica_c,
-            "a": replica_a,
-            "b": replica_b,
-        }
-        router = _new_direct_router(request_router)
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 503
+        assert "LLMServer:test" in exc_info.value.detail
 
-        first = router._ready_endpoints()
-        assert first == [
-            ("127.0.0.1", 8001, "a"),
-            ("127.0.0.1", 8002, "b"),
-            ("127.0.0.1", 8003, "c"),
-        ]
+    @pytest.mark.asyncio
+    async def test_pick_replica_returns_backend_endpoint_from_handle(self):
+        """``_pick_replica`` reads the endpoint off the selection's replica."""
+        replica = _DirectRouterReplica(
+            "r1",
+            full_id="DeploymentName#r1",
+            endpoint=("10.0.0.1", 8123),
+        )
+        handle = MagicMock()
+        handle.choose_replica = _choose_replica_returning(replica)
+        router = _new_direct_router(handle)
 
-        # Same dict identity: cached tuple list returned (identity check).
-        assert router._ready_endpoints() is first
+        host, port, replica_id = await router._pick_replica()
 
-        # New dict, same keyset: signature-cache hits, tuples reused.
-        request_router.curr_replicas = dict(request_router.curr_replicas)
-        assert router._ready_endpoints() is first
+        assert (host, port, replica_id) == ("10.0.0.1", 8123, "DeploymentName#r1")
 
-        # Membership change: cache invalidates and re-sorts.
-        request_router.curr_replicas = {"a": replica_a, "b": replica_b}
-        second = router._ready_endpoints()
-        assert second is not first
-        assert second == [
-            ("127.0.0.1", 8001, "a"),
-            ("127.0.0.1", 8002, "b"),
-        ]
+    @pytest.mark.asyncio
+    async def test_pick_replica_forwards_body_to_choose_replica(self):
+        """``request_body`` / ``body_truncated`` reach the underlying router.
+
+        Future body-aware request routers read these off the PendingRequest.
+        """
+        replica = _DirectRouterReplica("r1", full_id="d#r1")
+
+        captured_kwargs = {}
+
+        @asynccontextmanager
+        async def fake_choose_replica(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            yield _selection_for(replica)
+
+        handle = MagicMock()
+        handle.choose_replica = fake_choose_replica
+        router = _new_direct_router(handle)
+
+        body = b'{"messages": [{"role": "user", "content": "hi"}]}'
+        await router._pick_replica(request_body=body, body_truncated=True)
+
+        assert captured_kwargs == {"request_body": body, "body_truncated": True}
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_raises_when_endpoint_missing(self):
+        """If the picked replica has no backend HTTP endpoint, surface a 503
+        via ``RuntimeError`` (same error contract as before)."""
+        replica = _DirectRouterReplica("r1", endpoint=None)
+        handle = MagicMock()
+        handle.choose_replica = _choose_replica_returning(replica)
+        router = _new_direct_router(handle)
+
+        with pytest.raises(RuntimeError, match="no backend HTTP endpoint"):
+            await router._pick_replica()
 
 
 class TestOpenAiIngress:

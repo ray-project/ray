@@ -40,6 +40,7 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
     ProxyLocation,
@@ -1012,6 +1013,15 @@ class ServeDeploySchema(BaseModel):
     )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    controller_options: Optional[ControllerOptions] = Field(
+        default=None,
+        description=(
+            "[EXPERIMENTAL] Options for the Serve controller actor. Currently "
+            "scoped to ``runtime_env.env_vars`` (other ``runtime_env`` keys are "
+            "rejected by the validator). Only applied on first controller "
+            "creation -- ignored if a Serve controller is already running."
+        ),
     )
     logging_config: Optional[LoggingConfig] = Field(
         default=None,
