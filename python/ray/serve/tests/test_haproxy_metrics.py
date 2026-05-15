@@ -446,7 +446,7 @@ def _render_with_metrics(enabled: bool) -> str:
         cfg = HAProxyConfig(
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
-            metrics_enabled=enabled,
+            ingress_request_router_metrics_enabled=enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -504,7 +504,7 @@ def _render_lua_with_metrics(enabled: bool) -> str:
         cfg = HAProxyConfig(
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
-            metrics_enabled=enabled,
+            ingress_request_router_metrics_enabled=enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,

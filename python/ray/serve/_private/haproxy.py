@@ -545,7 +545,9 @@ class HAProxyConfig:
     #  1) no metric log target / log-format-sd is rendered,
     #  2) the Lua template skips the timing+truncation set_vars, and
     #  3) HAProxyManager does not bind the dgram socket.
-    metrics_enabled: bool = RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
+    ingress_request_router_metrics_enabled: bool = (
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
+    )
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
@@ -816,7 +818,7 @@ class HAProxyApi(ProxyApi):
         # When metrics are enabled, render the two timing hooks and the
         # truncation set_var; when disabled, all three substitute to empty
         # strings to avoid any additional overhead.
-        if self.cfg.metrics_enabled:
+        if self.cfg.ingress_request_router_metrics_enabled:
             metrics_pre = "local _metrics_t0 = core.now()"
             metrics_post = (
                 "local _metrics_t1 = core.now(); "
@@ -910,7 +912,7 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_forward_body": (
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
-                    "metrics_enabled": self.cfg.metrics_enabled,
+                    "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                 }
             )
@@ -1244,7 +1246,7 @@ class HAProxyManager(ProxyActorInterface):
         # only hold a reference so we can close it on shutdown.
         self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
         self._metrics_attach_task: Optional[asyncio.Task] = None
-        if self._haproxy.cfg.metrics_enabled:
+        if self._haproxy.cfg.ingress_request_router_metrics_enabled:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 
             os.makedirs(
