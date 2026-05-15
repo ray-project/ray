@@ -119,6 +119,22 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
+        """Hook fired from the consumer's thread when iteration ends.
+
+        Called from the ``finally`` in ``_iter_batches`` on normal
+        exhaustion, early ``break``, or an exception. The default shuts
+        ``executor`` down (idempotent) so the local iterator path stops
+        producing blocks into the object store eagerly rather than waiting
+        for ``_ClosingIterator.__del__``. ``StreamSplitDataIterator``
+        overrides this to instead signal the ``SplitCoordinator`` actor
+        on the consumer thread, since its inner block-fetching generator
+        runs in a separate prefetch thread whose cleanup is GC-bound and
+        therefore not deterministic.
+        """
+        if executor is not None:
+            executor.shutdown(force=True)
+
     @PublicAPI
     def iter_batches(
         self,
@@ -138,6 +154,30 @@ class DataIterator(abc.ABC):
             ...     1000000
             ... ).iterator().iter_batches(): # doctest: +SKIP
             ...     print(batch) # doctest: +SKIP
+
+        .. note::
+
+            When you ``break`` out of the for-loop above, Ray Data shuts the
+            streaming executor down so it stops producing blocks into the
+            object store. This relies on Python firing ``GeneratorExit`` into
+            the implicit iterator created by the for-loop.
+
+            If you instead hold a reference to the iterator yourself, the
+            cleanup is deferred until that reference is dropped::
+
+                it = iter(ds.iter_batches())
+                for i, batch in enumerate(it):
+                    if i == 0:
+                        break
+                # The executor keeps producing blocks until ``it`` goes
+                # out of scope. Call ``it.close()`` to release resources
+                # eagerly, or stick with ``for batch in ds.iter_batches()``.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
 
         Time complexity: O(1)
 
@@ -252,10 +292,18 @@ class DataIterator(abc.ABC):
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            yield from batch_iterator
-
-            if stats:
-                stats.iter_total_s.add(time.perf_counter() - time_start)
+            try:
+                yield from batch_iterator
+                if stats:
+                    stats.iter_total_s.add(time.perf_counter() - time_start)
+            finally:
+                # On early exit (e.g. ``break`` in the for-loop), the inner
+                # ``_ClosingIterator`` would only shut down the executor via
+                # its ``__del__``, which is non-deterministic. The hook
+                # shuts it down eagerly (or, for ``StreamSplitDataIterator``,
+                # signals the remote ``SplitCoordinator``) so resources are
+                # released the moment the consumer stops pulling.
+                self._on_iteration_end(executor)
 
         return _IterableFromIterator(_create_iterator)
 
