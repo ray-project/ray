@@ -20,12 +20,12 @@ class RolloutSupervisor:
 
     def __init__(self, application_state_manager: ApplicationStateManager):
         self._application_state_manager = application_state_manager
-        self._current_config: ConfigSnapshot = None
+        self._current_config: Optional[ConfigSnapshot] = None
         self._last_good_config: Optional[ConfigSnapshot] = None
         self._state: RolloutState = RolloutState.IDLE
 
     @property
-    def current_config(self) -> ConfigSnapshot:
+    def current_config(self) -> Optional[ConfigSnapshot]:
         return self._current_config
 
     @property
@@ -54,8 +54,6 @@ class RolloutSupervisor:
         atleast_one_deploying = False
         atleast_one_unhealthy = False
         for app_name in self._current_config.config_dict:
-            if app_name not in app_statuses:
-                return ApplicationStatus.DEPLOYING
             status = app_statuses[app_name].status
             if status == ApplicationStatus.DEPLOY_FAILED:
                 return ApplicationStatus.DEPLOY_FAILED

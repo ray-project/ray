@@ -86,7 +86,7 @@ def initialise(apps: Optional[List] = None, auto_rollback=True):
     return asm, rs, new_config
 
 
-def test_paritally_deploying_then_running():
+def test_partially_deploying_then_running():
     """Test WATCHING -> WATCHING (partial progress) -> IDLE (all RUNNING).
 
     Verifies that the supervisor stays in WATCHING while only some apps are
@@ -129,6 +129,24 @@ def test_unhealthy_then_running():
     asm.set_app_status("app2", ApplicationStatus.RUNNING)
     assert not rs.update()
     check_supervisor_state(rs, config, config, RolloutState.IDLE)
+
+
+def test_deploy_failed_takes_priority_over_missing_app(deployed_all_running):
+    """Test that DEPLOY_FAILED is detected even when another app is missing
+    from the status manager.
+
+    A missing app should not mask a failure on a different app.
+    """
+    apps = ["app1", "app2"]
+    asm, rs, config = deployed_all_running(apps)
+
+    new_config = make_config(["app3", "app4"], auto_rollback=True)
+    rs.on_new_config(new_config)
+    # Only set app3 to DEPLOY_FAILED; app4 is never registered in the
+    # status manager, simulating an app that hasn't appeared yet.
+    asm.set_app_status("app3", ApplicationStatus.DEPLOY_FAILED)
+    assert rs.update()
+    check_supervisor_state(rs, config, config, RolloutState.ROLLING_BACK)
 
 
 def test_no_rollback_without_last_good():
