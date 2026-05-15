@@ -517,16 +517,28 @@ class DeploymentSchema(BaseModel):
             # Validate autoscaling bounds are multiples of gang_size
             autoscaling_config = values.get("autoscaling_config", None)
             if autoscaling_config not in [None, DEFAULT.VALUE]:
+                # Since this is a "before" validator, autoscaling_config may be
+                # either a dict (from raw input) or an AutoscalingConfig instance
+                # (if already constructed). Normalize to a dict of only the
+                # user-set fields so that gang-size multiple validation is not
+                # triggered for default values the user never explicitly set.
+                # This matches how AutoscalingConfig is handled elsewhere in the
+                # codebase (see ray/serve/_private/config.py).
+                if isinstance(autoscaling_config, AutoscalingConfig):
+                    autoscaling_config = autoscaling_config.model_dump(
+                        exclude_unset=True
+                    )
+
                 min_replicas = autoscaling_config.get("min_replicas")
                 if min_replicas is not None and min_replicas == 0:
                     raise ValueError(
                         "Scale to zero isn't supported for gang scheduling."
                     )
-                for field in ["min_replicas", "max_replicas", "initial_replicas"]:
-                    val = autoscaling_config.get(field)
+                for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    val = autoscaling_config.get(field_name)
                     if val is not None and val % gang_config.gang_size != 0:
                         raise ValueError(
-                            f"autoscaling_config.{field} ({val}) must be a "
+                            f"autoscaling_config.{field_name} ({val}) must be a "
                             f"multiple of gang_size ({gang_config.gang_size})."
                         )
             return values
@@ -632,9 +644,9 @@ class DeploymentSchema(BaseModel):
         """
 
         return {
-            field
-            for field in self.model_fields_set
-            if getattr(self, field) is not DEFAULT.VALUE
+            field_name
+            for field_name in self.model_fields_set
+            if getattr(self, field_name) is not DEFAULT.VALUE
         }
 
     def is_autoscaling_configured(self) -> bool:
