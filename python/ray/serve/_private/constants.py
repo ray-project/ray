@@ -386,7 +386,12 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
 # Serve HTTP request header key for session-stickiness routing.
-SERVE_SESSION_ID = "x_session_id"
+# Stored as the operator wrote it (no ``-``/``_`` mangling); set via
+# ``RAY_SERVE_SESSION_ID_HEADER_KEY`` (default ``x-session-id``). Compare
+# against incoming header names with ``_matches_session_id_header`` from
+# ``http_util`` -- that helper tolerates intermediate proxies that swap
+# ``-`` and ``_`` (nginx, AWS API Gateway, ...).
+SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id")
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
