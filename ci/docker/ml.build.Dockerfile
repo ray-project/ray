@@ -50,8 +50,7 @@ if [[ "${INSTALL_TORCHFT_NIGHTLY-false}" == "true" ]]; then
   uv pip install --system \
     --prerelease=allow \
     --no-deps \
-    --index-url https://download.pytorch.org/whl/nightly/cpu \
-    torchft
+    torchft-nightly
 fi
 
 # Inject our own mirror for the CIFAR10 dataset
