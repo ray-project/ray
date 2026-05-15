@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import ray
-from ray.data._internal.progress.utils import truncate_operator_name
+from ray.data._internal.progress.utils import (
+    DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH,
+    truncate_operator_name,
+)
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -112,7 +115,7 @@ class BaseExecutionProgressManager(ABC):
 
     # If the name/description of the progress bar exceeds this length,
     # it will be truncated.
-    MAX_NAME_LENGTH = 100
+    MAX_NAME_LENGTH = DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH
 
     # Total progress refresh rate (update interval in scheduling step)
     # refer to `streaming_executor.py::StreamingExecutor::_scheduling_loop_step`

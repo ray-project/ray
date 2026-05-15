@@ -2,6 +2,8 @@ import typing
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
 
+from ray.data._internal.progress.utils import DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH
+
 if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import (
         ProgressMetrics,
@@ -29,7 +31,6 @@ class SubProgressMixin(ABC):
         cls, names: List[str]
     ) -> Tuple[Dict[str, "ProgressMetrics"], Dict[str, "SubProgressUpdater"]]:
         from ray.data._internal.progress.base_progress import (
-            BaseExecutionProgressManager,
             ProgressMetrics,
             SubProgressUpdater,
         )
@@ -41,7 +42,7 @@ class SubProgressMixin(ABC):
             name: SubProgressUpdater(
                 metrics,
                 name=name,
-                max_name_length=BaseExecutionProgressManager.MAX_NAME_LENGTH,
+                max_name_length=DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH,
             )
             for name in names
         }
