@@ -13,7 +13,6 @@ import os
 import socket as stdlib_socket
 import tempfile
 from typing import Optional
-from unittest import mock
 
 import pytest
 
@@ -23,19 +22,16 @@ from ray.serve._private.haproxy_metrics import (
     _DatagramHandler,
 )
 
-
 # Sample syslog line shaped the way HAProxy emits when rendered through
 # the rfc5424 log target. The PRI / timestamp / app-name fields are
 # intentionally noisy because the parser must locate the SD section by
 # anchor, not by position.
-_SAMPLE_PREFIX = (
-    "<134>1 2026-05-15T12:34:56.789Z host haproxy 12345 - "
-)
+_SAMPLE_PREFIX = "<134>1 2026-05-15T12:34:56.789Z host haproxy 12345 - "
 
 
 def _line(sd_body: str) -> bytes:
     """Build a fake RFC 5424 datagram with the given SD body."""
-    return f'{_SAMPLE_PREFIX}[serve@1 {sd_body}] - normal log message'.encode()
+    return f"{_SAMPLE_PREFIX}[serve@1 {sd_body}] - normal log message".encode()
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +131,7 @@ def test_parse_line_extracts_expected_fields(
         pytest.param(b"", "empty"),
         pytest.param(b"not a syslog line", "no-sd-section"),
         pytest.param(
-            f"{_SAMPLE_PREFIX}[other@1 foo=\"bar\"] msg".encode(),
+            f'{_SAMPLE_PREFIX}[other@1 foo="bar"] msg'.encode(),
             "different-sd-id",
             id="wrong-sd-id",
         ),
@@ -376,9 +372,7 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
         assert os.path.exists(sock_path)
 
         # Send one valid syslog line from a fresh client socket.
-        client = stdlib_socket.socket(
-            stdlib_socket.AF_UNIX, stdlib_socket.SOCK_DGRAM
-        )
+        client = stdlib_socket.socket(stdlib_socket.AF_UNIX, stdlib_socket.SOCK_DGRAM)
         try:
             line = _line(
                 'app="llm" intended="r" actual="r" router_latency_us="500" '
@@ -422,9 +416,7 @@ async def test_bind_replaces_existing_socket_file(tmp_path) -> None:
 
     collector = HAProxyMetricsCollector()
     try:
-        await collector.bind_and_attach(
-            str(sock_path), loop=asyncio.get_event_loop()
-        )
+        await collector.bind_and_attach(str(sock_path), loop=asyncio.get_event_loop())
         assert sock_path.exists()
     finally:
         collector.close()
@@ -441,7 +433,6 @@ def _render_with_metrics(enabled: bool) -> str:
     Imports inside the function so the module-level test discovery doesn't
     drag in HAProxy template rendering for tests that don't need it.
     """
-    import tempfile
 
     from ray.serve._private.haproxy import (
         BackendConfig,
@@ -500,7 +491,6 @@ def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
 
 def _render_lua_with_metrics(enabled: bool) -> str:
     """Render the ingress-request-router Lua and return its text."""
-    import tempfile
 
     from ray.serve._private.haproxy import (
         BackendConfig,

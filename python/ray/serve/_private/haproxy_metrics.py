@@ -25,9 +25,7 @@ _SD_ID = "serve@1"
 # RFC 5424 SD element looks like `[serve@1 key="value" key="value"]`.
 # We extract the inside of the brackets after the SD-ID, then walk the
 # `key="value"` pairs.
-_SD_SECTION_RE = re.compile(
-    r"\[" + re.escape(_SD_ID) + r"(?P<body>[^\]]*)\]"
-)
+_SD_SECTION_RE = re.compile(r"\[" + re.escape(_SD_ID) + r"(?P<body>[^\]]*)\]")
 
 # Quoted values may contain spaces; backslash escapes are allowed per RFC 5424.
 # Capture the key="value" pairs.
