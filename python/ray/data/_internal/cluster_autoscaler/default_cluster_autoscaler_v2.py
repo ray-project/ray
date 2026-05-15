@@ -166,6 +166,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             _get_node_resource_spec_and_count
         ),
         get_time: Callable[[], float] = time.time,
+        label_selector: Optional[Dict[str, str]] = None,
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
@@ -180,6 +181,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             )
 
         self._resource_limits = resource_limits
+        self._label_selector = label_selector
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -319,11 +321,18 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 # keeping explicit autoscaler demand alive.
                 resource_request = []
 
-        # Make autoscaler resource request.
+        # Make autoscaler resource request. When this autoscaler has a
+        # dataset-level ``label_selector``, tag every bundle with it so the
+        # autoscaler scales the right subcluster and the coordinator buckets
+        # the request correctly.
+        label_selectors: Optional[List[Dict[str, str]]] = None
+        if self._label_selector and resource_request:
+            label_selectors = [dict(self._label_selector) for _ in resource_request]
         self._autoscaling_coordinator.request_resources(
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
             request_remaining=True,
+            label_selectors=label_selectors,
         )
         if resource_request and update_non_empty_request_state:
             self._last_non_empty_resource_request = [

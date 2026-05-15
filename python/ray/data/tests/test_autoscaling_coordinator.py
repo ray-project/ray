@@ -568,6 +568,283 @@ def test_label_selector_change_triggers_resend():
     mock_send.assert_called_with([{"CPU": 1}], label_selectors=[{"zone": "b"}])
 
 
+LABELED_CLUSTER_NODES = [
+    {
+        "NodeID": "n-train-1",
+        "Resources": {"CPU": 8, "object_store_memory": 1000},
+        "Labels": {"subcluster": "training"},
+        "Alive": True,
+    },
+    {
+        "NodeID": "n-train-2",
+        "Resources": {"CPU": 8, "object_store_memory": 1000},
+        "Labels": {"subcluster": "training"},
+        "Alive": True,
+    },
+    {
+        "NodeID": "n-val-1",
+        "Resources": {"CPU": 4, "object_store_memory": 500},
+        "Labels": {"subcluster": "validation"},
+        "Alive": True,
+    },
+    {
+        "NodeID": "n-default-1",
+        "Resources": {"CPU": 2, "object_store_memory": 200},
+        "Labels": {},
+        "Alive": True,
+    },
+]
+
+
+def _make_coordinator(nodes, subcluster_label_key="subcluster"):
+    return _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: nodes,
+        subcluster_label_key=subcluster_label_key,
+    )
+
+
+def test_label_selector_disjoint_requesters_dont_cross_talk():
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
+    coord.request_resources(
+        requester_id="train",
+        resources=[{"CPU": 4}],
+        label_selectors=[{"subcluster": "training"}],
+        expire_after_s=10,
+        request_remaining=True,
+    )
+    coord.request_resources(
+        requester_id="val",
+        resources=[{"CPU": 4}],
+        label_selectors=[{"subcluster": "validation"}],
+        expire_after_s=10,
+        request_remaining=True,
+    )
+
+    train = coord.get_allocated_resources("train")
+    val = coord.get_allocated_resources("val")
+    assert {"CPU": 4} in train and {"CPU": 4} in val
+    # Training bucket: 2 x 8 - 4 explicit = 12 leftover, all to train.
+    assert sum(a["CPU"] for a in train if a != {"CPU": 4}) == 12
+    # Validation bucket: 4 - 4 explicit = 0 leftover.
+    assert sum(a["CPU"] for a in val if a != {"CPU": 4}) == 0
+
+
+def test_unlabeled_requester_cannot_use_labeled_nodes():
+    """An unlabeled requester's bundles fall in the ``None`` bucket and
+    must not consume capacity in any named subcluster."""
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
+    coord.request_resources(
+        requester_id="anon",
+        resources=[{"CPU": 1}],
+        # No label_selectors -> bucket = None -> only the default-labeled node.
+        expire_after_s=10,
+        request_remaining=True,
+    )
+
+    alloc = coord.get_allocated_resources("anon")
+    total_cpu = sum(a["CPU"] for a in alloc)
+    # Only the default-bucket node (2 CPU) is reachable.
+    assert total_cpu == 2
+
+
+def test_labeled_and_unlabeled_requesters_are_isolated():
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
+    coord.request_resources(
+        requester_id="train",
+        resources=[{"CPU": 1}],
+        label_selectors=[{"subcluster": "training"}],
+        expire_after_s=10,
+        request_remaining=True,
+    )
+    coord.request_resources(
+        requester_id="anon",
+        resources=[{"CPU": 1}],
+        expire_after_s=10,
+        request_remaining=True,
+    )
+
+    train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
+    anon_total = sum(a["CPU"] for a in coord.get_allocated_resources("anon"))
+    # Training bucket: 2 x 8 = 16 CPU; anon gets none of it.
+    assert train_total == 16
+    # Default bucket: 1 x 2 = 2 CPU; train gets none of it.
+    assert anon_total == 2
+
+
+def test_label_selector_unmatched_yields_no_allocation():
+    """A bundle whose bucket has no matching nodes gets no allocation this
+    tick; the hint is still forwarded so the autoscaler can react."""
+    mock_send = Mock()
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=mock_send,
+        get_cluster_nodes=lambda: LABELED_CLUSTER_NODES,
+    )
+    coord.request_resources(
+        requester_id="ghost",
+        resources=[{"CPU": 1}],
+        label_selectors=[{"subcluster": "nonexistent"}],
+        expire_after_s=10,
+        request_remaining=True,
+    )
+    assert coord.get_allocated_resources("ghost") == []
+    mock_send.assert_called_with(
+        [{"CPU": 1}], label_selectors=[{"subcluster": "nonexistent"}]
+    )
+
+
+def test_label_selector_partial_fit_when_demand_exceeds_capacity():
+    """When demand exceeds capacity in the matching bucket, only the
+    bundles that fit get allocated this tick."""
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
+    coord.request_resources(
+        requester_id="val",
+        resources=[{"CPU": 3}, {"CPU": 3}, {"CPU": 3}],
+        label_selectors=[{"subcluster": "validation"}] * 3,
+        expire_after_s=10,
+    )
+    # Validation has one 4-CPU node; only the first 3-CPU bundle fits.
+    assert coord.get_allocated_resources("val") == [{"CPU": 3}]
+
+
+def test_configurable_subcluster_label_key():
+    """Bucketing keys on the configured label, not on a hardcoded one."""
+    nodes = [
+        {
+            "NodeID": "n1",
+            "Resources": {"CPU": 4},
+            "Labels": {"tier": "spot"},
+            "Alive": True,
+        },
+        {
+            "NodeID": "n2",
+            "Resources": {"CPU": 4},
+            "Labels": {"tier": "on-demand"},
+            "Alive": True,
+        },
+    ]
+    coord = _make_coordinator(nodes, subcluster_label_key="tier")
+    coord.request_resources(
+        requester_id="r",
+        resources=[{"CPU": 4}],
+        label_selectors=[{"tier": "spot"}],
+        expire_after_s=10,
+    )
+    # Only the spot node matches the "tier=spot" bucket.
+    assert coord.get_allocated_resources("r") == [{"CPU": 4}]
+
+
+def test_full_tick_exercises_update_merge_reallocate():
+    """A `_tick()` call runs update -> merge_and_forward -> reallocate, so
+    a mid-stream node-list change is picked up after the next tick."""
+    nodes = [
+        {
+            "NodeID": "n1",
+            "Resources": {"CPU": 4},
+            "Labels": {"subcluster": "training"},
+            "Alive": True,
+        },
+    ]
+    mock_send = Mock()
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=mock_send,
+        get_cluster_nodes=lambda: nodes,
+    )
+    coord.request_resources(
+        requester_id="train",
+        resources=[{"CPU": 1}],
+        label_selectors=[{"subcluster": "training"}],
+        expire_after_s=10,
+        request_remaining=True,
+    )
+    # Before the join: only 4 CPU in the training bucket; 1 used explicitly,
+    # 3 leftover go to train.
+    train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
+    assert train_total == 4
+
+    # A new training node joins the cluster.
+    nodes.append(
+        {
+            "NodeID": "n2",
+            "Resources": {"CPU": 8},
+            "Labels": {"subcluster": "training"},
+            "Alive": True,
+        }
+    )
+    # Without a tick, the coordinator still sees the old snapshot.
+    coord._tick()
+    train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
+    # Now: 4 + 8 = 12 total; 1 explicit + 11 leftover.
+    assert train_total == 12
+
+
+def test_v2_autoscaler_forwards_label_selector_per_bundle():
+    """``DefaultClusterAutoscalerV2`` tags every bundle with the
+    DataContext's label_selector when calling the coordinator."""
+    from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
+        DefaultClusterAutoscalerV2,
+    )
+
+    mock_coord = Mock()
+    autoscaler = DefaultClusterAutoscalerV2(
+        resource_manager=Mock(),
+        execution_id="exec-1",
+        autoscaling_coordinator=mock_coord,
+        label_selector={"subcluster": "training"},
+    )
+    autoscaler._send_resource_request([{"CPU": 1}, {"CPU": 2}])
+    call_kwargs = mock_coord.request_resources.call_args.kwargs
+    assert call_kwargs["label_selectors"] == [
+        {"subcluster": "training"},
+        {"subcluster": "training"},
+    ]
+
+
+def test_v2_autoscaler_omits_label_selector_when_unset():
+    """No label_selector -> no per-bundle list (backwards compatible)."""
+    from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
+        DefaultClusterAutoscalerV2,
+    )
+
+    mock_coord = Mock()
+    autoscaler = DefaultClusterAutoscalerV2(
+        resource_manager=Mock(),
+        execution_id="exec-1",
+        autoscaling_coordinator=mock_coord,
+    )
+    autoscaler._send_resource_request([{"CPU": 1}])
+    assert mock_coord.request_resources.call_args.kwargs["label_selectors"] is None
+
+
+def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
+    """The factory reads execution_options.label_selector and passes it on."""
+    from ray.data._internal import cluster_autoscaler as ca_pkg
+    from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+
+    captured = {}
+
+    class _StubV2:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(ca_pkg, "DefaultClusterAutoscalerV2", _StubV2)
+
+    data_context = Mock()
+    data_context.execution_options.resource_limits = Mock()
+    data_context.execution_options.label_selector = {"subcluster": "training"}
+
+    create_cluster_autoscaler(
+        topology=Mock(),
+        resource_manager=Mock(),
+        data_context=data_context,
+        execution_id="exec-1",
+    )
+    assert captured["label_selector"] == {"subcluster": "training"}
+
+
 if __name__ == "__main__":
     import sys
 

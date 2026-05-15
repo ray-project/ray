@@ -319,6 +319,15 @@ class ExecutionOptions:
             ``{"subcluster": "training"}``). Operator-level ``label_selector``
             entries in ``ray_remote_args`` take precedence on key conflicts so
             existing node-pin selectors are preserved.
+        subcluster_label_key: Label key the cluster autoscaler uses to bucket
+            nodes into subclusters when allocating Ray Data resources. The
+            coordinator groups nodes by ``node.Labels[subcluster_label_key]``
+            and only allocates a bundle against nodes whose bucket value
+            matches the bundle's ``label_selector[subcluster_label_key]``. Set
+            to a non-default key when your cluster uses a different label
+            (e.g. ``"tier"`` or ``"node_group"``) to partition Ray Data work.
+            All Datasets sharing a Ray cluster should agree on this key.
+            Defaults to ``"subcluster"``.
     """
 
     def __init__(
@@ -329,6 +338,7 @@ class ExecutionOptions:
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
         label_selector: Optional[Dict[str, str]] = None,
+        subcluster_label_key: str = "subcluster",
     ):
         """Initialize execution options.
 
@@ -343,6 +353,8 @@ class ExecutionOptions:
                 read from ``RAY_DATA_VERBOSE_PROGRESS``.
             label_selector: Per-Dataset label selector applied to every task and
                 actor launched by Ray Data. ``None`` means no selector is added.
+            subcluster_label_key: Label key used by the cluster autoscaler to
+                bucket nodes. Defaults to ``"subcluster"``.
         """
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
@@ -358,6 +370,7 @@ class ExecutionOptions:
             )
         self.verbose_progress = verbose_progress
         self.label_selector = label_selector
+        self.subcluster_label_key = subcluster_label_key
 
     def __repr__(self) -> str:
         return (
@@ -366,7 +379,8 @@ class ExecutionOptions:
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
             f"verbose_progress={self.verbose_progress}, "
-            f"label_selector={self.label_selector})"
+            f"label_selector={self.label_selector}, "
+            f"subcluster_label_key={self.subcluster_label_key})"
         )
 
     @property
