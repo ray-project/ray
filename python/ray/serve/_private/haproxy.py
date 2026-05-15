@@ -711,13 +711,9 @@ class HAProxyApi(ProxyApi):
 
         logger.debug(f"Starting HAProxy with args: {args}")
 
-        # Redirect HAProxy stderr to a file via dup2 at fork instead of
-        # piping it back to this process. Without a pipe, the 64KB kernel
-        # buffer that previously deadlocked admin-socket threads doesn't
-        # exist. We open the file with a temporary name (we don't know the
-        # child pid yet) and rename it to include the pid after spawn.
-        # Linux fds bind to inodes, not paths, so the rename doesn't
-        # disturb the child's writes.
+        # Redirect stderr to a file (no pipe → no 64KB buffer to deadlock
+        # on). Open with a temp name pre-spawn, rename to the pid path
+        # after; safe because fds bind to inodes, not paths.
         tmp_stderr_path = f"{self.cfg.socket_path}.stderr.starting.log"
         with open(tmp_stderr_path, "ab", buffering=0) as stderr_file:
             proc = await asyncio.create_subprocess_exec(
