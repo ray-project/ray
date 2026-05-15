@@ -34,7 +34,7 @@ from ray_release.buildkite.step import (
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.test import _BUILD_ID_PLACEHOLDER, Test
+from ray_release.test import BUILD_ID_PLACEHOLDER, Test
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
@@ -885,19 +885,54 @@ class TestImageShape:
         base.update(overrides)
         return MockTest(base)
 
-    def test_shape_cpu_base_byod(self):
-        t = self._make_test()
+    @pytest.mark.parametrize(
+        "overrides, expected_suffix, expect_placeholder, expect_ray_ml, full_uri",
+        [
+            # CPU base BYOD: byod={}, expect placeholder + py310-cpu.
+            ({}, "py310-cpu", True, False, None),
+            # GPU base BYOD: maps to ray-ml repo. Custom-BYOD path preserves
+            # raw `gpu` suffix (cu121 remap only applies in released-image path).
+            (
+                {"cluster": {"byod": {"type": "gpu"}, "cluster_compute": "c.yaml"}},
+                "py310-gpu",
+                True,
+                True,
+                None,
+            ),
+            # Released image: ray_version set, no custom byod required.
+            (
+                {
+                    "cluster": {
+                        "byod": {},
+                        "cluster_compute": "c.yaml",
+                        "ray_version": "2.55.1",
+                    }
+                },
+                None,
+                False,
+                False,
+                "anyscale/ray:2.55.1-py310-cpu",
+            ),
+        ],
+    )
+    def test_shape(
+        self,
+        overrides,
+        expected_suffix,
+        expect_placeholder,
+        expect_ray_ml,
+        full_uri,
+    ):
+        t = self._make_test(**overrides)
         shape = t.get_anyscale_byod_image_shape()
-        assert shape.endswith(f":{_BUILD_ID_PLACEHOLDER}-py310-cpu")
-        assert _BUILD_ID_PLACEHOLDER in shape
-
-    def test_shape_cuda_base_byod(self):
-        t = self._make_test(
-            cluster={"byod": {"type": "gpu"}, "cluster_compute": "c.yaml"}
-        )
-        shape = t.get_anyscale_byod_image_shape()
-        assert "ray-ml" in shape
-        assert shape.endswith(f":{_BUILD_ID_PLACEHOLDER}-py310-gpu")
+        if expect_placeholder:
+            assert BUILD_ID_PLACEHOLDER in shape
+            assert shape.endswith(f":{BUILD_ID_PLACEHOLDER}-{expected_suffix}")
+            if expect_ray_ml:
+                assert "ray-ml" in shape
+        else:
+            assert BUILD_ID_PLACEHOLDER not in shape
+            assert shape == full_uri
 
     def test_shape_custom_byod_includes_hash(self):
         t = self._make_test(
@@ -909,23 +944,19 @@ class TestImageShape:
         shape = t.get_anyscale_byod_image_shape()
         tag = shape.rsplit(":", 1)[1]
         parts = tag.split("-")
-        assert parts[0] == _BUILD_ID_PLACEHOLDER
+        assert parts[0] == BUILD_ID_PLACEHOLDER
         assert parts[1] == "py310"
         assert parts[2] == "gpu"
         assert len(parts[3]) > 0
 
-    def test_shape_released_image(self):
-        t = self._make_test(
-            cluster={
-                "byod": {},
-                "cluster_compute": "c.yaml",
-                "ray_version": "2.55.1",
-            }
-        )
+    def test_shape_ignores_ray_image_tag_env_backdoor(self, monkeypatch):
+        monkeypatch.setenv("RAY_IMAGE_TAG", "leaked-real-tag")
+        t = self._make_test()
         shape = t.get_anyscale_byod_image_shape()
-        # Released images don't have a build_id — placeholder MUST NOT appear.
-        assert _BUILD_ID_PLACEHOLDER not in shape
-        assert shape == "anyscale/ray:2.55.1-py310-cpu"
+        # Shape MUST contain the placeholder even when RAY_IMAGE_TAG is set,
+        # otherwise downstream URI matching breaks.
+        assert BUILD_ID_PLACEHOLDER in shape
+        assert "leaked-real-tag" not in shape
 
 
 if __name__ == "__main__":

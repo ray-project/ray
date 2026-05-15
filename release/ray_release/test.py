@@ -42,7 +42,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
-_BUILD_ID_PLACEHOLDER = "__BUILD_ID__"
+BUILD_ID_PLACEHOLDER = "__BUILD_ID__"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -642,8 +642,20 @@ class Test(dict):
         return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
 
     def get_anyscale_byod_image_shape(self) -> str:
-        """Return BYOD image URI with build_id replaced by a fixed placeholder."""
-        return self.get_anyscale_byod_image(build_id=_BUILD_ID_PLACEHOLDER)
+        """Return the BYOD image URI with `build_id` substituted by
+        `BUILD_ID_PLACEHOLDER`; released-image URIs (which have no `build_id`)
+        are returned unchanged.
+
+        The `RAY_IMAGE_TAG` env-var backdoor in `get_byod_base_image_tag` is
+        bypassed here so shape comparison is always deterministic against a
+        user-supplied URI list.
+        """
+        saved = os.environ.pop("RAY_IMAGE_TAG", None)
+        try:
+            return self.get_anyscale_byod_image(build_id=BUILD_ID_PLACEHOLDER)
+        finally:
+            if saved is not None:
+                os.environ["RAY_IMAGE_TAG"] = saved
 
     def get_test_results(
         self,
