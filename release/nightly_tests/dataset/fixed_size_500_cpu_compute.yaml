@@ -1,0 +1,15 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.2xlarge
+
+# 63 m5.2xlarge worker nodes × 8 vCPUs = 504 vCPUs total, sized to fit
+# 500 actors with one actor per CPU.
+worker_nodes:
+    - instance_type: m5.2xlarge
+      min_nodes: 63
+      max_nodes: 63
+      market_type: ON_DEMAND
