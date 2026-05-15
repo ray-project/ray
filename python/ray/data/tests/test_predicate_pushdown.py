@@ -662,9 +662,9 @@ class TestPassthroughWithSubstitutionBehavior:
         # names (``data1``), not the renamed ones the user wrote.
         optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         residual_filters = get_operators_of_type(optimized_plan, Filter)
-        assert len(residual_filters) == 1, (
-            f"Expected one residual Filter, got plan: " f"{optimized_plan.dag.dag_str}"
-        )
+        assert (
+            len(residual_filters) == 1
+        ), f"Expected one residual Filter, got plan: {optimized_plan.dag.dag_str}"
         residual_expr_str = str(residual_filters[0].predicate_expr)
         assert "data1" in residual_expr_str and "D1" not in residual_expr_str, (
             f"Residual Filter predicate should reference original column 'data1', "
@@ -844,14 +844,17 @@ class TestProjectionWithFilterEdgeCases:
         #      support predicate pushdown (e.g. in-memory); filter at
         #      least pushed below the rename ``Project``.
         if not has_filter and not has_project:
+            # Filter was pushed into Read - this is the optimal case
             pass
         elif not has_filter and has_project:
             pass
         elif has_filter and has_project:
+            # For in-memory datasets, filter should at least push through projection
             assert plan_operator_comes_before(
                 optimized_plan, Filter, Project
             ), "Filter should be pushed before Project after rebinding through rename chain"
         else:
+            # Unexpected state - either filter or project but not both
             raise AssertionError(
                 f"Unexpected optimization state: has_filter={has_filter}, has_project={has_project}"
             )
