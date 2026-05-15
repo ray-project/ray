@@ -73,8 +73,12 @@ class MetricSpec:
             )
 
 
-# CPU + memory only for v1. Additions require code review (see module
-# docstring).
+# CPU + memory + OOM signals for v1. Additions require code review
+# (see module docstring).
+#
+# Counter-typed metrics ship as ``increase`` (events in the window) and
+# ``rate`` (events per second). Gauges ship as min/max/avg/p95/last
+# depending on what makes sense for the metric.
 METRIC_ALLOWLIST: List[MetricSpec] = [
     # CPU
     MetricSpec("ray_node_cpu_utilization", "gauge", ("avg", "max", "p95")),
@@ -83,4 +87,17 @@ METRIC_ALLOWLIST: List[MetricSpec] = [
     MetricSpec("ray_node_mem_used", "gauge", ("avg", "max")),
     MetricSpec("ray_node_mem_available", "gauge", ("avg", "min")),
     MetricSpec("ray_node_mem_total", "gauge", ("last",)),
+    # OOMs — Ray's memory monitor proactively evicts workers when the node
+    # is above the memory threshold (src/ray/raylet/node_manager.cc:3160).
+    # ``Type`` label distinguishes Driver / Actor / Task / IdleWorker
+    # evictions.
+    MetricSpec("ray_memory_manager_worker_eviction", "counter", ("increase", "rate")),
+    # Broader signal — any SYSTEM_ERROR worker disconnect, which per
+    # src/ray/raylet/metrics.h:159 includes kernel OOM kills (SIGKILL)
+    # that bypass Ray's own monitor.
+    MetricSpec(
+        "ray_node_manager_unexpected_worker_failure",
+        "counter",
+        ("increase", "rate"),
+    ),
 ]
