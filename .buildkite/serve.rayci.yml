@@ -301,5 +301,5 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
         --python-version 3.10 --build-name servebuild-py3.10
-        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress,haproxy
+        --except-tags gpu
     depends_on: servebuild-multipy(python=3.10)
