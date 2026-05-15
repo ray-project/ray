@@ -42,6 +42,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
+_BUILD_ID_PLACEHOLDER = "__BUILD_ID__"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -639,6 +640,10 @@ class Test(dict):
         )
         tag = f"{ray_version}-{python_version}-{tag_suffix}"
         return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
+
+    def get_anyscale_byod_image_shape(self) -> str:
+        """Return BYOD image URI with build_id replaced by a fixed placeholder."""
+        return self.get_anyscale_byod_image(build_id=_BUILD_ID_PLACEHOLDER)
 
     def get_test_results(
         self,

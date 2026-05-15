@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from typing import TYPE_CHECKING, Callable, Dict
 
+import pytest
+
 if TYPE_CHECKING:
     from ray_release.github_client import GitHubRepo
 from unittest.mock import patch
@@ -32,7 +34,7 @@ from ray_release.buildkite.step import (
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.test import Test
+from ray_release.test import _BUILD_ID_PLACEHOLDER, Test
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
@@ -861,6 +863,69 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
             step = get_step(test_client)
             self.assertEqual(step["agents"]["queue"], str(RELEASE_QUEUE_CLIENT))
+
+
+class TestImageShape:
+    @pytest.fixture(autouse=True)
+    def patch_state(self, monkeypatch):
+        monkeypatch.setenv("RAYCI_BUILD_ID", "abc1234")
+        yield
+
+    def _make_test(self, **overrides) -> MockTest:
+        base = {
+            "name": "t",
+            "team": "reef",
+            "group": "g",
+            "frequency": "nightly",
+            "working_dir": "wd",
+            "python": "3.10",
+            "cluster": {"byod": {}, "cluster_compute": "c.yaml"},
+            "run": {"timeout": 60, "script": "echo hi"},
+        }
+        base.update(overrides)
+        return MockTest(base)
+
+    def test_shape_cpu_base_byod(self):
+        t = self._make_test()
+        shape = t.get_anyscale_byod_image_shape()
+        assert shape.endswith(f":{_BUILD_ID_PLACEHOLDER}-py310-cpu")
+        assert _BUILD_ID_PLACEHOLDER in shape
+
+    def test_shape_cuda_base_byod(self):
+        t = self._make_test(
+            cluster={"byod": {"type": "gpu"}, "cluster_compute": "c.yaml"}
+        )
+        shape = t.get_anyscale_byod_image_shape()
+        assert "ray-ml" in shape
+        assert shape.endswith(f":{_BUILD_ID_PLACEHOLDER}-py310-gpu")
+
+    def test_shape_custom_byod_includes_hash(self):
+        t = self._make_test(
+            cluster={
+                "byod": {"type": "gpu", "post_build_script": "x.sh"},
+                "cluster_compute": "c.yaml",
+            }
+        )
+        shape = t.get_anyscale_byod_image_shape()
+        tag = shape.rsplit(":", 1)[1]
+        parts = tag.split("-")
+        assert parts[0] == _BUILD_ID_PLACEHOLDER
+        assert parts[1] == "py310"
+        assert parts[2] == "gpu"
+        assert len(parts[3]) > 0
+
+    def test_shape_released_image(self):
+        t = self._make_test(
+            cluster={
+                "byod": {},
+                "cluster_compute": "c.yaml",
+                "ray_version": "2.55.1",
+            }
+        )
+        shape = t.get_anyscale_byod_image_shape()
+        # Released images don't have a build_id — placeholder MUST NOT appear.
+        assert _BUILD_ID_PLACEHOLDER not in shape
+        assert shape == "anyscale/ray:2.55.1-py310-cpu"
 
 
 if __name__ == "__main__":
