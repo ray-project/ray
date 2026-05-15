@@ -924,9 +924,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         )
 
     def _get_adjusted_object_store_usage(self, op: PhysicalOperator) -> float:
-        """OSM usage minus pre-paid bytes already covered by `_reserved_for_op_outputs`.
-
-        Returns: internal_osm_usage + max(op_outputs_usage - _reserved_for_op_outputs, 0)
+        """OSM used for tasks and spilled output that counts against the task-execution
+        budget. Excludes bytes already covered by the dedicated output reservation
+        (`_reserved_for_op_outputs`), since those are paid out of a separate pool.
         """
         op_mem_usage = self._resource_manager.get_mem_op_internal(op)
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
@@ -943,11 +943,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         adjusted_usage = self._resource_manager.get_op_usage(op).copy(
             object_store_memory=self._get_adjusted_object_store_usage(op)
         )
-        budget = allocation.subtract(adjusted_usage.min(self._op_reserved[op]))
-
-        if self._resource_manager._is_blocking_materializing_op(op):
-            return budget.copy(object_store_memory=float("inf"))
-        return budget
+        return allocation.subtract(adjusted_usage.min(self._op_reserved[op]))
 
     def get_output_budget(self, op: PhysicalOperator) -> Optional[int]:
         return self._output_budgets.get(op)
@@ -1098,5 +1094,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 if op_max_resources[op] == ExecutionResources.inf():
                     op_allocations[op] = op_allocations[op].add(remaining_shared)
                     break
+
+        # A materializing operator like `AllToAllOperator` waits for all its input
+        # operator's outputs before processing data. This often forces the input
+        # operator to exceed its object store memory budget. To prevent deadlock, we
+        # disable object store memory backpressure for the input operator.
+        for op in eligible_ops:
+            if self._resource_manager._is_blocking_materializing_op(op):
+                op_allocations[op] = op_allocations[op].copy(
+                    object_store_memory=float("inf")
+                )
 
         self._op_allocations = op_allocations
