@@ -189,6 +189,48 @@ def test_has_unhashable_pandas_types_list_views():
         assert _has_unhashable_pandas_types(schema) is True
 
 
+def test_hash_partition_integer_fast_path_balanced_on_dbgen_sparse_orderkey():
+    # Regression guard for #63097. dbgen builds o_orderkey with SPARSE_KEEP=3,
+    # SPARSE_BITS=2 (dss.h MK_SPARSE), which for seq=0 reduces to
+    # (i // 8) * 32 + (i % 8), constraining key % 16 to {0..7} and leaving
+    # partitions {8..15} empty under raw modulo. Hits all orderkey joins
+    # (Q3/Q5/Q7/Q8/Q9/Q10/Q12/Q18/Q21).
+    n_orders = 1_500_000
+    i = np.arange(n_orders, dtype=np.int64)
+    orderkey = (i // 8) * 32 + (i % 8)  # Models TPC-H Q3
+
+    num_partitions = 16
+    t = pa.Table.from_pydict({"k": pa.array(orderkey)})
+
+    parts = hash_partition(t, hash_cols=["k"], num_partitions=num_partitions)
+
+    sizes = [parts[p].num_rows for p in range(num_partitions) if p in parts]
+    assert len(sizes) == num_partitions, (
+        f"raw-modulo regression: {num_partitions - len(sizes)} of "
+        f"{num_partitions} partitions are empty"
+    )
+    mean = n_orders / num_partitions
+    # Every partition should stay within 5% of the mean.
+    assert max(sizes) < mean * 1.05, sizes
+    assert min(sizes) > mean * 0.95, sizes
+
+
+def test_hash_partition_integer_with_nulls_falls_through_to_pandas_path():
+    # null_count == 0 gate: integer columns with nulls still partition
+    # correctly via the pandas fallback (and the gate doesn't crash on them).
+    t = pa.Table.from_pydict({"k": pa.array([1, None, 2, None, 3], type=pa.int64())})
+
+    parts = hash_partition(t, hash_cols=["k"], num_partitions=4)
+
+    recombined = pa.concat_tables(parts.values())
+    assert recombined.num_rows == t.num_rows
+    # All nulls co-locate in one partition (cross-block invariant).
+    null_pids = {
+        pid for pid, tbl in parts.items() if any(tbl["k"].is_null().to_pylist())
+    }
+    assert len(null_pids) == 1
+
+
 def test_hash_partition_null_struct_consistent_across_blocks():
     struct_t = pa.struct([("v", pa.int32())])
     num_partitions = 8

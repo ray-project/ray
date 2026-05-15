@@ -103,10 +103,42 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+def _partition_single_int_column(
+    column: "pyarrow.ChunkedArray",
+    num_partitions: int,
+) -> np.ndarray:
+    """Hash-partition a single integer column without going through pandas.
+
+    Computes ``partition_id = avalanche(key) % num_partitions`` per row,
+    where ``avalanche(x) = (x * 2^64/phi) ^ ((x * 2^64/phi) >> 33)``.
+
+    Caller must guarantee an integer column with ``null_count == 0``.
+    """
+    arr = column.to_numpy(zero_copy_only=False)
+    if arr.dtype == np.uint64:
+        keys = arr.copy()
+    elif arr.dtype == np.int64:
+        keys = arr.view(np.uint64).copy()
+    else:
+        # int{8,16,32} / uint{8,16,32}: widen to int64 then bit-reinterpret.
+        keys = arr.astype(np.int64).view(np.uint64).copy()
+    keys *= np.uint64(0x9E3779B97F4A7C15)  # Knuth's multiplicative hash: 2^64 / phi
+    keys ^= keys >> np.uint64(33)
+    np.mod(keys, np.uint64(num_partitions), out=keys)
+    return keys
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
+    if (
+        len(table.columns) == 1
+        and pyarrow.types.is_integer(table.column(0).type)
+        and table.column(0).null_count == 0
+    ):
+        return _partition_single_int_column(table.column(0), num_partitions)
+
     if _has_unhashable_pandas_types(table.schema):
         # Struct/list/map columns become dicts/lists in pandas, which are
         # unhashable. Use row-by-row hashing on PyArrow scalars instead.
@@ -114,22 +146,21 @@ def _hash_partition(
         for i in range(table.num_rows):
             _tuple = tuple(c[i] for c in table.columns)
             partitions[i] = hash(_tuple) % num_partitions
-    else:
-        # Use pandas' vectorized hash (xxhash-based) instead of a Python
-        # row-by-row loop.
-        import pandas as pd
+        return partitions
 
-        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
-        # in pandas. This avoids int64 -> float64 promotion for nullable integer
-        # columns, which would cause the same value to hash differently across
-        # blocks depending on whether the block contains nulls.
-        hashes = pd.util.hash_pandas_object(
-            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
-        ).values
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+    # Use pandas' vectorized hash (xxhash-based) instead of a Python
+    # row-by-row loop.
+    import pandas as pd
 
-    return partitions
+    # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
+    # in pandas. This avoids int64 -> float64 promotion for nullable integer
+    # columns, which would cause the same value to hash differently across
+    # blocks depending on whether the block contains nulls.
+    hashes = pd.util.hash_pandas_object(
+        table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+    ).values
+    np.mod(hashes, num_partitions, out=hashes)
+    return hashes
 
 
 def hash_partition(
