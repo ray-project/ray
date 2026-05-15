@@ -197,25 +197,26 @@ class TestParseOverride:
             "c": "ecr/r:bid-py311-cpu",
         }
 
-    def test_json_parse_failure(self):
-        with pytest.raises(ReleaseTestConfigError, match="Invalid JSON"):
-            parse_override("not-json")
-
-    def test_top_level_not_dict(self):
-        with pytest.raises(ReleaseTestConfigError, match="must be a JSON object"):
-            parse_override(json.dumps(["a", "b"]))
-
-    def test_value_not_list(self):
-        with pytest.raises(
-            ReleaseTestConfigError, match="must be a list of test names"
-        ):
-            parse_override(json.dumps({"uri-a": "not-a-list"}))
-
-    def test_value_contains_non_string(self):
-        with pytest.raises(
-            ReleaseTestConfigError, match="must be a list of test names"
-        ):
-            parse_override(json.dumps({"uri-a": ["ok", 123]}))
+    @pytest.mark.parametrize(
+        "raw, match",
+        [
+            # JSON parse failure
+            ("not-json", "Invalid JSON"),
+            # top-level not dict
+            (json.dumps(["a", "b"]), "must be a JSON object"),
+            # value not list
+            (json.dumps({"uri-a": "not-a-list"}), "must be a list of test names"),
+            # value contains non-string element
+            (json.dumps({"uri-a": ["ok", 123]}), "must be a list of test names"),
+            # empty top-level
+            (json.dumps({}), "contains no tests to run"),
+            # all values empty
+            (json.dumps({"uri-a": []}), "contains no tests to run"),
+        ],
+    )
+    def test_parse_override_rejects_invalid_payload(self, raw, match):
+        with pytest.raises(ReleaseTestConfigError, match=match):
+            parse_override(raw)
 
     def test_duplicate_test_name(self):
         raw = json.dumps({"uri-a": ["dup", "x"], "uri-b": ["y", "dup"]})
@@ -225,10 +226,18 @@ class TestParseOverride:
         assert "dup" in msg
         assert "uri-a" in msg and "uri-b" in msg
 
-    def test_empty_payload(self):
-        with pytest.raises(ReleaseTestConfigError, match="contains no tests to run"):
-            parse_override(json.dumps({}))
-
-    def test_all_values_empty(self):
-        with pytest.raises(ReleaseTestConfigError, match="contains no tests to run"):
-            parse_override(json.dumps({"uri-a": []}))
+    def test_type_error_raises_before_duplicate_detection(self):
+        # Payload has BOTH a duplicate test name (across uri-a and uri-b) AND
+        # a malformed value at uri-c. The type error should surface first
+        # because duplicate detection requires well-typed values.
+        raw = json.dumps(
+            {
+                "uri-a": ["dup", "x"],
+                "uri-b": ["y", "dup"],
+                "uri-c": "not-a-list",
+            }
+        )
+        with pytest.raises(
+            ReleaseTestConfigError, match="must be a list of test names"
+        ):
+            parse_override(raw)

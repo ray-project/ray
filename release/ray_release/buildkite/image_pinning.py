@@ -99,7 +99,7 @@ def parse_override(raw_json: str) -> Dict[str, str]:
     except json.JSONDecodeError as e:
         raise ReleaseTestConfigError(
             f"Invalid JSON in release-test-image-override: {e}"
-        )
+        ) from e
     if not isinstance(parsed, dict):
         raise ReleaseTestConfigError(
             f"release-test-image-override must be a JSON object; got "
