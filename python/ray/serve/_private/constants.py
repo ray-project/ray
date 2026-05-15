@@ -829,7 +829,7 @@ RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
 # Histogram objects. When disabled, neither the log target nor the Lua timing
 # calls are rendered into the generated config -- there is no runtime cost.
 RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED = get_env_bool(
-    "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", True
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "1"
 )
 
 # Unix dgram socket that HAProxy writes the structured metric log lines to.
