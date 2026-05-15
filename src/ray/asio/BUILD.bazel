@@ -46,12 +46,22 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "periodical_runner_interface",
+    hdrs = ["periodical_runner_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@boost//:asio",
+    ],
+)
+
+ray_cc_library(
     name = "periodical_runner",
     srcs = ["periodical_runner.cc"],
     hdrs = ["periodical_runner.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":instrumented_io_context",
+        ":periodical_runner_interface",
         "//src/ray/common:ray_config",
         "//src/ray/util:logging",
         "@boost//:asio",
@@ -65,7 +75,7 @@ ray_cc_library(
     hdrs = ["fake_periodical_runner.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":periodical_runner",
+        ":periodical_runner_interface",
         "@boost//:asio",
     ],
 )

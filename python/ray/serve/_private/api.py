@@ -15,7 +15,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import ControllerOptions, HTTPOptions, gRPCOptions
 from ray.serve.context import (
     _check_cached_client_alive,
     _get_global_client,
@@ -26,6 +26,22 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _coerce_controller_options(
+    controller_options: Union[None, dict, ControllerOptions],
+) -> ControllerOptions:
+    """Normalize an optional dict / model into a validated ControllerOptions."""
+    if controller_options is None:
+        return ControllerOptions()
+    if isinstance(controller_options, ControllerOptions):
+        return controller_options
+    if isinstance(controller_options, dict):
+        return ControllerOptions.model_validate(controller_options)
+    raise TypeError(
+        "controller_options must be a dict, ControllerOptions, or None; got "
+        f"{type(controller_options).__name__}."
+    )
 
 
 def _check_http_options(
@@ -56,6 +72,7 @@ def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ActorHandle:
     """Start Ray Serve controller.
@@ -95,7 +112,8 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller_impl = get_controller_impl()
+    controller_options = _coerce_controller_options(controller_options)
+    controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
@@ -120,6 +138,7 @@ async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -134,6 +153,10 @@ async def serve_start_async(
 
     usage_lib.record_library_usage("serve")
 
+    # Validate eagerly in the caller so a bad ``controller_options`` raises
+    # locally rather than from the ``_start_controller`` Ray task.
+    controller_options = _coerce_controller_options(controller_options)
+
     client, _ = _check_cached_client_alive()
     if client is None:
         try:
@@ -143,7 +166,7 @@ async def serve_start_async(
     if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http options will not be applied."
+            " New http_options/controller_options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
@@ -152,7 +175,13 @@ async def serve_start_async(
     controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(http_options, grpc_options, global_logging_config, **kwargs)
+        .remote(
+            http_options,
+            grpc_options,
+            global_logging_config,
+            controller_options=controller_options,
+            **kwargs,
+        )
     )
 
     client = ServeControllerClient(
@@ -167,6 +196,7 @@ def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -207,9 +237,16 @@ def serve_start(
             - grpc_servicer_functions(list): List of import paths for gRPC
                 `add_servicer_to_server` functions to add to Serve's gRPC proxy.
                 Default empty list, meaning not to start the gRPC server.
+        controller_options: Optional ``ControllerOptions`` (or dict) for the
+            Serve controller actor. Currently only ``runtime_env.env_vars``
+            is honored; see ``ray.serve.config.ControllerOptions``. Only
+            applied on first controller creation -- ignored if the controller
+            is already running in this Ray cluster (a log line is emitted).
     """
 
     usage_lib.record_library_usage("serve")
+
+    controller_options = _coerce_controller_options(controller_options)
 
     client, _ = _check_cached_client_alive()
     if client is None:
@@ -220,14 +257,18 @@ def serve_start(
     if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http options will not be applied."
+            " New http_options/controller_options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
         return client
 
     controller = _start_controller(
-        http_options, grpc_options, global_logging_config, **kwargs
+        http_options,
+        grpc_options,
+        global_logging_config,
+        controller_options=controller_options,
+        **kwargs,
     )
 
     client = ServeControllerClient(

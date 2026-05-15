@@ -81,6 +81,18 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_node_mem_total`
      - `instance`
      - The amount of physical memory available per node, in bytes.
+   * - `ray_node_mem_used_host`
+     - `instance`
+     - The host (OS-level) physical memory used per node, in bytes.
+   * - `ray_node_mem_total_host`
+     - `instance`
+     - The host (OS-level) total physical memory per node, in bytes.
+   * - `ray_node_cgroup_mem_used`
+     - `instance`
+     - The container memory usage per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
+   * - `ray_node_cgroup_mem_total`
+     - `instance`
+     - The container memory limit per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
    * - `ray_component_uss_mb`
      - `Component`, `instance`
      - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
