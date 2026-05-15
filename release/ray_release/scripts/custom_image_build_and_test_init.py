@@ -5,11 +5,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
+import yaml
 
 from ray_release.buildkite.filter import filter_tests, group_tests
+from ray_release.buildkite.image_pinning import (
+    match_uris_to_tests,
+    parse_override,
+    resolve_override_tests,
+)
 from ray_release.buildkite.settings import (
     get_frequency,
     get_pipeline_settings,
@@ -36,6 +42,10 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 # at time of writing). We split below that with headroom so future growth
 # or step multipliers we don't account for don't trip the limit again.
 DEFAULT_MAX_JOBS_PER_UPLOAD = 450
+
+# Rayci-select sentinel emitted in pinned-image modes; intentionally matches
+# no real build step so rayci launches zero custom-BYOD builds.
+PINNED_RAYCI_SELECT_SENTINEL = "release_test_image_pinned"
 
 
 def _group_job_count(group: Dict[str, Any]) -> int:
@@ -197,6 +207,14 @@ def main(
     test_filters = get_test_filters(test_filters) or settings["test_filters"]
     priority = settings["priority"]
 
+    image_uris_raw = settings["image_uris"]
+    image_override_json = settings["image_override_json"]
+    if image_uris_raw and image_override_json:
+        raise ReleaseTestCLIError(
+            "release-test-image-uris and release-test-image-override are "
+            "mutually exclusive; set only one."
+        )
+
     try:
         test_collection = read_and_validate_release_test_collection(
             test_collection_file or RELEASE_TEST_CONFIG_FILES
@@ -210,32 +228,82 @@ def main(
             "in the dialog that asks for the Ray wheels."
         ) from e
 
-    filtered_tests = filter_tests(
-        test_collection,
-        frequency=frequency,
-        test_filters=test_filters,
-        prefer_smoke_tests=prefer_smoke_tests,
-        run_jailed_tests=run_jailed_tests,
-        run_unstable_tests=run_unstable_tests,
-    )
-    logger.info(f"Found {len(filtered_tests)} tests to run.")
-    if len(filtered_tests) == 0:
-        raise ReleaseTestCLIError(
-            "Empty test collection. The selected frequency or filter did "
-            "not return any tests to run. Adjust your filters."
+    image_overrides: Optional[Dict[str, str]] = None
+    if image_override_json:
+        # Override mode: parse JSON, resolve names, bypass filter_tests.
+        image_overrides = parse_override(image_override_json)
+        tests = resolve_override_tests(test_collection, image_overrides)
+        filtered_tests = [(t, False) for t in tests]
+        logger.info(
+            f"[release-test-image-override] running {len(tests)} test(s) with pinned images."
         )
-    tests = [test for test, _ in filtered_tests]
+    elif image_uris_raw:
+        # URIs mode: normal filter, then shape-match against the user-supplied URIs.
+        filtered_tests = filter_tests(
+            test_collection,
+            frequency=frequency,
+            test_filters=test_filters,
+            prefer_smoke_tests=prefer_smoke_tests,
+            run_jailed_tests=run_jailed_tests,
+            run_unstable_tests=run_unstable_tests,
+        )
+        logger.info(f"Found {len(filtered_tests)} tests to run.")
+        if len(filtered_tests) == 0:
+            raise ReleaseTestCLIError(
+                "Empty test collection. The selected frequency or filter did "
+                "not return any tests to run. Adjust your filters."
+            )
+        tests = [test for test, _ in filtered_tests]
+        uri_list = [u for u in image_uris_raw.split() if u]
+        image_overrides = match_uris_to_tests(tests, uri_list)
+        logger.info(
+            f"[release-test-image-uris] matched {len(image_overrides)} test(s) "
+            f"to user-supplied URIs ({len(uri_list)} URIs provided)."
+        )
+    else:
+        # Normal path — unchanged from prior implementation.
+        filtered_tests = filter_tests(
+            test_collection,
+            frequency=frequency,
+            test_filters=test_filters,
+            prefer_smoke_tests=prefer_smoke_tests,
+            run_jailed_tests=run_jailed_tests,
+            run_unstable_tests=run_unstable_tests,
+        )
+        logger.info(f"Found {len(filtered_tests)} tests to run.")
+        if len(filtered_tests) == 0:
+            raise ReleaseTestCLIError(
+                "Empty test collection. The selected frequency or filter did "
+                "not return any tests to run. Adjust your filters."
+            )
+        tests = [test for test, _ in filtered_tests]
+
+    pinned_mode = image_overrides is not None
 
     gpu_map = build_short_gpu_map(os.path.join(_bazel_workspace_dir, "ray-images.json"))
 
-    # Generate custom image build steps
-    create_custom_build_yaml(
-        os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),
-        tests,
-        gpu_map,
-    )
-
-    rayci_select_keys = collect_rayci_select_keys(tests, gpu_map)
+    if not pinned_mode:
+        # Generate custom image build steps
+        create_custom_build_yaml(
+            os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),
+            tests,
+            gpu_map,
+        )
+        rayci_select_keys = collect_rayci_select_keys(tests, gpu_map)
+    else:
+        # Emit an empty custom-build yaml so downstream tooling doesn't trip
+        # on a missing file path. Rayci-select uses a sentinel key that
+        # matches no build step (rayci launches zero build steps).
+        with open(
+            os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file), "w"
+        ) as f:
+            yaml.dump(
+                {"group": "Custom images build", "steps": []},
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        rayci_select_keys = {PINNED_RAYCI_SELECT_SENTINEL}
 
     # Generate test job steps
     grouped_tests = group_tests(filtered_tests)
@@ -265,11 +333,17 @@ def main(
         env["RAYCI_BUILD_ID"] = build_id
 
     # If the build is manually triggered and there are more than 5 tests
-    # Ask user to confirm before launching the tests.
+    # Ask user to confirm before launching the tests. Pinned modes always
+    # suppress the block step since the user explicitly opted into the run.
     block_step = None
 
     is_automatic = os.environ.get("AUTOMATIC", "") == "1"
-    if not is_automatic and test_filters and selection_block_threshold > 0:
+    if (
+        not is_automatic
+        and test_filters
+        and selection_block_threshold > 0
+        and not pinned_mode
+    ):
         if len(tests) >= selection_block_threshold:
             block_step = generate_block_step(len(tests))
 
@@ -283,6 +357,7 @@ def main(
         is_concurrency_limit=not no_concurrency_limit,
         block_step_key=block_step["key"] if block_step else None,
         gpu_map=gpu_map,
+        image_overrides=image_overrides,
     )
     steps = [{"group": "block", "steps": [block_step]}] + steps if block_step else steps
 
@@ -314,8 +389,9 @@ def main(
         )
 
         # Only emit RAYCI_SELECT when a filter narrows the test set; an unfiltered
-        # run (e.g. full nightly) wants the complete image pipeline.
-        if rayci_select_output_file and test_filters:
+        # run (e.g. full nightly) wants the complete image pipeline. Pinned mode
+        # always emits the sentinel key to suppress all custom-BYOD build steps.
+        if rayci_select_output_file and (test_filters or pinned_mode):
             with open(
                 os.path.join(_bazel_workspace_dir, rayci_select_output_file),
                 "wt",

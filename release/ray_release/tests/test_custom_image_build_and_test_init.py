@@ -485,5 +485,218 @@ def test_custom_image_build_and_test_init_uploads_chunks(
     assert upload_calls[0].kwargs.get("check") is True
 
 
+# Sentinel rayci-select value that intentionally matches no build step.
+_PINNED_SENTINEL = "release_test_image_pinned"
+
+
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+def test_init_image_uris_mode_happy_path(mock_s3, mock_jailed):
+    """release-test-image-uris mode: filtered tests get --image, no
+    custom-build yaml is emitted, and rayci-select contains only the
+    sentinel key."""
+    from ray_release.bazel import bazel_runfile
+
+    # Initialize global config so Test methods work outside the CliRunner.
+    init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+
+    runner = CliRunner()
+    custom_build_jobs_output_file = "custom_build_jobs_pinned.yaml"
+    test_jobs_output_file = "test_jobs_pinned.json"
+    rayci_select_output_file = "rayci_select_pinned.txt"
+
+    # Compute the expected shapes from the actual test collection so the
+    # URIs we supply pass shape-matching.
+    collection = read_and_validate_release_test_collection(
+        [
+            os.path.join(
+                _bazel_workspace_dir, "release/ray_release/tests/sample_tests.yaml"
+            )
+        ]
+    )
+    # Filter to non-released tests (those with byod), then build matching URIs
+    # by replacing the build_id placeholder with a synthetic one.
+    non_released = [
+        t
+        for t in collection
+        if not t.get_anyscale_byod_image().startswith("anyscale/ray:")
+    ]
+    assert len(non_released) >= 2, "expected at least 2 non-released tests in fixture"
+    uris = [
+        t.get_anyscale_byod_image_shape().replace("__BUILD_ID__", "pr-12345.abcdef")
+        for t in non_released
+    ]
+
+    with patch.dict("os.environ", {"RELEASE_TEST_IMAGE_URIS": " ".join(uris)}):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--run-jailed-tests",
+                "--run-unstable-tests",
+                "--test-filters",
+                "prefix:hello_world",
+                "--custom-build-jobs-output-file",
+                custom_build_jobs_output_file,
+                "--test-jobs-output-file",
+                test_jobs_output_file,
+                "--rayci-select-output-file",
+                rayci_select_output_file,
+            ],
+            catch_exceptions=False,
+        )
+
+    # In pinned mode the custom build yaml should be empty (zero steps).
+    build_yaml_path = os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file)
+    if os.path.exists(build_yaml_path):
+        with open(build_yaml_path) as f:
+            data = yaml.safe_load(f) or {}
+        assert data.get("steps", []) == []
+
+    # Each filtered test's command should contain --image with a matching URI.
+    with open(
+        os.path.join(
+            _bazel_workspace_dir, f"{os.path.splitext(test_jobs_output_file)[0]}_0.json"
+        )
+    ) as f:
+        test_jobs = json.load(f)
+    cmds = [s["commands"][0] for group in test_jobs for s in group["steps"]]
+    for uri in uris:
+        assert any(
+            "--image" in c and uri in c for c in cmds
+        ), f"No test command contained --image {uri}: cmds={cmds}"
+
+    # Rayci-select must contain only the sentinel key.
+    with open(os.path.join(_bazel_workspace_dir, rayci_select_output_file)) as f:
+        assert f.read().strip() == _PINNED_SENTINEL
+
+    assert result.exit_code == 0
+
+
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+def test_init_image_uris_mode_unmatched_test_fails(mock_s3, mock_jailed):
+    """If a filtered test has no shape-matching URI, init must fail with
+    a descriptive ReleaseTestConfigError."""
+    runner = CliRunner()
+    with patch.dict(
+        "os.environ",
+        {"RELEASE_TEST_IMAGE_URIS": "ecr/anyscale/ray:xxx-py999-zzz"},
+    ):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--run-jailed-tests",
+                "--run-unstable-tests",
+                "--test-filters",
+                "prefix:hello_world",
+                "--custom-build-jobs-output-file",
+                "tmp_build_unmatched.yaml",
+                "--test-jobs-output-file",
+                "tmp_jobs_unmatched.json",
+                "--rayci-select-output-file",
+                "tmp_select_unmatched.txt",
+            ],
+            catch_exceptions=True,
+        )
+    assert result.exit_code != 0
+    assert "no URI matched" in str(result.exception)
+
+
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+def test_init_image_override_mode_happy_path(mock_s3, mock_jailed):
+    """release-test-image-override mode: only named tests run, no
+    filter is required, --image flag is injected, custom_build yaml
+    is empty, sentinel rayci-select is emitted."""
+    runner = CliRunner()
+    override = json.dumps({"ecr/r:pinned-py310-cpu": ["hello_world.aws"]})
+    with patch.dict("os.environ", {"RELEASE_TEST_IMAGE_OVERRIDE": override}):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--run-jailed-tests",
+                "--run-unstable-tests",
+                "--custom-build-jobs-output-file",
+                "tmp_build_override.yaml",
+                "--test-jobs-output-file",
+                "tmp_jobs_override.json",
+                "--rayci-select-output-file",
+                "tmp_select_override.txt",
+            ],
+            catch_exceptions=False,
+        )
+    assert result.exit_code == 0
+
+    with open(os.path.join(_bazel_workspace_dir, "tmp_jobs_override_0.json")) as f:
+        test_jobs = json.load(f)
+    all_steps = [s for group in test_jobs for s in group["steps"]]
+    assert len(all_steps) == 1
+    # shlex.quote does NOT add quotes for this URI (no shell metachars).
+    assert "--image ecr/r:pinned-py310-cpu" in all_steps[0]["commands"][0]
+
+    with open(os.path.join(_bazel_workspace_dir, "tmp_select_override.txt")) as f:
+        assert f.read().strip() == _PINNED_SENTINEL
+
+
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+def test_init_both_modes_set_fails(mock_s3, mock_jailed):
+    """Setting both meta-data fields must fail with a clear error."""
+    runner = CliRunner()
+    with patch.dict(
+        "os.environ",
+        {
+            "RELEASE_TEST_IMAGE_URIS": "ecr/r:x-py310-cpu",
+            "RELEASE_TEST_IMAGE_OVERRIDE": '{"ecr/r:y-py310-cpu": ["t"]}',
+        },
+    ):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--custom-build-jobs-output-file",
+                "tmp_build_both.yaml",
+                "--test-jobs-output-file",
+                "tmp_jobs_both.json",
+                "--rayci-select-output-file",
+                "tmp_select_both.txt",
+            ],
+            catch_exceptions=True,
+        )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in str(result.exception)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
