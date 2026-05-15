@@ -1,3 +1,4 @@
+import sys
 from typing import Dict, List, Optional
 
 import pytest
@@ -314,3 +315,7 @@ def test_rollback_disabled_success_becomes_rollback_target():
     asm.set_app_status("app4", ApplicationStatus.DEPLOY_FAILED)
     assert rs.update()
     check_supervisor_state(rs, config, config, RolloutState.ROLLING_BACK)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
