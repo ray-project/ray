@@ -94,7 +94,7 @@ class HAProxyMetricsCollector:
             description=(
                 "Wall-clock time (in milliseconds) HAProxy spent to resolve"
                 "the request to a server via the ingress request router. "
-                "Only include successful router consultations."
+                "Only includes successful routing attempts."
             ),
             boundaries=self._LATENCY_BUCKETS_MS,
             tag_keys=("application",),
