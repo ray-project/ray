@@ -1892,9 +1892,6 @@ python/ray/tune/experimental/output.py
     DOC103: Function `_max_len`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [wrap: bool].
     DOC201: Function `_max_len` does not have a return section in docstring
     DOC201: Function `_get_trial_info` does not have a return section in docstring
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `ProgressReporter.__init__`: Docstring contains fewer arguments than in function signature.
 --------------------
 python/ray/tune/impl/tuner_internal.py
     DOC101: Method `TunerInternal.__init__`: Docstring contains fewer arguments than in function signature.

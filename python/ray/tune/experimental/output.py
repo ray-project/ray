@@ -98,6 +98,9 @@ ORDER = [
     Trial.ERROR,
 ]
 
+# Default minimum interval (seconds) between status-table heartbeats.
+DEFAULT_HEARTBEAT_FREQ_S = 30
+
 
 class AirVerbosity(IntEnum):
     SILENT = 0
@@ -591,16 +594,16 @@ class ProgressReporter(Callback):
         self,
         verbosity: AirVerbosity,
         progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-        heartbeat_freq: float = 30,
+        heartbeat_freq: float = DEFAULT_HEARTBEAT_FREQ_S,
     ):
-        """
+        """Initialize the progress reporter.
 
         Args:
             verbosity: AirVerbosity level.
             progress_metrics: Optional list of metrics to include in the
                 intermediate progress output.
             heartbeat_freq: Minimum interval in seconds between status-table
-                heartbeats. Defaults to 30 seconds.
+                heartbeats. Defaults to ``DEFAULT_HEARTBEAT_FREQ_S`` (30s).
         """
         self._verbosity = verbosity
         self._start_time = time.time()
@@ -805,7 +808,7 @@ def _detect_reporter(
     mode: Optional[str] = None,
     config: Optional[Dict] = None,
     progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-    heartbeat_freq: float = 30,
+    heartbeat_freq: float = DEFAULT_HEARTBEAT_FREQ_S,
 ):
     if entrypoint in {
         AirEntrypoint.TUNE_RUN,
@@ -845,7 +848,7 @@ class TuneReporterBase(ProgressReporter):
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
         progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-        heartbeat_freq: float = 30,
+        heartbeat_freq: float = DEFAULT_HEARTBEAT_FREQ_S,
     ):
         self._num_samples = num_samples
         self._metric = metric
