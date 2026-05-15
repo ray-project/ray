@@ -718,11 +718,15 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
-# Window for coalescing back-to-back controller broadcasts into a single
-# HAProxy reload. The Serve controller emits TARGET_GROUPS and
-# FALLBACK_TARGETS updates independently, often within tens of ms of each
-# other during autoscaling churn; without coalescing each one triggers its
-# own reload.
+# Minimum spacing between HAProxy reloads. Under autoscaling churn the
+# Serve controller can emit back-to-back broadcasts only tens of ms apart,
+# and reloading HAProxy that fast is harmful: each reload spawns a new
+# proc via `-sf`, the old proc has to drain in-flight requests, and the
+# admin socket / data-plane briefly contend with the handoff. Reloading
+# at controller-broadcast speed bursts these handoffs and saturates the
+# proxy actor's event loop. This setting batches all broadcasts that
+# arrive inside the window into one apply, capping reloads at roughly
+# 1/window per second.
 RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = float(
     os.environ.get("RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", "0.1")
 )
