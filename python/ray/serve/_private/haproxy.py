@@ -1178,11 +1178,8 @@ class HAProxyManager(ProxyActorInterface):
         # which can cause race conditions with SO_REUSEPORT
         self._reload_lock = asyncio.Lock()
 
-        # State for coalescing back-to-back controller broadcasts. When a
-        # broadcast arrives we mark the state dirty and (re)schedule the
-        # coalescing task; the task waits the coalesce window and only then
-        # invokes _update_haproxy_backends, collapsing multiple broadcasts
-        # within the window into a single reload.
+        # Coalescing state: each broadcast sets _update_pending=True and
+        # (re)arms _coalesce_task, which sleeps one window then applies.
         self._update_pending: bool = False
         self._coalesce_task: Optional[asyncio.Task] = None
 
