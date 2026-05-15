@@ -849,13 +849,30 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
     # Expand star expr (if any)
     if isinstance(projection_exprs[0], StarExpr):
-        # Cherry-pick input block's columns that aren't explicitly removed via
-        # renaming
-        input_column_ref_exprs = [
-            col(c) for c in input_column_names if c not in input_column_rename_map
-        ]
+        # Bucket the trailing exprs: rename ``AliasExpr``s of an input
+        # column get placed into the original column's position (so the
+        # output preserves on-disk column order); anything else (e.g.
+        # ``with_column`` computed expressions) is appended afterwards.
+        rename_exprs_by_source: Dict[str, Expr] = {}
+        extra_exprs: List[Expr] = []
+        for expr in projection_exprs[1:]:
+            if (
+                isinstance(expr, AliasExpr)
+                and isinstance(expr.expr, ColumnExpr)
+                and expr.expr.name in input_column_rename_map
+            ):
+                rename_exprs_by_source[expr.expr.name] = expr
+            else:
+                extra_exprs.append(expr)
 
-        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
+        ordered_exprs: List[Expr] = []
+        for c in input_column_names:
+            if c in rename_exprs_by_source:
+                ordered_exprs.append(rename_exprs_by_source[c])
+            elif c not in input_column_rename_map:
+                ordered_exprs.append(col(c))
+
+        projection_exprs = ordered_exprs + extra_exprs
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
