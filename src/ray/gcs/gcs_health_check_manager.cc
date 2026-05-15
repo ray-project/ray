@@ -28,6 +28,7 @@ namespace ray::gcs {
     instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback,
     ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram,
+    ClockInterface &clock,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
@@ -36,6 +37,7 @@ namespace ray::gcs {
       new GcsHealthCheckManager(io_service,
                                 std::move(on_node_death_callback),
                                 health_check_rpc_latency_ms_histogram,
+                                clock,
                                 initial_delay_ms,
                                 timeout_ms,
                                 period_ms,
@@ -46,6 +48,7 @@ GcsHealthCheckManager::GcsHealthCheckManager(
     instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback,
     ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram,
+    ClockInterface &clock,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
@@ -56,7 +59,8 @@ GcsHealthCheckManager::GcsHealthCheckManager(
       timeout_ms_(timeout_ms),
       period_ms_(period_ms),
       failure_threshold_(failure_threshold),
-      health_check_rpc_latency_ms_histogram_(health_check_rpc_latency_ms_histogram) {
+      health_check_rpc_latency_ms_histogram_(health_check_rpc_latency_ms_histogram),
+      clock_(clock) {
   RAY_CHECK(on_node_death_callback != nullptr);
   RAY_CHECK_GE(initial_delay_ms, 0);
   RAY_CHECK_GE(timeout_ms, 0);
@@ -114,7 +118,7 @@ void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
         }
 
         auto *ctx = iter->second;
-        ctx->SetLatestHealthTimestamp(absl::Now());
+        ctx->SetLatestHealthTimestamp(clock_.Now());
       },
       "GcsHealthCheckManager::MarkNodeHealthy");
 }
@@ -137,7 +141,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   }
 
   // Check latest health status, see whether a new rpc message is needed.
-  const auto now = absl::Now();
+  const auto now = manager->clock_.Now();
   absl::Time next_check_time =
       latest_known_healthy_timestamp_ + absl::Milliseconds(manager->period_ms_);
   if (now <= next_check_time) {
@@ -179,7 +183,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
         // This callback is done in gRPC's thread pool.
         gcs_health_check_manager->health_check_rpc_latency_ms_histogram_.Record(
-            absl::ToInt64Milliseconds(absl::Now() - start));
+            absl::ToInt64Milliseconds(gcs_health_check_manager->clock_.Now() - start));
 
         gcs_health_check_manager->io_service_.post(
             [this, status, response = std::move(response)]() {
