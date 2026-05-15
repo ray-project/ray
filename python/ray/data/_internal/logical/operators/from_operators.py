@@ -1,5 +1,6 @@
 import abc
 import functools
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -27,33 +28,42 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     """Abstract logical operator for `from_*`."""
 
-    def __init__(
+    input_blocks: InitVar[List[ObjectRef[Block]]]
+    input_metadata: InitVar[List[BlockMetadataWithSchema]]
+    input_data: List[RefBundle] = field(init=False)
+    _input_dependencies: list[LogicalOperator] = field(
+        init=False, repr=False, default_factory=list
+    )
+    _num_outputs: Optional[int] = field(init=False, repr=False)
+
+    def __post_init__(
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadataWithSchema],
     ):
-        super().__init__(
-            input_dependencies=[],
-            num_outputs=len(input_blocks),
-        )
-
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),
         )
 
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        self.input_data = [
-            RefBundle(
-                [(input_blocks[i], input_metadata[i])],
-                owns_blocks=False,
-                schema=input_metadata[i].schema,
-            )
-            for i in range(len(input_blocks))
-        ]
+        object.__setattr__(
+            self,
+            "input_data",
+            [
+                RefBundle(
+                    [(input_blocks[i], input_metadata[i])],
+                    owns_blocks=False,
+                    schema=input_metadata[i].schema,
+                )
+                for i in range(len(input_blocks))
+            ],
+        )
+        object.__setattr__(self, "_num_outputs", len(input_blocks))
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data

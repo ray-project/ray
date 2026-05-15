@@ -345,6 +345,21 @@ def test_inspect_serialization(enable_pickle_debug):
     results = inspect_serializability(test_class)
     assert list(results[1])[0].obj == lock, results
 
+    # Test path tracking
+    results = inspect_serializability(test_func, name="my_func")
+    failures = list(results[1])
+    assert len(failures) == 1
+    path = failures[0].path
+    assert "my_func" in path
+    assert "lock" in path
+
+    results = inspect_serializability(test_class, name="my_class")
+    failures = list(results[1])
+    assert len(failures) == 1
+    path = failures[0].path
+    assert "my_class" in path
+    assert "lock" in path
+
 
 def test_serialization_final_fallback(ray_start_regular):
     pytest.importorskip("catboost")
@@ -666,8 +681,8 @@ def test_serialization_pydantic_runtime_env(ray_start_regular):
     def test(pydantic_model):
         return pydantic_model.x
 
-    @ray.remote(runtime_env={"pip": ["pydantic<2"]})
-    def py1():
+    @ray.remote(runtime_env={"pip": ["pydantic>=2"]})
+    def py():
         from pydantic import BaseModel
 
         class Foo(BaseModel):
@@ -675,17 +690,7 @@ def test_serialization_pydantic_runtime_env(ray_start_regular):
 
         return ray.get(test.remote(Foo(x=1)))
 
-    @ray.remote(runtime_env={"pip": ["pydantic>=2"]})
-    def py2():
-        from pydantic.v1 import BaseModel
-
-        class Foo(BaseModel):
-            x: int
-
-        return ray.get(test.remote(Foo(x=2)))
-
-    assert ray.get(py1.remote()) == 1
-    assert ray.get(py2.remote()) == 2
+    assert ray.get(py.remote()) == 1
 
 
 def test_usage_with_dataclass(ray_start_regular):

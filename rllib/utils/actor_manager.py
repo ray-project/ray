@@ -146,6 +146,19 @@ class RemoteCallResults:
         )
 
 
+def _method_caller(method_name: str):
+    """Wraps a method name into a callable suitable for `FaultAwareApply.apply()`.
+
+    Lets string-dispatched calls (e.g. `foreach_actor(func="sample")`) go through
+    `apply()` and inherit its fault-tolerance wrapper.
+    """
+
+    def _call(actor, *args, **kwargs):
+        return getattr(actor, method_name)(*args, **kwargs)
+
+    return _call
+
+
 @DeveloperAPI
 class FaultAwareApply:
     @DeveloperAPI
@@ -181,16 +194,17 @@ class FaultAwareApply:
         try:
             return func(self, *args, **kwargs)
         except Exception as e:
-            # Actor should be recreated by Ray.
+            # `func` ran on this actor and may have corrupted its state -- always
+            # terminate so a subsequent call doesn't crash-loop on the same broken
+            # state. `restart_failed_env_runners` only controls whether Ray Core
+            # brings the actor back, via `max_restarts` set in `EnvRunnerGroup`.
+            logger.exception(f"Worker exception caught during `apply()`: {e}")
+            # Only sleep if a restart will actually happen -- the sleep allows log
+            # propagation and back-pressures cluster-wide failure thrash. With no
+            # restart there's nothing to back-pressure.
             if self.config.restart_failed_env_runners:
-                logger.exception(f"Worker exception caught during `apply()`: {e}")
-                # Small delay to allow logs messages to propagate.
                 time.sleep(self.config.delay_between_env_runner_restarts_s)
-                # Kill this worker so Ray Core can restart it.
-                sys.exit(1)
-            # Actor should be left dead.
-            else:
-                raise e
+            sys.exit(1)
 
 
 @DeveloperAPI
@@ -871,25 +885,14 @@ class FaultTolerantActorManager:
             ), "If func is a list of functions, kwargs has to be a list of kwargs."
 
             for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
-                if isinstance(f, str):
-                    calls.append(
-                        getattr(self._actors[raid], f).remote(
-                            **(
-                                kwargs[i]
-                                if isinstance(kwargs, list)
-                                else (kwargs or {})
-                            )
-                        )
-                    )
-                else:
-                    calls.append(self._actors[raid].apply.remote(f))
+                kw = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
+                f_callable = _method_caller(f) if isinstance(f, str) else f
+                calls.append(self._actors[raid].apply.remote(func=f_callable, **kw))
         elif isinstance(func, str):
+            f_callable = _method_caller(func)
             for i, raid in enumerate(remote_actor_ids):
-                calls.append(
-                    getattr(self._actors[raid], func).remote(
-                        **(kwargs[i] if isinstance(kwargs, list) else (kwargs or {}))
-                    )
-                )
+                kw = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
+                calls.append(self._actors[raid].apply.remote(func=f_callable, **kw))
         else:
             for raid in remote_actor_ids:
                 calls.append(self._actors[raid].apply.remote(func=func, **kwargs or {}))

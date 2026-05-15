@@ -230,6 +230,69 @@ def test_actor_task_failure(
     ds.map_batches(Mapper, concurrency=1).materialize()
 
 
+def test_task_retry_on_errors_succeeds(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = ["transient error"]
+    ctx.max_map_retries = 3
+
+    class FlakyUDF:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter <= 2:
+                raise ValueError("transient error")
+            return batch
+
+    result = ray.data.range(2, override_num_blocks=1).map_batches(FlakyUDF).take_all()
+    assert sorted(extract_values("id", result)) == list(range(2)), result
+
+
+def test_task_retry_on_errors_exhausted(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = ["persistent bug"]
+    ctx.max_map_retries = 2
+
+    def always_fails(batch):
+        raise ValueError("persistent bug")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.data.range(2, override_num_blocks=1).map_batches(always_fails).take_all()
+
+
+def test_task_retry_non_matching_exception_not_retried(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = ["rate limit"]
+
+    def udf(batch):
+        raise ValueError("not a retryable error")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.data.range(2, override_num_blocks=1).map_batches(udf).take_all()
+
+
+def test_task_retry_true_retries_any_exception(shutdown_only, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = True
+    ctx.max_map_retries = 3
+
+    class FlakyUDF:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter <= 2:
+                raise RuntimeError("any kind of transient error")
+            if self._counter <= 3:
+                raise ValueError("also a retryable error")
+            return batch
+
+    result = ray.data.range(2, override_num_blocks=1).map_batches(FlakyUDF).take_all()
+    assert sorted(extract_values("id", result)) == list(range(2)), result
+
+
 def test_gpu_workers_not_reused(
     shutdown_only, target_max_block_size_infinite_or_default
 ):
@@ -386,6 +449,7 @@ def test_map_timestamp_nanosecs(
     result = ray_data.map(process_timestamp_data)
     processed_df = result.to_pandas()
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
+    expected_df = expected_df.astype(processed_df.dtypes.to_dict())
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
 
@@ -514,17 +578,6 @@ def test_rename_columns(
     renamed_schema_names = renamed_ds.schema().names
 
     assert sorted(renamed_schema_names) == sorted(expected_schema)
-
-
-def test_default_batch_size_emits_deprecation_warning(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    with pytest.warns(
-        DeprecationWarning,
-        match="Passing 'default' to `map_batches` is deprecated and won't be "
-        "supported after September 2025. Use `batch_size=None` instead.",
-    ):
-        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
 
 
 @pytest.mark.parametrize(

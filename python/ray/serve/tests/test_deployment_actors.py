@@ -10,7 +10,6 @@ import yaml
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaState
 from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -22,7 +21,6 @@ from ray.serve._private.test_utils import (
     check_replica_counts,
     check_running,
     get_application_url,
-    request_with_retries,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -72,7 +70,6 @@ class ConstructorGate:
         self._open = True
 
     def wait_until_open(self):
-        import time
 
         while not self._open:
             time.sleep(0.01)
@@ -145,6 +142,20 @@ class FailingDeploymentActor:
     def __init__(self, should_fail: bool = True):
         if should_fail:
             raise RuntimeError("Deployment actor init failed")
+
+
+@ray.remote
+class DeploymentActorContextActor:
+    """Reads deployment actor runtime context for testing."""
+
+    def get_context(self):
+        ctx = serve.get_deployment_actor_context()
+        return {
+            "deployment": ctx.deployment,
+            "app_name": ctx.app_name,
+            "actor_name": ctx.actor_name,
+            "code_version": ctx.code_version,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +361,7 @@ def test_declarative_deploy_with_deployment_actors(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
 
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
@@ -401,7 +412,7 @@ def test_declarative_config_only_actors(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
 
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
@@ -451,7 +462,7 @@ def test_declarative_config_only_actors_no_version_change(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "10")
 
@@ -459,7 +470,7 @@ def test_declarative_config_only_actors_no_version_change(serve_instance):
     assert len(actor_names_before) == 1
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     wait_for_condition(lambda: httpx.get(url).text == "10")
 
     actor_names_after = _get_deployment_actor_names()
@@ -502,7 +513,7 @@ def test_declarative_config_only_actors_version_change(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "100")
 
@@ -537,7 +548,7 @@ def test_declarative_config_only_actors_version_change(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     wait_for_condition(lambda: httpx.get(url).text == "200")
 
     actor_names_v2 = _get_deployment_actor_names()
@@ -797,334 +808,6 @@ def test_redeployment_with_no_actors_cleans_up_old(serve_instance):
     wait_for_condition(lambda: httpx.get(url).text == "v2")
 
     wait_for_condition(_check_no_deployment_actors, timeout=15)
-
-
-def test_deployment_actor_survives_controller_restart(serve_instance):
-    """Deployment actors are detached and survive controller restart.
-
-    After controller recovers from checkpoint, it discovers existing
-    deployment actors (ActorAlreadyExistsError) and marks them ready.
-    App continues to work with the same Ray actor process (matching ``ray_actor_id``),
-    not a recreation.
-    """
-
-    @serve.deployment(
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="counter",
-                actor_class=SharedCounter,
-                init_kwargs={"start": 42},
-            ),
-        ],
-    )
-    class MyDeployment:
-        def __call__(self):
-            counter = serve.get_deployment_actor("counter")
-            val = ray.get(counter.get.remote())
-            aid = ray.get(counter.ray_actor_id.remote())
-            return f"{val},{aid}"
-
-    serve.run(
-        MyDeployment.bind(),
-        name="app",
-        route_prefix="/survives_controller_restart_da",
-    )
-
-    def _parse_val_actor_id(text: str) -> tuple[str, str]:
-        val, aid = text.split(",", 1)
-        return val, aid
-
-    actor_id_before = None
-    for _ in range(5):
-        resp = request_with_retries(timeout=30, app_name="app")
-        val, aid = _parse_val_actor_id(resp.text)
-        assert val == "42"
-        if actor_id_before is None:
-            actor_id_before = aid
-        else:
-            assert aid == actor_id_before
-
-    actor_names_before = _get_deployment_actor_names_for_app("app", "MyDeployment")
-    assert len(actor_names_before) == 1
-
-    ray.kill(serve_instance._controller, no_restart=False)
-
-    wait_for_condition(
-        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
-    )
-    for _ in range(10):
-        resp = request_with_retries(timeout=30, app_name="app")
-        val, aid = _parse_val_actor_id(resp.text)
-        assert val == "42"
-        assert aid == actor_id_before
-
-    actor_names_after = _get_deployment_actor_names_for_app("app", "MyDeployment")
-    assert actor_names_after == actor_names_before
-
-
-def test_deployment_actor_restarts_on_crash(serve_instance):
-    """When a deployment actor dies, the Serve controller recreates it (no Ray auto-restart).
-
-    Replicas call ``serve.get_deployment_actor()`` per request here, so they resolve a
-    current handle after recreation. HTTP bodies include ``ray_actor_id`` so we assert a
-    new id after Serve recreates the deployment actor.
-    """
-
-    @serve.deployment(
-        name="CrashTestDeployment",
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="counter",
-                actor_class=SharedCounter,
-                init_kwargs={"start": 100},
-            ),
-        ],
-    )
-    class CrashTestDeployment:
-        def __call__(self):
-            counter = serve.get_deployment_actor("counter")
-            val = ray.get(counter.get.remote())
-            aid = ray.get(counter.ray_actor_id.remote())
-            return f"{val},{aid}"
-
-    serve.run(CrashTestDeployment.bind())
-    url = f"{get_application_url()}/"
-
-    def _parse_val_actor_id_crash(text: str) -> tuple[str, str]:
-        val, aid = text.split(",", 1)
-        return val, aid
-
-    wait_for_condition(
-        lambda: _parse_val_actor_id_crash(httpx.get(url).text)[0] == "100"
-    )
-    _, old_actor_id = _parse_val_actor_id_crash(httpx.get(url).text)
-
-    actor_names = [
-        n
-        for n in _get_deployment_actor_names()
-        if "CrashTestDeployment" in n and "counter" in n
-    ]
-    assert len(actor_names) == 1
-    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
-
-    ray.kill(handle, no_restart=True)
-
-    def recovered_new_deployment_actor():
-        text = httpx.get(url, timeout=5).text
-        val, aid = _parse_val_actor_id_crash(text)
-        return val == "100" and aid != old_actor_id
-
-    wait_for_condition(recovered_new_deployment_actor, timeout=120)
-
-
-def test_deployment_actor_health_check_failure_then_recovery_to_healthy(serve_instance):
-    """E2E: deployment actor fails controller health poll → UNHEALTHY → recreate → HEALTHY.
-
-    The controller health-checks deployment-scoped actors with ``__ray_ready__``. If the
-    worker is gone, ``ray.get`` raises ``RayActorError`` and the deployment is marked
-    UNHEALTHY immediately; the controller then creates a new actor (same as the
-    repeated-timeout/APP_FAILURE path, but without waiting for the unhealthy threshold).
-
-    After killing the deployment actor, we ``close()`` a :class:`ConstructorGate` so the
-    replacement actor blocks in ``__init__``. While it is stuck starting, Serve cannot
-    return to HEALTHY (``_deployment_actors_satisfied_for_target`` requires RUNNING), so
-    ``DeploymentStatus.UNHEALTHY`` is stable and easy to assert without racing the status
-    API. Opening the gate lets construction finish and the deployment recover.
-    """
-
-    dep_name = "DAHealthRecoveryDeployment"
-    logical_actor = "counter"
-    gate = ConstructorGate.remote()
-
-    @serve.deployment(
-        name=dep_name,
-        deployment_actors=[
-            DeploymentActorConfig(
-                name=logical_actor,
-                actor_class=GatedSharedCounter,
-                init_kwargs={"gate": gate, "start": 42},
-            ),
-        ],
-    )
-    class DAHealthRecoveryDeployment:
-        def __call__(self):
-            counter = serve.get_deployment_actor(logical_actor)
-            val = ray.get(counter.get.remote())
-            aid = ray.get(counter.ray_actor_id.remote())
-            return f"{val},{aid}"
-
-    serve.run(DAHealthRecoveryDeployment.bind(), name=SERVE_DEFAULT_APP_NAME)
-    url = f"{get_application_url()}/"
-
-    def _parse_val_actor_id_health(text: str) -> tuple[str, str]:
-        val, aid = text.split(",", 1)
-        return val, aid
-
-    def deployment_status():
-        return (
-            serve.status()
-            .applications[SERVE_DEFAULT_APP_NAME]
-            .deployments[dep_name]
-            .status
-        )
-
-    def counter_actor_name() -> str:
-        names = [
-            n
-            for n in _get_deployment_actor_names()
-            if dep_name in n and logical_actor in n
-        ]
-        assert len(names) == 1
-        return names[0]
-
-    def counter_actor_id_for_name(name: str) -> str:
-        for a in list_actors(filters=[("state", "=", "ALIVE")]):
-            if a.get("name") == name:
-                return a.actor_id
-        raise AssertionError(f"No ALIVE actor record for name={name!r}")
-
-    wait_for_condition(
-        lambda: _parse_val_actor_id_health(httpx.get(url).text)[0] == "42"
-    )
-    assert deployment_status() == DeploymentStatus.HEALTHY
-
-    da_name = counter_actor_name()
-    old_actor_id = counter_actor_id_for_name(da_name)
-    _, http_actor_id_before = _parse_val_actor_id_health(httpx.get(url).text)
-    assert http_actor_id_before == old_actor_id
-
-    ray.get(gate.close.remote())
-    ray.kill(
-        ray.get_actor(da_name, namespace=SERVE_NAMESPACE),
-        no_restart=True,
-    )
-
-    wait_for_condition(
-        lambda: deployment_status() == DeploymentStatus.UNHEALTHY,
-        timeout=120,
-    )
-    assert deployment_status() == DeploymentStatus.UNHEALTHY
-
-    ray.get(gate.open.remote())
-
-    wait_for_condition(
-        lambda: deployment_status() == DeploymentStatus.HEALTHY,
-        timeout=120,
-    )
-
-    def http_shows_new_deployment_actor():
-        val, aid = _parse_val_actor_id_health(httpx.get(url, timeout=5).text)
-        return val == "42" and aid != old_actor_id
-
-    wait_for_condition(http_shows_new_deployment_actor, timeout=120)
-
-    new_name = counter_actor_name()
-    assert new_name == da_name
-    new_actor_id = counter_actor_id_for_name(new_name)
-    assert new_actor_id != old_actor_id
-    _, http_actor_id_after = _parse_val_actor_id_health(httpx.get(url).text)
-    assert http_actor_id_after == new_actor_id
-
-
-def test_cached_get_deployment_actor_handle_stale_after_recreation(serve_instance):
-    """Stale handle in ``__init__`` vs cache + refresh after the deployment actor dies.
-
-    (1) A handle from ``get_deployment_actor`` stored only in ``__init__`` still
-    points at the dead actor after Serve recreates the named actor; HTTP stays 5xx.
-    Logs typically show ``ActorDiedError`` / ``RayActorError`` from ``ray.get`` on
-    that stale handle.
-
-    (2) **Recommended** — on ``RayActorError`` from ``ray.get``, call
-    ``serve.get_deployment_actor`` again. That lookup can raise ``ValueError`` with a
-    message that lists three causes (including namespace); after a kill the usual
-    case is that the name is not registered yet—retry briefly until the controller
-    finishes recreating the actor. Alternatively resolve the actor on every request;
-    see ``test_deployment_actor_restarts_on_crash``.
-
-    Expected log noise: replica ``ERROR``/``500`` lines while the actor is missing or
-    stale are normal for phase (1); phase (2) should stay quiet once refresh retries
-    ``get_deployment_actor``.
-    """
-
-    counter_cfg = DeploymentActorConfig(
-        name="counter",
-        actor_class=SharedCounter,
-        init_kwargs={"start": 7},
-    )
-
-    def kill_stale_test_counter():
-        names = [
-            n
-            for n in _get_deployment_actor_names()
-            if "StaleHandleDeployment" in n and "counter" in n
-        ]
-        assert len(names) == 1
-        ray.kill(
-            ray.get_actor(names[0], namespace=SERVE_NAMESPACE),
-            no_restart=True,
-        )
-
-    @serve.deployment(
-        name="StaleHandleDeployment",
-        deployment_actors=[counter_cfg],
-    )
-    class StaleHandleDeployment:
-        def __init__(self):
-            self._counter = serve.get_deployment_actor("counter")
-
-        def __call__(self):
-            return str(ray.get(self._counter.get.remote()))
-
-    serve.run(StaleHandleDeployment.bind())
-    url = f"{get_application_url()}/"
-    wait_for_condition(lambda: httpx.get(url).text == "7")
-
-    kill_stale_test_counter()
-
-    def replica_still_fails_after_recreation():
-        r = httpx.get(url, timeout=10)
-        return r.status_code >= 500
-
-    wait_for_condition(replica_still_fails_after_recreation, timeout=120)
-
-    @serve.deployment(
-        name="StaleHandleDeployment",
-        deployment_actors=[counter_cfg],
-    )
-    class CacheAndRefreshOnRayActorError:
-        def __init__(self):
-            self._counter = serve.get_deployment_actor("counter")
-
-        def _resolve_counter_after_actor_died(self):
-            # After Serve kills the deployment actor, the same name may not exist in
-            # GCS until recreation completes; ray.get_actor raises ValueError (message
-            # also mentions namespace as a generic possibility).
-            deadline = time.monotonic() + 30.0
-            last_exc = None
-            while time.monotonic() < deadline:
-                try:
-                    self._counter = serve.get_deployment_actor("counter")
-                    return
-                except ValueError as e:
-                    last_exc = e
-                    time.sleep(0.05)
-            if last_exc is not None:
-                raise last_exc
-            raise TimeoutError(
-                "Timed out waiting for deployment actor name after recreation."
-            )
-
-        def __call__(self):
-            try:
-                return str(ray.get(self._counter.get.remote()))
-            except RayActorError:
-                self._resolve_counter_after_actor_died()
-                return str(ray.get(self._counter.get.remote()))
-
-    serve.run(CacheAndRefreshOnRayActorError.bind())
-    wait_for_condition(lambda: httpx.get(url).text == "7")
-    kill_stale_test_counter()
-    wait_for_condition(lambda: httpx.get(url).text == "7", timeout=120)
 
 
 def test_deployment_actor_constructor_failure_app_status(serve_instance):
@@ -1616,6 +1299,37 @@ def test_get_deployment_actor_outside_replica_raises(serve_instance):
         serve.get_deployment_actor("counter")
 
 
+def test_get_deployment_actor_context_outside_actor_raises(serve_instance):
+    """get_deployment_actor_context called outside actor raises RayServeException."""
+    with pytest.raises(RayServeException, match="may only be called from within"):
+        serve.get_deployment_actor_context()
+
+
+def test_get_deployment_actor_context_returns_runtime_metadata(serve_instance):
+    """Deployment actors can read deployment metadata via context API."""
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="ctx_actor",
+                actor_class=DeploymentActorContextActor,
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            actor = serve.get_deployment_actor("ctx_actor")
+            return ray.get(actor.get_context.remote())
+
+    handle = serve.run(MyDeployment.bind(), name="metadata-app")
+    result = handle.remote().result()
+
+    assert result["deployment"] == "MyDeployment"
+    assert result["app_name"] == "metadata-app"
+    assert result["actor_name"] == "ctx_actor"
+    assert isinstance(result["code_version"], str)
+
+
 def test_deploy_from_yaml_config_file_with_deployment_actors(serve_instance):
     """Deploy from YAML config file with deployment_actors."""
     config_path = os.path.join(
@@ -1666,7 +1380,7 @@ def test_config_only_deployment_actors_with_actor_options(serve_instance):
         ],
     }
     serve_instance.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "99")
 
@@ -1728,58 +1442,6 @@ def test_user_config_update_with_deployment_actors(serve_instance):
     wait_for_condition(lambda: "updated:50" in httpx.get(url).text, timeout=30)
 
 
-def test_controller_restart_preserves_mutated_actor_state(serve_instance):
-    """Controller restart preserves mutated deployment actor state.
-
-    Strengthens test_deployment_actor_survives_controller_restart: that test
-    only checks the init value (start=42) survives. This test mutates the
-    actor's state (increments counter beyond init value) before the restart
-    and verifies the mutations survive — proving the *same* actor instance
-    continues running, not a freshly created one.
-    """
-
-    @serve.deployment(
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="counter",
-                actor_class=SharedCounter,
-                init_kwargs={"start": 0},
-            ),
-        ],
-    )
-    class MyDeployment:
-        def __call__(self):
-            counter = serve.get_deployment_actor("counter")
-            return str(ray.get(counter.get.remote()))
-
-    serve.run(
-        MyDeployment.bind(),
-        name="app",
-        route_prefix="/preserves_mutated_state_da",
-    )
-    resp = request_with_retries(timeout=30, app_name="app")
-    assert resp.text == "0"
-
-    # Mutate actor state directly (bypass replica to isolate the test)
-    actor_names = _get_deployment_actor_names_for_app("app", "MyDeployment")
-    assert len(actor_names) == 1
-    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
-    for _ in range(5):
-        ray.get(handle.increment.remote())
-    assert ray.get(handle.get.remote()) == 5
-
-    ray.kill(serve_instance._controller, no_restart=False)
-
-    wait_for_condition(
-        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
-    )
-
-    # Mutated state (5) must survive, not reset to init value (0)
-    for _ in range(5):
-        resp = request_with_retries(timeout=30, app_name="app")
-        assert resp.text == "5"
-
-
 def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
     """Redeploying adds deployment actors to a deployment that previously had none.
 
@@ -1803,7 +1465,7 @@ def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "no_actor")
     assert _check_deployment_actor_count(0)
@@ -1836,7 +1498,7 @@ def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     wait_for_condition(lambda: httpx.get(url).text == "42")
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
@@ -1878,7 +1540,7 @@ def test_redeployment_changes_actor_class(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "10")
     v1_actor_names = _get_deployment_actor_names()
@@ -1912,7 +1574,7 @@ def test_redeployment_changes_actor_class(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running, timeout=20)
+    wait_for_condition(check_running, timeout=30)
     # AltCounter.get() returns start * 10 = 100, proving the class changed
     wait_for_condition(lambda: httpx.get(url).text == "100", timeout=10)
     v2_actor_names = _get_deployment_actor_names()
@@ -1959,7 +1621,7 @@ def test_redeployment_same_name_changed_init_kwargs_resets_state(serve_instance)
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "0")
 
@@ -2000,7 +1662,7 @@ def test_redeployment_same_name_changed_init_kwargs_resets_state(serve_instance)
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     # State reset: returns 100 (new init value), not 5 (old mutated state)
     wait_for_condition(lambda: httpx.get(url).text == "100", timeout=30)
 

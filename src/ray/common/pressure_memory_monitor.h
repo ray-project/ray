@@ -126,7 +126,21 @@ class PressureMemoryMonitor : public MemoryMonitorInterface {
   /**
    * @return True if the memory monitor is enabled, false otherwise.
    */
-  bool IsEnabled() override;
+  bool IsEnabled() const override;
+
+  /// The default monitoring mode for cgroup pressure monitor trigger.
+  /// Possible values are:
+  /// - some: At least one task is stalled for a specified duration
+  /// - full: All tasks are stalled for a specified duration
+  static constexpr char kDefaultMemoryPsiMonitoringMode[] = "some";
+
+  /// The default stall duration in seconds for cgroup pressure monitor trigger.
+  /// Possible values are multiples of 2 seconds.
+  static constexpr uint32_t kDefaultMemoryPsiStallDurationS = 2;
+
+  /// The default proportion of specified duration that the task needs to
+  /// be stalled to trigger the pressure monitor. Defaults to 0.01%.
+  static constexpr float kDefaultMemoryPsiStallProportion = 0.0001;
 
  private:
   /**

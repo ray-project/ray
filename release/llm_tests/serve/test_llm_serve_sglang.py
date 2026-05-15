@@ -6,7 +6,7 @@ from openai import OpenAI
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm.examples.sglang.modules.sglang_engine import SGLangServer
+from ray.llm._internal.serve.engines.sglang import SGLangServer
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, build_openai_app
 from ray.serve.schema import ApplicationStatus
@@ -371,6 +371,77 @@ def test_sglang_serve_e2e_pipeline_parallel():
         assert comp_resp.choices[0].text.strip()
     finally:
         serve.shutdown()
+
+
+def test_sglang_custom_placement_group_config():
+    """Verify explicit placement_group_config is respected by get_deployment_options.
+
+    Covers the configuration pattern used in serve_sglang_multinode_example.py
+    where users provide custom bundles and strategy for multi-node TP/PP.
+    Does not require GPUs — only tests configuration logic.
+    """
+    custom_bundles = [{"GPU": 1}] * 8
+    custom_strategy = "PACK"
+
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        deployment_config={
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "max_replicas": 2,
+                "target_ongoing_requests": 4,
+            }
+        },
+        placement_group_config={
+            "placement_group_bundles": custom_bundles,
+            "placement_group_strategy": custom_strategy,
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 4,
+            "pp_size": 2,
+            "mem_fraction_static": 0.8,
+        },
+    )
+
+    deployment_options = SGLangServer.get_deployment_options(llm_config)
+    assert deployment_options["placement_group_bundles"] == custom_bundles, (
+        f"Expected custom bundles {custom_bundles}, "
+        f"got {deployment_options['placement_group_bundles']}"
+    )
+    assert deployment_options["placement_group_strategy"] == custom_strategy, (
+        f"Expected strategy '{custom_strategy}', "
+        f"got '{deployment_options['placement_group_strategy']}'"
+    )
+
+
+def test_sglang_custom_placement_group_default_strategy():
+    """Verify that custom bundles without an explicit strategy default to PACK."""
+    custom_bundles = [{"GPU": 1}] * 4
+
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 2,
+            "pp_size": 2,
+        },
+        placement_group_config={
+            "placement_group_bundles": custom_bundles,
+        },
+    )
+
+    deployment_options = SGLangServer.get_deployment_options(llm_config)
+    assert deployment_options["placement_group_bundles"] == custom_bundles
+    assert deployment_options["placement_group_strategy"] == "PACK"
 
 
 # ---------------------------------------------------------------------------

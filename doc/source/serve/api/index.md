@@ -56,6 +56,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
+   serve.handle.DeploymentBroadcastResponse
 ```
 
 ### Running Applications
@@ -170,6 +171,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
 
 

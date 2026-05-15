@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray.exceptions import RayActorError
+from ray.train.v2._internal.constants import GET_ACTOR_TIMEOUT_S
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
@@ -25,14 +26,27 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
     dies ungracefully.
     """
 
-    def __init__(self, check_interval_s: float = 1.0):
+    def __init__(
+        self,
+        check_interval_s: float = 1.0,
+        get_actor_timeout_s: float = GET_ACTOR_TIMEOUT_S,
+        stop_timeout: Optional[float] = None,
+    ):
         """Initialize the callback.
 
         Args:
             check_interval_s: How often (in seconds) the cleaner should check
                 if the controller is still alive.
+            get_actor_timeout_s: How long to wait when calling the get actor state api.
+            stop_timeout: How long to wait for the cleaner to stop.
         """
         self._check_interval_s = check_interval_s
+        self._get_actor_timeout_s = get_actor_timeout_s
+        self._stop_timeout = stop_timeout
+        if self._stop_timeout is None:
+            self._stop_timeout = max(
+                2.0, self._check_interval_s * 2 + self._get_actor_timeout_s
+            )
         self._cleaner: Optional[PlacementGroupCleaner] = None
         self._controller_actor_id: Optional[str] = None
 
@@ -50,6 +64,8 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             ).remote(
                 controller_actor_id=self._controller_actor_id,
                 check_interval_s=self._check_interval_s,
+                get_actor_timeout_s=self._get_actor_timeout_s,
+                stop_timeout=self._stop_timeout,
             )
 
             logger.debug(
@@ -104,8 +120,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
         try:
             # Stop the cleaner gracefully (it won't clean up the PG)
-            stop_timeout_s = max(2.0, self._check_interval_s * 2)
-            ray.get(self._cleaner.stop.remote(), timeout=stop_timeout_s)
+            ray.get(self._cleaner.stop.remote(), timeout=self._stop_timeout)
         except RayActorError:
             logger.debug(
                 "PlacementGroupCleaner exited before stop completed; ignoring."

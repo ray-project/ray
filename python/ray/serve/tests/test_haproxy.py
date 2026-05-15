@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -22,6 +23,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.test_utils import get_application_url
@@ -331,6 +333,20 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
+    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
+    # very likely each shard has served at least one request and converged.
+    def all_haproxies_ready():
+        try:
+            return all(
+                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                == 200
+                for _ in range(20)
+            )
+        except Exception:
+            return False
+
+    wait_for_condition(all_haproxies_ready, timeout=20)
+
     # Start a long-running request in background to test draining behavior
     request_result = []
 
@@ -588,6 +604,34 @@ def test_haproxy_http_options(ray_shutdown):
     serve.shutdown()
 
 
+@pytest.mark.parametrize(
+    "header_key",
+    [
+        SERVE_SESSION_ID,  # underscore form
+        "x-session-id",  # hyphenated form
+        "X-Session-Id",  # title-cased hyphenated form
+    ],
+)
+def test_session_id_header_forwarded_through_haproxy(ray_shutdown, header_key):
+    """The session_id header must survive an HAProxy hop and reach the deployment."""
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment
+    class Model:
+        def __call__(self) -> str:
+            return ray.serve.context._get_serve_request_context().session_id
+
+    serve.run(Model.bind())
+
+    session_id = "sess_user_42"
+    resp = httpx.get("http://localhost:8000/", headers={header_key: session_id})
+    assert resp.status_code == 200
+    assert resp.text == session_id
+
+    serve.shutdown()
+
+
 def test_haproxy_metrics(ray_shutdown):
     """Test that the haproxy metrics are exported correctly."""
     ray.init(num_cpus=4)
@@ -605,13 +649,28 @@ def test_haproxy_metrics(ray_shutdown):
 
     assert httpx.get("http://localhost:8000/").text == "hello1"
 
-    metrics_response = httpx.get("http://localhost:9101/metrics")
-    assert metrics_response.status_code == 200
-
-    http_backend_metrics = (
-        'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} 1'
+    metric_prefix = (
+        'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} '
     )
-    assert http_backend_metrics in metrics_response.text
+    last_metrics = [""]
+
+    def metrics_show_2xx_response():
+        assert httpx.get("http://localhost:8000/").text == "hello1"
+        resp = httpx.get("http://localhost:9101/metrics")
+        assert resp.status_code == 200
+        last_metrics[0] = resp.text
+        for line in resp.text.splitlines():
+            if line.startswith(metric_prefix):
+                return float(line[len(metric_prefix) :]) >= 1
+        return False
+
+    try:
+        wait_for_condition(metrics_show_2xx_response, timeout=30)
+    except RuntimeError:
+        # Dump full /metrics so bazel test logs show the real backend counters
+        # instead of pytest's truncated assertion message.
+        print("Final /metrics output:\n" + last_metrics[0])
+        raise
 
     serve.shutdown()
 
@@ -777,22 +836,25 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return "hello"
 
     # Helpers
-    SOCKET_PATH = "/tmp/haproxy-serve/admin.sock"
+    SOCKET_PATH = (
+        f"/tmp/haproxy-serve/{ray.get_runtime_context().get_node_id()}/admin.sock"
+    )
 
     def app_to_backend(app: str) -> str:
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        result = subprocess.run(
-            f'echo "show stat" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to query HAProxy stats: {result.stderr}")
-        return result.stdout
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(b"show stat\n")
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
         lines = haproxy_show_stat().strip().split("\n")
@@ -810,12 +872,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        subprocess.run(
-            f'echo "set server {backend}/{server} state {state}" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            timeout=5,
-        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(f"set server {backend}/{server} state {state}\n".encode())
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(

@@ -1,5 +1,4 @@
 import itertools
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
@@ -12,6 +11,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     Schema,
+    _take_first_non_empty_schema,
 )
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -176,7 +176,7 @@ class RefBundle:
             elif metadata.num_rows != block_slice.num_rows:
                 # Partial block - estimate size based on rows
                 per_row = metadata.size_bytes / metadata.num_rows
-                total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
+                total += max(1, round(per_row * block_slice.num_rows))
             else:
                 total += metadata.size_bytes
         return total
@@ -330,7 +330,6 @@ class RefBundle:
             owns_blocks is True only if all input bundles own their blocks.
             schema is the first non-empty schema found.
         """
-        from ray.data.block import _take_first_non_empty_schema
 
         bundles = list(bundles)
         if not bundles:

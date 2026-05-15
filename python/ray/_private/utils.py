@@ -196,7 +196,7 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-# TODO(qwang): Remove these hepler functions
+# TODO(qwang): Remove these helper functions
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
@@ -278,7 +278,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
         ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
+        False,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
@@ -523,6 +523,63 @@ def get_cgroup_used_memory(
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
+def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
+    """
+    Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
+
+    Supports both cgroups v1 and v2. Total is capped at the host physical
+    memory.
+    """
+    mem_usage_v1_file = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    mem_stat_v1_file = "/sys/fs/cgroup/memory/memory.stat"
+    mem_limit_v1_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    mem_usage_v2_file = "/sys/fs/cgroup/memory.current"
+    mem_stat_v2_file = "/sys/fs/cgroup/memory.stat"
+    mem_limit_v2_file = "/sys/fs/cgroup/memory.max"
+
+    cgroup_used = None
+    cgroup_total = None
+    system_total = get_system_memory()
+
+    if os.path.exists(mem_usage_v1_file) and os.path.exists(mem_stat_v1_file):
+        cgroup_used = get_cgroup_used_memory(
+            mem_stat_v1_file,
+            mem_usage_v1_file,
+            "total_inactive_file",
+            "total_active_file",
+        )
+        try:
+            with open(mem_limit_v1_file, "r") as f:
+                cgroup_total = min(int(f.read().strip()), system_total)
+        except Exception as exception:
+            logger.warning(
+                f"Failed to obtain current container memory limit from {mem_limit_v1_file}: {repr(exception)}. "
+                "Falling back to system total memory."
+            )
+            cgroup_total = system_total
+    elif os.path.exists(mem_usage_v2_file) and os.path.exists(mem_stat_v2_file):
+        cgroup_used = get_cgroup_used_memory(
+            mem_stat_v2_file, mem_usage_v2_file, "inactive_file", "active_file"
+        )
+        try:
+            with open(mem_limit_v2_file, "r") as f:
+                max_val = f.read().strip()
+            if max_val.isnumeric():
+                cgroup_total = min(int(max_val), system_total)
+            else:
+                cgroup_total = system_total
+        except Exception as exception:
+            logger.warning(
+                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}. "
+                "Falling back to system total memory."
+            )
+            cgroup_total = system_total
+
+    if cgroup_used is not None and cgroup_total is not None:
+        return cgroup_used, cgroup_total
+    return None
+
+
 def resolve_object_store_memory(
     available_memory_bytes: int,
     object_store_memory: Optional[int] = None,
@@ -582,41 +639,17 @@ def resolve_object_store_memory(
 
 
 def get_used_memory():
-    """Return the currently used system memory in bytes
+    """
+    Return the currently used system memory in bytes
+    If cgroup memory utilization files (e.g. memory.stat) are available,
+    we are in a container/cgroup. Use the cgroup memory usage instead.
 
     Returns:
         The total amount of used memory
     """
-    # Try to accurately figure out the memory usage if we are in a docker
-    # container.
-    docker_usage = None
-    # For cgroups v1:
-    memory_usage_filename_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-    memory_stat_filename_v1 = "/sys/fs/cgroup/memory/memory.stat"
-    # For cgroups v2:
-    memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
-    memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename_v1) and os.path.exists(
-        memory_stat_filename_v1
-    ):
-        docker_usage = get_cgroup_used_memory(
-            memory_stat_filename_v1,
-            memory_usage_filename_v1,
-            "total_inactive_file",
-            "total_active_file",
-        )
-    elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
-        memory_stat_filename_v2
-    ):
-        docker_usage = get_cgroup_used_memory(
-            memory_stat_filename_v2,
-            memory_usage_filename_v2,
-            "inactive_file",
-            "active_file",
-        )
-
-    if docker_usage is not None:
-        return docker_usage
+    cgroup_stats = get_cgroup_mem_stats()
+    if cgroup_stats is not None:
+        return cgroup_stats[0]
     return psutil.virtual_memory().used
 
 
@@ -1662,18 +1695,15 @@ def parse_pg_formatted_resources_to_original(
 def validate_actor_state_name(actor_state_name):
     if actor_state_name is None:
         return
-    actor_state_names = [
-        "DEPENDENCIES_UNREADY",
-        "PENDING_CREATION",
-        "ALIVE",
-        "RESTARTING",
-        "DEAD",
-    ]
-    if actor_state_name not in actor_state_names:
+
+    from ray._private.custom_types import ACTOR_STATUS
+
+    if actor_state_name not in ACTOR_STATUS:
+        quoted = [f'"{s}"' for s in ACTOR_STATUS]
+        states_str = ", ".join(quoted[:-1]) + f", or {quoted[-1]}"
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            'it must be one of the following: "DEPENDENCIES_UNREADY", '
-            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+            f"it must be one of the following: {states_str}"
         )
 
 

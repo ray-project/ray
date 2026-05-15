@@ -13,7 +13,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 import ray
 
-from benchmark import Benchmark
+from benchmark import (
+    Benchmark,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+    collect_dataset_stats,
+)
 
 BATCH_SIZE = 128
 
@@ -84,7 +89,7 @@ def main(args: argparse.Namespace):
         start_chaos()
 
     def benchmark_fn():
-        (
+        ds = (
             ray.data.read_parquet(INPUT_PREFIX, schema=SCHEMA)
             .repartition(target_num_rows_per_block=256)
             .map_batches(
@@ -94,8 +99,11 @@ def main(args: argparse.Namespace):
                 batch_size=BATCH_SIZE,
                 fn_constructor_kwargs={"model": "BAAI/bge-m3", "token": get_hf_token()},
             )
-            .write_parquet(OUTPUT_PREFIX, mode="overwrite")
         )
+        ds.write_parquet(OUTPUT_PREFIX, mode="overwrite")
+        metrics = collect_dataset_stats(ds)
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -144,6 +152,6 @@ def get_hf_token() -> str:
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
     main(args)

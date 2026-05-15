@@ -22,6 +22,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -38,6 +39,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         fake_gauge_,
+        clock_,
         /*is_local_node_with_raylet=*/false);
   }
 
@@ -185,6 +187,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
   }
   instrumented_io_context io_context_;
   ray::observability::FakeGauge fake_gauge_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 };
 
@@ -298,8 +301,3 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
