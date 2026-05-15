@@ -25,7 +25,7 @@ If a docs-only PR hits unnecessarily broad tests, file a `.buildkite/test.rules.
 
 ## Cross-references between .md and .rst sources
 
-When linking from `.md` to a doc whose source is `.rst`, use the `{doc}` role, not a bare `(path.md)` link: `` {doc}`Ray documentation home page </index>` ``. MyST-Parser 2.0 has a cross-extension resolution bug — a bare `(path.md)` link to an `.rst` source emits `myst.xref_missing`, which `fail_on_warning: true` in `.readthedocs.yaml` turns into a build failure.
+When linking from .md to a doc whose source is .rst, use the {doc} role, not a bare `[text](path.md)` link: `` {doc}`Ray documentation home page </index>` ``. MyST-Parser 2.0 has a cross-extension resolution bug — a bare `[text](path.md)` link to an .rst source emits `myst.xref_missing`, which `fail_on_warning: true` in `.readthedocs.yaml` turns into a build failure.
 
 ## Editing the docs lockfile
 
