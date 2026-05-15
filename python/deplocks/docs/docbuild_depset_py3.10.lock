@@ -710,9 +710,9 @@ ml-dtypes==0.5.4 \
     # via
     #   keras
     #   tensorflow
-myst-nb==1.0.0rc0 \
-    --hash=sha256:1e16ac04cdbc6bdb9e02dc16fc74925b48737c27c9f21a6bc7134116489fdeda \
-    --hash=sha256:3e778877f59c97452879a8bfb370afa77db14a8800f3e7de4dcaeb44f4230997
+myst-nb==1.4.0 \
+    --hash=sha256:0e2c86e7d3b82c3aa51383f82d6268f7714f3b772c23a796ab09538a8e68b4e4 \
+    --hash=sha256:c145598de62446a6fd009773dd071a40d3b76106ace780de1abdfc6961f614c2
     # via -r doc/requirements-doc.txt
 myst-parser==2.0.0 \
     --hash=sha256:7c36344ae39c8e740dad7fdabf5aa6fc4897a813083c6cc9990044eb93656b14 \
