@@ -746,9 +746,15 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
 # setting TCP_NODELAY on both client and server connections.
-RAY_SERVE_HAPROXY_TCP_NODELAY = (
-    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
-)
+#
+# Default is ON. The streaming serving case (the dominant Ray Serve workload
+# today -- streaming LLM completions, SSE, gRPC streaming) is hostile to
+# Nagle's algorithm: when the upstream emits a small first chunk (e.g. the
+# first SSE event), Nagle holds it in the kernel buffer waiting for either
+# more data or the delayed-ACK timer, which lands as added TTFT. Set to "0"
+# only if you have a non-streaming HAProxy workload that benefits from
+# packet coalescing.
+RAY_SERVE_HAPROXY_TCP_NODELAY = get_env_bool("RAY_SERVE_HAPROXY_TCP_NODELAY", "1")
 
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
