@@ -136,10 +136,21 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
     -- with array values (header can appear multiple times); take the
     -- first occurrence. Missing header -> nil -> call_router skips the
     -- forwarded header line entirely.
+    --
+    -- Also probe the `-`/`_` variant so an intermediate proxy that rewrites
+    -- the separator doesn't silently drop session affinity, matching the
+    -- Python-side `_matches_session_id_header` behavior in http_util.py.
     local session_id = nil
     if SESSION_HEADER ~= "" then
         local hdrs = txn.http:req_get_headers()
         local entry = hdrs and hdrs[SESSION_HEADER]
+        if hdrs and not entry then
+            local alt = SESSION_HEADER:gsub("-", "_")
+            if alt == SESSION_HEADER then
+                alt = SESSION_HEADER:gsub("_", "-")
+            end
+            entry = hdrs[alt]
+        end
         if entry then
             session_id = entry[0]
         end

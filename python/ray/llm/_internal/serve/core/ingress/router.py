@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
-from ray.serve._private.constants import SERVE_SESSION_ID
+from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
@@ -68,9 +68,14 @@ class LLMRouter:
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        # Starlette header lookup is case-insensitive; SERVE_SESSION_ID is
-        # the operator-configured header name (e.g. "x-correlation-id").
-        session_id = request.headers.get(SERVE_SESSION_ID) or None
+        # HAProxy forwards the configured session header on the same name,
+        # but use the same case-insensitive, separator-tolerant matcher as
+        # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
+        # doesn't silently drop session affinity.
+        session_id = next(
+            (v for k, v in request.headers.items() if _matches_session_id_header(k)),
+            None,
+        )
         handle = (
             self._handle.options(session_id=session_id) if session_id else self._handle
         )
