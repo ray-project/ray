@@ -1547,13 +1547,7 @@ def test_streaming_executor_logs_relevant_env_vars(
         logging.DEBUG,
         logger="ray.data._internal.execution.streaming_executor",
     ):
-        output = executor.execute(dag)
-        # Drain the iterator to let execution complete.
-        try:
-            while True:
-                output.get_next()
-        except StopIteration:
-            pass
+        executor.execute(dag)
 
     assert "RAY_DATA_TEST_FOO=bar" in caplog.text
     assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
