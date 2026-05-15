@@ -732,17 +732,18 @@ class TestSeparateThread:
         await user_callable_wrapper.call_user_health_check()
 
     @pytest.mark.asyncio
-    async def test_no_user_health_check_runs_probe_on_user_loop(self):
+    async def test_no_user_health_check_not_blocked(self):
         """
-        When there is no user-defined health check, we still run a no-op probe on the
-        user code event loop. So if the user loop is blocked (e.g. stuck request),
-        the health check does not complete and the controller can mark the replica
-        unhealthy (see issue #61263).
+        If there is no user-defined health check, call_user_health_check() returns None
+        and does not interact with the user code event loop at all. The watchdog
+        (RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0) handles loop-stall detection
+        separately. Without it enabled, a blocked loop does not affect health checks.
         """
         sync_event = threading.Event()
 
         class LoopBlocker:
             async def __call__(self) -> str:
+                # Block the loop until the event is set.
                 sync_event.wait()
                 return "Sorry I got stuck!"
 
@@ -758,18 +759,14 @@ class TestSeparateThread:
         _, pending = await asyncio.wait([blocked_future], timeout=0.01)
         assert len(pending) == 1
 
-        # Health check runs a probe on the user loop; with the loop blocked it
-        # should not complete within a short timeout.
-        probe_future = user_callable_wrapper.call_user_health_check()
-        assert probe_future is not None
-        _, pending_probe = await asyncio.wait(
-            [asyncio.ensure_future(probe_future)], timeout=0.05
-        )
-        assert len(pending_probe) == 1, "Probe should block when user loop is blocked"
+        for _ in range(100):
+            # If this called something on the event loop, it'd be blocked.
+            # Instead, call_user_health_check returns None when there's no user
+            # health check configured and the watchdog is disabled (MAX_FAIL=0).
+            assert user_callable_wrapper.call_user_health_check() is None
 
         sync_event.set()
         assert await blocked_future == "Sorry I got stuck!"
-        await asyncio.ensure_future(probe_future)
 
 
 @pytest.mark.asyncio

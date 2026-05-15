@@ -3099,6 +3099,7 @@ class UserCallableWrapper:
                     timeout=USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
                 )
             except asyncio.TimeoutError:
+                fut.cancel()
                 self._user_loop_probe_consecutive_fail_count += 1
                 logger.warning(
                     "User event loop probe timed out "
@@ -3869,7 +3870,8 @@ class UserCallableWrapper:
         """
         if self._callable is None:
             logger.debug(
-                "This replica has not yet started running user code. Skipping __del__."
+                "This replica has not yet started running user code. "
+                "Skipping __del__."
             )
             return
 

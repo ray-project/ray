@@ -295,19 +295,31 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
 
 def test_replica_stalled_in_user_code_marked_unhealthy(serve_instance):
     """
-    When a replica stalls in the request-serving path (no user-defined check_health),
-    the default health probe runs on the user execution path. If the user loop is
-    blocked (e.g. by a stuck request), the probe does not complete, the controller
-    sees timeouts, and the replica is marked unhealthy (issue #61263).
-    """
+    When a replica stalls in the request-serving path and the user-loop watchdog is
+    enabled (RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0), repeated probe timeouts
+    cause call_user_health_check() to raise, the controller marks the replica unhealthy,
+    and a fresh replica is started (issue #61263).
 
-    # No user-defined check_health -> default probe runs on user loop.
-    # Cooperative await (asyncio.Event.wait) yields the loop, so the probe would
-    # still run; use threading.Event.wait() synchronously to block the loop.
+    The watchdog is opt-in (default MAX_FAIL=0). We enable it here via runtime_env
+    env vars with short intervals so the test completes quickly.
+    """
+    # threading.Event.wait() blocks the asyncio event loop (unlike asyncio.Event which
+    # yields control). This simulates a replica stuck in a long synchronous call.
     @serve.deployment(
-        health_check_period_s=0.5,
-        health_check_timeout_s=2,
+        health_check_period_s=1,
+        health_check_timeout_s=3,
         graceful_shutdown_timeout_s=0,
+        ray_actor_options={
+            "runtime_env": {
+                "env_vars": {
+                    # Enable the user-loop watchdog with short intervals so that
+                    # probe failures accumulate quickly within the test window.
+                    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL": "2",
+                    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S": "0.5",
+                    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S": "1",
+                }
+            }
+        },
     )
     class StalledReplica:
         def __init__(self):
@@ -322,7 +334,7 @@ def test_replica_stalled_in_user_code_marked_unhealthy(serve_instance):
 
     handle = serve.run(StalledReplica.bind())
 
-    # Send a request so the replica blocks on _unblock.wait()
+    # Send a request so the replica blocks on _unblock.wait(), wedging the user loop.
     ref = handle.remote()
 
     def deployment_unhealthy():
@@ -332,7 +344,7 @@ def test_replica_stalled_in_user_code_marked_unhealthy(serve_instance):
             == DeploymentStatus.UNHEALTHY
         )
 
-    wait_for_condition(deployment_unhealthy, timeout=30)
+    wait_for_condition(deployment_unhealthy, timeout=60)
 
     # Unblock so replicas can finish (stalled replica may already be replaced).
     handle.set_unblock.remote()

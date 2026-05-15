@@ -327,7 +327,6 @@ def assert_cgroup_hierarchy_exists_for_node(
 
     # 2) Verify the constraints are applied correctly.
     total_memory = ray._common.utils.get_system_memory()
-
     with open(user_cgroup / "memory.high", "r") as memory_high_file:
         contents = memory_high_file.read().strip()
         assert contents == str(
