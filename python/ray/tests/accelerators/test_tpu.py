@@ -21,6 +21,24 @@ def test_autodetect_num_tpus_accel(mock_glob):
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
+@patch("os.path.isdir")
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_accel_ignores_blackwell_directory(
+    mock_list, mock_glob, mock_isdir
+):
+    # NVIDIA drivers 570.x (Blackwell-class GPUs, e.g. RTX 5090) create
+    # /dev/accel as a directory containing /dev/accel/accel0. The non-recursive
+    # glob matches the directory entry; filtering directories out keeps real
+    # TPU chips (character devices at /dev/accel0..N) while rejecting the
+    # NVIDIA false positive.
+    mock_glob.return_value = ["/dev/accel"]
+    mock_isdir.side_effect = lambda p: p == "/dev/accel"
+    mock_list.side_effect = FileNotFoundError
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
 @patch("glob.glob")
 @patch("os.listdir")
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
