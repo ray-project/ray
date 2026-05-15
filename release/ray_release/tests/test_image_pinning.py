@@ -62,9 +62,6 @@ class _StubTest:
         self._byod_image = byod_image
         self._shape = shape
 
-    def get_name(self) -> str:
-        return self._name
-
     def __getitem__(self, key):
         if key == "name":
             return self._name
@@ -141,7 +138,19 @@ class TestMatchUrisToTests:
         with pytest.raises(ReleaseTestConfigError) as exc:
             match_uris_to_tests([a, b], [])
         msg = str(exc.value)
+        # Both failures collected into a single raise (NOT first-failure-wins).
+        assert "Cannot resolve image URIs for 2 test(s)" in msg
         assert "a" in msg and "b" in msg
+
+    def test_duplicate_test_names_collected_as_failure(self):
+        shape = "ecr/anyscale/ray:__BUILD_ID__-py310-cpu"
+        a = _StubTest("dup", "ecr/anyscale/ray:bid1-py310-cpu", shape)
+        b = _StubTest("dup", "ecr/anyscale/ray:bid2-py310-cpu", shape)
+        with pytest.raises(ReleaseTestConfigError) as exc:
+            match_uris_to_tests([a, b], ["ecr/anyscale/ray:other-py310-cpu"])
+        msg = str(exc.value)
+        assert "dup" in msg
+        assert "more than once" in msg
 
     def test_unused_uris_are_not_errors(self):
         t = _StubTest(

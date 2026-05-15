@@ -46,14 +46,24 @@ def match_uris_to_tests(
     Released-image tests are excluded from the returned map; they fall back
     to `get_anyscale_byod_image()` at test-run time.
     """
+    uris_by_shape: Dict[str, List[str]] = {}
+    for uri in uri_list:
+        uris_by_shape.setdefault(shape_of(uri), []).append(uri)
+
     failures: List[str] = []
     result: Dict[str, str] = {}
     for test in tests:
         if _uses_released_image(test):
             continue
         target_shape = test.get_anyscale_byod_image_shape()
-        matches = [uri for uri in uri_list if shape_of(uri) == target_shape]
+        matches = uris_by_shape.get(target_shape, [])
         if len(matches) == 1:
+            if test["name"] in result:
+                failures.append(
+                    f"  - {test['name']}: appears more than once in the test "
+                    f"list; image pinning requires unique test names"
+                )
+                continue
             result[test["name"]] = matches[0]
         elif len(matches) == 0:
             failures.append(
