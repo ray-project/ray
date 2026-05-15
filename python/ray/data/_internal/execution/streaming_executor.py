@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 import typing
@@ -71,6 +72,22 @@ DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
+
+
+_EXTRA_ENV_VARS = ("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",)
+
+
+def _log_ray_data_env_vars() -> None:
+    env_vars = {
+        k: v
+        for k, v in os.environ.items()
+        if k.startswith("RAY_DATA") or k in _EXTRA_ENV_VARS
+    }
+    if env_vars:
+        formatted = ", ".join(f"{k}={v}" for k, v in sorted(env_vars.items()))
+        logger.debug("RAY_DATA environment variables: %s", formatted)
+    else:
+        logger.debug("No RAY_DATA environment variables set.")
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -156,6 +173,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
+
+        if logger.isEnabledFor(logging.DEBUG):
+            _log_ray_data_env_vars()
 
         if not isinstance(dag, InputDataBuffer):
             if self._data_context.print_on_execution_start:

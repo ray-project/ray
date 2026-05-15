@@ -1,3 +1,4 @@
+import logging
 import os
 import pickle
 import random
@@ -42,6 +43,7 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
+    _log_ray_data_env_vars,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
@@ -1529,6 +1531,20 @@ class TestDataOpTask:
         # Total backpressure = 2.5s + 1.5s = 4.0s
         bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
         assert bp_time == pytest.approx(4.0)
+
+
+def test_log_ray_data_env_vars(monkeypatch, caplog, propagate_logs):
+    monkeypatch.setenv("RAY_DATA_TEST_FOO", "bar")
+    monkeypatch.setenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.3")
+
+    with caplog.at_level(
+        logging.DEBUG,
+        logger="ray.data._internal.execution.streaming_executor",
+    ):
+        _log_ray_data_env_vars()
+
+    assert "RAY_DATA_TEST_FOO=bar" in caplog.text
+    assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
 
 
 if __name__ == "__main__":
