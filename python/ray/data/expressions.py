@@ -1808,6 +1808,43 @@ class UUIDExpr(Expr):
         return False
 
 
+def _expand_star_exprs(exprs: List[Expr], input_schema: "pyarrow.Schema") -> List[Expr]:
+    """Replace any ``StarExpr`` in ``exprs`` with explicit ``col(name)``
+    references for each input schema column (minus columns listed as a
+    rename source by any ``AliasExpr`` with ``_is_rename=True``).
+
+    Mirrors the runtime expansion in
+    ``ray.data._internal.planner.plan_expression.expression_evaluator.eval_projection``,
+    so plan-time and runtime semantics agree by construction. Called
+    eagerly from ``Project.__post_init__`` when the input schema is
+    known, so downstream optimizer rules can treat projection lists
+    uniformly without ``StarExpr`` special cases.
+
+    When ``input_schema`` is ``None`` or the projection has no
+    ``StarExpr``, the input list is returned unchanged.
+    """
+    if input_schema is None or not any(isinstance(e, StarExpr) for e in exprs):
+        return exprs
+
+    rename_sources = set()
+    for expr in exprs:
+        if (
+            isinstance(expr, AliasExpr)
+            and expr._is_rename
+            and isinstance(expr.expr, ColumnExpr)
+        ):
+            rename_sources.add(expr.expr.name)
+
+    expanded: List[Expr] = []
+    for expr in exprs:
+        if isinstance(expr, StarExpr):
+            for name in input_schema.names:
+                if name not in rename_sources:
+                    expanded.append(ColumnExpr(name))
+        else:
+            expanded.append(expr)
+    return expanded
+
 @DeveloperAPI(stability="alpha")
 def exprlist_to_fields(
     exprs: List[Expr], input_schema: "pyarrow.Schema"

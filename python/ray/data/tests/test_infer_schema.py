@@ -16,8 +16,9 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.logical.operators import Project
 from ray.data.aggregate import Count, Max, Mean, Min, Sum
-from ray.data.expressions import col, lit
+from ray.data.expressions import StarExpr, col, lit
 from ray.data.tests.conftest import *  # noqa: F401,F403
 
 
@@ -337,6 +338,49 @@ class TestEndToEndStaticResolution:
                 pa.field("mean(b)", pa.float64()),
             ]
         )
+
+
+class TestEagerStarExpansion:
+    """Phase 2a: ``Project.__post_init__`` should expand ``StarExpr`` to
+    explicit ``col()`` references when the input schema is known, so
+    downstream optimizer rules never see ``StarExpr`` on typed chains."""
+
+    def test_with_column_expands_star(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path)).with_column(
+            "new", col("a") + lit(10)
+        )
+        project = ds._logical_plan.dag
+        assert isinstance(project, Project)
+        assert not any(isinstance(e, StarExpr) for e in project.exprs)
+        # Names should be input columns + the new aliased column.
+        assert [e.name for e in project.exprs] == ["a", "b", "k", "new"]
+
+    def test_rename_columns_expands_star(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path)).rename_columns({"a": "A"})
+        project = ds._logical_plan.dag
+        assert isinstance(project, Project)
+        assert not any(isinstance(e, StarExpr) for e in project.exprs)
+        # "a" is removed from star expansion (rename source); "A" appears
+        # at the end as the rename AliasExpr.
+        assert [e.name for e in project.exprs] == ["b", "k", "A"]
+
+    def test_udf_chain_preserves_star(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        # Input schema is unknown after map_batches, so StarExpr must
+        # stay for runtime ``eval_projection`` to expand per-block.
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .map_batches(lambda b: b)
+            .with_column("new", col("a") + lit(10))
+        )
+        project = ds._logical_plan.dag
+        assert isinstance(project, Project)
+        assert any(isinstance(e, StarExpr) for e in project.exprs)
 
 
 if __name__ == "__main__":

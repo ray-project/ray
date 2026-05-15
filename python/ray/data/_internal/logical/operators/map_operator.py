@@ -22,7 +22,12 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr, exprlist_to_fields
+from ray.data.expressions import (
+    Expr,
+    StarExpr,
+    _expand_star_exprs,
+    exprlist_to_fields,
+)
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
@@ -356,6 +361,20 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        # Eagerly expand ``StarExpr`` when the input schema is known. This
+        # is DataFusion's ``Projection::try_new`` pattern: by the time
+        # optimizer rules see this op, the projection list contains only
+        # explicit ``col()`` and computed expressions, no ``StarExpr``.
+        # When the input schema is opaque (e.g., upstream UDF map), the
+        # ``StarExpr`` is preserved and runtime ``eval_projection``
+        # expands it on a per-block basis.
+        import pyarrow as pa
+
+        input_schema = self.input_dependencies[0].infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            object.__setattr__(
+                self, "exprs", _expand_star_exprs(self.exprs, input_schema)
+            )
         if self.compute is None:
             object.__setattr__(
                 self, "compute", self._detect_and_get_compute_strategy(self.exprs)

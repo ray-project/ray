@@ -848,7 +848,10 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     # Collect input column rename map from the projection list
     input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
-    # Expand star expr (if any)
+    # Expand star expr (if any). After Phase 2a, ``Project.__post_init__``
+    # eagerly expands ``StarExpr`` to explicit ``col()`` refs whenever the
+    # input schema is known, so this runtime branch is hit only on the
+    # UDF-fallback path (Project on top of an opaque-schema input).
     if isinstance(projection_exprs[0], StarExpr):
         # Bucket the trailing exprs: rename ``AliasExpr``s of an input
         # column get placed into the original column's position (so the
