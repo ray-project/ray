@@ -12,6 +12,7 @@ import aiohttp.client_exceptions
 import grpc
 import numpy as np
 import pandas as pd
+from fastapi import FastAPI
 from starlette.responses import StreamingResponse
 from tqdm import tqdm
 
@@ -279,6 +280,52 @@ class Streamer:
 
     async def __call__(self):
         return StreamingResponse(self.stream())
+
+
+_direct_streaming_router_app = FastAPI()
+
+
+@serve.deployment
+@serve.ingress(_direct_streaming_router_app)
+class DirectStreamingRouter:
+    """Minimal generic ingress_request_router for the direct-streaming topology.
+
+    Mirrors the LLM stack's LLMRouter contract (HAProxy POSTs /internal/route to
+    pick a backend replica, then forwards the original request body directly to
+    that replica's backend HTTP port — tokens stream back from replica to proxy
+    without traversing the router) but with no request-body inspection, no
+    session-id handling, and no LLM dependencies, so the CPU-only Streamer
+    deployment can exercise the same code path in microbenchmarks.
+
+    Requires RAY_SERVE_ENABLE_HA_PROXY=1 to actually engage the bypass path.
+    """
+
+    async def __init__(self, server):
+        self._handle = server
+        self._handle._init()
+
+    @_direct_streaming_router_app.post("/internal/route")
+    async def route(self):
+        async with self._handle.choose_replica() as selection:
+            replica = selection._replica
+            endpoint = replica.backend_http_endpoint
+            if endpoint is None:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"replica {selection.replica_id} has no backend HTTP endpoint",
+                )
+            host, port = endpoint
+            return {
+                "host": host,
+                "port": port,
+                "replica_id": replica.replica_id.to_full_id_str(),
+            }
+
+    @_direct_streaming_router_app.get("/health")
+    async def health(self):
+        return {"status": "ok"}
 
 
 @serve.deployment

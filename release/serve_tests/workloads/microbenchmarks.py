@@ -23,6 +23,7 @@ from collections import defaultdict
 from ray import serve
 from ray.serve._private.benchmarks.common import (
     Benchmarker,
+    DirectStreamingRouter,
     do_single_grpc_batch,
     do_single_http_batch,
     do_single_http_streaming_with_per_chunk_timing,
@@ -38,7 +39,10 @@ from ray.serve._private.benchmarks.common import (
     Streamer,
 )
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.constants import DEFAULT_MAX_ONGOING_REQUESTS
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
@@ -472,6 +476,54 @@ async def _main(
                 "http_intermediate_streaming", url, perf_metrics
             )
             await serve.shutdown_async()
+
+            # Direct streaming: HAProxy-bypass topology where an ingress
+            # request router (DirectStreamingRouter) is consulted only for
+            # routing decisions and the proxy forwards the request body
+            # straight to the picked replica. The token stream returns
+            # directly from the replica to the proxy, never traversing the
+            # router. This is the same topology used by Ray Serve LLM under
+            # RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1, exercised here with a
+            # CPU-only Streamer so CI without GPUs can regression-test it.
+            #
+            # Only runs under RAY_SERVE_ENABLE_HA_PROXY=1: ingress_request_router
+            # requires HAProxy and Serve will refuse to build the app otherwise.
+            if RAY_SERVE_ENABLE_HA_PROXY:
+                streamer_app = Streamer.options(max_ongoing_requests=1000).bind(
+                    tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                    inter_token_delay_ms=10,
+                )
+                direct_app = streamer_app._with_ingress_request_router(
+                    DirectStreamingRouter.bind(streamer_app)
+                )
+                serve.run(direct_app)
+                url = get_application_url(use_localhost=True)
+                mean, std, latencies = await run_throughput_benchmark(
+                    fn=partial(
+                        do_single_http_batch,
+                        batch_size=STREAMING_HTTP_BATCH_SIZE,
+                        stream=True,
+                        url=url,
+                    ),
+                    multiplier=(
+                        STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST
+                    ),
+                    num_trials=STREAMING_NUM_TRIALS,
+                    # 10 seconds is only enough time to complete a single batch
+                    trial_runtime=10,
+                )
+                perf_metrics.extend(
+                    convert_throughput_to_perf_metrics(
+                        "direct_streaming", mean, std, stream=True
+                    )
+                )
+                perf_metrics.extend(
+                    convert_latencies_to_perf_metrics("direct_streaming", latencies)
+                )
+                await _run_http_per_chunk_timing_passes(
+                    "direct_streaming", url, perf_metrics
+                )
+                await serve.shutdown_async()
 
     # GRPC
     if run_grpc:
