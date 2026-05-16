@@ -41,6 +41,7 @@ class FakeCgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &) override { return Status::OK(); }
 
   std::string GetUserCgroupPath() const override { return temp_dir_->GetPath(); }
+  std::string GetSystemCgroupPath() const override { return temp_dir_->GetPath(); }
 
   StatusOr<std::string> GetSystemCgroupConstraintValue(
       const std::string &) const override {
@@ -77,7 +78,7 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
+      MemoryMonitorFactory::Create([](std::string) {},
                                    /*resource_isolation_enabled=*/false,
                                    cgroup_manager);
 
@@ -92,7 +93,7 @@ TEST_F(MemoryMonitorFactoryTest,
   TempFile pressure_file(cgroup_manager.GetPath() + "/memory.pressure");
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
+      MemoryMonitorFactory::Create([](std::string) {},
                                    /*resource_isolation_enabled=*/true,
                                    cgroup_manager);
 

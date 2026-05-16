@@ -434,6 +434,7 @@ def _read_datasource_v2(
     concurrency: Optional[int] = None,
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    block_udf: Optional[Callable[[Any], Any]] = None,
 ) -> Dataset:
     """Internal entry point for ``DataSourceV2`` reads.
 
@@ -495,6 +496,11 @@ def _read_datasource_v2(
             "configured `partition_filter` or `file_extensions` filters."
         )
     schema = datasource.infer_schema(sample)
+    # NOTE: ``block_udf``'s schema effect (e.g. a
+    # ``tensor_column_schema``-derived cast) is probed lazily in
+    # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
+    # on the scanner so ``FileReader`` hands pyarrow the raw on-disk
+    # types; the UDF runs post-read to produce the transformed types.
     # Resolve any path-discovered partitioning field names from the sample
     # and pass the result through to the scanner. Keeping the discovery
     # here (rather than mutating ``datasource._partitioning`` inside
@@ -557,16 +563,17 @@ def _read_datasource_v2(
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
 
     read_op = ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
+        block_udf=block_udf,
+        input_dependencies=[list_files_op],
     )
 
-    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    stats = DatasetStats(metadata={"ReadFiles": []}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(read_op, context)
 
@@ -1185,14 +1192,17 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col, lit
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            ).select_columns(["sepal.length", "variety"])
+            # Create a Dataset by reading a Parquet file, with column selection and
+            # row filtering pushed down to the file scan.
+            ds = (
+                ray.data.read_parquet(
+                    "s3://anonymous@ray-example-data/iris.parquet",
+                )
+                .filter(expr=col("sepal.length") > lit(5.0))
+                .select_columns(["sepal.length", "variety"])
+            )
 
             ds.show(2)
 
@@ -1287,14 +1297,9 @@ def read_parquet(
 
     ctx = DataContext.get_current()
     if ctx.use_datasource_v2:
-        if _block_udf is not None:
-            raise NotImplementedError(
-                "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-            )
-        if tensor_column_schema is not None:
-            raise NotImplementedError(
-                "`tensor_column_schema` is not yet supported on the DataSourceV2 path."
-            )
+        # ``tensor_column_schema`` is folded into ``_block_udf`` by
+        # ``_resolve_parquet_args`` above; passing that transform through
+        # ``ReadFiles.block_udf`` covers both features.
         if dataset_kwargs:
             raise NotImplementedError(
                 "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
@@ -1302,13 +1307,31 @@ def read_parquet(
         if columns is not None:
             # TODO(datasource-v2): remove `columns=` from `read_parquet` once
             # the projection-pushdown rule dispatches to `ReadFiles`. Callers
-            # should use `ray.data.read_parquet(path).select_columns([...])`
-            # — semantically equivalent on V1, and on V2 the pushdown rule
-            # will fold the projection into the scanner once it lands.
+            # should use `ray.data.read_parquet(path).select_columns([...])`.
+            #
+            # Caveat for the ``include_paths=True`` migration: V1
+            # ``columns=[...]`` implicitly retained the synthetic ``"path"``
+            # column (see ``ParquetDatasource.read_fragments`` /
+            # ``get_current_projection``), but ``select_columns([...])`` is
+            # literal and will drop ``"path"`` unless it's listed explicitly.
+            # Callers passing both must add ``"path"`` to their projection
+            # when migrating; the message below flags that case.
+            hint = (
+                " Note: when combined with `include_paths=True`, V1 implicitly"
+                " retained the `path` column — add `'path'` to your"
+                " `select_columns([...])` list to preserve it."
+                if include_paths
+                else ""
+            )
             raise NotImplementedError(
                 "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
                 "path. Use `ray.data.read_parquet(path).select_columns([...])` "
-                "instead."
+                "instead." + hint
+            )
+        if "filter" in arrow_parquet_args:
+            raise NotImplementedError(
+                "`filter=` on `read_parquet` is not supported on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
 
         from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
@@ -1321,6 +1344,7 @@ def read_parquet(
             partitioning=partitioning,
             file_extensions=file_extensions,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
@@ -1334,6 +1358,7 @@ def read_parquet(
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
             partition_filter=partition_filter,
+            block_udf=_block_udf,
         )
 
     datasource = ParquetDatasource(
