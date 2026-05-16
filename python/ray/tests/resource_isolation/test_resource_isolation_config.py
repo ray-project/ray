@@ -3,7 +3,7 @@ import sys
 import pytest
 
 from ray._common import utils as common_utils
-from ray._private import ray_constants, utils
+from ray._private import utils
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 
@@ -276,45 +276,6 @@ def test_resource_isolation_enabled_with_full_overrides_happy_path(monkeypatch):
     # int(5/32 * 10000)
     assert override_config.system_reserved_cpu_weight == 1562
     assert override_config.system_reserved_memory == 15 * (1024**3)
-
-
-def test_enabled_with_system_reserved_memory_plus_buffer_exceeding_total_raises_value_error(
-    monkeypatch,
-):
-    # NOTE: if you change the DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES constant
-    # (currently 500MiB), you may need to modify this test.
-    # Available memory = 2GiB, system_reserved_memory = 1.8GiB, default buffer = 500MiB.
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 2)
-    monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 2 * (1024**3)
-    )
-    with pytest.raises(
-        ValueError,
-        match=r"is greater than the amount of memory available",
-    ):
-        ResourceIsolationConfig(
-            enable_resource_isolation=True,
-            system_reserved_memory=int(1.8 * (1024**3)),
-        )
-
-
-def test_enabled_with_system_reserved_memory_plus_buffer_within_total_picks_default_buffer(
-    monkeypatch,
-):
-    # Available memory = 8GiB, system_reserved_memory = 1GiB, default buffer = 500MiB.
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 4)
-    monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 8 * (1024**3)
-    )
-    config = ResourceIsolationConfig(
-        enable_resource_isolation=True,
-        system_reserved_memory=1 * (1024**3),
-    )
-    assert config.system_reserved_memory == 1 * (1024**3)
-    assert (
-        config.user_physical_logical_memory_limit_buffer
-        == ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
-    )
 
 
 if __name__ == "__main__":

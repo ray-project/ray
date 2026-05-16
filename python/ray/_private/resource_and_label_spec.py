@@ -397,7 +397,7 @@ class ResourceAndLabelSpec:
             available_memory_bytes = (
                 system_memory
                 - resource_isolation_config.system_reserved_memory
-                - resource_isolation_config.user_physical_logical_memory_limit_buffer
+                - ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
             )
         else:
             available_memory_bytes = ray._private.utils.estimate_available_memory()
