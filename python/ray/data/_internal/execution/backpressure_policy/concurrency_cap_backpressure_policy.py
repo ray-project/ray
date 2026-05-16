@@ -12,6 +12,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated(
+    message="ConcurrencyCapBackpressurePolicy is deprecated and will be removed "
+    "on or after Ray 2.59.",
+    warning=True,
+)
 class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy that caps the concurrency of each operator.
     This policy dynamically limits the number of concurrent tasks per operator
