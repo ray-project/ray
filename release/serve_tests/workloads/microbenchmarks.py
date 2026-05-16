@@ -338,6 +338,7 @@ async def _main(
     run_latency: bool,
     run_throughput: bool,
     run_streaming: bool,
+    run_direct_streaming: bool,
     run_controller: bool,
     throughput_max_ongoing_requests: List[int],
     concurrencies: List[int],
@@ -477,6 +478,7 @@ async def _main(
             )
             await serve.shutdown_async()
 
+        if run_direct_streaming:
             # Direct streaming: HAProxy-bypass topology where an ingress
             # request router (DirectStreamingRouter) is consulted only for
             # routing decisions and the proxy forwards the request body
@@ -486,44 +488,47 @@ async def _main(
             # RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1, exercised here with a
             # CPU-only Streamer so CI without GPUs can regression-test it.
             #
-            # Only runs under RAY_SERVE_ENABLE_HA_PROXY=1: ingress_request_router
-            # requires HAProxy and Serve will refuse to build the app otherwise.
-            if RAY_SERVE_ENABLE_HA_PROXY:
-                streamer_app = Streamer.options(max_ongoing_requests=1000).bind(
-                    tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
-                    inter_token_delay_ms=10,
+            # Requires RAY_SERVE_ENABLE_HA_PROXY=1: ingress_request_router
+            # requires HAProxy and Serve will refuse to build the app
+            # otherwise. Caller is expected to set this in the haproxy
+            # variant's runtime_env.
+            assert RAY_SERVE_ENABLE_HA_PROXY, (
+                "--run-direct-streaming requires RAY_SERVE_ENABLE_HA_PROXY=1; "
+                "ingress_request_router topology only works with HAProxy."
+            )
+            streamer_app = Streamer.options(max_ongoing_requests=1000).bind(
+                tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                inter_token_delay_ms=10,
+            )
+            direct_app = streamer_app._with_ingress_request_router(
+                DirectStreamingRouter.bind(streamer_app)
+            )
+            serve.run(direct_app)
+            url = get_application_url(use_localhost=True)
+            mean, std, latencies = await run_throughput_benchmark(
+                fn=partial(
+                    do_single_http_batch,
+                    batch_size=STREAMING_HTTP_BATCH_SIZE,
+                    stream=True,
+                    url=url,
+                ),
+                multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
+                num_trials=STREAMING_NUM_TRIALS,
+                # 10 seconds is only enough time to complete a single batch
+                trial_runtime=10,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics(
+                    "direct_streaming", mean, std, stream=True
                 )
-                direct_app = streamer_app._with_ingress_request_router(
-                    DirectStreamingRouter.bind(streamer_app)
-                )
-                serve.run(direct_app)
-                url = get_application_url(use_localhost=True)
-                mean, std, latencies = await run_throughput_benchmark(
-                    fn=partial(
-                        do_single_http_batch,
-                        batch_size=STREAMING_HTTP_BATCH_SIZE,
-                        stream=True,
-                        url=url,
-                    ),
-                    multiplier=(
-                        STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST
-                    ),
-                    num_trials=STREAMING_NUM_TRIALS,
-                    # 10 seconds is only enough time to complete a single batch
-                    trial_runtime=10,
-                )
-                perf_metrics.extend(
-                    convert_throughput_to_perf_metrics(
-                        "direct_streaming", mean, std, stream=True
-                    )
-                )
-                perf_metrics.extend(
-                    convert_latencies_to_perf_metrics("direct_streaming", latencies)
-                )
-                await _run_http_per_chunk_timing_passes(
-                    "direct_streaming", url, perf_metrics
-                )
-                await serve.shutdown_async()
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics("direct_streaming", latencies)
+            )
+            await _run_http_per_chunk_timing_passes(
+                "direct_streaming", url, perf_metrics
+            )
+            await serve.shutdown_async()
 
     # GRPC
     if run_grpc:
@@ -689,6 +694,15 @@ async def _main(
 @click.option("--run-throughput", is_flag=True)
 @click.option("--run-streaming", is_flag=True)
 @click.option(
+    "--run-direct-streaming",
+    is_flag=True,
+    help=(
+        "Run the direct-streaming setup (ingress_request_router bypass). "
+        "Requires RAY_SERVE_ENABLE_HA_PROXY=1. Nested under --run-http. "
+        "Excluded from --run-all by default since it needs HAProxy."
+    ),
+)
+@click.option(
     "--run-controller",
     is_flag=True,
     help="Run controller health benchmark only (separate from --run-all).",
@@ -718,6 +732,7 @@ def main(
     run_latency: bool,
     run_throughput: bool,
     run_streaming: bool,
+    run_direct_streaming: bool,
     run_controller: bool,
     throughput_max_ongoing_requests: List[int],
     concurrencies: List[int],
@@ -726,7 +741,8 @@ def main(
         concurrencies
     ), "Must have the same number of --throughput-max-ongoing-requests and --concurrencies"
 
-    # If none of the flags are set, default to run all (excluding controller)
+    # If none of the flags are set, default to run all (excluding controller
+    # and direct-streaming, which both require special setup).
     if not (
         run_http
         or run_grpc
@@ -734,6 +750,7 @@ def main(
         or run_latency
         or run_throughput
         or run_streaming
+        or run_direct_streaming
         or run_controller
     ):
         run_all = True
@@ -745,6 +762,8 @@ def main(
         run_latency = True
         run_throughput = True
         run_streaming = True
+        # run_direct_streaming stays False - requires RAY_SERVE_ENABLE_HA_PROXY=1
+        # and is only meaningful in the haproxy variant.
         # run_controller stays False - controller benchmark is a separate release test
 
     asyncio.run(
@@ -756,6 +775,7 @@ def main(
             run_latency,
             run_throughput,
             run_streaming,
+            run_direct_streaming,
             run_controller,
             throughput_max_ongoing_requests,
             concurrencies,

@@ -306,7 +306,11 @@ class DirectStreamingRouter:
 
     @_direct_streaming_router_app.post("/internal/route")
     async def route(self):
-        async with self._handle.choose_replica() as selection:
+        # _reserve=False: this router only returns the picked replica's endpoint
+        # to HAProxy, which forwards the request body directly. We never call
+        # dispatch() on this handle, so reserving a slot would leak (the slot
+        # is normally consumed by dispatch() and we have nothing to consume it).
+        async with self._handle.choose_replica(_reserve=False) as selection:
             replica = selection._replica
             endpoint = replica.backend_http_endpoint
             if endpoint is None:
