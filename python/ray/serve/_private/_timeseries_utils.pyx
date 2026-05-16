@@ -4,6 +4,10 @@
 # cython: cdivision=True
 # cython: initializedcheck=False
 
+# These Cython-optimized timeseries utilities exist solely to support the
+# Ray Serve controller's autoscaling metrics pipeline (specifically the
+# per-deployment timeseries aggregation in the Serve replica scheduler).
+
 # C library imports
 from libc.stdlib cimport malloc, free
 from libc.math cimport round as c_round, isnan, nan, isinf
