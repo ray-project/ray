@@ -5,6 +5,10 @@
 
 Sphinx documentation built by Read the Docs and served at `docs.ray.io`. Build pipeline: `.buildkite/doc.rayci.yml`.
 
+## File format for new pages
+
+Author new files under `doc/source/` as MyST Markdown (`.md`). A lint check rejects newly added `.rst` files. Edits to existing `.rst` files are not flagged. `git mv` is not flagged for any rename, which covers file renames and directory reorganization. This is deliberate, to keep reorganization and agent-driven moves unblocked.
+
 ## How CI is configured
 
 `.buildkite/test.rules.txt` maps file-change patterns to tag sets, and tags drive which CI suites run. The `doc` tag covers content under `doc/`, `doc/requirements-doc.txt`, `.vale.ini`/`.vale/`, and `.buildkite/doc.rayci.yml`. Docs-only deplock changes (`python/deplocks/docs/*.lock`, `ci/raydepsets/configs/docs.depsets.yaml`) tag to `doc python_dependencies` to skip the full python-deps test set.
