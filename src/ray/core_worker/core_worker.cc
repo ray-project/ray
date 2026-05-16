@@ -3776,6 +3776,18 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << " has been received.";
       }
     }
+
+    // Plasma move semantics: the reporting raylet is telling us that the
+    // primary copy of this object has moved to `primary_moved_to_node_id`.
+    // Update `pinned_at_node_id_` so that ResetObjectsOnRemovedNode triggers
+    // lineage reconstruction when that node dies. If the new node is already
+    // dead at this point, UpdateObjectPinnedAtRaylet will unset the pin and
+    // queue the object for recovery directly.
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      const auto new_primary_node_id =
+          NodeID::FromBinary(object_location_update.primary_moved_to_node_id());
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, new_primary_node_id);
+    }
   }
 
   send_reply_callback(Status::OK(),

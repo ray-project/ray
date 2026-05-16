@@ -515,7 +515,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                             bool success = !it->second.failed;
                             push_ack_tracking_.erase(it);
                             if (success && on_push_complete_) {
-                              on_push_complete_(object_id);
+                              on_push_complete_(object_id, node_id);
                             }
                           }
                         }
@@ -686,6 +686,50 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
   }
   FreeObjects(object_ids, /* local_only */ true);
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void ObjectManager::HandleMoveCompleted(rpc::MoveCompletedRequest request,
+                                        rpc::MoveCompletedReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  // Reply immediately — the producer doesn't need to block on our handling.
+  // Hop onto the main service so the callback runs alongside other
+  // ObjectManager / NodeManager state mutations.
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  rpc::Address owner_address = request.owner_address();
+  main_service_->post(
+      [this, object_id, owner_address]() {
+        if (on_move_completed_) {
+          on_move_completed_(object_id, owner_address);
+        }
+      },
+      "ObjectManager.MoveCompleted");
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void ObjectManager::NotifyMoveCompleted(const ObjectID &object_id,
+                                        const NodeID &peer_node_id,
+                                        const rpc::Address &owner_address) {
+  auto rpc_client = GetRpcClient(peer_node_id);
+  if (rpc_client == nullptr) {
+    RAY_LOG(WARNING).WithField(object_id).WithField(peer_node_id)
+        << "NotifyMoveCompleted: no rpc client for peer; primary location will "
+           "remain stale on the owner until the object is re-resolved.";
+    return;
+  }
+  rpc::MoveCompletedRequest request;
+  request.set_object_id(object_id.Binary());
+  *request.mutable_owner_address() = owner_address;
+  rpc_client->MoveCompleted(
+      request,
+      [object_id, peer_node_id](const Status &status,
+                                const rpc::MoveCompletedReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING).WithField(object_id).WithField(peer_node_id)
+              << "MoveCompleted RPC failed: " << status
+              << ". Primary location on the owner may be stale; lineage "
+                 "reconstruction may not trigger if this peer dies.";
+        }
+      });
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,

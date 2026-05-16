@@ -45,6 +45,14 @@ class ObjectManagerClientInterface {
   /// \param callback The callback function that handles reply
   virtual void FreeObjects(const FreeObjectsRequest &request,
                            const ClientCallback<FreeObjectsReply> &callback) = 0;
+
+  /// Notify the remote object manager that a plasma move-semantics push has
+  /// completed and it is now the primary copy holder for the given object.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply.
+  virtual void MoveCompleted(const MoveCompletedRequest &request,
+                             const ClientCallback<MoveCompletedReply> &callback) = 0;
 };
 
 }  // namespace rpc

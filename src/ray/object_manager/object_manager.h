@@ -120,7 +120,23 @@ class ObjectManagerInterface {
   virtual void RecordMetrics() = 0;
   virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
   virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
-  virtual void SetOnPushComplete(std::function<void(const ObjectID &)> fn) = 0;
+  /// Register a callback invoked when a move-semantics push to a peer node
+  /// has been fully acked. The producer raylet uses this to free its local
+  /// copy and notify the peer that the primary copy has moved.
+  virtual void SetOnPushComplete(
+      std::function<void(const ObjectID &, const NodeID &)> fn) = 0;
+  /// Register a callback invoked when this node receives a MoveCompleted RPC,
+  /// i.e., it has just become the primary copy holder for the given object.
+  virtual void SetOnMoveCompleted(
+      std::function<void(const ObjectID &, const rpc::Address &)> fn) = 0;
+
+  /// Send a MoveCompleted RPC to the given peer raylet, informing it that a
+  /// plasma move-semantics push has completed and it is now the primary copy
+  /// holder for `object_id`. Fire-and-forget; the producer does not block on
+  /// the reply.
+  virtual void NotifyMoveCompleted(const ObjectID &object_id,
+                                   const NodeID &peer_node_id,
+                                   const rpc::Address &owner_address) = 0;
 
   virtual ~ObjectManagerInterface() = default;
 };
@@ -160,6 +176,14 @@ class ObjectManager : public ObjectManagerInterface,
   void HandleFreeObjects(rpc::FreeObjectsRequest request,
                          rpc::FreeObjectsReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a notification from a remote raylet that a plasma move-semantics
+  /// push has completed and this node is now the primary copy holder for the
+  /// given object. Posts work onto the main service, where it pins the object
+  /// locally and tells the owner the primary location has moved.
+  void HandleMoveCompleted(rpc::MoveCompletedRequest request,
+                           rpc::MoveCompletedReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const override { return object_manager_server_.GetPort(); }
@@ -212,10 +236,24 @@ class ObjectManager : public ObjectManagerInterface,
   bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
 
   /// Set a callback that is invoked when a push to another node completes.
-  /// Used to implement move semantics (free local copy after push).
-  void SetOnPushComplete(std::function<void(const ObjectID &)> fn) override {
+  /// Used to implement move semantics (free local copy after push and notify
+  /// the peer that the primary copy has moved to it).
+  void SetOnPushComplete(
+      std::function<void(const ObjectID &, const NodeID &)> fn) override {
     on_push_complete_ = std::move(fn);
   }
+
+  /// Set a callback that is invoked when this node receives a MoveCompleted
+  /// RPC, signaling that we are now the primary copy holder for the object.
+  void SetOnMoveCompleted(
+      std::function<void(const ObjectID &, const rpc::Address &)> fn) override {
+    on_move_completed_ = std::move(fn);
+  }
+
+  /// Send a MoveCompleted RPC to a peer raylet. See interface for semantics.
+  void NotifyMoveCompleted(const ObjectID &object_id,
+                           const NodeID &peer_node_id,
+                           const rpc::Address &owner_address) override;
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -494,8 +532,15 @@ class ObjectManager : public ObjectManagerInterface,
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;
 
-  /// Callback invoked when a push completes (for move semantics).
-  std::function<void(const ObjectID &)> on_push_complete_;
+  /// Callback invoked when a push completes (for move semantics). Receives
+  /// both the object id and the peer node id that the push was destined for,
+  /// so the producer raylet can notify the peer that the primary has moved.
+  std::function<void(const ObjectID &, const NodeID &)> on_push_complete_;
+
+  /// Callback invoked when this node receives a MoveCompleted RPC from a
+  /// remote raylet — i.e., we are now the primary copy holder for the
+  /// referenced object. Receives the object id and the owner's address.
+  std::function<void(const ObjectID &, const rpc::Address &)> on_move_completed_;
 
   /// Per-push ack tracking for move semantics. Tracks how many chunks
   /// have been acknowledged by the remote node.

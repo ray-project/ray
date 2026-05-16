@@ -207,6 +207,15 @@ bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
   return objects_pending_deletion_.find(object_id) != objects_pending_deletion_.end();
 }
 
+std::optional<rpc::Address> LocalObjectManager::GetOwnerAddress(
+    const ObjectID &object_id) const {
+  auto it = local_objects_.find(object_id);
+  if (it == local_objects_.end()) {
+    return std::nullopt;
+  }
+  return it->second.owner_address_;
+}
+
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   if (RayConfig::instance().object_spilling_config().empty()) {
     return;

@@ -93,6 +93,19 @@ class IObjectDirectory {
                                    const NodeID &node_id,
                                    const ObjectInfo &object_info) = 0;
 
+  /// Report that the primary (pinned) copy of an object has moved to a node
+  /// via plasma move semantics. The directory will inform the owner so it can
+  /// update its `pinned_at_node_id_` tracking. This is what gates lineage
+  /// reconstruction on subsequent node death.
+  ///
+  /// \param object_id The object whose primary copy has moved.
+  /// \param node_id The node id of the new primary copy holder (typically the
+  ///                reporting raylet's own node id).
+  /// \param owner_address Owner of the object, learned from the producer.
+  virtual void ReportObjectPrimaryMoved(const ObjectID &object_id,
+                                        const NodeID &node_id,
+                                        const rpc::Address &owner_address) = 0;
+
   /// Report object spilled to external storage.
   ///
   /// \param object_id The object id that was spilled.

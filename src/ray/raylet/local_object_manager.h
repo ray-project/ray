@@ -213,6 +213,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Release an object that has been freed by its owner (or by move semantics).
   void ReleaseFreedObject(const ObjectID &object_id, bool local_only = false) override;
 
+  /// Return the owner address for a locally pinned object, or nullopt if the
+  /// object isn't in `local_objects_`. Used by move semantics to know who to
+  /// notify when the primary copy is moved.
+  std::optional<rpc::Address> GetOwnerAddress(const ObjectID &object_id) const override;
+
  private:
   struct LocalObjectInfo {
     LocalObjectInfo(const rpc::Address &owner_address,

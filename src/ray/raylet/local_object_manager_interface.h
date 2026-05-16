@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,12 @@ class LocalObjectManagerInterface {
   /// If local_only is true, only frees locally without broadcasting
   /// FreeObjectsRequest to other nodes (used by move semantics).
   virtual void ReleaseFreedObject(const ObjectID &, bool local_only = false) = 0;
+
+  /// Return the owner address associated with a locally pinned object, if
+  /// known. Returns std::nullopt if the object is not in `local_objects_`
+  /// (e.g., not pinned by this raylet). Used by move semantics to look up
+  /// who to notify when the local copy is released.
+  virtual std::optional<rpc::Address> GetOwnerAddress(const ObjectID &) const = 0;
 };
 
 };  // namespace raylet

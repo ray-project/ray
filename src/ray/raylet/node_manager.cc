@@ -301,14 +301,50 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 
   if (RayConfig::instance().enable_plasma_move_semantics()) {
-    // RAY_LOG(INFO) << "[karticam] Plasma move semantics enabled.";
-    object_manager_.SetOnPushComplete([this](const ObjectID &object_id) {
-      // RAY_LOG(INFO) << "[karticam] Move semantic: releasing local copy of " <<
-      // object_id
-      //               << " after push complete. Object store used before release: "
-      //               << object_manager_.GetUsedMemory() << " bytes ("
-      //               << object_manager_.GetUsedMemoryPercentage() * 100 << "%)";
-      local_object_manager_.ReleaseFreedObject(object_id, /*local_only=*/true);
+    // Producer side: after a successful push, notify the destination raylet
+    // that it is now the primary copy holder, then release our local copy.
+    object_manager_.SetOnPushComplete(
+        [this](const ObjectID &object_id, const NodeID &peer_node_id) {
+          auto owner_address = local_object_manager_.GetOwnerAddress(object_id);
+          if (owner_address.has_value()) {
+            // Tell the consumer raylet: pin this object and inform the owner
+            // that the primary location moved. This is the signal the owner
+            // needs to update `pinned_at_node_id_`, which is what gates
+            // lineage reconstruction on subsequent node death.
+            object_manager_.NotifyMoveCompleted(object_id, peer_node_id, *owner_address);
+          } else {
+            RAY_LOG(WARNING).WithField(object_id)
+                << "Move-semantics push completed but local owner address is "
+                   "missing; skipping primary-move notification. Lineage "
+                   "reconstruction may not trigger if peer "
+                << peer_node_id << " dies.";
+          }
+          local_object_manager_.ReleaseFreedObject(object_id, /*local_only=*/true);
+        });
+
+    // Consumer side: when we receive a MoveCompleted RPC, pin the just-arrived
+    // object locally (preventing LRU eviction, subscribing to owner eviction)
+    // and report the primary location move to the owner via the location-update
+    // batch path.
+    object_manager_.SetOnMoveCompleted([this](const ObjectID &object_id,
+                                              const rpc::Address &owner_address) {
+      std::vector<ObjectID> ids{object_id};
+      std::vector<std::unique_ptr<RayObject>> results;
+      if (!GetObjectsFromPlasma(ids, &results) || results.empty() ||
+          results[0] == nullptr) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "MoveCompleted received but object is not in local plasma; "
+               "skipping primary pin. Likely the consumer's plasma evicted "
+               "or aborted the just-received object.";
+        return;
+      }
+      // Pin locally + subscribe to owner's eviction channel. Mirrors the path
+      // a producer worker takes after sealing its returns.
+      local_object_manager_.PinObjectsAndWaitForFree(
+          ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+      // Tell the owner the primary location has moved to this node so that
+      // ResetObjectsOnRemovedNode triggers recovery if this node later dies.
+      object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
     });
   }
 }

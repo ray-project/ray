@@ -107,6 +107,10 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   void ReleaseFreedObject(const ObjectID &object_id, bool local_only = false) override {}
 
+  std::optional<rpc::Address> GetOwnerAddress(const ObjectID &object_id) const override {
+    return std::nullopt;
+  }
+
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };
