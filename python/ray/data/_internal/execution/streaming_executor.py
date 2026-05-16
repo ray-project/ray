@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 import typing
@@ -71,6 +72,28 @@ DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
+
+
+# Extra environment variables to log that don't start with RAY_DATA.
+_EXTRA_ENV_VARS_TO_LOG = (
+    # We historically recommended users configure this value. If a Ray Data job uses
+    # more object store memory than expected, it's worth checking how this environment
+    # variable has been configured.
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
+)
+
+
+def _log_ray_data_env_vars() -> None:
+    env_vars = {
+        k: v
+        for k, v in os.environ.items()
+        if k.startswith("RAY_DATA") or k in _EXTRA_ENV_VARS_TO_LOG
+    }
+    if env_vars:
+        formatted = ", ".join(f"{k}={v}" for k, v in sorted(env_vars.items()))
+        logger.debug(f"RAY_DATA environment variables: {formatted}")
+    else:
+        logger.debug("No RAY_DATA environment variables set.")
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -156,6 +179,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
+
+        if logger.isEnabledFor(logging.DEBUG):
+            _log_ray_data_env_vars()
 
         if not isinstance(dag, InputDataBuffer):
             if self._data_context.print_on_execution_start:
