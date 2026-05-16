@@ -276,7 +276,7 @@ def _should_index_side(
     # Must have both supported and unsupported columns to need indexing.
     # We cannot rely on row_count because it can return a non-zero row count
     # for an empty-schema.
-    if not supported_table.schema or not unsupported_table.schema:
+    if len(supported_table.schema) == 0 or len(unsupported_table.schema) == 0:
         return False
 
     # For semi/anti joins, only index the side that appears in the result

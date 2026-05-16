@@ -1,5 +1,5 @@
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -239,7 +239,7 @@ class Sort(
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
-    key: Optional[str]
+    key: Optional[Union[str, List[str]]]
     aggs: List[AggregateFn]
     num_partitions: Optional[int] = None
     batch_format: Optional[str] = "default"
@@ -274,10 +274,12 @@ class Aggregate(AbstractAllToAll):
 
         fields: List[pa.Field] = []
         if self.key is not None:
-            try:
-                fields.append(input_schema.field(self.key))
-            except (KeyError, ValueError):
-                return None
+            keys = self.key if isinstance(self.key, list) else [self.key]
+            for key in keys:
+                try:
+                    fields.append(input_schema.field(key))
+                except (KeyError, TypeError, ValueError):
+                    return None
         for agg in self.aggs:
             f = agg.output_field(input_schema)
             if f is None:

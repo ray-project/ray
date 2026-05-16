@@ -169,6 +169,20 @@ class TestAggregate:
             ]
         )
 
+    def test_groupby_multi_key(self, ray_start_regular_shared_2_cpus, parquet_path):
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .groupby(["k", "a"])
+            .aggregate(Count("b"))
+        )
+        assert _static_schema(ds) == pa.schema(
+            [
+                pa.field("k", pa.string()),
+                pa.field("a", pa.int32()),
+                pa.field("count(b)", pa.int64(), nullable=False),
+            ]
+        )
+
     def test_groupby_then_sort(self, ray_start_regular_shared_2_cpus, parquet_path):
         ds = (
             ray.data.read_parquet(str(parquet_path))
