@@ -399,6 +399,12 @@ struct Node {
   std::optional<absl::Time> local_view_modified_ts_;
 };
 
+/// Convert a map of resources to a NodeResources data structure.
+///
+/// \param resource_map_total: Total capacities of resources we want to convert.
+/// \param resource_map_available: Available capacities of resources we want to convert.
+/// \param node_labels: Labels for the node.
+///
 /// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,

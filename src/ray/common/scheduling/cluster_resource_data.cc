@@ -47,7 +47,7 @@ ResourceRequest ResourceMapToResourceRequest(
 /// \param resource_map_available: Available capacities of resources we want to convert.
 /// \param node_labels: Labels for the node.
 ///
-/// \request Conversion result to a NodeResources data structure.
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,
