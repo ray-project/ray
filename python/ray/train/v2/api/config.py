@@ -19,7 +19,9 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
-from ray.util.tpu import get_tpu_worker_resources
+from ray.util.tpu import (
+    get_tpu_worker_resources,
+)
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -217,6 +219,7 @@ class ScalingConfig(ScalingConfigV1):
                     accelerator_type=self.accelerator_type,
                     resources_per_unit=self.resources_per_worker,
                     num_slices=1,
+                    num_workers=max_workers,
                 )
             except Exception as e:
                 raise ValueError(

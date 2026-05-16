@@ -17,6 +17,7 @@ from torch.utils.data import (
 
 import ray.train.torch
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.train.torch.train_loop_utils import (
     _WrappedDataLoader,
     get_devices as get_devices_distributed,
@@ -155,10 +156,10 @@ def get_devices() -> List[torch.device]:
     if get_train_fn_utils().is_distributed():
         return get_devices_distributed()
     else:
-        # Local mode, we defer to torch.cuda
-        # TODO(xgui): Use `ScalingConfig.use_gpu` instead
-        if torch.cuda.is_available():
-            return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+        # Local mode
+        device_manager = get_torch_device_manager_by_context()
+        if device_manager.is_available():
+            return device_manager.get_devices()
         else:
             return [torch.device("cpu")]
 
@@ -207,8 +208,9 @@ def prepare_model(
         if isinstance(device, list):
             device = device[0]
 
-    if torch.cuda.is_available() and device.type == "cuda":
-        torch.cuda.set_device(device)
+    device_manager = get_torch_device_manager_by_context()
+    if device_manager.is_available():
+        device_manager.set_device(device)
 
     if move_to_device:
         if rank == 0:

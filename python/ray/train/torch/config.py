@@ -92,6 +92,10 @@ def _is_backend_nccl(backend: str) -> bool:
     )
 
 
+def _is_backend_tpu(backend: str) -> bool:
+    return "tpu" in backend.lower()
+
+
 def _setup_torch_process_group(
     backend: str,
     world_rank: int,
@@ -139,6 +143,10 @@ def _setup_torch_process_group(
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
     elif backend == "hccl":
+        register_custom_torch_dist_backend(backend)
+    elif _is_backend_tpu(backend):
+        # torch env vars needs to be set before torch_tpu import
+        _set_torch_distributed_env_vars()
         register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
@@ -189,8 +197,9 @@ class _TorchBackend(Backend):
             if backend_config.backend is None:
                 resources = worker_group.get_resources_per_worker()
                 num_gpus_per_worker = resources.get("GPU", 0)
-
-                if num_gpus_per_worker > 0:
+                if resources.get("TPU", 0) > 0:
+                    backend = "tpu_dist"
+                elif num_gpus_per_worker > 0:
                     backend = "nccl"
                 else:
                     backend = "gloo"

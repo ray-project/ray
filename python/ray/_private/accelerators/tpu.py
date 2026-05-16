@@ -1,5 +1,6 @@
 import glob
 import logging
+import math
 import os
 import re
 from functools import lru_cache
@@ -16,7 +17,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
+TPU_VALID_CHIP_OPTIONS = (0.5, 1, 2, 4, 8)
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
@@ -429,6 +430,118 @@ class TPUAcceleratorManager(AcceleratorManager):
             return (True, None)
 
     @staticmethod
+    def inject_torch_tpu_env_vars(
+        slicebuilder_first_worker_port: int = 8471,
+        environ: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Sets TORCH_TPU_SLICEBUILDER_ADDRESSES and TORCH_TPU_TOPOLOGY for torch_tpu.
+
+        The logic is similar to maybe_init_distributed_on_gke, but it does
+        not change any other environment variables.
+        """
+        if environ is None:
+            environ = os.environ
+
+        if (
+            "TPU_WORKER_HOSTNAMES" not in environ
+            or "TPU_CHIPS_PER_HOST_BOUNDS" not in environ
+            or "TPU_HOST_BOUNDS" not in environ
+        ):
+            return
+
+        if (
+            "TORCH_TPU_TOPOLOGY" in environ
+            and "TORCH_TPU_SLICEBUILDER_ADDRESSES" in environ
+        ):
+            return
+
+        accel_type = environ.get("TPU_ACCELERATOR_TYPE", "").lower()
+        is_v7 = "7x" in accel_type or "v7" in accel_type
+        if is_v7:
+            logger.info("Detected TPU v7")
+
+        tpu_chips_per_host_bounds = list(
+            map(int, environ["TPU_CHIPS_PER_HOST_BOUNDS"].split(","))
+        )
+        tpu_chips_per_host_bounds_product = math.prod(tpu_chips_per_host_bounds)
+
+        if tpu_chips_per_host_bounds_product == 1:
+            return  # either single host or environment is set manually.
+
+        tpu_host_bounds = list(map(int, environ["TPU_HOST_BOUNDS"].split(",")))
+        tpu_host_bounds_product = math.prod(tpu_host_bounds)
+
+        tpu_worker_hostnames = environ["TPU_WORKER_HOSTNAMES"].split(",")
+
+        if tpu_host_bounds_product != len(tpu_worker_hostnames):
+            logger.warning(
+                "Number of TPU hosts ({}) from TPU_HOST_BOUNDS={} and number of TPU "
+                "workers ({}) from TPU_WORKER_HOSTNAMES={} are not consistent.".format(
+                    tpu_host_bounds_product,
+                    environ["TPU_HOST_BOUNDS"],
+                    len(tpu_worker_hostnames),
+                    environ["TPU_WORKER_HOSTNAMES"],
+                )
+            )
+            return  # environment is likely to set incorrectly.
+
+        if is_v7:
+            tpu_chips_per_host_bounds_product *= 2
+
+        if "WORLD_SIZE" in environ:
+            try:
+                world_size = int(environ["WORLD_SIZE"])
+            except (KeyError, ValueError):
+                logger.warning(
+                    "Failed to parse WORLD_SIZE environment variable: {}. "
+                    "Skipping torch tpu environment variable injection.".format(
+                        environ["WORLD_SIZE"]
+                    )
+                )
+                return
+            if (
+                tpu_chips_per_host_bounds_product * tpu_host_bounds_product
+                != world_size
+            ):
+                logger.warning(
+                    "Total number of TPU chips ({}) does not match with the "
+                    "WORLD_SIZE ({}). Failing to inject torch tpu environment variables.".format(
+                        tpu_chips_per_host_bounds_product * tpu_host_bounds_product,
+                        world_size,
+                    )
+                )
+                return
+
+        # Calculate TORCH_TPU_TOPOLOGY
+        new_tpu_host_bounds = [
+            tpu_host_bounds[i] * tpu_chips_per_host_bounds[i]
+            for i in range(len(tpu_host_bounds))
+        ]
+        torch_tpu_topology = ",".join(map(str, new_tpu_host_bounds))
+        if is_v7:
+            # V7 requires a ',2' suffix to indicate 2 cores per chip.
+            torch_tpu_topology += ",2"
+        environ["TORCH_TPU_TOPOLOGY"] = torch_tpu_topology
+
+        # Calculate TORCH_TPU_SLICEBUILDER_ADDRESSES
+        ports = list(
+            range(
+                slicebuilder_first_worker_port,
+                slicebuilder_first_worker_port + tpu_chips_per_host_bounds_product,
+            )
+        )
+        tpu_worker_addresses = []
+        for tpu_worker_hostname in tpu_worker_hostnames:
+            for port in ports:
+                tpu_worker_addresses.append(f"{tpu_worker_hostname}:{port}")
+        environ["TORCH_TPU_SLICEBUILDER_ADDRESSES"] = ",".join(tpu_worker_addresses)
+        logger.info(
+            f"setting torch tpu env vars: TORCH_TPU_TOPOLOGY={environ['TORCH_TPU_TOPOLOGY']}, "
+            f"TORCH_TPU_SLICEBUILDER_ADDRESSES={environ['TORCH_TPU_SLICEBUILDER_ADDRESSES']}"
+        )
+        return
+
+    @staticmethod
     def set_current_process_visible_accelerator_ids(
         visible_tpu_chips: List[str],
     ) -> None:
@@ -726,5 +839,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
         if pod_type:
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
+
+        TPUAcceleratorManager.inject_torch_tpu_env_vars()
 
         return tpu_labels

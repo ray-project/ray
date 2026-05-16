@@ -162,7 +162,7 @@ def test_autodetect_tpu_accelerator_type_fails_gracefully():
     "test_config",
     [
         (1, False),
-        (0.5, True),
+        (0.5, False),
         (3, True),
     ],
 )
@@ -322,6 +322,85 @@ def test_get_num_tpu_visible_chips_per_host():
     # Other TPU generations default to 4
     assert tpu.get_num_tpu_visible_chips_per_host("v4-8") == 4
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
+
+
+@pytest.mark.parametrize(
+    "environ,expected_success,expected_topology,expected_addresses",
+    [
+        # v4: 2 hosts, 2x2x1 chips per host (4 chips), world_size 8
+        (
+            {
+                "TPU_WORKER_HOSTNAMES": "host1,host2",
+                "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
+                "TPU_HOST_BOUNDS": "1,1,2",
+                "WORLD_SIZE": "8",
+            },
+            True,
+            "2,2,2",
+            "host1:8471,host1:8472,host1:8473,host1:8474,"
+            "host2:8471,host2:8472,host2:8473,host2:8474",
+        ),
+        # v7: 2 hosts, 2x2x1 chips per host (4 chips, 8 cores), world_size 16
+        (
+            {
+                "TPU_WORKER_HOSTNAMES": "host1,host2",
+                "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
+                "TPU_HOST_BOUNDS": "1,1,2",
+                "WORLD_SIZE": "16",
+                "TPU_ACCELERATOR_TYPE": "tpu7x-16",
+            },
+            True,
+            "2,2,2,2",
+            "host1:8471,host1:8472,host1:8473,host1:8474,"
+            "host1:8475,host1:8476,host1:8477,host1:8478,"
+            "host2:8471,host2:8472,host2:8473,host2:8474,"
+            "host2:8475,host2:8476,host2:8477,host2:8478",
+        ),
+        # Single host (product 1) -> returns False
+        (
+            {
+                "TPU_WORKER_HOSTNAMES": "host1",
+                "TPU_CHIPS_PER_HOST_BOUNDS": "1,1,1",
+                "TPU_HOST_BOUNDS": "1,1,1",
+                "WORLD_SIZE": "1",
+            },
+            False,
+            None,
+            None,
+        ),
+        # Missing env vars
+        (
+            {
+                "TPU_WORKER_HOSTNAMES": "host1",
+            },
+            False,
+            None,
+            None,
+        ),
+        # Incorrect world size
+        (
+            {
+                "TPU_WORKER_HOSTNAMES": "host1,host2",
+                "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
+                "TPU_HOST_BOUNDS": "1,1,2",
+                "WORLD_SIZE": "9",  # Should be 8
+            },
+            False,
+            None,
+            None,
+        ),
+    ],
+)
+def test_inject_torch_tpu_env_vars(
+    environ, expected_success, expected_topology, expected_addresses
+):
+    TPUAcceleratorManager.inject_torch_tpu_env_vars(environ=environ)
+    if expected_success:
+        assert environ["TORCH_TPU_TOPOLOGY"] == expected_topology
+        assert environ["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == expected_addresses
+    else:
+        assert "TORCH_TPU_TOPOLOGY" not in environ
+        assert "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in environ
 
 
 if __name__ == "__main__":

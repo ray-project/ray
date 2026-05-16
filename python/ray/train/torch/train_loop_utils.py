@@ -456,7 +456,10 @@ class _TorchAccelerator(Accelerator):
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
                 DataParallel = DistributedDataParallel
-                if self.device_manager.is_available() and device.type != "cpu":
+                if self.device_manager.is_available() and device.type not in [
+                    "cpu",
+                    "tpu",
+                ]:
                     parallel_strategy_kwargs = {
                         "device_ids": [device],
                         "output_device": device,
