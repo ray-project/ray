@@ -809,6 +809,56 @@ class TestServeApplicationSchema:
 
 
 class TestServeDeploySchema:
+    def test_controller_options_default_is_none(self):
+        cfg = ServeDeploySchema.model_validate({"applications": []})
+        assert cfg.controller_options is None
+
+    def test_controller_options_passthrough(self):
+        cfg = ServeDeploySchema.model_validate(
+            {
+                "applications": [],
+                "controller_options": {
+                    "runtime_env": {
+                        "env_vars": {
+                            "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                            "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                        }
+                    }
+                },
+            }
+        )
+        assert (
+            cfg.controller_options.runtime_env["env_vars"][
+                "RAY_SERVE_HAPROXY_TCP_NODELAY"
+            ]
+            == "1"
+        )
+
+    def test_controller_options_rejects_disallowed_runtime_env_keys(self):
+        # The ControllerOptions validator runs through the nested schema,
+        # so bad runtime_env keys fail at YAML / JSON parse time -- not at
+        # controller-creation time.
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"pip": ["numpy"]}},
+                }
+            )
+        msg = str(e.value)
+        assert "only supports ['env_vars']" in msg
+        assert "pip" in msg
+
+    def test_controller_options_rejects_non_str_env_value(self):
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"env_vars": {"FOO": 1}}},
+                }
+            )
+        assert "must be str" in str(e.value)
+
     def test_deploy_config_duplicate_apps(self):
         deploy_config_dict = {
             "applications": [

@@ -5,7 +5,6 @@ from typing import Any, List
 import lance
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version, parse as version_parse
@@ -24,7 +23,7 @@ from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.expressions import col
+from ray.data.expressions import col, lit
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
@@ -130,12 +129,12 @@ def test_filter_with_expressions(parquet_ds):
 
 def test_filter_pushdown_source_and_op(ray_start_regular_shared):
     """Test filtering when expressions are provided both in source and operator."""
-    # Test with PyArrow compute expressions
-    source_expr = pc.greater(pc.field("sepal.length"), pc.scalar(5.0))
     filter_expr = "sepal.width > 3.0"
 
-    ds = ray.data.read_parquet("example://iris.parquet", filter=source_expr).filter(
-        expr=filter_expr
+    ds = (
+        ray.data.read_parquet("example://iris.parquet")
+        .filter(expr=col("sepal.length") > lit(5.0))
+        .filter(expr=filter_expr)
     )
     result = ds.take_all()
     assert all(r["sepal.length"] > 5.0 and r["sepal.width"] > 3.0 for r in result)
