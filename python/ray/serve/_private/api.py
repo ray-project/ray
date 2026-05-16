@@ -230,7 +230,7 @@ def serve_start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        grpc_options: [Experimental] Configuration options for gRPC proxy.
+        grpc_options: Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
             - port(int): Port for gRPC server. Defaults to 9000.

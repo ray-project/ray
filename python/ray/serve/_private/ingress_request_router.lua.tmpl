@@ -8,6 +8,12 @@
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local FORWARD_BODY = ${FORWARD_BODY}
+-- Name of the client header that carries the session id Serve should
+-- pin on. Filled from SERVE_SESSION_ID (set via the env var
+-- RAY_SERVE_SESSION_ID_HEADER_KEY) in lowercase form. Forwarded on the
+-- same name to /internal/route so session-aware routers (e.g.
+-- ConsistentHashRouter) can use it.
+local SESSION_HEADER = "${SESSION_HEADER}"
 
 -- Per-app state. The frontend sets txn.ingress_request_router_app to the
 -- backend name whose path prefix matched, and we look up that app's
@@ -16,7 +22,7 @@ local FORWARD_BODY = ${FORWARD_BODY}
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
 
-local function call_router(router, body, truncated_length)
+local function call_router(router, body, truncated_length, session_id)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -30,6 +36,11 @@ local function call_router(router, body, truncated_length)
             .. #body .. "/" .. truncated_length .. "\r\n"
     end
 
+    local session_header = ""
+    if session_id and session_id ~= "" then
+        session_header = SESSION_HEADER .. ": " .. session_id .. "\r\n"
+    end
+
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
         .. "Host: " .. router.host_header .. "\r\n"
@@ -37,6 +48,7 @@ local function call_router(router, body, truncated_length)
         .. "Content-Type: application/json\r\n"
         .. "Content-Length: " .. #body .. "\r\n"
         .. truncation_header
+        .. session_header
         .. "\r\n"
         .. body
 
@@ -119,7 +131,32 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         end
     end
 
-    local response = call_router(router, body, truncated)
+    -- Look up the configured session-id header from the client request.
+    -- req_get_headers() returns a table keyed by lowercase header name
+    -- with array values (header can appear multiple times); take the
+    -- first occurrence. Missing header -> nil -> call_router skips the
+    -- forwarded header line entirely.
+    --
+    -- Also probe the `-`/`_` variant so an intermediate proxy that rewrites
+    -- the separator doesn't silently drop session affinity, matching the
+    -- Python-side `_matches_session_id_header` behavior in http_util.py.
+    local session_id = nil
+    if SESSION_HEADER ~= "" then
+        local hdrs = txn.http:req_get_headers()
+        local entry = hdrs and hdrs[SESSION_HEADER]
+        if hdrs and not entry then
+            local alt = SESSION_HEADER:gsub("-", "_")
+            if alt == SESSION_HEADER then
+                alt = SESSION_HEADER:gsub("_", "-")
+            end
+            entry = hdrs[alt]
+        end
+        if entry then
+            session_id = entry[0]
+        end
+    end
+
+    local response = call_router(router, body, truncated, session_id)
     if not response then
         txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
         return
