@@ -399,7 +399,7 @@ struct Node {
   std::optional<absl::Time> local_view_modified_ts_;
 };
 
-/// \request Conversion result to a ResourceRequest data structure.
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,
