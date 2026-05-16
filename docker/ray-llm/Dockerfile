@@ -7,7 +7,7 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.20.0"
+ARG VLLM_SCRIPTS_REF="v0.21.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -61,6 +61,3 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
-
-# Use the revamped ray executor backend in vLLM
-ENV VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1

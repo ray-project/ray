@@ -21,6 +21,3 @@ PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
 EOF
-
-# Use the revamped ray executor backend in vLLM
-ENV VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1
