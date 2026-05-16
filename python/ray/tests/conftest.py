@@ -390,7 +390,9 @@ def start_redis(db_dir):
                 proc.process.kill()
 
             if retry_num > 5:
-                raise RuntimeError(f"Failed to start redis after {retry_num} attempts.")
+                raise RuntimeError(
+                    f"Failed to start Redis on port {port} after {retry_num} attempts."
+                )
             print(
                 "Retry to start redis because the process failed to "
                 + f"listen to the port({port}), retry num:{retry_num}."
