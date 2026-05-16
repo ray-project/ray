@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+import sys
 from typing import List, Literal, Union
 
 import numpy as np
@@ -35,6 +36,7 @@ from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
     NumpyArrayBasedCheckpointFilter,
+    _numpy_size,
 )
 from ray.data.checkpoint.checkpoint_writer import (
     PENDING_CHECKPOINT_SUFFIX,
@@ -2027,6 +2029,25 @@ def test_clean_pending_checkpoints_no_pending(ray_start_10_cpus_shared, fs, base
 
     # Data file should still exist (no pending checkpoints means nothing to clean)
     assert fs.get_file_info(data_file).type != FileType.NotFound
+
+
+def test_numpy_size_non_object_array():
+    arr = np.arange(100_000, dtype=np.int64)
+    assert _numpy_size(arr) == arr.nbytes
+
+
+def test_numpy_size_small_object_array_exact():
+    arr = np.array(["abc", "defg", "hi"], dtype=object)
+    expected = arr.nbytes + sum(sys.getsizeof(x) for x in arr.flat)
+    assert _numpy_size(arr) == expected
+
+
+def test_numpy_size_object_array_skewed_by_index():
+    small = ["x"] * 10_000
+    large = ["x" * 1024] * 990_000
+    arr = np.array(small + large, dtype=object)
+    actual = arr.nbytes + sum(sys.getsizeof(x) for x in arr.flat)
+    assert abs(_numpy_size(arr) / actual - 1) < 0.10
 
 
 if __name__ == "__main__":
