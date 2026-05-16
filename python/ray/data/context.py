@@ -1025,13 +1025,13 @@ class DataContext:
             ResourceAllocatorPrometheusCallback,
         )
         from ray.data._internal.execution.execution_callback import ExecutionCallback
-        from ray.data._internal.telemetry.execution_callback import TelemetryCallback
+        from ray.data._internal.usage.execution_callback import UsageCallback
 
         classes = [
             ExecutionIdxUpdateCallback,
             IssueDetectionExecutionCallback,
             ResourceAllocatorPrometheusCallback,
-            TelemetryCallback,
+            UsageCallback,
         ]
 
         # Parse environment variable for custom callbacks

@@ -1,4 +1,4 @@
-from ray.data._internal.telemetry.collector import (
+from ray.data._internal.usage.collector import (
     record_execution_result,
     record_workload,
 )

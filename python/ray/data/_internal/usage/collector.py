@@ -1,9 +1,7 @@
-"""Ray Data telemetry collector.
+"""Ray Data usage-stats collector.
 
-Accumulates per-execution telemetry (environment, workload description,
+Accumulates per-execution usage data (environment, workload description,
 performance) and flushes it to GCS via ``record_extra_usage_tag``.
-
-Mirrors the module-level pattern used by ``ray.data._internal.logical.util``.
 """
 
 import importlib.metadata
@@ -12,17 +10,29 @@ import logging
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from collections import OrderedDict
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import AbstractUDFMap, Read, Write
 from ray.data._internal.logical.util import _op_name_white_list
 
+if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+    from ray.data._internal.stats import DatasetStatsSummary, StatsSummary
+
 logger = logging.getLogger(__name__)
 
+# Bounded buffer of recent executions. OrderedDict so eviction picks the
+# oldest-inserted entry
+_MAX_EXECUTIONS_TO_TRACK = 100
+
 # Module state. Mutations are serialized through ``_lock``.
-_executions: Dict[str, dict] = {}
+_executions: "OrderedDict[str, dict]" = OrderedDict()
+# Per-execution spillage recorded at start of execution to compute delta
+_spillage_dict: Dict[str, Optional[int]] = {}
 _env_cache: Optional[dict] = None
 _lock = threading.Lock()
 
@@ -33,7 +43,10 @@ _TRACKED_DEPS = ("pyarrow", "numpy", "pandas", "ray")
 _TRACKED_THIRD_PARTY = ("daft", "vllm", "sglang", "deepspeed")
 
 
-def record_workload(executor, logical_plan) -> None:
+def record_workload(
+    executor: "StreamingExecutor",
+    logical_plan: Union["LogicalPlan", LogicalOperator],
+) -> None:
     """Record the planning-time entry for an execution.
 
     Called from ``_execute_dag`` before the executor runs. The resulting entry
@@ -53,33 +66,45 @@ def record_workload(executor, logical_plan) -> None:
             "workload": _collect_workload(logical_plan),
             "performance": None,
             "error": None,
-            # Bookkeeping for cluster spillage delta; stripped before flush.
-            "_spilled_at_start": _cluster_spilled_bytes(),
         }
+        spilled_at_start = _cluster_spilled_bytes()
         with _lock:
+            if len(_executions) >= _MAX_EXECUTIONS_TO_TRACK:
+                evicted_id, _ = _executions.popitem(last=False)
+                _spillage_dict.pop(evicted_id, None)
             _executions[execution_id] = entry
-            _flush_locked()
+            _spillage_dict[execution_id] = spilled_at_start
+            payload = _serialize_locked()
+        record_extra_usage_tag(TagKey.DATA_USAGE, payload)
     except Exception:
-        logger.debug("Failed to record workload telemetry", exc_info=True)
+        logger.debug("Failed to record workload usage", exc_info=True)
 
 
-def record_execution_result(executor, error: Optional[BaseException]) -> None:
+def record_execution_result(
+    executor: "StreamingExecutor",
+    error: Optional[BaseException],
+) -> None:
     """Fill in performance, error for a previously recorded execution and flush."""
     try:
         execution_id = _execution_id_for(executor)
+        spilled_now = _cluster_spilled_bytes()
         with _lock:
             entry = _executions.get(execution_id)
-            if entry is None:
+            if entry is None: # if the execution was not found (could be evicted)
+                _spillage_dict.pop(execution_id, None)
                 return
-            spilled_at_start = entry.pop("_spilled_at_start", None)
-            entry["performance"] = _collect_pipeline_perf(executor, spilled_at_start)
+            spilled_at_start = _spillage_dict.pop(execution_id, None)
+            entry["performance"] = _collect_pipeline_perf(
+                executor, spilled_at_start, spilled_now
+            )
             entry["error"] = _collect_error(error)
-            _flush_locked()
+            payload = _serialize_locked()
+        record_extra_usage_tag(TagKey.DATA_USAGE, payload)
     except Exception:
-        logger.debug("Failed to record execution result telemetry", exc_info=True)
+        logger.debug("Failed to record execution result usage", exc_info=True)
 
 
-def _execution_id_for(executor) -> str:
+def _execution_id_for(executor: "StreamingExecutor") -> str:
     """Compose a per-execution id from the executor.
 
     Reuses Ray Data's existing per-execution identity: the dataset UUID plus
@@ -94,10 +119,14 @@ def _execution_id_for(executor) -> str:
     return executor._dataset_id
 
 
-def _flush_locked() -> None:
-    """Serialize current state and push to GCS. Caller must hold ``_lock``."""
-    payload = json.dumps({"executions": list(_executions.values())})
-    record_extra_usage_tag(TagKey.DATA_TELEMETRY, payload)
+def _serialize_locked() -> str:
+    """Serialize current state to JSON. Caller must hold ``_lock``.
+
+    The actual GCS write (``record_extra_usage_tag``) is done outside the
+    lock by the caller — it's a synchronous gRPC and there's no reason to
+    serialize concurrent flushes on it.
+    """
+    return json.dumps({"executions": list(_executions.values())})
 
 
 def _collect_env() -> dict:
@@ -122,16 +151,18 @@ def _safe_version(pkg: str) -> Optional[str]:
 
 
 def _collect_context() -> dict:
-    """Whitelisted DataContext fields. Empty for v1; expanded in follow-ups."""
+    """Whitelisted DataContext fields"""
     return {}
 
 
 def _collect_environment_vars() -> dict:
-    """Whitelisted RAY_DATA_* environment variables. Empty for v1."""
+    """Whitelisted RAY_DATA_* environment variables"""
     return {}
 
 
-def _collect_workload(logical_plan) -> dict:
+def _collect_workload(
+    logical_plan: Union["LogicalPlan", LogicalOperator],
+) -> dict:
     """Anonymized plan + per-op config."""
     dag = _root(logical_plan)
     ops: List[dict] = []
@@ -143,7 +174,9 @@ def _collect_workload(logical_plan) -> dict:
     }
 
 
-def _root(logical_plan):
+def _root(
+    logical_plan: Union["LogicalPlan", LogicalOperator],
+) -> LogicalOperator:
     """Return the root LogicalOperator from a LogicalPlan or operator."""
     if isinstance(logical_plan, LogicalOperator):
         return logical_plan
@@ -238,27 +271,27 @@ def _collect_input_layout(root: LogicalOperator) -> dict:
     }
 
 
-def _iter_reads(op: LogicalOperator):
+def _iter_reads(op: LogicalOperator) -> Iterator[Read]:
     if isinstance(op, Read):
         yield op
     for child in op.input_dependencies:
         yield from _iter_reads(child)
 
 
-def _collect_pipeline_perf(executor, spilled_at_start: Optional[int]) -> dict:
+def _collect_pipeline_perf(
+    executor: "StreamingExecutor",
+    spilled_at_start: Optional[int],
+    spilled_now: Optional[int],
+) -> dict:
     """Aggregate pipeline-level perf.
+
+    ``spilled_now`` is passed in so the caller can read it outside the
+    lock — it's a synchronous gRPC and we don't want it held under the
+    collector lock.
 
     ``bytes_spilled`` is a cluster-wide delta sourced from Ray core's
     ``store_stats.spilled_bytes_total`` (the same path ``plan.py:259-265``
-    uses for ``global_bytes_spilled``). It approximates per-execution
-    spillage well for single-tenant clusters; under concurrent workloads
-    it overcounts. ``OpRuntimeMetrics.obj_store_mem_spilled`` was tried
-    first but undercounted by ~5 orders of magnitude — it only increments
-    when a task reads back a previously-spilled input block, missing all
-    terminal-stage spillage.
-
-    OOM / worker / node-death counts are emitted as ``None`` — see the
-    plan's "Follow-ups" section for the C++-only-counter rationale.
+    uses for ``global_bytes_spilled``).
     """
     try:
         summary = executor.get_stats().to_summary()
@@ -270,7 +303,6 @@ def _collect_pipeline_perf(executor, spilled_at_start: Optional[int]) -> dict:
     except Exception:
         wall = None
 
-    spilled_now = _cluster_spilled_bytes()
     if spilled_at_start is None or spilled_now is None:
         bytes_spilled = None
     else:
@@ -279,44 +311,35 @@ def _collect_pipeline_perf(executor, spilled_at_start: Optional[int]) -> dict:
     return {
         "bytes_spilled": bytes_spilled,
         "total_wall_time_s": wall,
+        "per_op": _collect_per_op_perf(summary),
+        # TODO(ayushk7102): add OOM / worker / node death counts.
         "oom_kills": None,
         "unexpected_worker_kills": None,
         "node_deaths": None,
-        "per_op": _collect_per_op_perf(executor, summary),
     }
 
 
-def _collect_per_op_perf(executor, summary) -> List[dict]:
+def _collect_per_op_perf(summary: Optional["DatasetStatsSummary"]) -> List[dict]:
     """Per-operator stats from already-computed ``OperatorStatsSummary``.
 
-    All values are aggregations over the **output blocks** an op produced
-    during this execution — already collected by Ray Data on the hot path
-    regardless of whether we read them. We only read them post-shutdown.
+    All values are aggregations over output blocks — already collected by
+    Ray Data on the hot path regardless of whether we read them.
 
-    Caveats: ``memory_mib`` is Linux-only (the underlying ``max_uss_bytes``
-    returns 0 on macOS/Windows). ``num_tasks_failed`` counts intermediate
-    task failures, including ones Ray retried successfully — it's a noisy
-    proxy for OOM/worker kills.
+    Caveat: ``memory_mib`` is Linux-only (``max_uss_bytes`` is 0 on
+    macOS/Windows).
     """
     if summary is None:
         return []
 
-    op_metrics_by_name: Dict[str, Any] = {}
-    try:
-        for op in getattr(executor, "_topology", []) or []:
-            try:
-                op_metrics_by_name[op.name] = op.metrics
-            except Exception:
-                continue
-    except Exception:
-        logger.debug("Failed to walk executor topology for per-op metrics", exc_info=True)
-
     per_op: List[dict] = []
-    for op_stat in getattr(summary, "operators_stats", []) or []:
+    operators_stats = getattr(summary, "operators_stats", None) or []
+    for idx, op_stat in enumerate(operators_stats):
         try:
+            # TODO(ayushk7102): verify if this logic works for fused-ops
+            name = _anonymize_op_name_str(op_stat.operator_name)
             entry: Dict[str, Any] = {
-                "name": _anonymize_op_name_str(op_stat.operator_name),
-                "is_sub_operator": op_stat.is_sub_operator,
+                "name": name,
+                "op_id": f"{name}_{idx}", # ensure unique op_id if names collide
             }
             if op_stat.wall_time is not None:
                 entry["wall_time_s"] = _stats_summary_to_dict(op_stat.wall_time)
@@ -324,12 +347,6 @@ def _collect_per_op_perf(executor, summary) -> List[dict]:
                 entry["udf_time_s"] = _stats_summary_to_dict(op_stat.udf_time)
             if op_stat.memory is not None:
                 entry["memory_mib"] = _stats_summary_to_dict(op_stat.memory)
-
-            metrics = op_metrics_by_name.get(op_stat.operator_name)
-            if metrics is not None:
-                entry["num_tasks_finished"] = getattr(metrics, "num_tasks_finished", None)
-                entry["num_tasks_failed"] = getattr(metrics, "num_tasks_failed", None)
-
             per_op.append(entry)
         except Exception:
             logger.debug("Failed per-op stats collection", exc_info=True)
@@ -337,7 +354,7 @@ def _collect_per_op_perf(executor, summary) -> List[dict]:
     return per_op
 
 
-def _stats_summary_to_dict(s) -> dict:
+def _stats_summary_to_dict(s: "StatsSummary") -> dict:
     """Convert a ``StatsSummary`` to a compact min/mean/max dict."""
     return {"min": s.min, "mean": s.mean, "max": s.max}
 
@@ -345,7 +362,7 @@ def _stats_summary_to_dict(s) -> dict:
 def _cluster_spilled_bytes() -> Optional[int]:
     """Cluster-wide cumulative spilled bytes from Ray core's store_stats.
 
-    Returns None on any failure — telemetry must never break execution.
+    Returns None on any failure — usage collection must never break execution.
     """
     try:
         import ray
@@ -372,4 +389,5 @@ def _reset_for_testing() -> None:
     global _env_cache
     with _lock:
         _executions.clear()
+        _spillage_dict.clear()
         _env_cache = None

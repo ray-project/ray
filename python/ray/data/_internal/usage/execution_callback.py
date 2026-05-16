@@ -1,6 +1,6 @@
-"""Execution-side telemetry hook.
+"""Execution-side usage-stats hook.
 
-Pairs with ``ray.data._internal.telemetry.collector``. The planning-side
+Pairs with ``ray.data._internal.usage.collector``. The planning-side
 hook in ``legacy_compat._execute_dag`` records the workload entry; this
 callback fires when the executor finishes and fills in performance + error.
 """
@@ -9,7 +9,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.telemetry.collector import record_execution_result
+from ray.data._internal.usage.collector import record_execution_result
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -17,8 +17,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class TelemetryCallback(ExecutionCallback):
-    """Flushes per-execution telemetry on success or failure."""
+class UsageCallback(ExecutionCallback):
+    """Flushes per-execution usage data on success or failure.
+
+    Writes into Ray's usage-stats subsystem (``record_extra_usage_tag``,
+    ``usage_lib``, ``usage_stats`` namespace).
+    """
 
     def after_execution_succeeds(self, executor: "StreamingExecutor") -> None:
         self._finish(executor, error=None)
@@ -34,4 +38,4 @@ class TelemetryCallback(ExecutionCallback):
         try:
             record_execution_result(executor, error)
         except Exception:
-            logger.debug("Telemetry record_execution_result failed", exc_info=True)
+            logger.debug("Usage record_execution_result failed", exc_info=True)
