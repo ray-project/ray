@@ -90,39 +90,22 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        # +-----+------------------+------------------+--------------+
-        # |     | _op_reserved     | _reserved_for    | used shared  |
-        # |     | (used/remaining) | _op_outputs      | resources    |
-        # |     |                  | (used/remaining) |              |
-        # +-----+------------------+------------------+--------------+
-        # | op2 | 0/125            | 0/125            | 0            |
-        # +-----+------------------+------------------+--------------+
-        # | op3 | 0/125            | 0/125            | 0            |
-        # +-----+------------------+------------------+--------------+
-        # o1 and o4 are not handled.
+        # Ineligible operators are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
         assert allocator.get_allocation(o1) is None
         assert allocator.get_allocation(o4) is None
-        # Test reserved resources for o2 and o3.
+        # 50% reserved per op, 50% shared.
         assert allocator._op_reserved[o2] == ExecutionResources(4, 0, 125)
         assert allocator._op_reserved[o3] == ExecutionResources(4, 0, 125)
         assert allocator._reserved_for_op_outputs[o2] == 125
         assert allocator._reserved_for_op_outputs[o3] == 125
-        # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(8, 0, 500)
-        # Test budgets.
+        # When usage is zero, allocation equals budget.
         assert allocator.get_budget(o2) == ExecutionResources(8, 0, 375)
         assert allocator.get_budget(o3) == ExecutionResources(8, 0, 375)
-        # Test max_task_output_bytes_to_read.
         assert allocator.max_task_output_bytes_to_read(o2) == 500
         assert allocator.max_task_output_bytes_to_read(o3) == 500
-        # Test get_allocation.
-        # Ineligible operators should return None.
-        assert allocator.get_allocation(o1) is None
-        assert allocator.get_allocation(o4) is None
-        # allocation = op_reserved + op_shared = (4, 0, 125) + (4, 0, 250) = (8, 0, 375)
-        # When usage is zero, allocation equals budget.
         assert allocator.get_allocation(o2) == ExecutionResources(8, 0, 375)
         assert allocator.get_allocation(o3) == ExecutionResources(8, 0, 375)
 
@@ -138,37 +121,13 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        # +-----+------------------+------------------+--------------+
-        # |     | _op_reserved     | _reserved_for    | used shared  |
-        # |     | (used/remaining) | _op_outputs      | resources    |
-        # |     |                  | (used/remaining) |              |
-        # +-----+------------------+------------------+--------------+
-        # | op2 | 125/0            | 100/25           | 400-125=275  |
-        # +-----+------------------+------------------+--------------+
-        # | op3 | 30/95            | (25+50)/50       | 0            |
-        # +-----+------------------+------------------+--------------+
-        # remaining shared = 1000/2 - 275 = 225
-        # Test budgets.
-        # cpu_budget[o2] = allocation(7) - min(reserved(4), usage(6)) = 7 - 4 = 3
-        # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
         assert allocator.get_budget(o2) == ExecutionResources(3, 0, 113)
-        # cpu_budget[o3] = allocation(7) - min(reserved(4), usage(2)) = 7 - 2 = 5
-        # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
         assert allocator.get_budget(o3) == ExecutionResources(5, 0, 207)
-        # Test max_task_output_bytes_to_read.
-        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
         assert allocator.max_task_output_bytes_to_read(o2) == 138
-        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
         assert allocator.max_task_output_bytes_to_read(o3) == 257
-        # Test get_allocation = allocation.
-        # allocation[o2] = (4, 0, 125) + op_shared(3, 0, 113) = (7, 0, 238)
-        # allocation[o3] = (4, 0, 125) + op_shared(3, 0, 112) = (7, 0, 237)
         assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 238)
         assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
-        # Test allocation - usage (component-wise, can be negative).
-        # o2: CPU headroom = 7 - 6 = 1 (within grant); OSM headroom = 238 - 500 = -262
-        #     (over grant on OSM: in-flight outputs exceed the planned memory allocation).
-        # o3: CPU headroom = 7 - 2 = 5; OSM headroom = 237 - 125 = 112 (within grant).
+        # Headroom = allocation - usage; can be negative when an op exceeds its grant.
         assert allocator.get_allocation(o2).subtract(
             op_usages[o2]
         ) == ExecutionResources(1, 0, 238 - 500)
@@ -181,37 +140,15 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        # +-----+------------------+------------------+--------------+
-        # |     | _op_reserved     | _reserved_for    | used shared  |
-        # |     | (used/remaining) | _op_outputs      | resources    |
-        # |     |                  | (used/remaining) |              |
-        # +-----+------------------+------------------+--------------+
-        # | op2 | 100/0            | 100/0            | 400-100=300  |
-        # +-----+------------------+------------------+--------------+
-        # | op3 | 30/70            | (25+50)/25       | 0            |
-        # +-----+------------------+------------------+--------------+
-        # remaining shared = 800/2 - 300 = 100
-        # Test reserved resources for o2 and o3.
         assert allocator._op_reserved[o2] == ExecutionResources(3, 0, 100)
         assert allocator._op_reserved[o3] == ExecutionResources(3, 0, 100)
         assert allocator._reserved_for_op_outputs[o2] == 100
         assert allocator._reserved_for_op_outputs[o3] == 100
-        # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(6, 0, 400)
-
-        # Test budgets.
-        # memory_budget[o2] = 0 + 100/2 = 50
         assert allocator.get_budget(o2) == ExecutionResources(1.5, 0, 50)
-        # memory_budget[o3] = 70 + 100/2 = 120
         assert allocator.get_budget(o3) == ExecutionResources(2.5, 0, 120)
-        # Test max_task_output_bytes_to_read.
-        # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
         assert allocator.max_task_output_bytes_to_read(o2) == 50
-        # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
         assert allocator.max_task_output_bytes_to_read(o3) == 145
-        # Test get_allocation = allocation.
-        # allocation[o2] = (3, 0, 100) + op_shared(1.5, 0, 50) = (4.5, 0, 150)
-        # allocation[o3] = (4.5, 0, 150)
         assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
         assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
 
@@ -470,28 +407,7 @@ class TestReservationOpResourceAllocator:
         assert isinstance(allocator, ReservationOpResourceAllocator)
         allocator.update_budgets(limits=global_limits)
 
-        # All tuples below are (cpu, object_store_memory).
-        #
-        # Reservation phase:
-        # - default_reserved per op = global_limits * 0.5 / 2 = (5, 100)
-        # - reserved_for_outputs per op = 100 / 2 = 50
-        # - o2's reserved_for_tasks is capped by max (4, inf) -> (4, 50)
-        # - o3's reserved_for_tasks = (5, 50)
-        # - total_shared = global_limits - o2_total_reserved - o3_total_reserved
-        #                = (20, 400) - (4, 100) - (5, 100) = (11, 200)
-        #
-        # Budget phase (first loop calculates reserved_remaining):
-        # - o2: reserved_remaining = reserved_for_tasks - usage = (4, 50) - (2, 40) = (2, 10)
-        # - o3: reserved_remaining = (5, 50) - (2, 40) = (3, 10)
-        #
-        # Shared allocation (second loop, reversed order):
-        # - o3: op_shared = remaining_shared / 2 = (5.5, 100), no cap
-        #       budget = reserved_remaining + op_shared = (3, 10) + (5.5, 100) = (8.5, 110)
-        # - o2: op_shared = (5.5, 100), CPU capped to (0, 100)
-        #       budget = (2, 10) + (0, 100) = (2, 110)
-        #       remaining_shared = (5.5, 0)
-        # - After loop, remaining (5.5, 0) given to most downstream op (o3):
-        #       o3 budget = (8.5, 110) + (5.5, 0) = (14, 110)
+        # o2's CPU is capped at 4; its unused CPU share flows to the uncapped o3.
         assert allocator.get_budget(o2) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
