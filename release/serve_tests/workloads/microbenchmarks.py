@@ -13,6 +13,7 @@ import click
 from functools import partial
 import json
 import logging
+import os
 
 import grpc
 import pandas as pd
@@ -488,13 +489,24 @@ async def _main(
             # RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1, exercised here with a
             # CPU-only Streamer so CI without GPUs can regression-test it.
             #
-            # Requires RAY_SERVE_ENABLE_HA_PROXY=1: ingress_request_router
-            # requires HAProxy and Serve will refuse to build the app
-            # otherwise. Caller is expected to set this in the haproxy
-            # variant's runtime_env.
+            # Requires BOTH:
+            #   - RAY_SERVE_ENABLE_HA_PROXY=1: ingress_request_router requires
+            #     HAProxy and Serve will refuse to build the app otherwise.
+            #   - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1: tracking the
+            #     production-path env var so the microbench measures the
+            #     same configuration shape Ray Serve LLM ships with.
+            # Caller (release_tests.yaml haproxy variant) is expected to set
+            # both in runtime_env; we error fast if either is missing.
             assert RAY_SERVE_ENABLE_HA_PROXY, (
                 "--run-direct-streaming requires RAY_SERVE_ENABLE_HA_PROXY=1; "
                 "ingress_request_router topology only works with HAProxy."
+            )
+            assert os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING") == "1", (
+                "--run-direct-streaming requires "
+                "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 in the environment; "
+                "this is the env var that gates the production direct-streaming "
+                "path in Ray Serve LLM, and the microbench mirrors the same "
+                "configuration so regressions surface against the right shape."
             )
             streamer_app = Streamer.options(max_ongoing_requests=1000).bind(
                 tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
