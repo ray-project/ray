@@ -862,14 +862,14 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     does not exist in the connected cluster. The _StatsActor is pinned on
     on driver process' node.
     """
-    if ray._private.worker._global_node is None:
+    if not ray.is_initialized():
         raise RuntimeError(
-            "Global node is not initialized. Driver might be not connected to Ray."
+            "Ray is not initialized. Driver might be not connected to Ray."
         )
 
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-
-    logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
+    global_node = ray._private.worker._global_node
+    if global_node is not None:
+        logger.debug(f"Stats Actor located on cluster_id={global_node.cluster_id}")
 
     # so it fate-shares with the driver.
     label_selector = {
