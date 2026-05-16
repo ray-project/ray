@@ -1650,6 +1650,11 @@
             - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
             - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
             - RAY_SERVE_ENABLE_HA_PROXY=1
+            # Mirror the production "optimal latency" config so the haproxy
+            # variant regression-tests the same shape Ray Serve LLM ships
+            # with. --run-direct-streaming (added in #63391) asserts this is
+            # set; without it the direct_streaming setup errors out.
+            - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
       run:
         timeout: 7200
         long_running: false
@@ -1657,9 +1662,17 @@
         # gRPCOptions(port=9000); --run-grpc would crash with connection refused
         # under RAY_SERVE_ENABLE_HA_PROXY=1. Run the HAProxy-proxied transports
         # only.
+        #
+        # --run-direct-streaming exercises the ingress_request_router bypass
+        # topology used by Ray Serve LLM under
+        # RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1. Requires #63391 to be
+        # merged (defines the flag); until then this command will fail with
+        # "no such option" and the variant should be temporarily reverted to
+        # the non-direct-streaming command.
         script: >-
           python workloads/microbenchmarks.py
-          --run-http --run-handle --run-latency --run-throughput --run-streaming
+          --run-http --run-handle --run-latency --run-throughput
+          --run-streaming --run-direct-streaming
     - __suffix__: gce
       env: gce
       frequency: manual
