@@ -139,3 +139,57 @@ def test_create_scanner_propagates_include_row_hash(tmp_path):
     scanner = datasource.create_scanner(schema)
 
     assert scanner.include_row_hash is True
+
+
+def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
+    """Regression: when the nested-type fallback fires on a fragment that
+    lacks a filter-referenced column, the V2 reader must null-fill the
+    missing column instead of letting pyarrow raise. Matches the
+    scanner path, which null-fills via dataset-level schema pinning.
+    """
+    import pyarrow.dataset as pds
+
+    from ray.data._internal.datasource import parquet_datasource
+    from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
+        ParquetFileReader,
+    )
+    from ray.data.expressions import col
+
+    _write_parquet(
+        str(tmp_path / "with_b.parquet"),
+        pa.table({"a": [1, 2, 3], "b": [10, 20, 30]}),
+    )
+    _write_parquet(
+        str(tmp_path / "without_b.parquet"),
+        pa.table({"a": [4, 5, 6]}),
+    )
+
+    unified_schema = pa.schema([("a", pa.int64()), ("b", pa.int64())])
+    predicate = col("b") > 15
+
+    # Force the fallback path; the source-module attribute is what V2's
+    # function-local import resolves to on each call.
+    monkeypatch.setattr(
+        parquet_datasource, "_needs_nested_type_fallback", lambda *a, **kw: True
+    )
+
+    reader = ParquetFileReader(
+        columns=["a"], predicate=predicate, schema=unified_schema
+    )
+    dataset = pds.dataset(str(tmp_path), format="parquet", schema=unified_schema)
+    scanner_kwargs = {
+        "columns": ["a"],
+        "filter": predicate.to_pyarrow(),
+        "batch_size": None,
+    }
+
+    rows_by_fragment = {}
+    for fragment in dataset.get_fragments():
+        tables = list(reader._iter_fragment_tables(fragment, scanner_kwargs))
+        rows_by_fragment[os.path.basename(fragment.path)] = sum(
+            t.num_rows for t in tables
+        )
+
+    # with_b: rows where b > 15 → 2 rows (b=20, b=30)
+    # without_b: b is null-filled → null > 15 is null → 0 rows
+    assert rows_by_fragment == {"with_b.parquet": 2, "without_b.parquet": 0}

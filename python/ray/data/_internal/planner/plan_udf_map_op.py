@@ -876,8 +876,12 @@ def _generate_transform_fn_for_async_map(
             finally:
                 output_queue.put(sentinel)
 
-        # NOTE: Reordering is an async process
-        asyncio.create_task(_reorder())
+        # NOTE: Reordering is an async process. Keep a strong reference to
+        # the created task: ``loop.create_task`` only registers a weak
+        # reference with the event loop, so without a strong reference the
+        # task could be garbage collected mid-execution and the reordering
+        # would silently stop.
+        reorder_task = loop.create_task(_reorder())
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
@@ -926,6 +930,11 @@ def _generate_transform_fn_for_async_map(
         finally:
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
+            # Wait for the reorder task to finish draining ``completed_tasks_queue``
+            # and pushing remaining results to the output queue. This both keeps a
+            # strong reference to the task alive until completion (preventing GC)
+            # and surfaces any unexpected exception raised inside ``_reorder``.
+            await reorder_task
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         output_queue = queue.Queue(maxsize=max_concurrency)
