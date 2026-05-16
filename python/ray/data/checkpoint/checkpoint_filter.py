@@ -49,12 +49,12 @@ def _numpy_size(array: np.ndarray) -> int:
             for item in array.flat:
                 total_size += sys.getsizeof(item)
         else:
-            stride = max(1, len(array) // sample_count)
-            sample = array[::stride][:sample_count]
+            indices = np.linspace(0, len(array) - 1, sample_count, dtype=int)
+            sample = array[indices]
             sample_total_size = 0
             for item in sample.flat:
                 sample_total_size += sys.getsizeof(item)
-            total_size += int(sample_total_size / len(sample) * len(array))
+            total_size += int(sample_total_size / sample_count * len(array))
     return total_size
 
 

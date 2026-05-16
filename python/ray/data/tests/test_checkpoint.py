@@ -2050,6 +2050,14 @@ def test_numpy_size_object_array_skewed_by_index():
     assert abs(_numpy_size(arr) / actual - 1) < 0.10
 
 
+def test_numpy_size_object_array_skewed_near_threshold():
+    small = ["x"] * 7_500
+    large = ["x" * 1024] * 7_500
+    arr = np.array(small + large, dtype=object)
+    actual = arr.nbytes + sum(sys.getsizeof(x) for x in arr.flat)
+    assert abs(_numpy_size(arr) / actual - 1) < 0.10
+
+
 if __name__ == "__main__":
     import sys
 
