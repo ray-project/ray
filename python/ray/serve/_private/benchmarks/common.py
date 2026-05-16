@@ -124,6 +124,60 @@ async def do_single_http_batch(
         return await asyncio.gather(*[do_query() for _ in range(batch_size)])
 
 
+async def do_single_http_streaming_with_per_chunk_timing(
+    *,
+    batch_size: int = 1,
+    url: str = "http://localhost:8000",
+) -> Tuple[List[float], List[float], List[float]]:
+    """Sends a batch of streaming HTTP requests and records per-chunk arrival times.
+
+    For each request we record:
+      - ttft_ms: time from request issue to the first chunk delivered by iter_chunks().
+      - inter_chunk_ms: gaps between successive chunk arrivals.
+      - total_ms: end-to-end latency.
+
+    Returns (ttft_ms_per_request, flattened_inter_chunk_ms, total_ms_per_request).
+
+    Note on loopback: iter_chunks() yields whatever aiohttp's parser hands up.
+    On loopback with TCP_NODELAY=1 each yield is approximately one server send;
+    with NODELAY=0 the kernel may coalesce server sends, which is exactly the
+    inflation this benchmark is meant to detect.
+    """
+    connector = aiohttp.TCPConnector(limit=batch_size)
+    async with aiohttp.ClientSession(
+        connector=connector, raise_for_status=True
+    ) as session:
+
+        async def do_query() -> Tuple[float, List[float], float]:
+            start = time.perf_counter()
+            ttft_ms = float("nan")
+            inter_chunk_ms: List[float] = []
+            try:
+                async with session.get(url) as r:
+                    last = None
+                    async for _chunk, _ in r.content.iter_chunks():
+                        now = time.perf_counter()
+                        if last is None:
+                            ttft_ms = 1000 * (now - start)
+                        else:
+                            inter_chunk_ms.append(1000 * (now - last))
+                        last = now
+            except aiohttp.client_exceptions.ClientConnectionError:
+                pass
+
+            end = time.perf_counter()
+            return ttft_ms, inter_chunk_ms, 1000 * (end - start)
+
+        results = await asyncio.gather(*[do_query() for _ in range(batch_size)])
+
+    ttfts = [r[0] for r in results]
+    inter_chunks: List[float] = []
+    for r in results:
+        inter_chunks.extend(r[1])
+    totals = [r[2] for r in results]
+    return ttfts, inter_chunks, totals
+
+
 async def do_single_grpc_batch(
     *, batch_size: int = 100, target: str = "localhost:9000"
 ):
@@ -283,6 +337,52 @@ class Benchmarker:
             return await asyncio.gather(
                 *[self.do_single_request() for _ in range(batch_size)]
             )
+
+    async def _do_single_stream_with_timing(
+        self,
+    ) -> Tuple[float, List[float], float]:
+        """Consumes a single streaming request, recording per-token arrival times.
+
+        Returns (ttft_ms, inter_token_ms_list, total_ms).
+        """
+        start = time.perf_counter()
+        ttft_ms = float("nan")
+        inter_token_ms: List[float] = []
+        last = None
+        async for _ in self._handle.stream.remote():
+            now = time.perf_counter()
+            if last is None:
+                ttft_ms = 1000 * (now - start)
+            else:
+                inter_token_ms.append(1000 * (now - last))
+            last = now
+        end = time.perf_counter()
+        return ttft_ms, inter_token_ms, 1000 * (end - start)
+
+    async def run_streaming_with_per_chunk_timing(
+        self,
+        *,
+        batch_size: int,
+        num_trials: int,
+    ) -> Tuple[List[float], List[float], List[float]]:
+        """Runs num_trials batches of streaming requests and collects timings.
+
+        Returns (ttft_ms_per_request, flattened_inter_token_ms, total_ms_per_request)
+        across all trials.
+        """
+        assert self._stream, "Benchmarker must be constructed with stream=True"
+        ttfts: List[float] = []
+        inter_tokens: List[float] = []
+        totals: List[float] = []
+        for _ in range(num_trials):
+            results = await asyncio.gather(
+                *[self._do_single_stream_with_timing() for _ in range(batch_size)]
+            )
+            for ttft, gaps, total in results:
+                ttfts.append(ttft)
+                inter_tokens.extend(gaps)
+                totals.append(total)
+        return ttfts, inter_tokens, totals
 
     async def run_latency_benchmark(
         self, *, num_requests: int, payload: Any = None

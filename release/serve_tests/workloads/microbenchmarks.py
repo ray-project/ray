@@ -25,6 +25,7 @@ from ray.serve._private.benchmarks.common import (
     Benchmarker,
     do_single_grpc_batch,
     do_single_http_batch,
+    do_single_http_streaming_with_per_chunk_timing,
     generate_payload,
     Noop,
     ModelComp,
@@ -63,6 +64,17 @@ STREAMING_BATCH_SIZE = 150
 STREAMING_HTTP_BATCH_SIZE = 500
 STREAMING_TOKENS_PER_REQUEST = 1000
 STREAMING_NUM_TRIALS = 10
+
+# For per-chunk timing passes (TTFT + inter-token jitter). Two batch sizes:
+#   bs=1: clean per-stream signal, isolates server-side first-token + emission cadence.
+#   bs=64: same metrics under moderate client concurrency. Expect the bs=64
+#     inter-token p99.9 to be 10-100x larger than bs=1 even on a healthy
+#     system since asyncio interleaves 64 streams; that's the point — we
+#     want to see if jitter stays bounded under load.
+STREAMING_PER_CHUNK_BS1 = 1
+STREAMING_PER_CHUNK_BS1_TRIALS = 20
+STREAMING_PER_CHUNK_BS64 = 64
+STREAMING_PER_CHUNK_BS64_TRIALS = 5
 
 
 def convert_throughput_to_perf_metrics(
@@ -108,6 +120,45 @@ def convert_latencies_to_perf_metrics(name: str, latencies: pd.Series) -> List[D
             "perf_metric_type": "LATENCY",
         },
     ]
+
+
+def convert_per_chunk_timings_to_perf_metrics(
+    name: str,
+    bs_suffix: str,
+    ttft_ms: List[float],
+    inter_chunk_ms: List[float],
+) -> List[Dict]:
+    """Build TTFT + inter-token jitter perf metrics for one streaming pass.
+
+    Loopback caveat: even with TCP_NODELAY=0 the kernel uses a much shorter
+    effective delayed-ACK on lo than on a real WAN, so absolute values
+    under-report Nagle's true cost. The benchmark is intended to give a
+    directional signal (NODELAY=0 vs =1), not a production estimate.
+    """
+    ttft_series = pd.Series([x for x in ttft_ms if x == x])  # drop NaN
+    gaps_series = pd.Series(inter_chunk_ms)
+    metrics: List[Dict] = []
+    for q, label in [(0.5, "p50"), (0.9, "p90"), (0.95, "p95"), (0.99, "p99")]:
+        metrics.append(
+            {
+                "perf_metric_name": f"{name}_ttft_{label}_{bs_suffix}",
+                "perf_metric_value": (
+                    float(ttft_series.quantile(q)) if len(ttft_series) else 0.0
+                ),
+                "perf_metric_type": "LATENCY",
+            }
+        )
+    for q, label in [(0.5, "p50"), (0.9, "p90"), (0.99, "p99"), (0.999, "p999")]:
+        metrics.append(
+            {
+                "perf_metric_name": f"{name}_inter_token_{label}_{bs_suffix}",
+                "perf_metric_value": (
+                    float(gaps_series.quantile(q)) if len(gaps_series) else 0.0
+                ),
+                "perf_metric_type": "LATENCY",
+            }
+        )
+    return metrics
 
 
 def convert_controller_samples_to_perf_metrics(
@@ -234,6 +285,47 @@ def get_throughput_test_name(test_type: str, max_ongoing_requests: int) -> str:
         return f"{test_type}_{max_ongoing_requests:_}_max_ongoing_requests"
 
 
+async def _run_http_per_chunk_timing_passes(
+    name: str, url: str, perf_metrics: List[Dict]
+) -> None:
+    """Run bs=1 and bs=64 per-chunk timing passes against an already-running app."""
+    for bs, trials, bs_suffix in [
+        (STREAMING_PER_CHUNK_BS1, STREAMING_PER_CHUNK_BS1_TRIALS, "bs1"),
+        (STREAMING_PER_CHUNK_BS64, STREAMING_PER_CHUNK_BS64_TRIALS, "bs64"),
+    ]:
+        ttfts: List[float] = []
+        inter_chunks: List[float] = []
+        for _ in range(trials):
+            t, g, _ = await do_single_http_streaming_with_per_chunk_timing(
+                batch_size=bs, url=url
+            )
+            ttfts.extend(t)
+            inter_chunks.extend(g)
+        perf_metrics.extend(
+            convert_per_chunk_timings_to_perf_metrics(
+                name, bs_suffix, ttfts, inter_chunks
+            )
+        )
+
+
+async def _run_handle_per_chunk_timing_passes(
+    name: str, h: DeploymentHandle, perf_metrics: List[Dict]
+) -> None:
+    """Run bs=1 and bs=64 handle-side per-chunk timing passes."""
+    for bs, trials, bs_suffix in [
+        (STREAMING_PER_CHUNK_BS1, STREAMING_PER_CHUNK_BS1_TRIALS, "bs1"),
+        (STREAMING_PER_CHUNK_BS64, STREAMING_PER_CHUNK_BS64_TRIALS, "bs64"),
+    ]:
+        ttfts, inter_tokens, _ = await h.run_streaming_with_per_chunk_timing.remote(
+            batch_size=bs, num_trials=trials
+        )
+        perf_metrics.extend(
+            convert_per_chunk_timings_to_perf_metrics(
+                name, bs_suffix, ttfts, inter_tokens
+            )
+        )
+
+
 async def _main(
     output_path: Optional[str],
     run_http: bool,
@@ -341,6 +433,7 @@ async def _main(
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("http_streaming", latencies)
             )
+            await _run_http_per_chunk_timing_passes("http_streaming", url, perf_metrics)
             await serve.shutdown_async()
 
             # Streaming with intermediate router
@@ -374,6 +467,9 @@ async def _main(
                 convert_latencies_to_perf_metrics(
                     "http_intermediate_streaming", latencies
                 )
+            )
+            await _run_http_per_chunk_timing_passes(
+                "http_intermediate_streaming", url, perf_metrics
             )
             await serve.shutdown_async()
 
@@ -520,6 +616,9 @@ async def _main(
             )
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("handle_streaming", latencies)
+            )
+            await _run_handle_per_chunk_timing_passes(
+                "handle_streaming", h, perf_metrics
             )
             await serve.shutdown_async()
 
