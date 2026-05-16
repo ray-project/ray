@@ -1,4 +1,5 @@
 import json
+import sys
 
 import pytest
 
@@ -77,7 +78,7 @@ class _StubTest:
             return self._name
         raise KeyError(key)
 
-    def get_anyscale_byod_image(self) -> str:
+    def get_anyscale_byod_image(self, build_id=None) -> str:
         return self._byod_image
 
     def get_anyscale_byod_image_shape(self) -> str:
@@ -342,3 +343,7 @@ def test_uses_released_image_does_not_require_rayci_build_id(monkeypatch):
         }
     )
     assert _uses_released_image(t_released) is True
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
