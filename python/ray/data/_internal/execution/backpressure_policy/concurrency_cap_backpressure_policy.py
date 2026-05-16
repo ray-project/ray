@@ -1,5 +1,6 @@
 import logging
 import math
+import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
@@ -26,7 +27,6 @@ logger = logging.getLogger(__name__)
 @Deprecated(
     message="ConcurrencyCapBackpressurePolicy is deprecated and will be removed "
     "on or after Ray 2.59.",
-    warning=True,
 )
 class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy that caps the concurrency of each operator.
@@ -100,6 +100,14 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         self.enable_dynamic_output_queue_size_backpressure = (
             self._data_context.enable_dynamic_output_queue_size_backpressure
         )
+
+        if self.enable_dynamic_output_queue_size_backpressure:
+            warnings.warn(
+                "ConcurrencyCapBackpressurePolicy is deprecated and will be "
+                "removed on or after Ray 2.59.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         dynamic_output_queue_size_backpressure_configs = ""
         if self.enable_dynamic_output_queue_size_backpressure:
