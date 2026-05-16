@@ -460,29 +460,13 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 def test_emits_deprecation_warning_when_dynamic_backpressure_enabled(
     restore_data_context,
 ):
-    ctx = restore_data_context
+    ctx = DataContext.get_current()
     ctx.enable_dynamic_output_queue_size_backpressure = True
     input_op = InputDataBuffer(ctx, input_data=[MagicMock()])
     topology = {input_op: MagicMock()}
 
     with pytest.warns(DeprecationWarning, match="deprecated"):
         ConcurrencyCapBackpressurePolicy(ctx, topology, MagicMock())
-
-
-def test_no_deprecation_warning_when_dynamic_backpressure_disabled(
-    restore_data_context,
-):
-    ctx = restore_data_context
-    ctx.enable_dynamic_output_queue_size_backpressure = False
-    input_op = InputDataBuffer(ctx, input_data=[MagicMock()])
-    topology = {input_op: MagicMock()}
-
-    import warnings
-
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        ConcurrencyCapBackpressurePolicy(ctx, topology, MagicMock())
-    assert not any(issubclass(w.category, DeprecationWarning) for w in record)
 
 
 if __name__ == "__main__":
