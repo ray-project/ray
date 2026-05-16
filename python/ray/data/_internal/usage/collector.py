@@ -7,6 +7,7 @@ performance) and flushes it to GCS via ``record_extra_usage_tag``.
 import importlib.metadata
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -42,6 +43,59 @@ _TRACKED_DEPS = ("pyarrow", "numpy", "pandas", "ray")
 # Third-party libraries whose presence (and version, if present) we record.
 _TRACKED_THIRD_PARTY = ("daft", "vllm", "sglang", "deepspeed")
 
+# Allowlist of RAY_DATA_* env var names. Values are recorded alongside the
+# name since every knob in context.py is bool/int/enum (no paths or
+# credentials). New entries here should be added with that same constraint.
+_ENV_VAR_WHITELIST = (
+    "RAY_DATA_PUSH_BASED_SHUFFLE",
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY",
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS",
+    "RAY_DATA_EAGER_FREE",
+    "RAY_DATA_DEFAULT_MIN_PARALLELISM",
+    "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
+    "RAY_DATA_USE_ARROW_TENSOR_V2",
+    "RAY_DATA_TRACE_ALLOCATIONS",
+    "RAY_DATA_DISABLE_PROGRESS_BARS",
+    "RAY_DATA_ENABLE_RICH_PROGRESS_BARS",
+    "RAY_DATA_ENFORCE_SCHEMAS",
+    "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT",
+    "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION",
+    "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA",
+    "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT",
+    "RAY_DATA_PER_NODE_METRICS",
+    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S",
+    "RAY_DATA_OP_RESERVATION_RATIO",
+    "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION",
+    "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S",
+    "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S",
+    "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
+    "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE",
+    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO",
+)
+
+# Allowlist of DataContext field names. All are primitive-typed
+# (bool/int/float/str/enum) in context.py. Non-primitive configs
+# (execution_options, iceberg_config, lance_config) and user-supplied
+# fields (dataset_logger_id) are deliberately omitted.
+_CONTEXT_WHITELIST = (
+    "target_max_block_size",
+    "target_min_block_size",
+    "streaming_read_buffer_size",
+    "enable_pandas_block",
+    "actor_prefetcher_enabled",
+    "use_push_based_shuffle",
+    "shuffle_strategy",
+    "scheduling_strategy",
+    "scheduling_strategy_large_args",
+    "large_args_threshold",
+    "use_polars",
+    "eager_free",
+    "min_parallelism",
+    "read_op_min_num_blocks",
+    "enable_progress_bars",
+)
+
 
 def record_workload(
     executor: "StreamingExecutor",
@@ -54,7 +108,11 @@ def record_workload(
     ``record_execution_result`` after the executor finishes (success or fail).
     Flushes eagerly so attempted executions are captured even if the process
     dies before completion.
+
+    Set ``RAY_DATA_USAGE_DISABLED=1`` to short-circuit all collection.
     """
+    if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+        return
     try:
         execution_id = _execution_id_for(executor)
         entry = {
@@ -84,13 +142,18 @@ def record_execution_result(
     executor: "StreamingExecutor",
     error: Optional[BaseException],
 ) -> None:
-    """Fill in performance, error for a previously recorded execution and flush."""
+    """Fill in performance, error for a previously recorded execution and flush.
+
+    Set ``RAY_DATA_USAGE_DISABLED=1`` to short-circuit all collection.
+    """
+    if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+        return
     try:
         execution_id = _execution_id_for(executor)
         spilled_now = _cluster_spilled_bytes()
         with _lock:
             entry = _executions.get(execution_id)
-            if entry is None: # if the execution was not found (could be evicted)
+            if entry is None:  # if the execution was not found (could be evicted)
                 _spillage_dict.pop(execution_id, None)
                 return
             spilled_at_start = _spillage_dict.pop(execution_id, None)
@@ -150,14 +213,46 @@ def _safe_version(pkg: str) -> Optional[str]:
         return None
 
 
-def _collect_context() -> dict:
-    """Whitelisted DataContext fields"""
-    return {}
+def _collect_context() -> Dict[str, Any]:
+    """Whitelisted DataContext fields.
+
+    Re-read on every workload (no memoization) because DataContext is
+    mutable mid-process — users can ``DataContext.get_current().X = Y``
+    between executions.
+    """
+    try:
+        from ray.data import DataContext  # local to avoid import cycle
+
+        ctx = DataContext.get_current()
+    except Exception:
+        return {}
+    result: Dict[str, Any] = {}
+    for name in _CONTEXT_WHITELIST:
+        try:
+            value = getattr(ctx, name, None)
+        except Exception:
+            continue
+        if value is None or isinstance(value, (bool, int, float, str)):
+            result[name] = value
+        else:
+            # Enums (e.g. ShuffleStrategy) — coerce to a stable string form.
+            result[name] = str(value)
+    return result
 
 
-def _collect_environment_vars() -> dict:
-    """Whitelisted RAY_DATA_* environment variables"""
-    return {}
+def _collect_environment_vars() -> Dict[str, str]:
+    """Whitelisted RAY_DATA_* env vars actually set in the environment.
+
+    Records ``name -> value`` only for entries in ``_ENV_VAR_WHITELIST``
+    that are set. Unset entries are omitted. Values are strings (env vars
+    always are); downstream consumers parse to bool/int as needed.
+    """
+    result: Dict[str, str] = {}
+    for name in _ENV_VAR_WHITELIST:
+        value = os.environ.get(name)
+        if value is not None:
+            result[name] = value
+    return result
 
 
 def _collect_workload(
@@ -339,7 +434,7 @@ def _collect_per_op_perf(summary: Optional["DatasetStatsSummary"]) -> List[dict]
             name = _anonymize_op_name_str(op_stat.operator_name)
             entry: Dict[str, Any] = {
                 "name": name,
-                "op_id": f"{name}_{idx}", # ensure unique op_id if names collide
+                "op_id": f"{name}_{idx}",  # ensure unique op_id if names collide
             }
             if op_stat.wall_time is not None:
                 entry["wall_time_s"] = _stats_summary_to_dict(op_stat.wall_time)
