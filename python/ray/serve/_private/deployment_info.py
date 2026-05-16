@@ -8,6 +8,16 @@ from ray.serve.generated.serve_pb2 import (
     TargetCapacityDirection as TargetCapacityDirectionProto,
 )
 
+# Process-global cache of the dynamically-created Ray actor class produced
+# for each `actor_name`. Without this, every DeploymentInfo recreation
+# (pickle round-trip, `update()`, recovery load) constructs a brand-new Python
+# class via `type(actor_name, (ReplicaActor,), …)`, which is then registered
+# with `ray.remote(...)`. Ray retains the registered class in its actor
+# metadata table for the lifetime of the controller. Under fast autoscaling
+# cycles this is one of the per-cycle accumulators behind issue
+# https://github.com/ray-project/ray/issues/58815.
+_DYNAMIC_ACTOR_CLASS_CACHE: Dict[str, Any] = {}
+
 
 class DeploymentInfo:
     def __init__(
@@ -98,18 +108,23 @@ class DeploymentInfo:
         if self._cached_actor_def is None:
             assert self.actor_name is not None
 
-            # Break circular import :(.
-            from ray.serve._private.replica import ReplicaActor
+            cached = _DYNAMIC_ACTOR_CLASS_CACHE.get(self.actor_name)
+            if cached is None:
+                # Break circular import :(.
+                from ray.serve._private.replica import ReplicaActor
 
-            # Dynamically create a new class with custom name here so Ray picks it up
-            # correctly in actor metadata table and observability stack.
-            self._cached_actor_def = ray.remote(
-                type(
-                    self.actor_name,
-                    (ReplicaActor,),
-                    dict(ReplicaActor.__dict__),
+                # Dynamically create a new class with custom name here so Ray picks it up
+                # correctly in actor metadata table and observability stack.
+                cached = ray.remote(
+                    type(
+                        self.actor_name,
+                        (ReplicaActor,),
+                        dict(ReplicaActor.__dict__),
+                    )
                 )
-            )
+                _DYNAMIC_ACTOR_CLASS_CACHE[self.actor_name] = cached
+
+            self._cached_actor_def = cached
 
         return self._cached_actor_def
 
