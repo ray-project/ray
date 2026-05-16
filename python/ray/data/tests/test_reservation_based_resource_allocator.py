@@ -220,23 +220,22 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
-        # o1 and o4 are required by build_streaming_topology (source and sink);
+        # o1 is required by build_streaming_topology (source);
         # only o2 and o3 are eligible for allocation.
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
         o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
-        o4 = LimitOperator(1, o3, DataContext.get_current())
 
         for op in [o2, o3]:
             op.min_max_resource_requirements = MagicMock(
                 return_value=(ExecutionResources.zero(), ExecutionResources.inf())
             )
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3], 0)
 
-        topo = build_streaming_topology(o4, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
         global_limits = ExecutionResources(cpu=8, gpu=0, object_store_memory=1000)
 
         resource_manager = ResourceManager(
@@ -255,7 +254,6 @@ class TestReservationOpResourceAllocator:
 
         # o2 uses more CPUs than its allocation; headroom should be negative.
         op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
-        op_usages[o3] = ExecutionResources.zero()
 
         allocator.update_budgets(limits=global_limits)
 
@@ -1397,18 +1395,17 @@ class TestReservationOpResourceAllocator:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1, ray_remote_args=ray_remote_args)
         o3 = mock_map_op(o2, ray_remote_args=ray_remote_args)
-        o4 = LimitOperator(1, o3, DataContext.get_current())
 
         for op in [o2, o3]:
             op.min_max_resource_requirements = MagicMock(
                 return_value=(ExecutionResources.zero(), ExecutionResources.inf())
             )
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3], 0)
 
-        topo = build_streaming_topology(o4, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
