@@ -977,6 +977,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
+        """Compute resource allocations for each eligible operator."""
         (
             self._op_reserved,
             self._reserved_for_op_outputs,

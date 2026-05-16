@@ -44,12 +44,10 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        # Use ray_remote_args to set CPU requirements instead of mocking
         o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
         o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
         o4 = LimitOperator(1, o3, DataContext.get_current())
 
-        # Mock min_max_resource_requirements to return default unbounded behavior
         for op in [o2, o3]:
             op.min_max_resource_requirements = MagicMock(
                 return_value=(ExecutionResources.zero(), ExecutionResources.inf())
@@ -462,9 +460,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(limits=global_limits)
 
-        # Both ops are capped (max cpu=4), so remaining CPU is not given to any op.
-        # o2: reserved_remaining (2, 10) + capped op_shared (0, 100) = (2, 110)
-        # o3: reserved_remaining (2, 10) + capped op_shared (0, 100) = (2, 110)
+        # Both ops are capped, so remaining CPU is not given to any op.
         assert allocator.get_budget(o2) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
@@ -969,17 +965,11 @@ class TestReservationOpResourceAllocator:
         resource_manager._mem_op_outputs = op_outputs_usages
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
-        # Update allocated budgets
         resource_manager._update_allocated_budgets()
-
-        # Check that o2's usage was subtracted from remaining resources
-        # global_limits (10 CPU, 250 mem) - o1 usage (0) - o2 usage (2 CPU, 50 mem) = remaining (8 CPU, 200 mem)
-        # With 2 eligible ops (o3, o4) and 50% reservation ratio:
-        # Each op gets reserved: (8 CPU, 200 mem) * 0.5 / 2 = (2 CPU, 50 mem)
 
         allocator = resource_manager._op_resource_allocator
 
-        # Verify that reservations are calculated correctly
+        # Completed ops' usage is subtracted before computing reservations for eligible ops.
         assert allocator._op_reserved[o3].cpu == 2.0
         assert allocator._op_reserved[o4].cpu == 2.0
 
@@ -1072,18 +1062,6 @@ class TestReservationOpResourceAllocator:
 
         resource_manager._update_allocated_budgets()
 
-        """
-        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
-        +-----+------------------+------------------+--------------+
-        |     | _op_reserved     | _reserved_for    | used shared  |
-        |     | (used/remaining) | _op_outputs      | resources    |
-        |     |                  | (used/remaining) |              |
-        +-----+------------------+------------------+--------------+
-        | op6 | 0/200            | 0/200            | 0            |
-        +-----+------------------+------------------+--------------+
-        | op8 | 0/200            | 0/200            | 0            |
-        +-----+------------------+------------------+--------------+
-        """
         allocator = resource_manager._op_resource_allocator
 
         assert set(allocator._op_allocations.keys()) == {o6, o8}
@@ -1115,17 +1093,6 @@ class TestReservationOpResourceAllocator:
         op_usages[o8] = ExecutionResources(2, 0, 100)
         op_internal_usage[o8] = 50
         op_outputs_usages[o8] = 50
-        """
-        +-----+------------------+------------------+--------------+
-        |     | _op_reserved     | _reserved_for    | used shared  |
-        |     | (used/remaining) | _op_outputs      | resources    |
-        |     |                  | (used/remaining) |              |
-        +-----+------------------+------------------+--------------+
-        | op6 | 200/0            | 200/0            | 100          |
-        +-----+------------------+------------------+--------------+
-        | op8 | 50/150           | 50/150           | 0            |
-        +-----+------------------+------------------+--------------+
-        """
 
         resource_manager._update_allocated_budgets()
 
@@ -1143,18 +1110,6 @@ class TestReservationOpResourceAllocator:
 
         resource_manager._update_allocated_budgets()
 
-        """
-        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (0 CPU, 0 mem) - o7 usage (1 CPU, 100 mem) = remaining (15 CPU, 1700 mem)
-        +-----+------------------+------------------+--------------+
-        |     | _op_reserved     | _reserved_for    | used shared  |
-        |     | (used/remaining) | _op_outputs      | resources    |
-        |     |                  | (used/remaining) |              |
-        +-----+------------------+------------------+--------------+
-        | op6 | 213/0            | 200/13           | 300-213=87   |
-        +-----+------------------+------------------+--------------+
-        | op8 | 50/163           | 50/163           | 0            |
-        +-----+------------------+------------------+--------------+
-        """
         assert set(allocator._op_allocations.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
