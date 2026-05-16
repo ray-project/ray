@@ -305,6 +305,14 @@ NodeManager::NodeManager(
     // that it is now the primary copy holder, then release our local copy.
     object_manager_.SetOnPushComplete(
         [this](const ObjectID &object_id, const NodeID &peer_node_id) {
+          // ray.put() objects have no producing task, so they cannot be
+          // reconstructed via lineage. If we let the primary copy migrate
+          // off the put-er's node and the new primary node dies, the object
+          // is permanently lost (OBJECT_UNRECONSTRUCTABLE_PUT). Keep the
+          // local copy as the only safe primary.
+          if (ObjectID::IsForPut(object_id)) {
+            return;
+          }
           auto owner_address = local_object_manager_.GetOwnerAddress(object_id);
           if (owner_address.has_value()) {
             // Tell the consumer raylet: pin this object and inform the owner
