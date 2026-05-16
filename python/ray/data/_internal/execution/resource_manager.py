@@ -990,27 +990,24 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._op_allocations = op_allocations
             return
 
-        # Remaining shared resources after subtracting each op's excess usage
-        # (usage beyond the reserved floor).
-        op_shared_usage: Dict[PhysicalOperator, ExecutionResources] = {}
-        total_shared_usage = ExecutionResources.zero()
+        # For each op, compute how much its usage goes beyond the reserved quota
+        # (its demand on the shared pool), then derive how much shared remains.
+        op_excess: Dict[PhysicalOperator, ExecutionResources] = {}
+        total_excess = ExecutionResources.zero()
         for op in eligible_ops:
             op_usage = self._resource_manager.get_op_usage(op).copy(
                 object_store_memory=self._get_adjusted_object_store_usage(op)
             )
             op_reserved = self._op_reserved[op]
-            # How much of the reserved resources are remaining.
             op_reserved_remaining[op] = op_reserved.subtract(op_usage).max(
                 ExecutionResources.zero()
             )
-            # How much of the reserved resources are exceeded.
-            # If exceeded, we need to subtract from the remaining shared resources.
-            op_shared_usage[op] = op_usage.subtract(op_reserved).max(
+            op_excess[op] = op_usage.subtract(op_reserved).max(
                 ExecutionResources.zero()
             )
-            total_shared_usage = total_shared_usage.add(op_shared_usage[op])
+            total_excess = total_excess.add(op_excess[op])
 
-        remaining_shared = self._total_shared.subtract(total_shared_usage).max(
+        remaining_shared = self._total_shared.subtract(total_excess).max(
             ExecutionResources.zero()
         )
 
@@ -1046,7 +1043,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             if max_resource_usage != ExecutionResources.inf():
                 op_shared = op_shared.min(
                     max_resource_usage.subtract(
-                        self._op_reserved[op].add(op_shared_usage[op])
+                        self._op_reserved[op].add(op_excess[op])
                     ).max(ExecutionResources.zero())
                 )
 
@@ -1062,34 +1059,34 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     op_shared_alloc[op] = op_shared_alloc[op].add(remaining_shared)
                     break
 
-        # If the shared pool is oversubscribed for any dimension (e.g. after a cluster
-        # shrink), the loop above gives nothing for that dimension since remaining_shared
-        # is zero. Add proportional contributions so every op still gets a non-zero
-        # shared allocation that reflects its relative demand.
-        # _proportional_share returns 0 for non-oversubscribed dimensions, so this
-        # add is a no-op in the normal case.
+        # When a dimension is oversubscribed (e.g. after a cluster shrink),
+        # remaining_shared is zero for that dimension and the loop above allocates
+        # nothing. Add each op's proportional share so it still gets a non-zero
+        # allocation reflecting its relative demand.
+        # (_proportional_share returns 0 for non-oversubscribed dimensions,
+        # so this add is a no-op in the normal case.)
         for op in eligible_ops:
             op_shared = op_shared_alloc[op].add(
                 ExecutionResources(
                     cpu=_proportional_share(
                         self._total_shared.cpu,
-                        op_shared_usage[op].cpu,
-                        total_shared_usage.cpu,
+                        op_excess[op].cpu,
+                        total_excess.cpu,
                     ),
                     gpu=_proportional_share(
                         self._total_shared.gpu,
-                        op_shared_usage[op].gpu,
-                        total_shared_usage.gpu,
+                        op_excess[op].gpu,
+                        total_excess.gpu,
                     ),
                     object_store_memory=_proportional_share(
                         self._total_shared.object_store_memory,
-                        op_shared_usage[op].object_store_memory,
-                        total_shared_usage.object_store_memory,
+                        op_excess[op].object_store_memory,
+                        total_excess.object_store_memory,
                     ),
                     memory=_proportional_share(
                         self._total_shared.memory,
-                        op_shared_usage[op].memory,
-                        total_shared_usage.memory,
+                        op_excess[op].memory,
+                        total_excess.memory,
                     ),
                 )
             )
