@@ -61,8 +61,6 @@ class DatasetManager:
             worker_node_ids=self._worker_node_ids,
         )
         assert len(iterators_per_rank) == self._world_size
-        # TODO: Update DataConfig to return a List[DataIterator] directly
-        # for configuring a single dataset.
         # Convert the List[Dict[str, DataIterator]] to a List[DataIterator],
         # since we only configured one dataset.
         return [iterators_per_rank[i][dataset_name] for i in range(self._world_size)]
