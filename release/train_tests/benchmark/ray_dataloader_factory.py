@@ -139,6 +139,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
 
     def get_ray_data_config(self) -> ray.train.DataConfig:
         return ray.train.DataConfig(
+            datasets_to_split=[],
             enable_shard_locality=self.get_dataloader_config().enable_shard_locality,
         )
 
