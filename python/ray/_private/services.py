@@ -116,6 +116,11 @@ ProcessInfo = collections.namedtuple(
 )
 
 
+def _posix_spawn_can_close_fds() -> bool:
+    """Return whether CPython can use posix_spawn with close_fds=True."""
+    return hasattr(os, "POSIX_SPAWN_CLOSEFROM")
+
+
 def _site_flags() -> List[str]:
     """Detect whether flags related to site packages are enabled for the current
     interpreter. To run Ray in hermetic build environments, it helps to pass these flags
@@ -867,6 +872,7 @@ def start_ray_process(
     stdout_file: Optional[IO[AnyStr]] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
+    use_posix_spawn: bool = False,
 ):
     """Start one of the Ray processes.
 
@@ -898,6 +904,12 @@ def start_ray_process(
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
+        use_posix_spawn: If true on POSIX, avoid preexec_fn so CPython can use
+            its posix_spawn fast path. On runtimes that support closing file
+            descriptors from posix_spawn, keep close_fds=True. Older runtimes
+            need close_fds=False to stay off the fork path. This also skips
+            Ray's SIGINT-masking preexec hook, so it is only safe for
+            subprocesses that do not need fate sharing or that signal mask.
 
     Returns:
         Information about the process that was started including a handle to
@@ -963,6 +975,7 @@ def start_ray_process(
         env_updates = {}
     if not isinstance(env_updates, dict):
         raise ValueError("The 'env_updates' argument must be a dictionary.")
+    use_posix_spawn = use_posix_spawn and sys.platform != "win32"
 
     modified_env = os.environ.copy()
     modified_env.update(env_updates)
@@ -1015,6 +1028,9 @@ def start_ray_process(
             "kernel-level fate-sharing must only be specified if "
             "detect_fate_sharing_support() has returned True"
         )
+    if use_posix_spawn and fate_share:
+        raise ValueError("'use_posix_spawn' cannot be combined with 'fate_share'.")
+    close_fds = not use_posix_spawn or _posix_spawn_can_close_fds()
 
     def preexec_fn():
         import signal
@@ -1048,7 +1064,8 @@ def start_ray_process(
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=preexec_fn if sys.platform != "win32" else None,
+        preexec_fn=(None if sys.platform == "win32" or use_posix_spawn else preexec_fn),
+        close_fds=close_fds,
         creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
     )
 
@@ -2473,13 +2490,23 @@ def start_ray_client_server(
     if node_id:
         command.append(f"--node-id={node_id}")
 
+    use_posix_spawn = server_type == "specific-server" and sys.platform != "win32"
+    # Specific Ray Client servers are spawned by the proxier, which is itself a
+    # multi-threaded gRPC server. Avoid a fork+preexec path there: gRPC may have
+    # active poller threads and can skip fork handlers, leaving the child to
+    # crash before it opens its channel. Specific servers self-terminate after
+    # being idle and are also cleaned up by the proxier, so they can trade
+    # kernel fate sharing and the preexec SIGINT mask for a fork-safe spawn path.
+    process_fate_share = False if use_posix_spawn else fate_share
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share,
+        fate_share=process_fate_share,
         env_updates=env_updates,
+        use_posix_spawn=use_posix_spawn,
     )
     return process_info
 

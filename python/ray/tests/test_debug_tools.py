@@ -199,7 +199,93 @@ def test_start_ray_client_server_redis_password_env_updates(monkeypatch):
         assert captured["kwargs"]["env_updates"] == {
             ray_constants.RAY_REDIS_PASSWORD_ENV: "secret123"
         }
+        assert captured["kwargs"]["fate_share"] is False
+        assert captured["kwargs"]["use_posix_spawn"] is False
         assert ray_constants.RAY_REDIS_PASSWORD_ENV not in os.environ
+
+
+def test_start_ray_client_specific_server_uses_fork_safe_spawn(monkeypatch):
+    captured = {}
+    expected_process_info = object()
+
+    def fake_start_ray_process(command, process_type, **kwargs):
+        captured["command"] = command
+        captured["process_type"] = process_type
+        captured["kwargs"] = kwargs
+        return expected_process_info
+
+    with monkeypatch.context() as m:
+        m.setattr(services.sys, "platform", "linux")
+        m.setattr(services, "start_ray_process", fake_start_ray_process)
+
+        process_info = services.start_ray_client_server(
+            address="127.0.0.1:6379",
+            ray_client_server_ip="127.0.0.1",
+            ray_client_server_port=10001,
+            fate_share=True,
+            server_type="specific-server",
+            serialized_runtime_env_context="{}",
+        )
+
+        assert process_info is expected_process_info
+        assert captured["process_type"] == ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER
+        assert "--mode=specific-server" in captured["command"]
+        assert captured["kwargs"]["fate_share"] is False
+        assert captured["kwargs"]["use_posix_spawn"] is True
+
+
+def test_start_ray_process_posix_spawn_close_fds_when_supported(monkeypatch):
+    captured = {}
+    expected_process = object()
+
+    def fake_console_popen(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return expected_process
+
+    with monkeypatch.context() as m:
+        m.setattr(services.sys, "platform", "linux")
+        m.setattr(services.os, "POSIX_SPAWN_CLOSEFROM", object(), raising=False)
+        m.setattr(services, "ConsolePopen", fake_console_popen)
+
+        process_info = services.start_ray_process(
+            [sys.executable],
+            ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
+            fate_share=False,
+            use_posix_spawn=True,
+        )
+
+        assert process_info.process is expected_process
+        assert captured["kwargs"]["preexec_fn"] is None
+        assert captured["kwargs"]["close_fds"] is True
+
+
+def test_start_ray_process_posix_spawn_leaves_fds_open_for_older_runtime(
+    monkeypatch,
+):
+    captured = {}
+    expected_process = object()
+
+    def fake_console_popen(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return expected_process
+
+    with monkeypatch.context() as m:
+        m.setattr(services.sys, "platform", "linux")
+        m.delattr(services.os, "POSIX_SPAWN_CLOSEFROM", raising=False)
+        m.setattr(services, "ConsolePopen", fake_console_popen)
+
+        process_info = services.start_ray_process(
+            [sys.executable],
+            ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
+            fate_share=False,
+            use_posix_spawn=True,
+        )
+
+        assert process_info.process is expected_process
+        assert captured["kwargs"]["preexec_fn"] is None
+        assert captured["kwargs"]["close_fds"] is False
 
 
 if __name__ == "__main__":
