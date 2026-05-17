@@ -11,6 +11,7 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
+from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -19,6 +20,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
+from ray.data._internal.util import MiB
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -26,6 +28,13 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 _UNSET = object()
+
+# Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
+# default (~8 KiB) produces many tiny range requests on S3; 8 MiB
+# amortizes per-request latency across meaningful payload sizes.
+_PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
+    "RAY_DATA_PARQUET_FRAGMENT_BUFFER_SIZE", 8 * MiB
+)
 
 
 def _estimate_batch_size_from_metadata(
@@ -404,13 +413,20 @@ class ParquetFileReader(FileReader):
         # pa.total_allocated_bytes() climbs monotonically across batches and
         # peaks near full fragment size. Disabling pre_buffer with
         # use_buffered_stream caps peak near a small multiple of one row group
-        # while keeping throughput equal to the default. batch_readahead=1
-        # (inherited from FileReader base kwargs) plus fragment_readahead=1
-        # is enough to keep decode pipelined. See apache/arrow#39808.
+        # while keeping throughput equal to the default.
+        # See apache/arrow#39808.
+        #
+        # ``buffer_size`` controls the per-stream read-ahead buffer pyarrow
+        # issues against the filesystem. The default is small (8 KiB), which
+        # produces many tiny range requests on S3. 8 MiB amortizes S3
+        # latency across meaningful bytes per round-trip. Tunable via env
+        # var for workloads that need a different point on the
+        # latency/memory-peak curve.
         kwargs: dict = {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
                 pre_buffer=False,
                 use_buffered_stream=True,
+                buffer_size=_PARQUET_FRAGMENT_BUFFER_SIZE,
             ),
             "fragment_readahead": 1,
         }
