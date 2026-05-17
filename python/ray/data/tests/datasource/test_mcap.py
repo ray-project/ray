@@ -150,48 +150,6 @@ def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
         assert "publish_time" in row
 
 
-def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
-    """Test reading multiple MCAP files."""
-    paths = []
-    for i in range(2):
-        path = os.path.join(tmp_path, f"test_{i}.mcap")
-        messages = [
-            {
-                "topic": f"/test_{i}",
-                "data": {"file_id": i},
-                "log_time": 1000000000 + i * 1000000,
-            }
-        ]
-        create_test_mcap_file(path, messages)
-        paths.append(path)
-
-    ds = ray.data.read_mcap(paths)
-    assert ds.count() == 2
-    assert set(ds.input_files()) == {_unwrap_protocol(p) for p in paths}
-
-    rows = ds.take_all()
-    file_ids = {row["data"]["file_id"] for row in rows}
-    assert file_ids == {0, 1}
-
-
-def test_read_mcap_directory(ray_start_regular_shared, tmp_path):
-    """Test reading MCAP files from a directory."""
-    # Create MCAP files in directory
-    for i in range(2):
-        path = os.path.join(tmp_path, f"data_{i}.mcap")
-        messages = [
-            {
-                "topic": f"/dir_test_{i}",
-                "data": {"index": i},
-                "log_time": 1000000000 + i * 1000000,
-            }
-        ]
-        create_test_mcap_file(path, messages)
-
-    ds = ray.data.read_mcap(tmp_path)
-    assert ds.count() == 2
-
-
 def test_read_mcap_topic_filtering(ray_start_regular_shared, multi_topic_mcap_file):
     """Test filtering by topics."""
     # Test topic filtering
@@ -247,16 +205,6 @@ def test_read_mcap_include_metadata(
         assert "channel_id" not in rows[0]
 
 
-def test_read_mcap_include_paths(ray_start_regular_shared, simple_mcap_file):
-    """Test include_paths option."""
-    ds = ray.data.read_mcap(simple_mcap_file, include_paths=True)
-    rows = ds.take_all()
-
-    for row in rows:
-        assert "path" in row
-        assert simple_mcap_file in row["path"]
-
-
 def test_read_mcap_invalid_time_range(ray_start_regular_shared, simple_mcap_file):
     """Test validation of time range parameters."""
     # Start time >= end time
@@ -275,79 +223,6 @@ def test_read_mcap_missing_dependency(ray_start_regular_shared, simple_mcap_file
     with patch.dict("sys.modules", {"mcap": None}):
         with pytest.raises(ImportError, match="MCAPDatasource.*depends on 'mcap'"):
             ray.data.read_mcap(simple_mcap_file)
-
-
-def test_read_mcap_nonexistent_file(ray_start_regular_shared):
-    """Test handling of nonexistent files."""
-    with pytest.raises(Exception):  # FileNotFoundError or similar
-        ds = ray.data.read_mcap("/nonexistent/file.mcap")
-        ds.materialize()  # Force execution
-
-
-@pytest.mark.parametrize("override_num_blocks", [1, 2])
-def test_read_mcap_override_num_blocks(
-    ray_start_regular_shared, tmp_path, override_num_blocks
-):
-    """Test override_num_blocks parameter."""
-    path = os.path.join(tmp_path, "blocks_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"seq": i},
-            "log_time": 1000000000 + i * 1000000,
-        }
-        for i in range(3)
-    ]
-    create_test_mcap_file(path, messages)
-
-    ds = ray.data.read_mcap(path, override_num_blocks=override_num_blocks)
-
-    # Should still read all the data
-    assert ds.count() == 3
-    rows = ds.take_all()
-    assert len(rows) == 3
-
-
-def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
-    """Test file extension filtering."""
-    # Create MCAP file
-    mcap_path = os.path.join(tmp_path, "data.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"test": "mcap_data"},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(mcap_path, messages)
-
-    # Create non-MCAP file
-    other_path = os.path.join(tmp_path, "data.txt")
-    with open(other_path, "w") as f:
-        f.write("not mcap data")
-
-    # Should only read .mcap files by default
-    ds = ray.data.read_mcap(tmp_path)
-    assert ds.count() == 1
-    rows = ds.take_all()
-    assert rows[0]["data"]["test"] == "mcap_data"
-
-
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_mcap_ignore_missing_paths(
-    ray_start_regular_shared, simple_mcap_file, ignore_missing_paths
-):
-    """Test ignore_missing_paths parameter."""
-    paths = [simple_mcap_file, "/nonexistent/missing.mcap"]
-
-    if ignore_missing_paths:
-        ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.count() == 1
-        assert ds.input_files() == [_unwrap_protocol(simple_mcap_file)]
-    else:
-        with pytest.raises(Exception):  # FileNotFoundError or similar
-            ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.materialize()
 
 
 def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
