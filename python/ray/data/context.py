@@ -77,6 +77,8 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
+DEFAULT_USE_DATASOURCE_V2 = True
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -226,6 +228,10 @@ DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
+
+DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
+
+DEFAULT_MAX_MAP_RETRIES = 3
 
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
@@ -504,6 +510,11 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
+            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
+            driver-side first-file sampling for schema inference,
+            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
+            remains the production path while V2 bakes.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -553,6 +564,14 @@ class DataContext:
         actor_init_max_retries: Maximum number of consecutive retries for actor
             initialization failures. The counter resets when an actor successfully
             initializes. Default is 3. Set to -1 for infinite retries.
+        retried_map_errors: Controls which user exceptions are retried in map
+            tasks. ``False`` (default) disables retries. ``True`` retries any user
+            exception. A list of patterns retries only when the exception message
+            matches one of them (checked as substring first, then as regex).
+            Bounded by ``max_map_retries``.
+        max_map_retries: Maximum number of retry attempts per map task for user
+            exceptions. Default is 3. Ignored if ``retried_map_errors`` is
+            empty.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
@@ -581,8 +600,9 @@ class DataContext:
             tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
-        retried_io_errors: A list of substrings of error messages that should
-            trigger a retry when reading or writing files. This is useful for handling
+        retried_io_errors: A list of patterns to match against error messages that should
+            trigger a retry when reading or writing files. Each pattern is first checked
+            as a substring, then as a regex. This is useful for handling
             transient errors when reading from remote storage systems.
         lance_config: Configuration for Lance datasource and datasink operations
             including retry settings for read and write operations. See
@@ -726,6 +746,7 @@ class DataContext:
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
@@ -756,6 +777,8 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
+    max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -844,6 +867,13 @@ class DataContext:
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+
+        elif name == "retried_io_errors" and tuple(value) != DEFAULT_RETRIED_IO_ERRORS:
+            warnings.warn(
+                "`retried_io_errors` using substring matching will be deprecated in December 2026. "
+                "Please ensure that you use valid regex patterns for `retried_io_errors`",
                 DeprecationWarning,
             )
 

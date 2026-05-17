@@ -14,6 +14,7 @@ dev-workflow
 grpc-guide
 replica-ranks
 replica-scheduling
+gang-scheduling
 managing-java-deployments
 deploy-vm
 multi-app-container
@@ -35,6 +36,7 @@ Use these advanced guides for more options and configurations:
 - [gRPC Support](serve-set-up-grpc-service)
 - [Replica Ranks](serve-replica-ranks)
 - [Replica Scheduling](serve-replica-scheduling)
+- [Gang Scheduling](serve-gang-scheduling)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)

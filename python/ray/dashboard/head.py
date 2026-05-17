@@ -9,7 +9,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_localhost_ip, is_localhost
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
@@ -103,7 +103,7 @@ class DashboardHead:
             self.serve_frontend = False
         # Public attributes are accessible for all head modules.
         # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
-        self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
+        self.http_host = get_localhost_ip() if is_localhost(http_host) else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
@@ -188,7 +188,10 @@ class DashboardHead:
 
         If modules_to_load is not None, only load the modules in the set.
         """
-        dashboard_head_modules = self._load_dashboard_head_modules(modules_to_load)
+        (
+            dashboard_head_modules,
+            skipped_head_modules,
+        ) = self._load_dashboard_head_modules(modules_to_load)
         subprocess_module_handles = self._load_subprocess_module_handles(
             modules_to_load
         )
@@ -201,18 +204,20 @@ class DashboardHead:
         ), "Duplicate module names. A module name can't be a DashboardHeadModule and a SubprocessModule at the same time."
 
         # Verify modules are loaded as expected.
-        if modules_to_load is not None and all_names != modules_to_load:
-            assert False, (
-                f"Actual loaded modules {all_names}, doesn't match the requested modules "
-                f"to load, {modules_to_load}."
-            )
+        if modules_to_load is not None:
+            expected_names = modules_to_load - skipped_head_modules
+            if all_names != expected_names:
+                assert False, (
+                    f"Actual loaded modules {all_names}, doesn't match the requested modules "
+                    f"to load, {expected_names}."
+                )
 
         self._modules_loaded = True
         return dashboard_head_modules, subprocess_module_handles
 
     def _load_dashboard_head_modules(
         self, modules_to_load: Optional[Set[str]] = None
-    ) -> List[DashboardHeadModule]:
+    ) -> Tuple[List[DashboardHeadModule], Set[str]]:
         """Load `DashboardHeadModule`s.
 
         Args:
@@ -220,6 +225,7 @@ class DashboardHead:
                 it loads all modules.
         """
         modules = []
+        skipped_modules = set()
         head_cls_list = dashboard_utils.get_all_modules(DashboardHeadModule)
 
         config = DashboardHeadModuleConfig(
@@ -244,12 +250,15 @@ class DashboardHead:
         logger.info(f"DashboardHeadModules to load: {modules_to_load}.")
 
         for cls in head_cls_list:
+            if not cls.is_enabled():
+                skipped_modules.add(cls.__name__)
+                continue
             logger.info(f"Loading {DashboardHeadModule.__name__}: {cls}.")
             c = cls(config)
             modules.append(c)
 
         logger.info(f"Loaded {len(modules)} dashboard head modules: {modules}.")
-        return modules
+        return modules, skipped_modules
 
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None
@@ -322,7 +331,7 @@ class DashboardHead:
                         DASHBOARD_METRIC_PORT
                     )
                 )
-                kwargs = {"addr": "127.0.0.1"} if self.ip == "127.0.0.1" else {}
+                kwargs = {"addr": get_localhost_ip()} if is_localhost(self.ip) else {}
                 prometheus_client.start_http_server(
                     port=DASHBOARD_METRIC_PORT,
                     registry=metrics.registry,
@@ -453,12 +462,8 @@ class DashboardHead:
             logger.info("http server disabled.")
 
         # We need to expose dashboard's node's ip for other worker nodes
-        # if it's listening to all interfaces.
-        dashboard_http_host = (
-            self.ip
-            if self.http_host != ray_constants.DEFAULT_DASHBOARD_IP
-            else http_host
-        )
+        # if it's not localhost.
+        dashboard_http_host = self.ip if not is_localhost(self.http_host) else http_host
         # This synchronous code inside an async context is not great.
         # It is however acceptable, because this only gets run once
         # during initialization and therefore cannot block the event loop.

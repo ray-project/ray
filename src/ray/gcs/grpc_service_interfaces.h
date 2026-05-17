@@ -132,7 +132,7 @@ class NodeResourceInfoGcsServiceHandler {
                                          SendReplyCallback send_reply_callback) = 0;
 };
 
-/// Shared handler surface for GCS Internal and Observability pubsub gRPC services.
+/// Shared handler surface for GCS control-plane and observability pubsub gRPC services.
 class PubSubGcsServiceHandlerBase {
  public:
   virtual ~PubSubGcsServiceHandlerBase() = default;
@@ -150,7 +150,7 @@ class PubSubGcsServiceHandlerBase {
                                                SendReplyCallback send_reply_callback) = 0;
 };
 
-class InternalPubSubGcsServiceHandler : public PubSubGcsServiceHandlerBase {};
+class ControlPlanePubSubGcsServiceHandler : public PubSubGcsServiceHandlerBase {};
 
 class ObservabilityPubSubServiceHandler : public PubSubGcsServiceHandlerBase {
  public:

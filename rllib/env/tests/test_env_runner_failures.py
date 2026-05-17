@@ -243,9 +243,18 @@ class TestEnvRunnerFailures(unittest.TestCase):
                 "restart_failed_env_runners": False,
             }
 
-        algo = config.build()
-        self.assertRaises(ray.exceptions.RayError, lambda: algo.train())
-        algo.stop()
+        # TODO(Artur): Unify where fatal env-runner errors surface. MultiAgentEnvRunner
+        # checks env during init and resets it during init.
+        # SingleAgentEnvRunner resets the env during sampling.
+        # This behaviour should be unified and this test should be updated accordingly.
+        if config.is_multi_agent:
+            self.assertRaises(ValueError, lambda: config.build())
+        else:
+            algo = config.build()
+            try:
+                self.assertRaises(ray.exceptions.RayError, lambda: algo.train())
+            finally:
+                algo.stop()
 
     def _do_test_failing_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling

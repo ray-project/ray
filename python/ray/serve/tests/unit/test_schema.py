@@ -809,6 +809,56 @@ class TestServeApplicationSchema:
 
 
 class TestServeDeploySchema:
+    def test_controller_options_default_is_none(self):
+        cfg = ServeDeploySchema.model_validate({"applications": []})
+        assert cfg.controller_options is None
+
+    def test_controller_options_passthrough(self):
+        cfg = ServeDeploySchema.model_validate(
+            {
+                "applications": [],
+                "controller_options": {
+                    "runtime_env": {
+                        "env_vars": {
+                            "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                            "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                        }
+                    }
+                },
+            }
+        )
+        assert (
+            cfg.controller_options.runtime_env["env_vars"][
+                "RAY_SERVE_HAPROXY_TCP_NODELAY"
+            ]
+            == "1"
+        )
+
+    def test_controller_options_rejects_disallowed_runtime_env_keys(self):
+        # The ControllerOptions validator runs through the nested schema,
+        # so bad runtime_env keys fail at YAML / JSON parse time -- not at
+        # controller-creation time.
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"pip": ["numpy"]}},
+                }
+            )
+        msg = str(e.value)
+        assert "only supports ['env_vars']" in msg
+        assert "pip" in msg
+
+    def test_controller_options_rejects_non_str_env_value(self):
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"env_vars": {"FOO": 1}}},
+                }
+            )
+        assert "must be str" in str(e.value)
+
     def test_deploy_config_duplicate_apps(self):
         deploy_config_dict = {
             "applications": [
@@ -1402,6 +1452,53 @@ def test_serve_instance_details_is_json_serializable():
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_deployment_info_to_schema_includes_max_replicas_per_node():
+    """_deployment_info_to_schema should propagate max_replicas_per_node
+    from ReplicaConfig into the resulting DeploymentSchema."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+        max_replicas_per_node=3,
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.max_replicas_per_node == 3
+
+
+def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
+    """When max_replicas_per_node is None (default), the schema field should
+    remain at its default (DEFAULT.VALUE), i.e. unset."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.max_replicas_per_node is DEFAULT.VALUE
 
 
 if __name__ == "__main__":

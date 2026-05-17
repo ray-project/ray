@@ -20,7 +20,7 @@
 #include <string>
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/gcs/gcs_kv_manager.h"
 
 using namespace ray;  // NOLINT

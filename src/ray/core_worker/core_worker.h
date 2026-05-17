@@ -27,7 +27,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/actor_management/actor_manager.h"

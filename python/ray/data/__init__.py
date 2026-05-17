@@ -6,7 +6,6 @@ from packaging.version import parse as parse_version
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -21,6 +20,9 @@ from ray.data.dataset import (
     SinkMode,
     ClickHouseTableSettings,
     SaveMode,
+)
+from ray.data._internal.logical.operators.n_ary_operator import (
+    MixStoppingCondition,
 )
 from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
@@ -138,6 +140,7 @@ __all__ = [
     "ExecutionOptions",
     "ExecutionResources",
     "FileShuffleConfig",
+    "MixStoppingCondition",
     "NodeIdStr",
     "RandomSeedConfig",
     "ReadTask",
@@ -190,5 +193,4 @@ __all__ = [
     "read_webdataset",
     "KafkaAuthConfig",
     "Preprocessor",
-    "TFXReadOptions",
 ]

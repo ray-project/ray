@@ -210,21 +210,30 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
 
 def test_controller_recover_initializing_actor(serve_instance):
-    """Recover the actor which is under PENDING_INITIALIZATION"""
+    """Controller crash while a replica is still in `__init__`.
+
+    The previous controller never finished sending the replica its initial
+    `initialize_and_get_metadata(rank=...)` call, so the live actor has
+    neither a rank nor a fully-initialized user callable. The new
+    controller must detect this via the `was_initialized` probe and
+    replace the half-initialized actor with a fresh one rather than try to
+    recover it (which would silently complete its initialization with
+    `rank=None` and break rank tracking).
+    """
 
     signal = SignalActor.remote()
-    signal2 = SignalActor.remote()
+    init_started = SignalActor.remote()
     client = serve_instance
 
     @ray.remote
     def pending_init_indicator():
-        ray.get(signal2.wait.remote())
+        ray.get(init_started.wait.remote())
         return True
 
     @serve.deployment
     class V1:
         async def __init__(self):
-            ray.get(signal2.send.remote())
+            ray.get(init_started.send.remote())
             await signal.wait.remote()
 
         def __call__(self, request):
@@ -239,21 +248,44 @@ def test_controller_recover_initializing_actor(serve_instance):
             if SERVE_PROXY_NAME in actor["name"]:
                 continue
             if name in actor["name"]:
-                print(actor)
                 return actor["name"], actor["pid"]
 
-    actor_tag, _ = get_actor_info(f"app#{V1.name}")
+    original_actor_tag, _ = get_actor_info(f"app#{V1.name}")
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
-    # wait for controller is alive again
-    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
-    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
 
-    # Let the actor proceed initialization
+    # Wait for the controller to be replaced. `list_actors` can briefly
+    # report the killed controller as ALIVE (and any new controller as
+    # PENDING_CREATION) right after `ray.kill`, so wait specifically for
+    # the pid to change.
+    def controller_replaced():
+        info = get_actor_info(SERVE_CONTROLLER_NAME)
+        return info is not None and info[1] != controller1_pid
+
+    wait_for_condition(controller_replaced)
+
+    # The new controller's `was_initialized` probe will report False for
+    # the half-initialized actor, so it is killed and replaced. Wait for
+    # the replacement replica to start and report it has reached its
+    # constructor. Unblock its `__init__` once it has.
+    ray.get(pending_init_indicator.remote())
     ray.get(signal.send.remote())
     client._wait_for_application_running("app")
-    # Make sure the actor before controller dead is staying alive.
-    assert actor_tag == get_actor_info(f"app#{V1.name}")[0]
+
+    # The original half-initialized actor should have been replaced with a
+    # fresh one (different replica id baked into the actor name).
+    new_actor_tag, _ = get_actor_info(f"app#{V1.name}")
+    assert new_actor_tag != original_actor_tag
+
+    # And the original actor should actually be dead -- not just hidden by
+    # the ALIVE filter on a different replica id. `list_actors` may take a
+    # moment to reflect the kill in its state.
+    def original_actor_dead():
+        matching = list_actors(filters=[("name", "=", original_actor_tag)])
+        # Either the entry has been pruned entirely, or it is reported DEAD.
+        return not matching or all(a["state"] == "DEAD" for a in matching)
+
+    wait_for_condition(original_actor_dead)
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):

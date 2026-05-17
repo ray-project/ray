@@ -37,20 +37,34 @@ class FailureTuple:
 
     Attributes:
         obj: The object that fails serialization.
-        name: The variable name of the object.
+        path: Tuple of variable names representing the traversal path.
         parent: The object that references the `obj`.
     """
 
-    def __init__(self, obj: Any, name: str, parent: Any):
+    def __init__(self, obj: Any, path: tuple[str, ...], parent: Any):
+        """Initialize FailureTuple.
+
+        Parameters
+        ----------
+        obj : Any
+            The object that fails serialization.
+        path : tuple[str, ...]
+            Tuple of variable names representing the traversal path.
+        parent : Any
+            The object that references the object.
+        """
         self.obj = obj
-        self.name = name
+        self.path = path
         self.parent = parent
 
     def __repr__(self):
-        return f"FailTuple({self.name} [obj={self.obj}, parent={self.parent}])"
+        formatted_path = [str(p) if p is not None else "unknown" for p in self.path]
+        path_str = " -> ".join(formatted_path)
+        var_name = formatted_path[-1] if formatted_path else "unknown"
+        return f"FailTuple({var_name} [path={path_str}, obj={self.obj}, parent={self.parent}])"
 
 
-def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer):
+def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer, path=()):
     """Adds the first-found non-serializable element to the failure_set."""
     assert inspect.isfunction(base_obj)
     closure = inspect.getclosurevars(base_obj)
@@ -70,6 +84,7 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer):
                     parent=parent,
                     failure_set=failure_set,
                     printer=printer,
+                    path=path,
                 )
                 found = found or not serializable
                 if found:
@@ -89,6 +104,7 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer):
                     parent=parent,
                     failure_set=failure_set,
                     printer=printer,
+                    path=path,
                 )
                 found = found or not serializable
                 if found:
@@ -101,7 +117,9 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer):
     return found
 
 
-def _inspect_generic_serialization(base_obj, depth, parent, failure_set, printer):
+def _inspect_generic_serialization(
+    base_obj, depth, parent, failure_set, printer, path=()
+):
     """Adds the first-found non-serializable element to the failure_set."""
     assert not inspect.isfunction(base_obj)
     functions = inspect.getmembers(base_obj, predicate=inspect.isfunction)
@@ -115,6 +133,7 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set, printer
                 parent=parent,
                 failure_set=failure_set,
                 printer=printer,
+                path=path,
             )
             found = found or not serializable
             if found:
@@ -132,6 +151,7 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set, printer
                 parent=parent,
                 failure_set=failure_set,
                 printer=printer,
+                path=path,
             )
             found = found or not serializable
             if found:
@@ -171,7 +191,7 @@ def inspect_serializability(
 
 
 def _inspect_serializability(
-    base_obj, name, depth, parent, failure_set, printer
+    base_obj, name, depth, parent, failure_set, printer, path=()
 ) -> Tuple[bool, Set[FailureTuple]]:
     colorama.init()
     top_level = False
@@ -184,9 +204,6 @@ def _inspect_serializability(
         printer.print("=" * min(len(declaration), 80))
         printer.print(declaration)
         printer.print("=" * min(len(declaration), 80))
-
-        if name is None:
-            name = str(base_obj)
     else:
         printer.print(f"Serializing '{name}' {base_obj}...")
     try:
@@ -199,8 +216,8 @@ def _inspect_serializability(
         found = True
         try:
             if depth == 0:
-                failure_set.add(FailureTuple(base_obj, name, parent))
-        # Some objects may not be hashable, so we skip adding this to the set.
+                failure_path = path + ((name,) if name is not None else ())
+                failure_set.add(FailureTuple(base_obj, failure_path, parent))
         except Exception:
             pass
 
@@ -217,6 +234,7 @@ def _inspect_serializability(
             parent=base_obj,
             failure_set=failure_set,
             printer=printer,
+            path=path + ((name,) if name is not None else ()),
         )
     else:
         _inspect_generic_serialization(
@@ -225,10 +243,12 @@ def _inspect_serializability(
             parent=base_obj,
             failure_set=failure_set,
             printer=printer,
+            path=path + ((name,) if name is not None else ()),
         )
 
     if not failure_set:
-        failure_set.add(FailureTuple(base_obj, name, parent))
+        failure_path = path + ((name,) if name is not None else ())
+        failure_set.add(FailureTuple(base_obj, failure_path, parent))
 
     if top_level:
         printer.print("=" * min(len(declaration), 80))
