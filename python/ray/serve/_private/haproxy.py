@@ -44,6 +44,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    RAY_SERVE_HAPROXY_INGRESS_RETRIES,
+    RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
+    RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
@@ -540,6 +543,16 @@ class HAProxyConfig:
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
+
+    # Optional retry knobs for the `-via-ingress-request-router` backend.
+    # When set, HAProxy will redispatch a request to a different replica
+    # (via `option redispatch`) on the configured retry events, instead of
+    # head-of-line-blocking on the replica picked by the Lua dispatch.
+    # See ray.serve._private.constants for full docs and the HAProxy
+    # retry-on token reference.
+    ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
+    ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
+    ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
 
     is_head: bool = False
 
