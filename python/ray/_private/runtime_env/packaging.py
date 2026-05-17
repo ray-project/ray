@@ -39,6 +39,10 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 GCS_STORAGE_MAX_SIZE = int(
     os.environ.get("RAY_max_grpc_message_size", GRPC_CPP_MAX_MESSAGE_SIZE)
 )
+# If the resulting zipped package is at least this large, emit a warning before
+# attempting upload. This catches cases the per-file `FILE_SIZE_WARNING` misses,
+# notably large directories of many small files (e.g. `.git`). See GH #45602.
+PACKAGE_SIZE_WARNING = GCS_STORAGE_MAX_SIZE // 2
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
@@ -673,6 +677,38 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
+def _warn_if_package_size_near_limit(
+    package_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    """Warn if the zipped package is approaching the GCS upload size limit.
+
+    The per-file warning in `_zip_files` does not fire for directories that
+    contain many small files (e.g. `.git`), so the user has no signal that
+    they are about to hit `GCS_STORAGE_MAX_SIZE` until the upload itself
+    fails. This warning closes that gap and includes the local package path
+    so the user can inspect its contents. See GH #45602.
+    """
+    if logger is None:
+        logger = default_logger
+    try:
+        package_size = package_path.stat().st_size
+    except OSError:
+        return
+    if package_size < PACKAGE_SIZE_WARNING:
+        return
+    logger.warning(
+        f"The runtime_env package at '{package_path}' is "
+        f"{_mib_string(package_size)}, approaching the maximum upload size "
+        f"of {_mib_string(GCS_STORAGE_MAX_SIZE)}. If the upload fails, exclude "
+        "large directories (commonly '.git', '.venv', or build artifacts) via "
+        "the 'excludes' option in runtime_env, or list them in '.gitignore' / "
+        "'.rayignore'. For details see "
+        "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html"
+        "#api-reference"
+    )
+
+
 def create_package(
     module_path: str,
     target_path: Path,
@@ -697,6 +733,7 @@ def create_package(
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
+        _warn_if_package_size_near_limit(target_path, logger)
 
 
 def upload_package_if_needed(

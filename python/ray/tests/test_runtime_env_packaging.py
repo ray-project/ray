@@ -19,6 +19,7 @@ import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
 )
+from ray._private.runtime_env import packaging as packaging_module
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
     MAC_OS_ZIP_HIDDEN_DIR_NAME,
@@ -27,6 +28,7 @@ from ray._private.runtime_env.packaging import (
     _get_excludes,
     _get_ignore_file,
     _store_package_in_gcs,
+    create_package,
     download_and_unpack_package,
     get_excludes_from_ignore_files,
     get_local_dir_from_uri,
@@ -281,6 +283,92 @@ class TestUploadPackageIfNeeded:
             uri, tmp_path, random_dir, include_gitignore=True
         )
         assert uploaded
+
+
+class TestCreatePackageSizeWarning:
+    """Regression coverage for GH #45602.
+
+    The per-file warning in `_zip_files` does not fire for a directory of many
+    small files (e.g. `.git`). `create_package` should emit a single warning
+    whenever the resulting zip is at least `PACKAGE_SIZE_WARNING` so that users
+    have an actionable signal before the upload itself fails.
+    """
+
+    @staticmethod
+    def _make_dir_with_many_small_files(root: Path, count: int) -> Path:
+        sub = root / "lots_of_small_files"
+        sub.mkdir(parents=True)
+        # Use incompressible random bytes so the zip cannot shrink them below
+        # the threshold the test enforces.
+        for i in range(count):
+            (sub / f"f{i}.bin").write_bytes(os.urandom(256))
+        return sub
+
+    @staticmethod
+    def _make_capturing_logger() -> tuple:
+        """Return (logger, records_list). Ray's default logger does not
+        propagate to caplog, so capture WARNING records via a list handler."""
+        import logging as _logging
+
+        records: list = []
+
+        class _ListHandler(_logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        logger = _logging.getLogger(
+            "test_runtime_env_packaging.TestCreatePackageSizeWarning"
+        )
+        logger.handlers.clear()
+        logger.setLevel(_logging.WARNING)
+        logger.addHandler(_ListHandler())
+        logger.propagate = False
+        return logger, records
+
+    def test_warns_when_zip_exceeds_threshold(self, tmp_path, monkeypatch):
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        # Force the threshold low enough that this small fixture trips it,
+        # without inflating test runtime.
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert target.exists()
+        assert any(
+            "approaching the maximum upload size" in record.getMessage()
+            and str(target) in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_does_not_warn_when_zip_below_threshold(self, tmp_path, monkeypatch):
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=4)
+        # Threshold far above the small fixture's zip size.
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 10 * 1024 * 1024)
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert target.exists()
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_warn_handles_missing_file(self, tmp_path, monkeypatch):
+        # Even if the package vanishes between zip and stat (e.g. concurrent
+        # cleanup), the helper must not raise.
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        logger, records = self._make_capturing_logger()
+        packaging_module._warn_if_package_size_near_limit(
+            tmp_path / "does_not_exist.zip", logger=logger
+        )
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
 
 
 class TestStorePackageInGcs:
