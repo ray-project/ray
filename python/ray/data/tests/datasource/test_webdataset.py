@@ -178,6 +178,28 @@ def test_webdataset_contiguous_keys_no_false_positive(tmp_path):
     assert keys == ["001", "002"]
 
 
+def test_webdataset_consumer_mutates_yielded_sample(tmp_path):
+    """`_group_by_keys` must not assume the consumer leaves the yielded dict
+    intact. If a downstream decoder mutates or clears it, the generator must
+    still be able to bookkeep the seen-keys set when it resumes."""
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _group_by_keys,
+    )
+
+    data = [
+        {"fname": "001.jpg", "data": b"a"},
+        {"fname": "002.jpg", "data": b"b"},
+    ]
+    gen = _group_by_keys(data, meta={"__url__": "test.tar"})
+    first = next(gen)
+    # Simulate a decoder that wipes the dict before the generator resumes.
+    first.clear()
+    second = next(gen)
+    assert second["__key__"] == "002"
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
 def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]

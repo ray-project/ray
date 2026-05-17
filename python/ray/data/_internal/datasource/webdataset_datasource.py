@@ -164,10 +164,15 @@ def _group_by_keys(
             continue
         if current_sample is None or prefix != current_sample["__key__"]:
             if current_sample is not None:
+                # Capture the key before yielding: the consumer (which may
+                # include user-provided decoders) could mutate or clear the
+                # dict before this generator resumes, which would otherwise
+                # KeyError on `current_sample["__key__"]` below.
+                last_key = current_sample["__key__"]
                 if _valid_sample(current_sample):
                     current_sample.update(meta)
                     yield current_sample
-                seen_keys.add(current_sample["__key__"])
+                seen_keys.add(last_key)
             if prefix in seen_keys:
                 raise ValueError(
                     f"WebDataset tar entries for key '{prefix}' are not "
