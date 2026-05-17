@@ -147,10 +147,28 @@ ray_cc_library(
         "//src/ray/common/tests:__pkg__",
     ],
     deps = [
-        ":cgroup_manager_interface",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_cgroup_manager",
+    hdrs = ["fake_cgroup_manager.h"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common/tests:__pkg__",
+    ],
+    deps = [
+        ":cgroup_manager_interface",
+        ":cgroup_test_utils",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/util:logging",
     ],
 )

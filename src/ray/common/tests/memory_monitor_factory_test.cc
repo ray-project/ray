@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/cgroup2/cgroup_test_utils.h"
+#include "ray/common/cgroup2/fake_cgroup_manager.h"
 #include "ray/common/event_memory_monitor.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/threshold_memory_monitor.h"
