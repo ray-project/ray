@@ -29,8 +29,8 @@ Here are some capabilities that persistent storage enables:
   and artifacts to share them with others or use them in downstream tasks.
 
 
-Cloud storage (AWS S3, Google Cloud Storage)
---------------------------------------------
+Cloud storage (AWS S3, Google Cloud Storage, Azure Blob Storage)
+----------------------------------------------------------------
 
 .. tip::
 
@@ -48,6 +48,12 @@ Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_pa
         ...,
         run_config=train.RunConfig(
             storage_path="s3://bucket-name/sub-path/",
+            # GCS example:
+            # storage_path="gs://bucket-name/sub-path/",
+            # Azure Blob Storage example (use a custom ``storage_filesystem``
+            # via ``adlfs`` / ``pyarrow.fs.PyFileSystem``, see "Custom
+            # storage" below):
+            # storage_path="container@account/sub-path/",
             name="experiment_name",
         )
     )
