@@ -3891,6 +3891,37 @@ def test_import():
     from ray.autoscaler.sdk import request_resources  # noqa
 
 
+def test_autoscaler_sdk_lazy_import():
+    """Verify that importing ray.autoscaler submodules (e.g. tags) does NOT
+    eagerly load ray.autoscaler.sdk, which would cause a circular import in
+    the ray_print_logs background thread. See #63317.
+
+    The circular chain was:
+      ray.autoscaler.v2.utils -> ray.autoscaler._private.util
+      -> ray.autoscaler.tags -> ray.autoscaler.__init__ (eager sdk import)
+      -> ray.autoscaler.sdk -> ... -> ray.autoscaler._private.util (circular!)
+    """
+    import importlib
+    import sys
+
+    # Remove cached autoscaler modules to test from a clean state.
+    mods_to_remove = [key for key in sys.modules if key.startswith("ray.autoscaler")]
+    for mod in mods_to_remove:
+        del sys.modules[mod]
+
+    # Importing tags should NOT pull in sdk.
+    importlib.import_module("ray.autoscaler.tags")
+    assert "ray.autoscaler.sdk" not in sys.modules, (
+        "Importing ray.autoscaler.tags should not eagerly load ray.autoscaler.sdk"
+    )
+
+    # But explicitly accessing sdk should still work (lazy load).
+    import ray.autoscaler
+
+    _ = ray.autoscaler.sdk  # triggers __getattr__
+    assert "ray.autoscaler.sdk" in sys.modules
+
+
 def test_prom_null_metric_inc_fix():
     """Verify the bug fix https://github.com/ray-project/ray/pull/27532
     for NullMetric's signature.
