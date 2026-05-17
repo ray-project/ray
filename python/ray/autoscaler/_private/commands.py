@@ -22,6 +22,10 @@ from ray._common.usage import usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import (
+    USEFUL_COMMANDS_HEADING,
+    print_head_node_context_separator,
+)
 from ray.autoscaler._private.cluster_dump import (
     Archive,
     GetParameters,
@@ -932,7 +936,9 @@ def get_or_create_head_node(
         modifiers = ""
 
     cli_logger.newline()
-    with cli_logger.group("Useful commands:"):
+    if ray_start_commands:
+        print_head_node_context_separator(cli_logger, cf)
+    with cli_logger.group(USEFUL_COMMANDS_HEADING):
         printable_config_file = os.path.abspath(printable_config_file)
 
         cli_logger.print("To terminate the cluster:")
