@@ -295,6 +295,25 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+# Watchdog that detects a wedged user code event loop when user code runs in a
+# separate thread (RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1) and no user-defined
+# check_health is present. The main loop periodically schedules asyncio.sleep(0) on
+# the user loop; if the probe times out MAX_FAIL times consecutively, check_health
+# raises immediately so the replica is restarted without waiting for the controller's
+# RPC timeout. Set MAX_FAIL=0 to disable.
+USER_HEALTH_CHECK_PROBE_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S",
+    60.0,
+)
+USER_HEALTH_CHECK_PROBE_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S",
+    300.0,
+)
+USER_HEALTH_CHECK_PROBE_MAX_FAIL = get_env_int_non_negative(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL",
+    3,
+)
+
 # Controller polls deployment-scoped actors with ``__ray_ready__`` (same idea as
 # replica health checks). Defaults match deployment replica timing; override via env.
 DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
