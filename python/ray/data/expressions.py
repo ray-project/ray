@@ -1795,6 +1795,7 @@ class UUIDExpr(Expr):
         return False
 
 
+@DeveloperAPI(stability="alpha")
 def exprlist_to_fields(
     exprs: List[Expr], input_schema: "pyarrow.Schema"
 ) -> Optional[List["pyarrow.Field"]]:

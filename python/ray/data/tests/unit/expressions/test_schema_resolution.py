@@ -147,11 +147,13 @@ class TestAliasExpr:
 
 class TestSelfContainedExprs:
     def test_udf_uses_return_dtype(self, schema):
-        @udf(return_dtype=DataType.float64())
+        @udf(return_dtype=DataType.float64())  # pyrefly: ignore[missing-attribute]
         def double(x):
             return x
 
-        assert double(col("a")).alias("d").to_field(schema) == pa.field(
+        assert double(col("a")).alias("d").to_field(
+            schema
+        ) == pa.field(  # pyrefly: ignore[not-callable]
             "d", pa.float64(), nullable=True
         )
 
