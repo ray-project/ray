@@ -20,9 +20,10 @@ default_logger = logging.getLogger(__name__)
 
 def _parse_requirements_file(file_path: str) -> List[str]:
     packages = []
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
-            line = line.strip()
+            # Strip whitespace and remove inline comments (preceded by a space)
+            line = line.split(" #")[0].strip()
             if not line or line.startswith("#"):
                 continue
             packages.append(line)
