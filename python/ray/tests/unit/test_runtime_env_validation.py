@@ -739,12 +739,11 @@ class TestGetPipHash:
 
     def test_pip_hash_with_invalid_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Test with non-existent file
+            # Test with non-existent file - should raise FileNotFoundError
             non_existent_file = os.path.join(tmpdir, "non_existent.txt")
             pip_dict = {"packages": [f"-r {non_existent_file}"]}
-            hash_val = _get_pip_hash(pip_dict)
-            assert isinstance(hash_val, str)
-            assert len(hash_val) == 40
+            with pytest.raises(FileNotFoundError):
+                _get_pip_hash(pip_dict)
 
 
 class TestValidateEnvVars:
