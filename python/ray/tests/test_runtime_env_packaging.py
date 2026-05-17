@@ -336,9 +336,13 @@ class TestCreatePackageSizeWarning:
         create_package(str(src), target, include_gitignore=False, logger=logger)
 
         assert target.exists()
+        # Warning must surface BOTH the local zip path (for inspection) and
+        # the source module_path (since the zip is short-lived and has an
+        # auto-generated name in production code paths).
         assert any(
             "approaching the maximum upload size" in record.getMessage()
             and str(target) in record.getMessage()
+            and str(src) in record.getMessage()
             for record in records
         ), [r.getMessage() for r in records]
 

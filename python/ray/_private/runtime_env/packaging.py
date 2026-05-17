@@ -680,14 +680,18 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
 def _warn_if_package_size_near_limit(
     package_path: Path,
     logger: Optional[logging.Logger] = default_logger,
+    module_path: Optional[str] = None,
 ) -> None:
     """Warn if the zipped package is approaching the GCS upload size limit.
 
     The per-file warning in `_zip_files` does not fire for directories that
     contain many small files (e.g. `.git`), so the user has no signal that
     they are about to hit `GCS_STORAGE_MAX_SIZE` until the upload itself
-    fails. This warning closes that gap and includes the local package path
-    so the user can inspect its contents. See GH #45602.
+    fails. This warning closes that gap. The local zip path is included for
+    inspection, and `module_path` (the user-supplied source directory or file)
+    is included when available so the user can immediately identify which
+    runtime_env input is causing the bloat — the temp zip path is short-lived
+    and has an obscure auto-generated name. See GH #45602.
     """
     if logger is None:
         logger = default_logger
@@ -697,8 +701,9 @@ def _warn_if_package_size_near_limit(
         return
     if package_size < PACKAGE_SIZE_WARNING:
         return
+    source_info = f" for '{module_path}'" if module_path else ""
     logger.warning(
-        f"The runtime_env package at '{package_path}' is "
+        f"The runtime_env package{source_info} at '{package_path}' is "
         f"{_mib_string(package_size)}, approaching the maximum upload size "
         f"of {_mib_string(GCS_STORAGE_MAX_SIZE)}. If the upload fails, exclude "
         "large directories (commonly '.git', '.venv', or build artifacts) via "
@@ -733,7 +738,7 @@ def create_package(
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
-        _warn_if_package_size_near_limit(target_path, logger)
+        _warn_if_package_size_near_limit(target_path, logger, module_path=module_path)
 
 
 def upload_package_if_needed(
