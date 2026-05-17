@@ -151,11 +151,9 @@ class TestSelfContainedExprs:
         def double(x):
             return x
 
-        assert double(col("a")).alias("d").to_field(
+        assert double(col("a")).alias("d").to_field(  # pyrefly: ignore[not-callable]
             schema
-        ) == pa.field(  # pyrefly: ignore[not-callable]
-            "d", pa.float64(), nullable=True
-        )
+        ) == pa.field("d", pa.float64(), nullable=True)
 
     def test_download_is_binary(self, schema):
         assert DownloadExpr("uri").alias("bytes").to_field(schema) == pa.field(
