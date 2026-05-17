@@ -139,6 +139,14 @@ def _group_by_keys(
 ):
     """Return function over iterator that groups key, value pairs into samples.
 
+    The WebDataset specification requires entries that share a sample key to be
+    contiguous in the tar archive. This function relies on that invariant: it
+    flushes the in-progress sample whenever the key changes. If a key is seen
+    again after its run has ended, the resulting samples would be silently
+    fragmented (e.g. `001.jpg, 002.jpg, 001.txt` would yield three partial
+    samples instead of two complete ones), so we detect that case and raise a
+    clear, actionable error. See GH #44068.
+
     Args:
         data: iterator over key, value pairs
         keys: function that returns key, suffix for a given key
@@ -147,6 +155,7 @@ def _group_by_keys(
     """
     meta = meta or {}
     current_sample = None
+    seen_keys: set = set()
     for filesample in data:
         assert isinstance(filesample, dict)
         fname, value = filesample["fname"], filesample["data"]
@@ -154,9 +163,22 @@ def _group_by_keys(
         if prefix is None:
             continue
         if current_sample is None or prefix != current_sample["__key__"]:
-            if _valid_sample(current_sample):
-                current_sample.update(meta)
-                yield current_sample
+            if current_sample is not None:
+                if _valid_sample(current_sample):
+                    current_sample.update(meta)
+                    yield current_sample
+                seen_keys.add(current_sample["__key__"])
+            if prefix in seen_keys:
+                raise ValueError(
+                    f"WebDataset tar entries for key '{prefix}' are not "
+                    f"contiguous in the archive (tar is "
+                    f"{meta.get('__url__')}). `read_webdataset` requires "
+                    "files sharing a sample key (the base name before the "
+                    "first '.') to be adjacent in the tar, per the "
+                    "WebDataset specification. Re-create the archive with "
+                    "entries sorted by name, e.g. via `tar --sort=name ...` "
+                    "or `find ... | sort | tar -T - ...`."
+                )
             current_sample = dict(__key__=prefix)
             if "__url__" in filesample:
                 current_sample["__url__"] = filesample["__url__"]

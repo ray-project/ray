@@ -135,6 +135,49 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
         }
 
 
+def test_webdataset_non_contiguous_keys_raises(tmp_path):
+    """Regression test for GH #44068.
+
+    When a tar archive's entries are not sorted by sample key, `_group_by_keys`
+    used to silently emit fragmented samples (one per contiguous run of a
+    given key). We now detect that and surface a clear error pointing the user
+    at the WebDataset sorted-archive requirement, so they don't silently lose
+    data.
+    """
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _group_by_keys,
+    )
+
+    # Construct an iterator of file samples where key "001" appears in two
+    # non-contiguous runs. This mirrors what `_tar_file_iterator` would yield
+    # for a tar that wasn't sorted by name.
+    data = [
+        {"fname": "001.jpg", "data": b"jpg-001"},
+        {"fname": "002.jpg", "data": b"jpg-002"},
+        {"fname": "001.txt", "data": b"txt-001"},  # non-contiguous: bug case
+    ]
+    with pytest.raises(ValueError, match="not contiguous"):
+        list(_group_by_keys(data, meta={"__url__": "test.tar"}))
+
+
+def test_webdataset_contiguous_keys_no_false_positive(tmp_path):
+    """Repeated suffixes within the same prefix run must not trip the
+    non-contiguous detection (they're a separate, already-handled error)."""
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _group_by_keys,
+    )
+
+    data = [
+        {"fname": "001.jpg", "data": b"a"},
+        {"fname": "001.txt", "data": b"b"},
+        {"fname": "002.jpg", "data": b"c"},
+        {"fname": "002.txt", "data": b"d"},
+    ]
+    samples = list(_group_by_keys(data, meta={"__url__": "test.tar"}))
+    keys = sorted(s["__key__"] for s in samples)
+    assert keys == ["001", "002"]
+
+
 def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]
