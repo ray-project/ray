@@ -25,6 +25,14 @@ Serve provides some [fault tolerance](serve-ft-detail) features out of the box. 
 
 By default, the Serve controller periodically health-checks each Serve deployment replica and restarts it on failure.
 
+When user code runs in a separate thread (the default when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`) and no custom `check_health` is defined, Serve runs a background watchdog that periodically probes the user code event loop. If the loop is unresponsive—for example, because a request is blocking it with a long synchronous call—the probe times out. After a configurable number of consecutive timeouts, the replica immediately fails its next health check and is restarted. You can tune this behavior with the following environment variables:
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S` | `60` | How often (seconds) the watchdog probes the user loop. |
+| `RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S` | `300` | How long (seconds) each probe waits before counting as a failure. |
+| `RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL` | `3` | Consecutive probe failures before the replica fails its health check. Set to `0` to disable the watchdog. |
+
 You can define custom application-level health-checks and adjust their frequency and timeout.
 To define a custom health-check, add a `check_health` method to your deployment class.
 This method should take no arguments and return no result, and it should raise an exception if Ray Serve considers the replica unhealthy.
@@ -685,6 +693,35 @@ Table:
 ```
 
 Note that the PID for the first ProxyActor has changed, indicating that it restarted.
+
+## Environment variables
+
+These environment variables control fault tolerance-related behavior. Set them before starting Ray.
+
+### `RAY_SERVE_KV_TIMEOUT_S`
+
+**Default**: None (no timeout)
+
+Ray Serve persists deployment configurations and state in the Global Control Store (GCS) using its internal KV interface. Each read and write to the GCS KV store uses this timeout. By default, no timeout is set and these operations block until the GCS responds. If the GCS becomes unavailable (for example, during a head node restart), Serve operations that depend on the KV store — such as fetching or updating deployment configs — hang until the GCS recovers.
+
+Setting this value causes those operations to fail fast with a timeout error instead of blocking indefinitely, allowing Serve to detect GCS failures and trigger recovery sooner.
+
+```bash
+export RAY_SERVE_KV_TIMEOUT_S=5
+```
+
+### `LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND` / `LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND`
+
+**Defaults**: `30` / `60` seconds
+
+Ray Serve uses a long-polling mechanism for replicas and proxies to receive configuration updates from the controller. Each long-poll request uses a random timeout between the lower and upper bounds to avoid thundering herd problems when many clients poll simultaneously.
+
+```bash
+export LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND=10
+export LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND=30
+```
+
+Decreasing these values makes replicas and proxies detect controller changes faster, which can speed up recovery after controller restarts. Increasing them reduces the frequency of long-poll requests to the controller.
 
 [KubeRay]: kuberay-index
 [external storage namespace]: kuberay-external-storage-namespace

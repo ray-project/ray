@@ -108,7 +108,7 @@ def main(args):
     else:
         compute = None
         num_gpus = 1
-    ds = ds.map_batches(preprocess)
+    ds = ds.map_batches(preprocess, batch_size="auto")
     ds = ds.map_batches(
         Predictor,
         batch_size=INFERENCE_BATCH_SIZE,

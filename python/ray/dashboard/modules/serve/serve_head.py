@@ -7,16 +7,10 @@ from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
+from pydantic import ValidationError
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError as ValidationErrorV1
-
-# Import native Pydantic v2 ValidationError for schemas using native Pydantic
-try:
-    from pydantic import ValidationError as ValidationErrorV2
-except ImportError:
-    ValidationErrorV2 = ValidationErrorV1  # Fallback if only v1 is available
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -160,7 +154,7 @@ class ServeHead(SubprocessModule):
             config: ServeDeploySchema = ServeDeploySchema.model_validate(
                 await req.json()
             )
-        except (ValidationErrorV1, ValidationErrorV2) as e:
+        except ValidationError as e:
             return Response(
                 status=400,
                 text=repr(e),
@@ -176,6 +170,7 @@ class ServeHead(SubprocessModule):
                 http_options=full_http_options,
                 grpc_options=grpc_options,
                 global_logging_config=config.logging_config,
+                controller_options=config.controller_options,
             )
 
         # Serve ignores HTTP options if it was already running when

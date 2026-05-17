@@ -83,9 +83,12 @@ class MockAutoscalingConfig:
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
 
+    def get_provider_instance_type(self, ray_node_type):
+        return self._configs.get("provider_instance_types", {}).get(ray_node_type, "")
+
     @property
     def provider(self):
-        return Provider.UNKNOWN
+        return self._configs.get("provider", Provider.UNKNOWN)
 
 
 class MockScheduler(IResourceScheduler):
@@ -331,6 +334,7 @@ class TestReconciler:
         assert len(events_i_1) == 1
         assert events_i_1[0].new_instance_status == Instance.TERMINATED
         assert events_i_1[0].instance_id == "i-1"
+        assert events_i_1[0].cloud_instance_id == "c-1"
 
         events_i_2 = subscriber.events_by_id("i-2")
         assert len(events_i_2) == 2
@@ -1441,6 +1445,13 @@ class TestReconciler:
             autoscaling_config=MockAutoscalingConfig(
                 configs={
                     "max_concurrent_launches": 0,  # don't launch anything.
+                    "provider_instance_types": {
+                        "type-1": "m5.large",
+                        "type-2": "m5.xlarge",
+                        "type-3": "c5.large",
+                        "type-4": "g5.xlarge",
+                        "type-5": "r5.large",
+                    },
                 }
             ),
         )
@@ -1449,16 +1460,29 @@ class TestReconciler:
         assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
         assert len(autoscaling_state.infeasible_resource_requests) == 1
         assert len(autoscaling_state.pending_instances) == 2
-        pending_instances = {i.instance_id for i in autoscaling_state.pending_instances}
-        assert pending_instances == {"i-1", "i-5"}
+        pending_instances = {
+            (i.instance_id, i.instance_type_name, i.ray_node_type_name)
+            for i in autoscaling_state.pending_instances
+        }
+        assert pending_instances == {
+            ("i-1", "m5.large", "type-1"),
+            ("i-5", "r5.large", "type-5"),
+        }
         pending_instance_requests = defaultdict(int)
         for r in autoscaling_state.pending_instance_requests:
-            pending_instance_requests[r.ray_node_type_name] += r.count
+            pending_instance_requests[
+                (r.instance_type_name, r.ray_node_type_name)
+            ] += r.count
         failed_instance_requests = defaultdict(int)
         for r in autoscaling_state.failed_instance_requests:
-            failed_instance_requests[r.ray_node_type_name] += r.count
-        assert pending_instance_requests == {"type-2": 1, "type-3": 1}
-        assert failed_instance_requests == {"type-4": 1}
+            failed_instance_requests[
+                (r.instance_type_name, r.ray_node_type_name)
+            ] += r.count
+        assert pending_instance_requests == {
+            ("m5.xlarge", "type-2"): 1,
+            ("c5.large", "type-3"): 1,
+        }
+        assert failed_instance_requests == {("g5.xlarge", "type-4"): 1}
 
     @staticmethod
     def test_extra_cloud_instances_cloud_provider(setup):

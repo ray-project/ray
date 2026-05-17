@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
@@ -39,6 +40,7 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
     ProxyLocation,
@@ -50,7 +52,7 @@ from ray.util.annotations import PublicAPI
 TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
-        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
+        "The target capacity percentage for all replicas across the "
         "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
         "`initial_replicas` for each deployment will be scaled by this percentage."
     ),
@@ -319,8 +321,7 @@ class DeploymentSchema(BaseModel):
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null. Can also be set to "
-            "`auto` for a default autoscaling configuration "
-            "(experimental)."
+            "`auto` for a default autoscaling configuration."
         ),
     )
     max_ongoing_requests: int = Field(
@@ -336,8 +337,11 @@ class DeploymentSchema(BaseModel):
     max_queued_requests: StrictInt = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[DEPRECATED] The max number of requests that will be executed at once in "
-            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
+            "Maximum number of requests to this deployment that will be queued at "
+            "each caller (proxy or DeploymentHandle). Once this limit is reached, "
+            "subsequent requests will raise a BackPressureError (for handles) or "
+            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 "
+            "(no limit)."
         ),
     )
     user_config: Optional[Dict] = Field(
@@ -463,6 +467,17 @@ class DeploymentSchema(BaseModel):
             "init_kwargs, and actor_options."
         ),
     )
+    rolling_update_percentage: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "The fraction of replicas to update at a time during a "
+            "rolling update. Must be in (0.0, 1.0]. "
+            f"Defaults to {DEFAULT_ROLLING_UPDATE_PERCENTAGE} "
+            f"({int(DEFAULT_ROLLING_UPDATE_PERCENTAGE * 100)}%)."
+        ),
+        gt=0.0,
+        le=1.0,
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -504,16 +519,28 @@ class DeploymentSchema(BaseModel):
             # Validate autoscaling bounds are multiples of gang_size
             autoscaling_config = values.get("autoscaling_config", None)
             if autoscaling_config not in [None, DEFAULT.VALUE]:
+                # Since this is a "before" validator, autoscaling_config may be
+                # either a dict (from raw input) or an AutoscalingConfig instance
+                # (if already constructed). Normalize to a dict of only the
+                # user-set fields so that gang-size multiple validation is not
+                # triggered for default values the user never explicitly set.
+                # This matches how AutoscalingConfig is handled elsewhere in the
+                # codebase (see ray/serve/_private/config.py).
+                if isinstance(autoscaling_config, AutoscalingConfig):
+                    autoscaling_config = autoscaling_config.model_dump(
+                        exclude_unset=True
+                    )
+
                 min_replicas = autoscaling_config.get("min_replicas")
                 if min_replicas is not None and min_replicas == 0:
                     raise ValueError(
                         "Scale to zero isn't supported for gang scheduling."
                     )
-                for field in ["min_replicas", "max_replicas", "initial_replicas"]:
-                    val = autoscaling_config.get(field)
+                for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    val = autoscaling_config.get(field_name)
                     if val is not None and val % gang_config.gang_size != 0:
                         raise ValueError(
-                            f"autoscaling_config.{field} ({val}) must be a "
+                            f"autoscaling_config.{field_name} ({val}) must be a "
                             f"multiple of gang_size ({gang_config.gang_size})."
                         )
             return values
@@ -619,9 +646,9 @@ class DeploymentSchema(BaseModel):
         """
 
         return {
-            field
-            for field in self.model_fields_set
-            if getattr(self, field) is not DEFAULT.VALUE
+            field_name
+            for field_name in self.model_fields_set
+            if getattr(self, field_name) is not DEFAULT.VALUE
         }
 
     def is_autoscaling_configured(self) -> bool:
@@ -647,6 +674,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
+        rolling_update_percentage=info.deployment_config.rolling_update_percentage,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -672,6 +700,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
             cfg_dict["init_args"] = list(cfg_dict["init_args"])
             deployment_actors.append(cfg_dict)
         schema.deployment_actors = deployment_actors
+
+    if info.replica_config.max_replicas_per_node is not None:
+        schema.max_replicas_per_node = info.replica_config.max_replicas_per_node
 
     return schema
 
@@ -721,9 +752,10 @@ class ServeApplicationSchema(BaseModel):
         default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "your Serve application has started running. The Serve application "
-            "must be shut down and restarted with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once your Serve application "
+            "has started running. The Serve application must be shut down and "
+            "restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -872,7 +904,7 @@ class ServeApplicationSchema(BaseModel):
         }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptionsSchema(BaseModel):
     """Options to start the gRPC Proxy with."""
 
@@ -912,9 +944,9 @@ class HTTPOptionsSchema(BaseModel):
         default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "Serve has started running. Serve must be shut down and restarted "
-            "with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once Serve has started running. "
+            "Serve must be shut down and restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -995,6 +1027,15 @@ class ServeDeploySchema(BaseModel):
     )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    controller_options: Optional[ControllerOptions] = Field(
+        default=None,
+        description=(
+            "[EXPERIMENTAL] Options for the Serve controller actor. Currently "
+            "scoped to ``runtime_env.env_vars`` (other ``runtime_env`` keys are "
+            "rejected by the validator). Only applied on first controller "
+            "creation -- ignored if a Serve controller is already running."
+        ),
     )
     logging_config: Optional[LoggingConfig] = Field(
         default=None,
@@ -1322,7 +1363,7 @@ class DeploymentDetails(BaseModel):
         description="The current status of the deployment."
     )
     status_trigger: DeploymentStatusTrigger = Field(
-        description="[EXPERIMENTAL] The trigger for the current status.",
+        description="The trigger for the current status.",
     )
     message: str = Field(
         description=(
@@ -1521,6 +1562,17 @@ class TargetGroup(BaseModel):
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
     app_name: str = Field("", description="Name of the application.")
+    # Ingress request router targets for ingress bypass Lua routing. When
+    # populated, HAProxy Lua calls these targets to get routing decisions,
+    # then forwards data plane traffic to the main targets.
+    # Only HTTP target groups populate this; gRPC target groups always leave it empty.
+    ingress_request_router_targets: List[Target] = Field(
+        default_factory=list,
+        description=(
+            "List of HTTP ingress request router targets for Lua-based routing "
+            "decisions. Only populated on HTTP target groups; always empty for gRPC."
+        ),
+    )
 
 
 @PublicAPI(stability="stable")

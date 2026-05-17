@@ -16,6 +16,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip, get_localhost_ip
 from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -159,10 +160,10 @@ def cli():
 )
 @click.option(
     "--http-host",
-    default=DEFAULT_HTTP_HOST,
+    default=DEFAULT_HTTP_HOST or get_localhost_ip(),
     required=False,
     type=str,
-    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
+    help="Host for HTTP proxies to listen on. Defaults to localhost.",
 )
 @click.option(
     "--http-port",
@@ -539,7 +540,9 @@ def run(
 
     http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
+    controller_options = None
+    # Merge http_options, grpc_options, and controller_options with the ones on
+    # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         http_options["location"] = ProxyLocation._to_deployment_mode(
             config.proxy_location
@@ -547,10 +550,12 @@ def run(
         config_http_options = config.http_options.model_dump()
         http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
+        controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        controller_options=controller_options,
     )
 
     try:
@@ -933,7 +938,7 @@ def build(
     deploy_config = {
         "proxy_location": "EveryNode",
         "http_options": {
-            "host": "0.0.0.0",
+            "host": get_all_interfaces_ip(),
             "port": 8000,
         },
         "grpc_options": {
