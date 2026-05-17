@@ -74,7 +74,7 @@ def _convert_arrow_table_to_examples(
     # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
     # of per-row __getitem__ calls, which avoids Python-side method dispatch
     # on every element.
-    columns = [arrow_table[name] for name in column_names]
+    columns = arrow_table.columns
     schema_feature_types = [schema_dict.get(name) for name in column_names]
 
     for row_values in zip(*columns):
