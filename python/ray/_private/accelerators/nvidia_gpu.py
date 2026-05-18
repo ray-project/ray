@@ -81,7 +81,18 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         if name is None:
             return None
         match = NVIDIA_GPU_NAME_PATTERN.match(name)
-        return match.group(1) if match else None
+        result = match.group(1) if match else None
+        if result and len(result) > 1:
+            return result
+        # The regex above is anchored on the second word being all uppercase,
+        # which works for datacenter cards ("Tesla V100-SXM2-16GB" -> "V100",
+        # "NVIDIA A100-SXM4-40GB" -> "A100") but fails on consumer cards
+        # whose product line is in mixed case ("NVIDIA GeForce RTX 5090"
+        # stops at the lowercase 'e' in "GeForce" and captures only "G").
+        # Fall back to a hyphen-joined product name so callers get a useful
+        # accelerator_type label like "GeForce-RTX-5090".
+        cleaned = re.sub(r"^NVIDIA\s+", "", name).strip()
+        return cleaned.replace(" ", "-") if cleaned else None
 
     @staticmethod
     def validate_resource_request_quantity(

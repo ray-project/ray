@@ -83,7 +83,6 @@ docker/Dockerfile.ray: docker linux_wheels
 
 doc/code.py: doc
 doc/example.ipynb: doc
-doc/tutorial.rst: doc
 .readthedocs.yaml: doc
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
