@@ -35,10 +35,7 @@ TARGET_BLOCK_SIZE_BYTES: int = 128 * 1024 * 1024  # 128 MiB
 BYTES_PER_ROW: int = 8  # ray.data.range produces one int64 per row
 ROWS_PER_BLOCK: int = TARGET_BLOCK_SIZE_BYTES // BYTES_PER_ROW
 
-# When the wide-schema path is active, cap the output block size at
-# ~16 MiB by adjusting rows-per-block proportionally to the per-row
-# byte budget. Without this, wide schemas at the original 128 MiB
-# sizing exceed worker memory.
+# Cap wide-schema output block size to avoid OOM.
 WIDE_SCHEMA_TARGET_BLOCK_SIZE_BYTES: int = 16 * 1024 * 1024  # 16 MiB
 ARRAY_64_LEN: int = 64
 ARRAY_32_LEN: int = 32
