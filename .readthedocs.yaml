@@ -10,6 +10,43 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.10"
+  jobs:
+    # On PR builds, skip the Sphinx build when the PR doesn't touch any
+    # files that affect documentation output. Reduces queue pressure on
+    # the shared RTD build slots when several PRs are open at once.
+    # Tag/branch builds (master, stable, etc.) always run.
+    # See https://docs.readthedocs.com/platform/stable/guides/build/skip-build.html
+    #
+    # Some constructs are avoided deliberately because RTD's job runner
+    # silently drops scripts that contain them: use echo (not printf
+    # with a backslash-escape format string), use [.] character classes
+    # for literal dots in regexes (not \.), and keep shell comments out
+    # of this block so that backticks/$() inside comments don't confuse
+    # the preprocessor.
+    post_checkout:
+      - |
+        if [ "${READTHEDOCS_VERSION_TYPE:-}" != "external" ]; then
+          exit 0
+        fi
+        git fetch --depth=500 origin master 2>/dev/null || true
+        if ! git merge-base origin/master HEAD >/dev/null 2>&1; then
+          exit 0
+        fi
+        CHANGED=$(git diff --name-only origin/master...HEAD)
+        if [ -z "$CHANGED" ]; then
+          exit 0
+        fi
+        DOC_CHANGED=
+        echo "$CHANGED" | grep -qE '^doc/'                       && DOC_CHANGED=1
+        echo "$CHANGED" | grep -qE '^python/ray/'                && DOC_CHANGED=1
+        echo "$CHANGED" | grep -qE '^rllib/'                     && DOC_CHANGED=1
+        echo "$CHANGED" | grep -qE '^[.]readthedocs[.]yaml$'     && DOC_CHANGED=1
+        if [ -z "$DOC_CHANGED" ]; then
+          echo "No doc-affecting files changed; skipping Sphinx build."
+          echo "Files changed in PR:"
+          echo "$CHANGED"
+          exit 183
+        fi
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
