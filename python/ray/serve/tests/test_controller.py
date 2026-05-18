@@ -262,6 +262,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "route_prefix": "/",
                     "protocol": "HTTP",
                     "app_name": "",
+                    "ingress_request_router_targets": [],
                 },
                 {
                     "targets": [
@@ -275,6 +276,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "route_prefix": "/",
                     "protocol": "gRPC",
                     "app_name": "",
+                    "ingress_request_router_targets": [],
                 },
             ],
         }

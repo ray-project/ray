@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/asio/fake_periodical_runner.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -68,13 +68,13 @@ class PubSubHandlerTest : public ::testing::Test {
         std::make_unique<pubsub::ObservabilityPublisher>(std::move(obs_inner));
 
     pubsub_handler_ =
-        std::make_unique<InternalPubSubHandler>(io_service_, *gcs_publisher_);
+        std::make_unique<ControlPlanePubSubHandler>(io_service_, *gcs_publisher_);
     observability_pubsub_handler_ = std::make_unique<ObservabilityPubSubHandler>(
         io_service_, *observability_publisher_);
   }
 
  protected:
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
 
  private:

@@ -144,7 +144,7 @@ def test_basic(ray_start_regular):
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
     logger.info("Test agent register is OK.")
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     assert dashboard_proc.status() in [psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING]
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
@@ -188,7 +188,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -209,7 +209,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -253,7 +253,7 @@ def test_agent_report_unexpected_raylet_death(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -295,7 +295,7 @@ def test_agent_report_unexpected_raylet_death_large_file(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1362,7 +1362,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1412,7 +1412,7 @@ def test_agent_port_conflict(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 

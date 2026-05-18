@@ -11,22 +11,14 @@ subprocess.check_call([
     sys.executable, "-m", "pip", "install", "--no-cache-dir",
     "torch==2.8.0",
     "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
+    "pyarrow==17.0.0",
     "datasets==2.19.2",
 ])
 
 # 01. Imports
 import os
-import io
 import math
-import uuid
 import shutil
-import random
-import requests
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
-from datasets import load_dataset   
 
 import numpy as np
 import pandas as pd
@@ -39,14 +31,12 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 
-import ray
 import ray.data as rdata
-import ray.train as train
 from ray.train import (
     ScalingConfig, RunConfig, FailureConfig,
-    CheckpointConfig, Checkpoint, get_checkpoint, get_context
+    CheckpointConfig, Checkpoint
 )
-from ray.train.torch import prepare_model, prepare_data_loader, TorchTrainer
+from ray.train.torch import prepare_model, TorchTrainer
 
 # 02. Load NYC taxi passenger counts (30-min) from GitHub raw – no auth, ~1 MB
 

@@ -1153,11 +1153,16 @@ class DatasetStats:
                 # Single operator scenario: input rows = total output from all parent nodes
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
-        streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.get()
-            if self.streaming_exec_schedule_s
-            else 0
-        )
+        # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
+        # ``runtime_metrics()`` can still divide by total_wall_time and
+        # produce a meaningful percentage. Per-iteration avg/max are
+        # exposed separately. ``StreamingExecutor._generate_stats``
+        # always assigns a ``Timer`` (never ``None``), so this call site
+        # needs no guard.
+        schedule_timer = self.streaming_exec_schedule_s
+        streaming_exec_schedule_s = schedule_timer.get()
+        streaming_exec_schedule_avg_s = schedule_timer.avg()
+        streaming_exec_schedule_max_s = schedule_timer.max()
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1171,6 +1176,8 @@ class DatasetStats:
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
+            streaming_exec_schedule_avg_s,
+            streaming_exec_schedule_max_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1206,6 +1213,8 @@ class DatasetStatsSummary:
     global_bytes_restored: int
     dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
+    streaming_exec_schedule_avg_s: float
+    streaming_exec_schedule_max_s: float
 
     def to_string(
         self,
