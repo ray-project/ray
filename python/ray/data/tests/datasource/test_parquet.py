@@ -220,7 +220,9 @@ def test_include_row_hash_with_column_projection(
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
+    ds = ray.data.read_parquet(path, include_row_hash=True).select_columns(
+        ["a", "row_hash"]
+    )
     schema_names = ds.schema().names
     assert "a" in schema_names
     assert "b" not in schema_names
@@ -275,7 +277,9 @@ def test_include_row_hash_existing_column_with_projection(
     table = pa.Table.from_pydict({"val": [1, 2], "row_hash": [10, 20]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, columns=["val"], include_row_hash=True)
+    ds = ray.data.read_parquet(path, include_row_hash=True).select_columns(
+        ["val", "row_hash"]
+    )
     schema_names = ds.schema().names
     assert "val" in schema_names
     assert "row_hash" in schema_names
@@ -480,6 +484,8 @@ def test_parquet_read_partitioned(
 def test_parquet_read_partitioned_with_filter(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
+    from ray.data.expressions import col, lit
+
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
     )
@@ -492,8 +498,8 @@ def test_parquet_read_partitioned_with_filter(
 
     # 2 partitions, 1 empty partition, 1 block/read task
 
-    ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=1).filter(
+        expr=col("two") == lit("a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -502,8 +508,8 @@ def test_parquet_read_partitioned_with_filter(
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
-    ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=2).filter(
+        expr=col("two") == lit("a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -1474,8 +1480,10 @@ def test_multiple_files_with_ragged_arrays(
 def test_count_with_filter(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
-    ds = ray.data.read_parquet(
-        "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
+    from ray.data.expressions import col, lit
+
+    ds = ray.data.read_parquet("example://iris.parquet").filter(
+        expr=col("sepal.length") < lit(0)
     )
     assert ds.count() == 0
     assert isinstance(ds.count(), int)
@@ -3012,11 +3020,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     Regression test for https://github.com/ray-project/ray/issues/61675
     See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
     """
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "Nested-type (ARROW-5030) fallback reader is not yet ported to "
-            "the DataSourceV2 path."
-        )
     data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
     ds = ray.data.read_parquet(data_dir)
     total_rows = 0
@@ -3025,6 +3028,51 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
         assert "id" in batch.column_names
         assert "nested_col" in batch.column_names
     assert total_rows == num_rows
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
+@pytest.mark.timeout(300)
+def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_column(
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
+):
+    """When the projection excludes the large nested column but the filter
+    references it, the V2 reader must still trigger the fallback because the
+    scanner would otherwise hit ARROW-5030 while decoding the column for
+    row-level filter evaluation.
+    """
+    import pyarrow.dataset as pds
+
+    from ray.data import DataContext
+    from ray.data._internal.datasource.parquet_datasource import (
+        _needs_nested_type_fallback,
+        _resolve_read_columns,
+    )
+
+    if not DataContext.get_current().use_datasource_v2:
+        pytest.skip("V2-only: fallback decision lives in ParquetFileReader (V2).")
+
+    _, file_path, _, _ = nested_parquet_exceeding_2gb
+
+    fragment = next(pds.dataset(file_path, format="parquet").get_fragments())
+
+    # Sanity: the fragment has a flat column we could project alone without
+    # triggering the fallback (covered by the sibling _skipped test).
+    assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
+
+    # When the projection excludes ``nested_col`` but the filter references
+    # it, the V2 reader resolves the union of projected + filter-referenced
+    # columns before deciding whether to use the fallback. That union must
+    # include ``nested_col`` so the fallback is triggered.
+    read_columns = _resolve_read_columns(
+        columns=["id"],
+        filter_expr=pds.field("nested_col").is_valid(),
+        filter_columns=["nested_col"],
+    )
+    assert read_columns is not None and "nested_col" in read_columns
+    assert _needs_nested_type_fallback(fragment, read_columns) is True
 
 
 @pytest.mark.skipif(

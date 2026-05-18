@@ -540,7 +540,9 @@ def run(
 
     http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
+    controller_options = None
+    # Merge http_options, grpc_options, and controller_options with the ones on
+    # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         http_options["location"] = ProxyLocation._to_deployment_mode(
             config.proxy_location
@@ -548,10 +550,12 @@ def run(
         config_http_options = config.http_options.model_dump()
         http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
+        controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        controller_options=controller_options,
     )
 
     try:
