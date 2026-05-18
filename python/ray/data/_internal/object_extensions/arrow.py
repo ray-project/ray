@@ -6,14 +6,8 @@ import pyarrow as pa
 
 import ray.data._internal.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
-from ray._common.utils import env_bool
 from ray.data._internal.utils.arrow_utils import _check_pyarrow_version
 from ray.util.annotations import PublicAPI
-
-
-def _allow_pickle_object_scalar():
-    return env_bool("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", False)
-
 
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
@@ -84,17 +78,6 @@ class ArrowPythonObjectScalar(pa.ExtensionScalar):
         if not isinstance(self.value, pa.LargeBinaryScalar):
             raise RuntimeError(
                 f"{type(self.value)} is not the expected LargeBinaryScalar"
-            )
-        if not _allow_pickle_object_scalar():
-            raise ValueError(
-                "Your dataset contains a column stored as "
-                "'ray.data.arrow_pickled_object', which requires unpickling "
-                "data from the file. This is disabled by default because "
-                "unpickling untrusted data can execute arbitrary code.\n\n"
-                "If you trust the source of this data, set the environment "
-                "variable RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1 to allow "
-                "reading these columns. In a Ray cluster, this variable must "
-                "be set on all worker nodes (e.g. via 'runtime_env')."
             )
         return pickle.load(pa.BufferReader(self.value.as_buffer()))
 

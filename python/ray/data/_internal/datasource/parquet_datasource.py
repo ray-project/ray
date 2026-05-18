@@ -1116,6 +1116,27 @@ class ParquetDatasource(Datasource):
         return target_schema
 
 
+def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    pickle_cols = [
+        field.name
+        for field in table.schema
+        if isinstance(field.type, ArrowPythonObjectType)
+    ]
+    if pickle_cols:
+        raise ValueError(
+            f"This Parquet file contains columns stored as "
+            f"'ray.data.arrow_pickled_object': {pickle_cols}. Reading these "
+            f"columns requires unpickling, which can execute arbitrary code "
+            f"and is unsafe with untrusted files.\n\n"
+            f"If you trust the source of this data, set the environment "
+            f"variable RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1 to allow "
+            f"reading these columns. In a Ray cluster, this variable must "
+            f"be set on all worker nodes (e.g. via 'runtime_env')."
+        )
+
+
 def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
@@ -1136,6 +1157,8 @@ def read_fragments(
 
     # Ensure that we're reading at least one dataset fragment.
     assert len(fragments) > 0
+
+    allow_pickle = env_bool("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", False)
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     for fragment in fragments:
@@ -1161,6 +1184,8 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
+                if not allow_pickle:
+                    _check_for_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:
