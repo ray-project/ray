@@ -103,6 +103,9 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+_NULL_KEY_PARTITION_ID = 0
+
+
 def _partition_single_int_column(
     column: "pyarrow.ChunkedArray",
     num_partitions: int,
@@ -112,8 +115,17 @@ def _partition_single_int_column(
     Computes ``partition_id = avalanche(key) % num_partitions`` per row,
     where ``avalanche(x) = (x * 2^64/phi) ^ ((x * 2^64/phi) >> 33)``.
 
-    Caller must guarantee an integer column with ``null_count == 0``.
+    Nulls are deterministically routed to ``_NULL_KEY_PARTITION_ID`` so that
+    all rows with a null key co-locate in the same partition across blocks
+    (required for cross-block hash-partitioning consistency).
     """
+    # fill_null replaces nulls with a placeholder so the numpy multiply doesn't
+    # crash on object-dtype arrays
+    has_nulls = column.null_count > 0
+    if has_nulls:
+        null_mask = column.is_null().to_numpy(zero_copy_only=False)
+        column = column.fill_null(0)
+
     arr = column.to_numpy(zero_copy_only=False)
     if arr.dtype == np.uint64:
         keys = arr.copy()
@@ -125,6 +137,11 @@ def _partition_single_int_column(
     keys *= np.uint64(0x9E3779B97F4A7C15)  # Knuth's multiplicative hash: 2^64 / phi
     keys ^= keys >> np.uint64(33)
     np.mod(keys, np.uint64(num_partitions), out=keys)
+
+    # null rows get their partition overridden below
+    if has_nulls:
+        keys[null_mask] = _NULL_KEY_PARTITION_ID
+
     return keys
 
 
@@ -132,11 +149,7 @@ def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
-    if (
-        len(table.columns) == 1
-        and pyarrow.types.is_integer(table.column(0).type)
-        and table.column(0).null_count == 0
-    ):
+    if len(table.columns) == 1 and pyarrow.types.is_integer(table.column(0).type):
         return _partition_single_int_column(table.column(0), num_partitions)
 
     if _has_unhashable_pandas_types(table.schema):
