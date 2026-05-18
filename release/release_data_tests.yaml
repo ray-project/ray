@@ -567,10 +567,10 @@
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
-# Exercises a 300-column mixed-type output schema (100 scalar float32 +
-# 100 float32[64] + 100 float32[32]) modeled after production reference
-# data. Stresses per-block BlockMetadataWithSchema propagation on the
-# driver, which dominates large-schema production workloads.
+# Exercises a 300-column wide output schema (100 scalar float32 +
+# 200 float32[32]) modeled after production reference data. Stresses
+# per-block BlockMetadataWithSchema propagation on the driver, which
+# dominates large-schema production workloads.
 - name: worker_scaling_{{num_workers}}_{{worker_type}}
   python: "3.10"
   frequency: weekly
@@ -590,8 +590,7 @@
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
       --num-scalar-cols 100
-      --num-array64-cols 100
-      --num-array32-cols 100
+      --num-array-cols 200
 
 
 ########################
