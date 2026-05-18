@@ -195,23 +195,6 @@ def _validate_direct_streaming_ingress_config(
         )
 
 
-def _validate_direct_streaming_builder_config(
-    builder_config: LLMServingArgs,
-) -> None:
-    if len(builder_config.llm_configs) > 1:
-        raise ValueError(
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING currently supports exactly one "
-            "LLM config. Multi-model direct streaming requires composing multiple "
-            "LLMServer deployments into the main application graph, which is not "
-            "supported yet."
-        )
-
-    _validate_direct_streaming_ingress_config(
-        builder_config.ingress_deployment_config,
-        builder_config.ingress_cls_config,
-    )
-
-
 def build_openai_app(builder_config: dict) -> Application:
     """Build an OpenAI compatible app with the llm deployment setup from
     the given builder configuration.
@@ -231,7 +214,17 @@ def build_openai_app(builder_config: dict) -> Application:
     # uses the LLMServer deployment itself as the ingress app, so it returns
     # before the regular OpenAiIngress wiring.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-        _validate_direct_streaming_builder_config(builder_config)
+        if len(llm_configs) > 1:
+            raise ValueError(
+                "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING currently supports exactly "
+                "one LLM config. Multi-model direct streaming requires composing "
+                "multiple LLMServer deployments into the main application graph, "
+                "which is not supported yet."
+            )
+        _validate_direct_streaming_ingress_config(
+            builder_config.ingress_deployment_config,
+            builder_config.ingress_cls_config,
+        )
         direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
         logger.info(
             "Direct streaming enabled: "
