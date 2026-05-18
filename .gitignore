@@ -254,5 +254,3 @@ CLAUDE.local.md
 # Worktrees
 .worktrees/
 
-verify_serialization*.py
-pr_description.md
