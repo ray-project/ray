@@ -590,8 +590,24 @@ class Quantized(Sampler):
 def sample_from(func: Callable[[Dict], Any]):
     """Specify that tune should sample configuration values from this function.
 
+    Use ``sample_from`` to define conditional search spaces, where the value
+    sampled for one parameter depends on the value sampled for another. The
+    callable receives a ``spec`` whose ``config`` attribute exposes the values
+    already sampled for the trial.
+
     Arguments:
         func: An callable function to draw a sample from.
+
+    Example:
+        >>> import numpy as np
+        >>> from ray import tune
+        >>> # Sample ``b`` from a range that depends on the value of ``a``.
+        >>> config = {
+        ...     "a": tune.randint(5, 10),
+        ...     "b": tune.sample_from(
+        ...         lambda spec: np.random.randint(0, spec.config.a)
+        ...     ),
+        ... }
     """
     return Function(func)
 
