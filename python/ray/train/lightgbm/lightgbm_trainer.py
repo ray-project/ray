@@ -28,7 +28,7 @@ LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE = (
 
 
 def _convert_dtypes_for_lightgbm(dataframe):
-    return dataframe
+    return dataframe.convert_dtypes(dtype_backend="numpy_nullable")
 
 
 def _lightgbm_train_fn_per_worker(
@@ -62,7 +62,7 @@ def _lightgbm_train_fn_per_worker(
         if k != TRAIN_DATASET_KEY
     }
     eval_dfs = {
-        k: d.materialize().to_pandas().convert_dtypes(dtype_backend="numpy_nullable")
+        k: _convert_dtypes_for_lightgbm(d.materialize().to_pandas())
         for k, d in eval_ds_iters.items()
     }
 

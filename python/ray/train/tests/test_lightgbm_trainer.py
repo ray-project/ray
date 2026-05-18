@@ -99,6 +99,25 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
     assert get_num_trees(model) == 10
 
 
+def test_fit_with_arrow_backed_pandas_dtypes(ray_start_6_cpus):
+    train_dataset = ray.data.from_items(
+        [{"x": x, "target": x % 2} for x in range(32)]
+    )
+    valid_dataset = ray.data.from_items(
+        [{"x": x, "target": x % 2} for x in range(32, 48)]
+    )
+
+    trainer = LightGBMTrainer(
+        scaling_config=scale_config,
+        label_column="target",
+        params=params,
+        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+    model = LightGBMTrainer.get_model(result.checkpoint)
+    assert get_num_trees(model) == 10
+
+
 @pytest.mark.parametrize(
     "freq_end_expected",
     [
