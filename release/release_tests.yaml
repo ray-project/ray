@@ -531,6 +531,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_memory_usage_threshold=0.5
@@ -560,6 +561,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -615,10 +617,13 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -635,6 +640,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -668,6 +674,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -700,6 +707,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -734,6 +742,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -772,6 +781,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -800,6 +810,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -829,6 +840,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
