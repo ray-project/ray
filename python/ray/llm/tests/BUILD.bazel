@@ -90,28 +90,6 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
-    size = "large",
-    data = glob(["serve/**/*.yaml"]),
-    env = {
-        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
-    },
-    files = [
-        "serve/cpu/deployments/data_parallel/test_dp_server.py",
-        "serve/cpu/deployments/prefill_decode_disagg/test_prefill_decode_disagg.py",
-    ],
-    name_suffix = "_direct_streaming",
-    tags = [
-        "cpu",
-        "exclusive",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
 # Multi-turn OpenAI-compatible HTTP benchmark (CLI + engine unit tests)
 py_test_module_list(
     size = "large",

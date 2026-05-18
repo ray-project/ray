@@ -15,14 +15,6 @@ def llm_config_with_mock_engine(llm_config):
     yield llm_config
 
 
-@pytest.fixture
-def router_class_path():
-    def _router_class_path(cls: type) -> str:
-        return f"{cls.__module__}.{cls.__name__}"
-
-    return _router_class_path
-
-
 @pytest.fixture(scope="module")
 def ray_tpu_cluster():
     """
