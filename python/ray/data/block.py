@@ -379,8 +379,12 @@ class BlockMetadataWithSchema(BlockMetadata):
         return state
 
     def __setstate__(self, state: Dict[str, Any]):
-        schema_val: bytes | Schema | None = state["schema"]
-        if isinstance(schema_val, bytes):
+        schema_val: bytes | bytearray | Schema | None = state["schema"]
+        if isinstance(schema_val, (bytes, bytearray)):
+            # `bytearray` itself is unhashable so it can't key the LRU cache —
+            # coerce to `bytes` first.
+            if isinstance(schema_val, bytearray):
+                schema_val = bytes(schema_val)
             state["schema"] = _read_arrow_schema_cached(schema_val)
         self.__dict__.update(state)
 
