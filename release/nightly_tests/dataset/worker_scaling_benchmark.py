@@ -160,7 +160,7 @@ def main(args: argparse.Namespace):
         num_rows = num_blocks * rows_per_block
         ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
-        map_kwargs = {"num_cpus": 1}
+        map_kwargs = {"num_cpus": 0.5}
         if args.worker_type == "actors":
             map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=args.num_workers)
             udf = RealisticSchemaUDF
