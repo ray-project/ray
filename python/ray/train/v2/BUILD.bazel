@@ -4,13 +4,18 @@ load("//bazel:python.bzl", "doctest")
 doctest(
     name = "py_doctest[train_v2]",
     size = "large",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         ["**/*.py"],
         exclude = [
             "tests/**",
             "horovod/**",
             "jax/**",
+            # TODO(tseah): enable this after CI has torchft dependencies
+            "examples/pytorch/torchft_linear_example.py",
         ],
     ),
     tags = ["team:ml"],
@@ -39,7 +44,7 @@ py_test(
 
 py_test(
     name = "test_async_checkpointing_validation",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_async_checkpointing_validation.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -182,6 +187,54 @@ py_test(
 )
 
 py_test(
+    name = "test_elastic_scaling_policy",
+    size = "small",
+    srcs = ["tests/test_elastic_scaling_policy.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_elastic_e2e",
+    size = "medium",
+    srcs = ["tests/test_elastic_e2e.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_controller_callback_behaviour",
+    size = "medium",
+    srcs = ["tests/test_controller_callback_behaviour.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_data_integration",
     size = "large",
     srcs = ["tests/test_data_integration.py"],
@@ -202,6 +255,22 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "large",
     srcs = ["tests/test_data_parallel_trainer.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_report_fault_tolerance",
+    size = "medium",
+    srcs = ["tests/test_report_fault_tolerance.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -251,6 +320,22 @@ py_test(
     name = "test_failure_policy",
     size = "small",
     srcs = ["tests/test_failure_policy.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_jax_elastic_e2e",
+    size = "medium",
+    srcs = ["tests/test_jax_elastic_e2e.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -333,7 +418,7 @@ py_test(
 
 py_test(
     name = "test_logging",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_logging.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -559,7 +644,10 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -735,7 +823,10 @@ py_test(
     name = "test_local_mode",
     size = "medium",
     srcs = ["tests/test_local_mode.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",

@@ -11,18 +11,14 @@ subprocess.check_call([
     sys.executable, "-m", "pip", "install", "--no-cache-dir",
     "matplotlib==3.10.6",
     "scikit-learn==1.7.2",
-    "pyarrow==14.0.2",    
-    "xgboost==3.0.5",
+    "pyarrow==17.0.0",
+    "xgboost-cpu==3.0.5",
     "seaborn==0.13.2",
 ])
 
 # 01. Imports
 import os
 import shutil
-import json
-import uuid
-import tempfile
-import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -36,7 +32,10 @@ import pyarrow as pa
 import ray
 import ray.data as rd
 from ray.data import ActorPoolStrategy
-from ray.train import RunConfig, ScalingConfig, CheckpointConfig, FailureConfig, get_dataset_shard, get_checkpoint, get_context
+from ray.train import (
+    RunConfig, ScalingConfig, CheckpointConfig, FailureConfig,
+    get_dataset_shard, get_checkpoint, get_context
+)
 from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
 
 # 02. Load the UCI Cover type dataset (~580k rows, 54 features)
@@ -154,6 +153,7 @@ xgb_params = {
     "eta": 0.3,
     "max_depth": 8,
     "nthread": CPUS_PER_WORKER,  
+    "device": "cpu",  # use CPU for training
 }
 
 trainer = XGBoostTrainer(

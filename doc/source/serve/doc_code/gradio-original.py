@@ -27,7 +27,7 @@ demo = gr.Interface(
 # Test example code
 demo.launch(prevent_thread_lock=True)
 response = requests.post(
-    "http://127.0.0.1:7860/api/predict/", json={"data": ["My name is Lewis"]}
+    "http://127.0.0.1:7860/gradio_api/run/predict/", json={"data": ["My name is Lewis"]}
 )
 assert response.status_code == 200
 print("gradio-original.py: Response from example code is", response.json()["data"])

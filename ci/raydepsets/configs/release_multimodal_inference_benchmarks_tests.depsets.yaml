@@ -32,7 +32,7 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
-  - name: aimage_classification_py${PYTHON_SHORT}
+  - name: image_classification_py${PYTHON_SHORT}
     operation: expand
     depsets:
       - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}

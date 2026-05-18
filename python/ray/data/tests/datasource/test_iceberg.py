@@ -256,7 +256,8 @@ def test_read_basic():
 
     # Actually compare the tables now
     table_p = ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
-    assert orig_table_p.equals(table_p)
+    orig_table_p = orig_table_p.astype(table_p.dtypes.to_dict())
+    pd.testing.assert_frame_equal(orig_table_p, table_p)
 
 
 @pytest.mark.skipif(
@@ -287,7 +288,7 @@ def test_write_basic():
     table_p = (
         ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
     )
-    assert orig_table_p.equals(table_p)
+    assert rows_same(table_p, orig_table_p)
 
 
 @pytest.mark.skipif(
@@ -339,7 +340,7 @@ def test_predicate_pushdown():
 
     # Verify the filter is pushed down to the read operation
     # by checking the optimized logical plan
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Filter operator
@@ -385,7 +386,7 @@ def test_predicate_pushdown_with_initial_filter():
     filtered_ds = ds.filter(expr=col("col_c") >= 5)
 
     # Verify both filters are pushed down
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # No Filter operator should remain in the plan
@@ -429,7 +430,7 @@ def test_projection_pushdown():
     projected_ds = ds.select_columns(["col_a", "col_c"])
 
     # Verify the projection is pushed down to the read operation
-    logical_plan = projected_ds._plan._logical_plan
+    logical_plan = projected_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Project operator
@@ -512,7 +513,7 @@ def test_projection_and_predicate_pushdown(
         filtered_ds = projected_ds
 
     # Verify both optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down
@@ -650,7 +651,7 @@ def test_rename_select_filter_combinations(
         ds = ds.filter(expr=filter_expr)
 
     # Verify optimizations are applied
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down (when applicable)
@@ -731,7 +732,7 @@ def test_predicate_pushdown_complex_expression():
     result = filtered_ds.to_pandas()
 
     # Verify optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     assert not _has_operator_type(
@@ -785,6 +786,12 @@ def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
     if "col_c" in df.columns:
         # Use nullable Int32 to support NaN values
         df["col_c"] = df["col_c"].astype("Int32")
+    # Cast object/string columns to a nullable string dtype so ``None`` is
+    # represented as ``<NA>``, matching the Arrow-backed ``string[pyarrow]``
+    # produced by ``read_iceberg().to_pandas()``.
+    for column in df.columns:
+        if df[column].dtype == object:
+            df[column] = df[column].astype("string")
     return df
 
 

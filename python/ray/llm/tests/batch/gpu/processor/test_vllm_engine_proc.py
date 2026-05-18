@@ -1,5 +1,4 @@
 import sys
-from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
@@ -72,6 +71,7 @@ def test_vllm_engine_processor(
         "max_concurrent_batches": 8,
         "batch_size": 64,
         "should_continue_on_error": False,
+        "log_engine_metrics": True,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
@@ -168,6 +168,76 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
         "num_cpus": 1,
         "num_gpus": 1,
     }
+
+
+@pytest.mark.parametrize(
+    "engine_kwargs_extra,expected_num_bundles",
+    [
+        ({"tensor_parallel_size": 2}, 2),
+        (
+            {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
+            4,
+        ),
+        ({}, 1),  # Default case: tp=1, pp=1 → executor_backend="uni"
+    ],
+)
+def test_vllm_engine_processor_bundle_per_worker(
+    gpu_type, model_opt_125m, engine_kwargs_extra, expected_num_bundles
+):
+    """Test bundle_per_worker auto-expands based on tp*pp."""
+    engine_kwargs = dict(max_model_len=8192)
+    engine_kwargs.update(engine_kwargs_extra)
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=engine_kwargs,
+        accelerator_type=gpu_type,
+        concurrency=4,
+        batch_size=64,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        placement_group_config={"bundle_per_worker": {"CPU": 1, "GPU": 1}},
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    stage.map_batches_kwargs.pop("runtime_env")
+    stage.map_batches_kwargs.pop("compute")
+
+    expected_kwargs = {
+        "zero_copy_batch": True,
+        "max_concurrency": 8,
+        "accelerator_type": gpu_type,
+    }
+
+    if expected_num_bundles > 1:
+        # TP/PP > 1 -> executor_backend="ray"
+        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+        assert ray_remote_args_fn.args[0] == expected_num_bundles
+        assert ray_remote_args_fn.args[1] == gpu_type
+        expected_bundles = [{"CPU": 1, "GPU": 1}] * expected_num_bundles
+        assert ray_remote_args_fn.args[2]["bundles"] == expected_bundles
+        assert ray_remote_args_fn.args[2]["strategy"] == "PACK"
+        expected_kwargs["num_gpus"] = 0
+    else:
+        # TP=1, PP=1 -> executor_backend="uni"
+        expected_kwargs["num_cpus"] = 1
+        expected_kwargs["num_gpus"] = 1
+
+    assert stage.map_batches_kwargs == expected_kwargs
+
+
+def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type, model_opt_125m):
+    """Test that specifying both bundle_per_worker and bundles raises error."""
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            engine_kwargs=dict(max_model_len=8192),
+            accelerator_type=gpu_type,
+            placement_group_config={
+                "bundle_per_worker": {"CPU": 1, "GPU": 1},
+                "bundles": [{"CPU": 1, "GPU": 1}],
+            },
+        )
 
 
 def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_256m):
@@ -613,45 +683,13 @@ def test_audio_model(
 
 
 class TestVLLMEngineProcessorConfig:
-    @pytest.mark.parametrize(
-        "experimental_config",
-        [
-            {"max_tasks_in_flight_per_actor": 10},
-            {},
-        ],
-    )
-    def test_experimental_max_tasks_in_flight_per_actor_usage(
-        self, experimental_config
-    ):
-        """Tests that max_tasks_in_flight_per_actor is set properly in the ActorPoolStrategy."""
-
-        from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
-        from ray.llm._internal.batch.processor.vllm_engine_proc import (
-            build_vllm_engine_processor,
-            vLLMEngineProcessorConfig,
+    def test_build_processor_autoconfig_failure(self):
+        config = vLLMEngineProcessorConfig(
+            model_source="nonexistent-org/nonexistent-model",
         )
 
-        with patch("ray.data.ActorPoolStrategy") as mock_actor_pool:
-            mock_actor_pool.return_value = MagicMock()
-
-            config = vLLMEngineProcessorConfig(
-                model_source="unsloth/Llama-3.2-1B-Instruct",
-                experimental=experimental_config,
-            )
-            build_vllm_engine_processor(config)
-
-            mock_actor_pool.assert_called()
-            call_kwargs = mock_actor_pool.call_args[1]
-            if experimental_config:
-                assert (
-                    call_kwargs["max_tasks_in_flight_per_actor"]
-                    == experimental_config["max_tasks_in_flight_per_actor"]
-                )
-            else:
-                assert (
-                    call_kwargs["max_tasks_in_flight_per_actor"]
-                    == DEFAULT_MAX_TASKS_IN_FLIGHT
-                )
+        processor = build_processor(config)
+        assert processor is not None
 
 
 if __name__ == "__main__":

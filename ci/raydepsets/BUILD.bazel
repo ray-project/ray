@@ -19,8 +19,9 @@ py_library(
         ":workspace",
         ci_require("bazel-runfiles"),
         ci_require("click"),
-        ci_require("pyyaml"),
         ci_require("networkx"),
+        ci_require("pip_requirements_parser"),
+        ci_require("pyyaml"),
     ],
 )
 
@@ -38,6 +39,7 @@ py_test(
         "tests/test_data/pre-hook-error-test.sh",
         "tests/test_data/pre-hook-test.sh",
         "tests/test_data/requirement_constraints_test.txt",
+        "tests/test_data/requirements_compiled_large_test.txt",
         "tests/test_data/requirements_compiled_test.txt",
         "tests/test_data/requirements_compiled_test_expand.txt",
         "tests/test_data/requirements_compiled_test_update.txt",

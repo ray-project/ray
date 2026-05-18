@@ -1,7 +1,7 @@
 # 00. Runtime setup 
 import os
-import sys
 import subprocess
+import sys
 
 # Non-secret env var 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -12,7 +12,7 @@ subprocess.check_call([
     "torch==2.8.0",
     "matplotlib==3.10.6",
     "lightning==2.5.5",
-    "pyarrow==14.0.2",
+    "pyarrow==17.0.0",
 ])
 
 # 01. Imports
@@ -21,18 +21,14 @@ subprocess.check_call([
 import os
 import shutil
 import glob
-import json
-import uuid
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 import gymnasium as gym
 
 # Ray libraries for distributed data and training
 import ray
 import ray.data
-from ray.train.lightning import RayLightningEnvironment  
-from ray.train import ScalingConfig, RunConfig, FailureConfig, CheckpointConfig, get_context, get_checkpoint, report, Checkpoint
+from ray.train import ScalingConfig, RunConfig, FailureConfig, CheckpointConfig
 from ray.train.torch import TorchTrainer
 
 # PyTorch Lightning and base PyTorch for model definition and training
@@ -148,7 +144,7 @@ class DiffusionPolicy(pl.LightningModule):
 # 05. Ray Train Lightning-native training loop
 
 def train_loop(config):
-    import os, tempfile, torch, warnings
+    import os, tempfile, warnings
     import lightning.pytorch as pl
     from ray.train import get_checkpoint, get_context
     from ray.train.lightning import (

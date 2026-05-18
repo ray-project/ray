@@ -16,12 +16,14 @@ from jsonschema import validate
 import ray
 import ray._common.usage.usage_constants as usage_constants
 import ray._common.usage.usage_lib as ray_usage_lib
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray._private.test_utils import (
     format_web_url,
-    run_string_as_driver,
     wait_until_server_available,
 )
 from ray._raylet import GcsClient

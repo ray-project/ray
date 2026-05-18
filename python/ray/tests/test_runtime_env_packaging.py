@@ -5,6 +5,7 @@ import shutil
 import socket
 import string
 import sys
+import tarfile
 import tempfile
 import types
 import uuid
@@ -31,18 +32,22 @@ from ray._private.runtime_env.packaging import (
     get_excludes_from_ignore_files,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
+    get_top_level_dir_from_tar_package,
     get_uri_for_directory,
     get_uri_for_file,
     get_uri_for_package,
+    is_tar_gz_uri,
     is_whl_uri,
     is_zip_uri,
     parse_uri,
     remove_dir_from_filepaths,
+    untar_package,
     unzip_package,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.protocol import ProtocolsProvider
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -503,6 +508,7 @@ class TestParseUri:
         [
             ("gcs://file.zip", Protocol.GCS, "file.zip"),
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+            ("http://test.com/file.zip", Protocol.HTTP, "http_test_com_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
             ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
@@ -514,6 +520,11 @@ class TestParseUri:
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
+                "package-0.0.1-py2.py3-none-any.whl",
+            ),
+            (
+                "http://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
+                Protocol.HTTP,
                 "package-0.0.1-py2.py3-none-any.whl",
             ),
         ],
@@ -784,10 +795,10 @@ class TestS3Protocol:
             assert transport_params["client"] == mock_unsigned_client
 
 
-def test_https_handler_requires_smart_open(monkeypatch):
+def test_http_handler_requires_smart_open(monkeypatch):
     monkeypatch.setitem(sys.modules, "smart_open", None)
     with pytest.raises(ImportError):
-        ProtocolsProvider._handle_https_protocol()
+        ProtocolsProvider._handle_http_protocol()
 
 
 def test_https_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
@@ -827,6 +838,72 @@ def test_https_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
     assert tp["headers"]["User-Agent"].startswith("ray-runtime-env-curl")
     assert tp["headers"]["Accept"] == "*/*"
     assert tp["timeout"] == 60
+
+
+def test_http_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
+    payload = b"dummy-zip-content"
+    captured = {}
+
+    class DummyResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+    def fake_open(uri, mode, transport_params=None):
+        captured["uri"] = uri
+        captured["mode"] = mode
+        captured["transport_params"] = transport_params
+        return DummyResponse(payload)
+
+    monkeypatch.setitem(
+        sys.modules, "smart_open", types.SimpleNamespace(open=fake_open)
+    )
+
+    dest_file = tmp_path / "downloaded_via_smart_open.zip"
+    ProtocolsProvider.download_remote_uri(
+        protocol="http",
+        source_uri="http://example.com/test.zip",
+        dest_file=str(dest_file),
+    )
+
+    assert dest_file.read_bytes() == payload
+    assert captured["uri"] == "http://example.com/test.zip"
+    assert captured["mode"] == "rb"
+    tp = captured["transport_params"]
+    assert tp is not None
+    assert "headers" in tp
+    assert tp["headers"]["User-Agent"].startswith("ray-runtime-env-curl")
+    assert tp["headers"]["Accept"] == "*/*"
+    assert tp["timeout"] == 60
+
+
+def test_upload_working_dir_zip_with_upload_fn(tmp_path):
+    """Test that upload_working_dir_if_needed uses upload_fn for local zip files."""
+    # Create a temporary zip file
+    zip_path = tmp_path / "test_package.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("hello.py", "print('hello')")
+
+    captured_calls = []
+
+    def mock_upload_fn(path, excludes=None, is_file=False):
+        captured_calls.append({"path": path, "excludes": excludes, "is_file": is_file})
+
+    runtime_env = {"working_dir": str(zip_path)}
+    result = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, upload_fn=mock_upload_fn
+    )
+
+    # Verify upload_fn was called with is_file=True
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["path"] == str(zip_path)
+    assert captured_calls[0]["is_file"] is True
+
+    # Verify the working_dir was replaced with a GCS URI
+    expected_uri = get_uri_for_package(zip_path)
+    assert result["working_dir"] == expected_uri
 
 
 @pytest.mark.asyncio
@@ -925,6 +1002,33 @@ class TestDownloadAndUnpackPackage:
 
             # Check that the file was extracted to the destination directory
             assert (Path(local_dir) / "file.txt").exists()
+
+    async def test_download_and_unpack_package_with_file_uri_tar_gz(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tar_path = Path(temp_dir) / "test-tar-file.tar.gz"
+            with tarfile.open(tar_path, "w:gz") as tar:
+                file_content = b"Hello from tar!"
+                info = tarfile.TarInfo(name="top_level/file.txt")
+                info.size = len(file_content)
+                tar.addfile(info, io.BytesIO(file_content))
+
+                dir_info = tarfile.TarInfo(name="top_level/")
+                dir_info.type = tarfile.DIRTYPE
+                tar.addfile(dir_info)
+
+            from urllib.parse import urljoin
+            from urllib.request import pathname2url
+
+            file_path = pathname2url(str(tar_path))
+            pkg_uri = urljoin("file:", file_path[1:])
+
+            dest_dir = tempfile.mkdtemp()
+            local_dir = await download_and_unpack_package(
+                pkg_uri=pkg_uri, base_directory=dest_dir
+            )
+
+            assert (Path(local_dir) / "file.txt").exists()
+            assert (Path(local_dir) / "file.txt").read_text() == "Hello from tar!"
 
     @pytest.mark.parametrize(
         "protocol",
@@ -1099,11 +1203,200 @@ def test_get_uri_for_package():
     assert get_uri_for_package(Path("/tmp/my-pkg.whl")) == "gcs://my-pkg.whl"
 
 
+def test_get_uri_for_package_tar_gz(tmp_path):
+    tar_path = tmp_path / "my-pkg.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tar_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.gz")
+    assert not uri.endswith(".zip")
+
+
+def test_get_uri_for_package_tgz(tmp_path):
+    tgz_path = tmp_path / "my-pkg.tgz"
+    with tarfile.open(tgz_path, "w:gz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tgz_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.gz")
+    assert not uri.endswith(".zip")
+
+
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
         "base_dir/<working_dir_content_hash>"
     )
+
+
+def test_get_local_dir_from_uri_tar_gz():
+    uri = "s3://bucket/archive.tar.gz"
+    local_dir = get_local_dir_from_uri(uri, "base_dir")
+    assert "tar" not in str(local_dir.name)
+    assert not str(local_dir).endswith(".gz")
+
+
+def test_is_tar_gz_uri():
+    assert is_tar_gz_uri("s3://bucket/archive.tar.gz")
+    assert is_tar_gz_uri("https://example.com/pkg.tar.gz")
+    assert is_tar_gz_uri("s3://bucket/archive.tgz")
+    assert not is_tar_gz_uri("s3://bucket/archive.zip")
+    assert not is_tar_gz_uri("gcs://archive.whl")
+    assert not is_tar_gz_uri("invalid_format")
+
+
+def test_parse_uri_tar_gz():
+    protocol, package_name = parse_uri("s3://bucket/archive.tar.gz")
+    assert package_name.endswith(".tar.gz")
+    assert protocol == Protocol.S3
+
+    protocol, package_name = parse_uri("https://example.com/path/my.pkg.tar.gz")
+    assert package_name.endswith(".tar.gz")
+    assert "_" in package_name
+
+
+def test_untar_package_without_top_level_dir(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"Hello, world!"
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=False,
+        unlink_tar=False,
+    )
+    assert (Path(target_dir) / "file.txt").exists()
+    assert (Path(target_dir) / "file.txt").read_text() == "Hello, world!"
+
+
+def test_untar_package_with_top_level_dir(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="top_level/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"Hello from tar!"
+        info = tarfile.TarInfo(name="top_level/file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=True,
+        unlink_tar=True,
+    )
+    assert (Path(target_dir) / "file.txt").exists()
+    assert (Path(target_dir) / "file.txt").read_text() == "Hello from tar!"
+    assert not tar_path.exists()
+
+
+def test_untar_package_path_traversal(tmp_path):
+    """Verify that path traversal attacks are blocked."""
+    tar_path = tmp_path / "malicious.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"malicious"
+        info = tarfile.TarInfo(name="../../../etc/passwd")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=False,
+        unlink_tar=False,
+    )
+    assert not (Path(target_dir) / "../../../etc/passwd").exists()
+    assert len(os.listdir(target_dir)) == 0
+
+
+def test_get_top_level_dir_from_tar_package(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_dot_slash_prefix(tmp_path):
+    """GNU tar commonly prefixes members with ./ — must not return '.'."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="./myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_dot_slash_no_top_level(tmp_path):
+    """./file.txt at the root means no single top-level directory."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) is None
+
+
+def test_get_top_level_dir_from_tar_package_bare_dot_entry(tmp_path):
+    """Archives with a bare '.' entry should handle it gracefully."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dot_info = tarfile.TarInfo(name=".")
+        dot_info.type = tarfile.DIRTYPE
+        tar.addfile(dot_info)
+
+        dir_info = tarfile.TarInfo(name="./myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_no_top_level(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"content"
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) is None
 
 
 if __name__ == "__main__":

@@ -113,6 +113,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   if (!event.label_selector().empty()) {
     task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
   }
+  if (event.has_fallback_strategy()) {
+    task_info->mutable_fallback_strategy()->CopyFrom(event.fallback_strategy());
+  }
 
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_task_func()),
@@ -187,6 +190,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   }
   if (!event.label_selector().empty()) {
     task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
+  }
+  if (event.has_fallback_strategy()) {
+    task_info->mutable_fallback_strategy()->CopyFrom(event.fallback_strategy());
   }
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_actor_func()),

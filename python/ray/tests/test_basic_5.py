@@ -13,9 +13,9 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray._common.test_utils import run_string_as_driver
 from ray._private.test_utils import (
     client_test_enabled,
-    run_string_as_driver,
     wait_for_pid_to_exit,
 )
 
@@ -63,8 +63,6 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
-    import ray
-
     ray.init(num_cpus=1)
 
     @ray.remote(num_cpus=1)

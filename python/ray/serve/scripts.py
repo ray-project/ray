@@ -16,6 +16,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip, get_localhost_ip
 from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -159,10 +160,10 @@ def cli():
 )
 @click.option(
     "--http-host",
-    default=DEFAULT_HTTP_HOST,
+    default=DEFAULT_HTTP_HOST or get_localhost_ip(),
     required=False,
     type=str,
-    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
+    help="Host for HTTP proxies to listen on. Defaults to localhost.",
 )
 @click.option(
     "--http-port",
@@ -259,7 +260,7 @@ def _generate_config_from_file_or_import_path(
             if name is not None:
                 cli_logger.warning("Passed in name is ignored when using config file")
             config_dict = yaml.safe_load(config_file)
-            config = ServeDeploySchema.parse_obj(config_dict)
+            config = ServeDeploySchema.model_validate(config_dict)
     else:
         # TODO(edoakes): should we default to --working-dir="." for this?
         import_path = config_or_import_path
@@ -362,7 +363,7 @@ def deploy(
     )
 
     ServeSubmissionClient(address).deploy_applications(
-        config.dict(exclude_unset=True),
+        config.model_dump(exclude_unset=True),
     )
     cli_logger.success(
         "\nSent deploy request successfully.\n "
@@ -507,7 +508,7 @@ def run(
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
 
-            config = ServeDeploySchema.parse_obj(config_dict)
+            config = ServeDeploySchema.model_validate(config_dict)
 
     else:
         is_config = False
@@ -539,18 +540,22 @@ def run(
 
     http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
+    controller_options = None
+    # Merge http_options, grpc_options, and controller_options with the ones on
+    # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         http_options["location"] = ProxyLocation._to_deployment_mode(
             config.proxy_location
         ).value
-        config_http_options = config.http_options.dict()
+        config_http_options = config.http_options.model_dump()
         http_options = {**config_http_options, **http_options}
-        grpc_options = gRPCOptions(**config.grpc_options.dict())
+        grpc_options = gRPCOptions(**config.grpc_options.model_dump())
+        controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        controller_options=controller_options,
     )
 
     try:
@@ -646,7 +651,7 @@ def config(address: str, name: Optional[str]):
     if name is None:
         configs = [
             yaml.dump(
-                app.deployed_app_config.dict(exclude_unset=True),
+                app.deployed_app_config.model_dump(exclude_unset=True),
                 Dumper=ServeDeploySchemaDumper,
                 sort_keys=False,
             )
@@ -663,7 +668,7 @@ def config(address: str, name: Optional[str]):
         if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:
-            config = app.deployed_app_config.dict(exclude_unset=True)
+            config = app.deployed_app_config.model_dump(exclude_unset=True)
             print(
                 yaml.dump(config, Dumper=ServeDeploySchemaDumper, sort_keys=False),
                 end="",
@@ -919,7 +924,7 @@ def build(
             deployments=[deployment_to_schema(d) for d in built_app.deployments],
         )
 
-        return schema.dict(exclude_unset=True)
+        return schema.model_dump(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -933,19 +938,19 @@ def build(
     deploy_config = {
         "proxy_location": "EveryNode",
         "http_options": {
-            "host": "0.0.0.0",
+            "host": get_all_interfaces_ip(),
             "port": 8000,
         },
         "grpc_options": {
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
         },
-        "logging_config": LoggingConfig().dict(),
+        "logging_config": LoggingConfig().model_dump(),
         "applications": app_configs,
     }
 
     # Parse + validate the set of application configs
-    ServeDeploySchema.parse_obj(deploy_config)
+    ServeDeploySchema.model_validate(deploy_config)
 
     config_str += yaml.dump(
         deploy_config,

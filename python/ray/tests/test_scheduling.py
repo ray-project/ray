@@ -12,16 +12,18 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.util.accelerators
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.internal_api import memory_summary
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
     PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import (
     get_metric_check_condition,
     object_memory_usage,
 )
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -402,9 +404,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     # The result of worker_node_ref will be pinned on the worker node.
     worker_node_ref = get_node_id.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            worker_node.node_id, soft=False
-        ),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node.node_id},
     ).remote()
 
     # Run a borrower task on the head node. From within the borrower task, we launch
@@ -412,9 +412,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     assert (
         ray.get(
             borrower.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node.node_id, soft=False
-                ),
+                label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node.node_id},
             ).remote([worker_node_ref])
         )
         == worker_node.node_id

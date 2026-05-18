@@ -24,7 +24,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ProcessorConfig(_ProcessorConfig):
     """The processor configuration.
 
@@ -50,7 +50,7 @@ class ProcessorConfig(_ProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     """The configuration for the HTTP request processor.
 
@@ -102,7 +102,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     """The configuration for the vLLM engine processor.
 
@@ -125,7 +125,16 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             This is to overlap the batch processing to avoid the tail latency of
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
-            enough for batch size >= 64.
+            enough for batch size >= 64. Sets the engine actor's Ray Core
+            ``max_concurrency``.
+        max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
+            each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
+            If unset, Ray Data uses
+            ``ray.data.DataContext.max_tasks_in_flight_per_actor`` if set globally.
+            Otherwise, it defaults to ``2 * max_concurrent_batches``; the factor
+            can be overridden via the
+            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
+            env var.
         should_continue_on_error: If True, continue processing when inference fails for a row
             instead of raising an exception. Failed rows will have a non-empty
             ``__inference_error__`` column containing the error message, and other
@@ -153,8 +162,8 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
-            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
-            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            If ``concurrency`` is an ``int`` ``n``, both CPU and GPU stages use an autoscaling
+            pool from ``(1, n)``.
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
@@ -211,7 +220,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     """The configuration for the SGLang engine processor.
 
@@ -233,7 +242,16 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             This is to overlap the batch processing to avoid the tail latency of
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
-            enough for batch size >= 64.
+            enough for batch size >= 64. Sets the engine actor's Ray Core
+            ``max_concurrency``.
+        max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
+            each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
+            If unset, Ray Data uses
+            ``ray.data.DataContext.max_tasks_in_flight_per_actor`` if set globally.
+            Otherwise, it defaults to ``2 * max_concurrent_batches``; the factor
+            can be overridden via the
+            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
+            env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
@@ -251,8 +269,8 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
-            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
-            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            If ``concurrency`` is an ``int`` ``n``, both CPU and GPU stages use an autoscaling
+            pool from ``(1, n)``.
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
@@ -296,7 +314,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     """The configuration for the serve deployment processor.
 
@@ -402,7 +420,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     """The configuration for the chat template stage.
 
@@ -431,7 +449,7 @@ class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DetokenizeStageConfig(_DetokenizeStageConfig):
     """The configuration for the detokenize stage.
 
@@ -456,7 +474,7 @@ class DetokenizeStageConfig(_DetokenizeStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     """The configuration for the prepare multimodal stage.
 
@@ -488,7 +506,7 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TokenizerStageConfig(_TokenizerStageConfig):
     """The configuration for the tokenizer stage.
 
@@ -513,7 +531,7 @@ class TokenizerStageConfig(_TokenizerStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HttpRequestStageConfig(_HttpRequestStageConfig):
     """The configuration for the http request stage.
 
@@ -581,7 +599,7 @@ def build_llm_processor(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def build_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import List, Optional, TypeVar
 
 import ray
@@ -10,9 +10,16 @@ from ray.train.v2._internal.constants import (
     DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
 )
 from ray.train.v2._internal.exceptions import BroadcastCollectiveTimeoutError
+from ray.train.v2._internal.util import wait_with_logging
 
 T = TypeVar("T", bound=Optional[object])
 logger = logging.getLogger(__name__)
+
+
+class SynchronizationBarrierResetError(Exception):
+    """Raised when the synchronization barrier is reset, e.g. due to a worker failure."""
+
+    pass
 
 
 BROADCAST_PERIODIC_WARNING = """
@@ -35,18 +42,19 @@ class SynchronizationActor:
 
     def __init__(
         self,
-        timeout_s: float = DEFAULT_COLLECTIVE_TIMEOUT_S,
+        timeout_s: Optional[float] = DEFAULT_COLLECTIVE_TIMEOUT_S,
         warn_interval_s: float = DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     ):
         self._counter: int = 0
         self._world_size: int = 0
         self._condition = asyncio.Condition()
         self._reduced_data = None
+        self._reset = False
         # The time when workers from different ranks
         # enters the synchronization barrier.
         self._sync_start_times: List[Optional[float]] = []
         # The timeout in seconds for the synchronization barrier.
-        self._timeout_s: float = timeout_s
+        self._timeout_s: Optional[float] = timeout_s
         # The interval in seconds to log a warning when waiting for the barrier.
         self._warn_interval_s: float = warn_interval_s
 
@@ -70,12 +78,16 @@ class SynchronizationActor:
         if self._counter == 0:
             self._reduced_data = None
             self._world_size = 0
+            self._reset = False
+            self._condition.notify_all()
 
-    def _setup_or_validate_collective_op(self, world_size: int):
+    async def _setup_or_validate_collective_op(self, world_size: int):
         """The setup method for the synchronization actor if it is not setup yet.
         It initializes the world size and the start times for the
         synchronization barrier.
         """
+        # Wait for previous collective reset to finish.
+        await self._condition.wait_for(lambda: not self._reset)
         if self._world_size == 0:
             self._world_size = world_size
             self._sync_start_times = [None] * world_size
@@ -85,15 +97,15 @@ class SynchronizationActor:
                 Got {world_size} and expected {self._world_size}."
             )
 
-    @contextmanager
-    def _broadcast_collective_context_manager(
+    @asynccontextmanager
+    async def _broadcast_collective_context_manager(
         self, world_rank: int, world_size: int, data: T
     ):
         """A context manager that ensures the synchronization barrier is lifted
         after the block of code is executed.
         """
         try:
-            self._setup_or_validate_collective_op(world_size)
+            await self._setup_or_validate_collective_op(world_size)
             if world_rank == 0:
                 self._reduced_data = data
             if self._counter < self._world_size:
@@ -116,33 +128,30 @@ class SynchronizationActor:
         """Returns the ranks that have not entered the synchronization barrier."""
         return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
-    async def _wait_with_logging(
-        self, condition, world_rank: int, caller_method_name: str
-    ):
-        """Waits for the condition to be notified, logging an warning every
-        `log_interval` seconds, and raises a timeout error if `timeout` is reached.
+    def _generate_broadcast_periodic_warning(self, caller_method_name: str) -> str:
+        """Generates the warning message for the broadcast periodic warning."""
+
+        return BROADCAST_PERIODIC_WARNING.format(
+            caller_method_name=caller_method_name,
+            world_size=self._world_size,
+            max_time_elapsed_s=self._get_time_elapsed(),
+            missing_ranks=self._get_missing_ranks(),
+            warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            warn_interval_s=self._warn_interval_s,
+        )
+
+    async def reset(self):
+        """Reset the synchronization barrier, unblocking any waiting workers.
+
+        If no workers are currently at the barrier, this is a no-op.
+        Waiting workers will raise SynchronizationBarrierResetError.
+        The actor remains alive and usable for subsequent barriers.
         """
-        current_time = asyncio.get_event_loop().time()
-        self._sync_start_times[world_rank] = current_time
-        while True:
-            try:
-                await asyncio.wait_for(condition.wait(), timeout=self._warn_interval_s)
+        async with self._condition:
+            if self._counter == 0:
                 return
-            # asyncio.wait_for() raises `asyncio.TimeoutError` for asyncio<=3.10
-            # and raises `TimeoutError` for asyncio>=3.11
-            # https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for
-            # TODO: (hpguo) Make only one worker log the warning message.
-            except (asyncio.TimeoutError, TimeoutError):
-                logger.warning(
-                    BROADCAST_PERIODIC_WARNING.format(
-                        caller_method_name=caller_method_name,
-                        world_size=self._world_size,
-                        max_time_elapsed_s=self._get_time_elapsed(),
-                        missing_ranks=self._get_missing_ranks(),
-                        warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
-                        warn_interval_s=self._warn_interval_s,
-                    ),
-                )
+            self._reset = True
+            self._condition.notify_all()
 
     async def broadcast_from_rank_zero(
         self,
@@ -173,7 +182,7 @@ class SynchronizationActor:
         # manager which makes the condition variable awaiting and the counter
         # incrementing an atomic operation.
         async with self._condition:
-            with self._broadcast_collective_context_manager(
+            async with self._broadcast_collective_context_manager(
                 world_rank, world_size, data
             ):
                 # If the counter is equal to the world size, it means the last worker
@@ -185,12 +194,26 @@ class SynchronizationActor:
                 # If the counter is less than the world size, the actor waits for the
                 # other workers to call the broadcast_from_rank_zero method.
                 try:
-                    await asyncio.wait_for(
-                        self._wait_with_logging(
-                            self._condition, world_rank, caller_method_name
-                        ),
-                        timeout=self._timeout_s if self._timeout_s >= 0 else None,
+                    current_time = asyncio.get_event_loop().time()
+                    self._sync_start_times[world_rank] = current_time
+                    await wait_with_logging(
+                        self._condition,
+                        predicate=None,
+                        generate_warning_message=(
+                            lambda: self._generate_broadcast_periodic_warning(
+                                caller_method_name
+                            )
+                        )
+                        if world_rank == 0
+                        else None,
+                        warn_interval_s=self._warn_interval_s,
+                        timeout_s=self._timeout_s,
                     )
+                    if self._reset:
+                        raise SynchronizationBarrierResetError(
+                            "Synchronization barrier was reset, likely due "
+                            "to a worker failure and replica group replacement."
+                        )
                     return self._reduced_data
                 except (asyncio.TimeoutError, TimeoutError) as e:
                     raise BroadcastCollectiveTimeoutError(

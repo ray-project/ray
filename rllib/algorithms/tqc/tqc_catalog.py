@@ -7,9 +7,7 @@ TQC uses multiple quantile critics, each outputting n_quantiles values.
 import gymnasium as gym
 
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.configs import MLPHeadConfig
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
 class TQCCatalog(SACCatalog):
@@ -61,29 +59,3 @@ class TQCCatalog(SACCatalog):
             output_layer_activation="linear",
             output_layer_dim=self.n_quantiles,
         )
-
-    @OverrideToImplementCustomLogic
-    def build_qf_encoder(self, framework: str) -> Encoder:
-        """Builds a Q-function encoder for TQC.
-
-        Same as SAC - encodes state-action pairs.
-
-        Args:
-            framework: The framework to use ("torch").
-
-        Returns:
-            The encoder for the Q-network.
-        """
-        return super().build_qf_encoder(framework=framework)
-
-    @OverrideToImplementCustomLogic
-    def build_qf_head(self, framework: str) -> Model:
-        """Builds a Q-function head that outputs n_quantiles values.
-
-        Args:
-            framework: The framework to use ("torch").
-
-        Returns:
-            The Q-function head outputting n_quantiles values.
-        """
-        return self.qf_head_config.build(framework=framework)

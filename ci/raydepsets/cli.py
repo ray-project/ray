@@ -12,6 +12,7 @@ from typing import List, Optional
 import click
 import runfiles
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
+from pip_requirements_parser import RequirementsFile
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -168,6 +169,9 @@ class DependencySetManager:
 
     def _build(self, build_all_configs: Optional[bool] = False):
         """Build the dependency graph from config depsets."""
+        # First pass: add all depset nodes so we can validate edges
+        depset_names = {depset.name for depset in self.config.depsets}
+
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
@@ -178,6 +182,11 @@ class DependencySetManager:
                     config_name=depset.config_name,
                 )
             elif depset.operation == "subset":
+                if depset.source_depset not in depset_names:
+                    raise ValueError(
+                        f"Depset '{depset.name}' references source_depset '{depset.source_depset}' which does not exist. "
+                        f"Available depsets: {sorted(depset_names)}"
+                    )
                 self.build_graph.add_node(
                     depset.name,
                     operation="subset",
@@ -187,6 +196,12 @@ class DependencySetManager:
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
+                for dep_name in depset.depsets:
+                    if dep_name not in depset_names:
+                        raise ValueError(
+                            f"Depset '{depset.name}' references depset '{dep_name}' which does not exist. "
+                            f"Available depsets: {sorted(depset_names)}"
+                        )
                 self.build_graph.add_node(
                     depset.name,
                     operation="expand",
@@ -196,6 +211,20 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            elif depset.operation == "relax":
+                if depset.source_depset not in depset_names:
+                    raise ValueError(
+                        f"Depset '{depset.name}' references source_depset '{depset.source_depset}' which does not exist. "
+                        f"Available depsets: {sorted(depset_names)}"
+                    )
+                self.build_graph.add_node(
+                    depset.name,
+                    operation="relax",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
+                )
+                self.build_graph.add_edge(depset.source_depset, depset.name)
             else:
                 raise ValueError(
                     f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
@@ -317,6 +346,13 @@ class DependencySetManager:
                 output=depset.output,
                 include_setuptools=depset.include_setuptools,
             )
+        elif depset.operation == "relax":
+            self.relax(
+                source_depset=depset.source_depset,
+                packages=depset.packages,
+                name=depset.name,
+                output=depset.output,
+            )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(
@@ -393,9 +429,13 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset_req_list.extend(
-                self.get_expanded_depset_requirements(depset_name, [])
-            )
+            dep = _get_depset(self.config.depsets, depset_name)
+            if dep.operation == "relax":
+                depset_req_list.append(dep.output)
+            else:
+                depset_req_list.extend(
+                    self.get_expanded_depset_requirements(depset_name, [])
+                )
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(
@@ -406,6 +446,37 @@ class DependencySetManager:
             append_flags=append_flags,
             override_flags=override_flags,
             include_setuptools=include_setuptools,
+        )
+
+    def relax(
+        self,
+        source_depset: str,
+        packages: List[str],
+        name: str,
+        output: str = None,
+    ):
+        """Relax a dependency set by removing specified packages from the lock file."""
+        source_depset = _get_depset(self.config.depsets, source_depset)
+
+        lock_file_path = self.get_path(source_depset.output)
+        requirements_file = parse_lock_file(str(lock_file_path))
+        requirements_list = [req.name for req in requirements_file.requirements]
+        for package in packages:
+            if package not in requirements_list:
+                raise RuntimeError(
+                    f"Package {package} not found in lock file {source_depset.output}"
+                )
+
+        # Remove specified packages from requirements
+        requirements_file.requirements = [
+            req for req in requirements_file.requirements if req.name not in packages
+        ]
+
+        # Write the modified lock file
+        output_path = self.get_path(output) if output else lock_file_path
+        write_lock_file(requirements_file, str(output_path))
+        click.echo(
+            f"Relaxed {source_depset.name} by removing packages {packages} and wrote to {output_path}"
         )
 
     def read_lock_file(self, file_path: Path) -> List[str]:
@@ -492,6 +563,22 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
+
+
+def parse_lock_file(lock_file_path: str) -> RequirementsFile:
+    """
+    Parses a lock file and returns a RequirementsFile object, which contains
+    all information from the file, including requirements, options, and comments.
+    """
+    return RequirementsFile.from_file(lock_file_path)
+
+
+def write_lock_file(requirements_file: RequirementsFile, lock_file_path: str):
+    """
+    Writes a RequirementsFile object to a lock file, preserving all its content.
+    """
+    with open(lock_file_path, "w") as f:
+        f.write(requirements_file.dumps())
 
 
 def _uv_binary():

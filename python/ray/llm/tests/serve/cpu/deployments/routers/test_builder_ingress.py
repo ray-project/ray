@@ -21,7 +21,10 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
-from ray.serve.config import AutoscalingConfig
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 
 @pytest.fixture
@@ -370,6 +373,212 @@ class TestBuildOpenaiApp:
         autoscaling_config = deployment._deployment_config.autoscaling_config
         assert autoscaling_config is not None
         assert autoscaling_config.target_ongoing_requests == user_target
+
+    def test_direct_streaming_builds_ingress_with_router_attached(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        ingress_request_router = app._ingress_request_router
+
+        assert app._bound_deployment.name == "LLMServer:test-model"
+        assert issubclass(app._bound_deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert ingress_request_router is not None
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        # `RequestRouterConfig._serialize_request_router_cls` normalizes the
+        # class to its import path at config-build time.
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
+        )
+
+    def test_direct_streaming_user_request_router_config_wins(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        """A user-supplied ``request_router_config`` on ``LLMConfig`` must
+        survive direct-streaming wiring rather than being overwritten with the
+        default.
+        """
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
+        )
+
+    def test_direct_streaming_rejects_multiple_llm_configs(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        other_llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="other-model")
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="currently supports exactly one LLM config",
+        ):
+            build_openai_app(LLMServingArgs(llm_configs=[llm_config, other_llm_config]))
+
+    @pytest.mark.parametrize(
+        ("builder_kwargs", "match"),
+        [
+            (
+                {"ingress_deployment_config": {"num_replicas": 2}},
+                "does not support ingress_deployment_config",
+            ),
+            (
+                {"ingress_cls_config": {"ingress_extra_kwargs": {"key": "value"}}},
+                "does not support ingress_cls_config",
+            ),
+        ],
+    )
+    def test_direct_streaming_rejects_ingress_config(
+        self,
+        llm_config,
+        disable_placement_bundles,
+        monkeypatch,
+        builder_kwargs,
+        match,
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        with pytest.raises(ValueError, match=match):
+            build_openai_app(LLMServingArgs(llm_configs=[llm_config], **builder_kwargs))
+
+
+class TestIngressScaleToZero:
+    """Tests for ingress scale-to-zero behavior when all models have min_replicas=0."""
+
+    def test_all_models_scale_to_zero(self, disable_placement_bundles):
+        """When all models have min_replicas=0, ingress should also have min_replicas=0."""
+        llm_cfg_dict_autoscaling = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 2,
+                }
+            },
+        )
+        llm_cfg_obj_autoscaling = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_b"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": AutoscalingConfig(
+                    min_replicas=0,
+                    max_replicas=4,
+                )
+            },
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(
+                llm_configs=[llm_cfg_dict_autoscaling, llm_cfg_obj_autoscaling],
+            )
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 0
+
+    def test_mixed_min_replicas_keeps_default(self, disable_placement_bundles):
+        """When some models have min_replicas>0, ingress should keep default min_replicas."""
+        llm_cfg_zero = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 2,
+                }
+            },
+        )
+        llm_cfg_nonzero = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_b"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": AutoscalingConfig(
+                    min_replicas=1,
+                    max_replicas=4,
+                )
+            },
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(
+                llm_configs=[llm_cfg_zero, llm_cfg_nonzero],
+            )
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        # Default min_replicas from AutoscalingConfig is 1
+        assert autoscaling_config.min_replicas == 1
+
+    def test_no_autoscaling_config_keeps_default(self, disable_placement_bundles):
+        """When models don't have autoscaling_config, ingress should keep default."""
+        llm_cfg = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(llm_configs=[llm_cfg]),
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 1
+
+    def test_user_override_takes_precedence(self, disable_placement_bundles):
+        """User-specified ingress min_replicas should override scale-to-zero logic."""
+        llm_cfg = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 2,
+                }
+            },
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(
+                llm_configs=[llm_cfg],
+                ingress_deployment_config={
+                    "autoscaling_config": {
+                        "min_replicas": 3,
+                        "max_replicas": 5,
+                    }
+                },
+            )
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 3
 
 
 def extract_applications_from_output(output: bytes) -> dict:

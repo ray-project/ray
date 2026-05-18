@@ -29,7 +29,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 
 namespace {
 /// The error message constructed from below methods is user-facing, so please avoid
@@ -233,11 +232,14 @@ GcsActorManager::GcsActorManager(
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name,
     ray::observability::MetricInterface &actor_by_state_gauge,
-    ray::observability::MetricInterface &gcs_actor_by_state_gauge)
+    ray::observability::MetricInterface &gcs_actor_by_state_gauge,
+    pubsub::ObservabilityPublisher *observability_publisher,
+    ClockInterface &clock)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher),
       raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
       ray_event_recorder_(ray_event_recorder),
@@ -249,7 +251,8 @@ GcsActorManager::GcsActorManager(
       usage_stats_client_(nullptr),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
       actor_by_state_gauge_(actor_by_state_gauge),
-      gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge) {
+      gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge),
+      clock_(clock) {
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
@@ -420,7 +423,8 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      });
+      },
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
 }
 
 void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
@@ -711,10 +715,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             << actor->GetRayNamespace() << "\", ...)";
 
         auto error_data = CreateErrorTableData(
-            "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
+            "detached_actor_anonymous_namespace", stream.str(), clock_.Now(), job_id);
 
         RAY_LOG(WARNING) << error_data.SerializeAsString();
-        gcs_publisher_->PublishError(job_id.Hex(), std::move(error_data));
+        observability_publisher_->PublishError(job_id.Hex(), std::move(error_data));
       }
       actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
     } else {
@@ -859,7 +863,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
-      current_sys_time_ms());
+      clock_.NowUnixMillis());
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
@@ -1002,7 +1006,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
 
   gcs_actor_scheduler_->OnActorDestruction(it->second);
 
-  it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
+  it->second->GetMutableActorTableData()->set_timestamp(clock_.NowUnixMillis());
   const auto actor = it->second;
 
   // Cancel existing timer only on force_kill to interrupt graceful shutdown.
@@ -1088,7 +1092,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  auto time = current_sys_time_ms();
+  auto time = clock_.NowUnixMillis();
   if (actor->GetState() != rpc::ActorTableData::DEAD) {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->set_end_time(time);
@@ -1292,11 +1296,11 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
-    absl::flat_hash_map<WorkerID, ActorID> children_ids;
+    std::vector<std::pair<WorkerID, ActorID>> children_ids;
     // Make a copy of all the actor IDs owned by workers on the dead node.
     for (const auto &owner : it->second) {
       for (const auto &child_id : owner.second.children_actor_ids_) {
-        children_ids.emplace(owner.first, child_id);
+        children_ids.emplace_back(owner.first, child_id);
       }
     }
 
@@ -1442,10 +1446,12 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
   }
 }
 
-void GcsActorManager::RestartActor(const ActorID &actor_id,
-                                   bool need_reschedule,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   std::function<void()> done_callback) {
+void GcsActorManager::RestartActor(
+    const ActorID &actor_id,
+    bool need_reschedule,
+    const rpc::ActorDeathCause &death_cause,
+    std::function<void()> done_callback,
+    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
@@ -1509,16 +1515,40 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     }
     auto new_num_restarts = num_restarts + 1;
     mutable_actor_table_data->set_num_restarts(new_num_restarts);
+
+    // Invoke creation callbacks early for actors that are already created.
+    // This enforces the strict sequence that the callback is invoked with the
+    // original created actor's address and borrowed_refs, before clearing the address.
+    // Note that only borrowed_refs needs to be populated in the reconstructed
+    // PushTaskReply because the callback implementation extracts other fields
+    // (like actor_address) directly from the GcsActor instance.
+    auto create_callback_iter = actor_to_create_callbacks_.find(actor_id);
+    if (create_callback_iter != actor_to_create_callbacks_.end() &&
+        actor->GetState() == rpc::ActorTableData::ALIVE) {
+      RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+          << "Invoking pending creation callbacks early in RestartActor before "
+             "clearing the actor address to enforce the strict sequence that the "
+             "callback is invoked with the original created actor's address and "
+             "borrowed_refs.";
+      rpc::PushTaskReply reply;
+      reply.mutable_borrowed_refs()->CopyFrom(actor->GetBorrowedRefsAtCreation());
+      RunAndClearActorCreationCallbacks(actor, reply, Status::OK());
+    }
+
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
+    // Emit lifecycle event immediately after state transition so tests and
+    // observers see the restart without waiting for async table writes.
+    actor->WriteActorExportEvent(false, restart_reason);
     // The backend storage is reliable in the future, so the status must be ok.
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
+
         {[this, actor, actor_id, mutable_actor_table_data, done_callback](
              Status actor_table_status) {
            gcs_table_storage_->ActorTaskSpecTable().Put(
@@ -1531,7 +1561,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
                   }
                   gcs_publisher_->PublishActor(
                       actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-                  actor->WriteActorExportEvent(false);
                 },
                 io_context_});
          },
@@ -1540,7 +1569,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   } else {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
-    auto time = current_sys_time_ms();
+    auto time = clock_.NowUnixMillis();
     mutable_actor_table_data->set_end_time(time);
     mutable_actor_table_data->set_timestamp(time);
 
@@ -1609,6 +1638,12 @@ void GcsActorManager::OnActorSchedulingFailed(
     death_cause.mutable_actor_unschedulable_context()->set_error_message(
         scheduling_failure_message);
     break;
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED:
+    error_msg = absl::StrCat(
+        "Could not create the actor because worker startup repeatedly failed.\n",
+        scheduling_failure_message);
+    death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
+    break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
                    << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
@@ -1622,7 +1657,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                                              const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
-  liftime_num_created_actors_++;
+  lifetime_num_created_actors_++;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
   // counter may ReportActorOutOfScope to GCS server,
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
@@ -1647,12 +1682,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
 
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  auto time = current_sys_time_ms();
+  auto time = clock_.NowUnixMillis();
   mutable_actor_table_data->set_timestamp(time);
   if (actor->GetState() != rpc::ActorTableData::RESTARTING) {
     mutable_actor_table_data->set_start_time(time);
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
+  actor->SetBorrowedRefsAtCreation(reply.borrowed_refs());
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
@@ -2033,7 +2069,7 @@ void GcsActorManager::RecordMetrics() const {
   gcs_actor_by_state_gauge_.Record(GetPendingActorsCount(), {{"State", "Pending"}});
   if (usage_stats_client_ != nullptr) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
-                                                 liftime_num_created_actors_);
+                                                 lifetime_num_created_actors_);
   }
   actor_state_counter_->FlushOnChangeCallbacks();
 }

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/meter.h>
 #include <opentelemetry/metrics/observer_result.h>
 #include <opentelemetry/metrics/sync_instruments.h>
@@ -111,6 +112,7 @@ class OpenTelemetryMetricRecorder {
  private:
   OpenTelemetryMetricRecorder();
   std::shared_ptr<opentelemetry::sdk::metrics::MeterProvider> meter_provider_;
+  opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options_;
 
   // Map of metric names to their observations (aka. set of tags and metric values).
   // This contains all data points for a given metric for a given interval. This map

@@ -1,0 +1,136 @@
+name: Notify Slack on Labeled Issue or PR
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack Channel Based on Label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // ── Label → Slack webhook secret name mapping ──────────────────────
+            // Add or remove entries here as you add/remove Ray library channels.
+            // The key is the GitHub label name; the value is the name of the
+            // GitHub Actions secret that holds that channel's Incoming Webhook URL.
+            const LABEL_TO_SECRET = {
+              "serve":        "SLACK_WEBHOOK_SERVE",
+              "train":        "SLACK_WEBHOOK_TRAIN",
+              "tune":         "SLACK_WEBHOOK_TUNE",
+              "rllib":        "SLACK_WEBHOOK_RLLIB",
+              "data":         "SLACK_WEBHOOK_DATA",
+              "air":          "SLACK_WEBHOOK_AIR",
+              "core":         "SLACK_WEBHOOK_CORE",
+              "workflow":     "SLACK_WEBHOOK_WORKFLOW",
+              "cluster":      "SLACK_WEBHOOK_CLUSTER",
+            };
+
+            // ── Resolve the webhook URLs from secrets ──────────────────────────
+            // We pass secrets in as env vars so the script can read them safely.
+            const SECRET_VALUES = {
+              "SLACK_WEBHOOK_SERVE":    process.env.SLACK_WEBHOOK_SERVE,
+              "SLACK_WEBHOOK_TRAIN":    process.env.SLACK_WEBHOOK_TRAIN,
+              "SLACK_WEBHOOK_TUNE":     process.env.SLACK_WEBHOOK_TUNE,
+              "SLACK_WEBHOOK_RLLIB":    process.env.SLACK_WEBHOOK_RLLIB,
+              "SLACK_WEBHOOK_DATA":     process.env.SLACK_WEBHOOK_DATA,
+              "SLACK_WEBHOOK_AIR":      process.env.SLACK_WEBHOOK_AIR,
+              "SLACK_WEBHOOK_CORE":     process.env.SLACK_WEBHOOK_CORE,
+              "SLACK_WEBHOOK_WORKFLOW": process.env.SLACK_WEBHOOK_WORKFLOW,
+              "SLACK_WEBHOOK_CLUSTER":  process.env.SLACK_WEBHOOK_CLUSTER,
+            };
+
+            // ── Determine event type and payload ──────────────────────────────
+            const isPR    = !!context.payload.pull_request;
+            const item    = isPR ? context.payload.pull_request : context.payload.issue;
+            const type    = isPR ? "Pull Request" : "Issue";
+            const action  = context.payload.action;           // "opened" | "labeled"
+            const labels  = (item.labels || []).map(l => l.name);
+
+            // On "labeled" events, only act on the label that was just added
+            // (avoids duplicate messages when multiple labels already exist).
+            const triggeredLabel = action === "labeled"
+              ? context.payload.label.name
+              : null;
+
+            const labelsToProcess = triggeredLabel ? [triggeredLabel] : labels;
+
+            // ── Send a message for each matching label ─────────────────────────
+            for (const label of labelsToProcess) {
+              const secretName = LABEL_TO_SECRET[label];
+              if (!secretName) continue;                      // label not mapped
+
+              const webhookUrl = SECRET_VALUES[secretName];
+              if (!webhookUrl) {
+                core.warning(`Secret ${secretName} is not set — skipping #${label}`);
+                continue;
+              }
+
+              // Build a rich Slack Block Kit message
+              const allLabelNames = labels.map(l => `\`${l}\``).join(" ");
+              const body = {
+                blocks: [
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: `*New ${type} in <https://github.com/${context.repo.owner}/${context.repo.repo}|${context.repo.owner}/${context.repo.repo}>*`
+                    }
+                  },
+                  {
+                    type: "section",
+                    fields: [
+                      { type: "mrkdwn", text: `*Title*\n<${item.html_url}|${item.title}>` },
+                      { type: "mrkdwn", text: `*Author*\n<${item.user.html_url}|${item.user.login}>` },
+                      { type: "mrkdwn", text: `*Labels*\n${allLabelNames || "_none_"}` },
+                      { type: "mrkdwn", text: `*#*\n${item.number}` },
+                    ]
+                  },
+                  ...(item.body ? [{
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      // Truncate long bodies so the message stays readable
+                      text: `*Description*\n${item.body.slice(0, 300)}${item.body.length > 300 ? "…" : ""}`
+                    }
+                  }] : []),
+                  {
+                    type: "actions",
+                    elements: [
+                      {
+                        type: "button",
+                        text: { type: "plain_text", text: `View ${type}` },
+                        url: item.html_url,
+                        style: "primary"
+                      }
+                    ]
+                  }
+                ]
+              };
+
+              const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+              });
+
+              if (!response.ok) {
+                core.error(`Failed to post to Slack for label "${label}": ${response.status} ${response.statusText}`);
+              } else {
+                core.info(`Posted to Slack channel for label "${label}"`);
+              }
+            }
+        env:
+          SLACK_WEBHOOK_SERVE:    ${{ secrets.SLACK_WEBHOOK_SERVE }}
+          SLACK_WEBHOOK_TRAIN:    ${{ secrets.SLACK_WEBHOOK_TRAIN }}
+          SLACK_WEBHOOK_TUNE:     ${{ secrets.SLACK_WEBHOOK_TUNE }}
+          SLACK_WEBHOOK_RLLIB:    ${{ secrets.SLACK_WEBHOOK_RLLIB }}
+          SLACK_WEBHOOK_DATA:     ${{ secrets.SLACK_WEBHOOK_DATA }}
+          SLACK_WEBHOOK_AIR:      ${{ secrets.SLACK_WEBHOOK_AIR }}
+          SLACK_WEBHOOK_CORE:     ${{ secrets.SLACK_WEBHOOK_CORE }}
+          SLACK_WEBHOOK_WORKFLOW: ${{ secrets.SLACK_WEBHOOK_WORKFLOW }}
+          SLACK_WEBHOOK_CLUSTER:  ${{ secrets.SLACK_WEBHOOK_CLUSTER }}

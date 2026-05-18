@@ -48,13 +48,14 @@ config = (
             head_fcnet_activation=None,
             head_fcnet_kernel_initializer="orthogonal_",
             head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+            fusionnet_hiddens=[256, 256, 256],
+            fusionnet_activation="relu",
         ),
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
     )
 )
-
 
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args)

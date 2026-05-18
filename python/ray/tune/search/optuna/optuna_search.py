@@ -1,4 +1,5 @@
 import functools
+import inspect
 import logging
 import pickle
 import time
@@ -60,10 +61,16 @@ class _OptunaTrialSuggestCaptor:
         self.captured_values: Dict[str, Any] = {}
 
     def _get_wrapper(self, func: Callable) -> Callable:
+        sig = inspect.signature(func)
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # name is always the first arg for suggest_ methods
-            name = kwargs.get("name", args[0])
+            bound = sig.bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            if "name" not in bound.arguments:
+                raise ValueError("missing required argument: name")
+            name = bound.arguments["name"]
             ret = func(*args, **kwargs)
             self.captured_values[name] = ret
             return ret

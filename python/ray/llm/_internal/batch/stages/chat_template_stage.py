@@ -20,6 +20,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         model: str,
         chat_template: Optional[str] = None,
         chat_template_kwargs: Optional[Dict[str, Any]] = None,
+        trust_remote_code: bool = False,
     ):
         """
         Initialize the ChatTemplateUDF.
@@ -32,6 +33,7 @@ class ChatTemplateUDF(StatefulStageUDF):
                            usually not needed if the model checkpoint already contains the
                            chat template.
             chat_template_kwargs: The optional kwargs to pass apply_chat_template.
+            trust_remote_code: Whether to trust remote code when loading the model.
         """
         from transformers import AutoProcessor
 
@@ -41,10 +43,17 @@ class ChatTemplateUDF(StatefulStageUDF):
         # because tokenizers of VLM models may not have chat template attribute.
         # However, this may not be a reliable solution, because processors and
         # tokenizers are not standardized across different models.
+        # Use EXCLUDE_SAFETENSORS for trust_remote_code models to ensure
+        # Python config files are downloaded.
+        download_mode = (
+            NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            if trust_remote_code
+            else NodeModelDownloadable.TOKENIZER_ONLY
+        )
         model_path = download_model_files(
             model_id=model,
             mirror_config=None,
-            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_model=download_mode,
             download_extra_files=False,
         )
         if TYPE_CHECKING:
@@ -53,7 +62,9 @@ class ChatTemplateUDF(StatefulStageUDF):
 
         self.processor: Union[
             "PreTrainedTokenizerBase", "ProcessorMixin"
-        ] = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+        ] = AutoProcessor.from_pretrained(
+            model_path, trust_remote_code=trust_remote_code
+        )
         self.chat_template = chat_template
         self.chat_template_kwargs = chat_template_kwargs
 

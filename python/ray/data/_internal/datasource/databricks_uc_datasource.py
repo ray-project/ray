@@ -43,7 +43,7 @@ class DatabricksUCDatasource(Datasource):
         self.host = self._credential_provider.get_host()
         self.warehouse_id = warehouse_id
         self.catalog = catalog
-        self.schema = schema
+        self.schema_name = schema
         self.query = query
 
         if not self.host.startswith(("http://", "https://")):
@@ -59,7 +59,7 @@ class DatabricksUCDatasource(Datasource):
                 "disposition": "EXTERNAL_LINKS",
                 "format": "ARROW_STREAM",
                 "catalog": self.catalog,
-                "schema": self.schema,
+                "schema": self.schema_name,
             }
         )
 

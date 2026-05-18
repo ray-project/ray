@@ -10,6 +10,7 @@ import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules import (
     ProjectionPushdown,
@@ -123,7 +124,11 @@ class TestProjectionFusion:
                 named_expr = expr.alias(name)
                 exprs.append(named_expr)
 
-            current_op = Project(current_op, exprs=[star()] + exprs, ray_remote_args={})
+            current_op = Project(
+                exprs=[star()] + exprs,
+                input_dependencies=[current_op],
+                ray_remote_args={},
+            )
 
         return current_op
 
@@ -137,7 +142,7 @@ class TestProjectionFusion:
             levels.append(
                 {expr.name for expr in current.exprs if not isinstance(expr, StarExpr)}
             )
-            current = current.input_dependency
+            current = current.input_dependencies[0]
 
         return list(reversed(levels))  # Return bottom-up order
 
@@ -149,7 +154,11 @@ class TestProjectionFusion:
         while current:
             if isinstance(current, Project):
                 count += 1
-            current = getattr(current, "input_dependency", None)
+            current = (
+                current.input_dependencies[0]
+                if isinstance(current, AbstractOneToOne)
+                else None
+            )
 
         return count
 
@@ -164,7 +173,11 @@ class TestProjectionFusion:
                 operators.append(f"Project({expr_count} exprs)")
             else:
                 operators.append(current.__class__.__name__)
-            current = getattr(current, "input_dependency", None)
+            current = (
+                current.input_dependencies[0]
+                if isinstance(current, AbstractOneToOne)
+                else None
+            )
 
         return " -> ".join(operators)
 
@@ -392,7 +405,7 @@ class TestProjectionFusion:
         # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -439,7 +452,7 @@ class TestProjectionFusion:
         # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -479,7 +492,7 @@ class TestProjectionFusion:
         # Verify execution correctness
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -527,7 +540,7 @@ class TestProjectionFusion:
         optimized_plan = rule.apply(ds_with_column._logical_plan)
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds_with_column._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds_with_column, optimized_plan)
 
         # Create dataset using single map_batches (optimal case)
         ds_optimal = ray.data.from_items(input_data)
@@ -580,7 +593,7 @@ class TestProjectionFusion:
         # Verify execution correctness
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -1343,7 +1356,7 @@ def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
     if flavor == "project_after":
         ds = ds.select_columns(["length", "width"])
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
 

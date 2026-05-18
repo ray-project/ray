@@ -1109,13 +1109,14 @@ Ray Data reads from message queues like Kafka.
 
 To read data from Kafka topics, call :func:`~ray.data.read_kafka` and specify
 the topic names and broker addresses. Ray Data performs bounded reads between
-a start and end offset.
+a start and end offset. You can specify offsets as integers, ``"earliest"``/``"latest"``
+strings, or ``datetime`` objects for time-based ranges.
 
 First, install the required dependencies:
 
 .. code-block:: console
 
-    pip install kafka-python
+    pip install confluent-kafka
 
 Then, specify your Kafka configuration and read from topics.
 
@@ -1140,20 +1141,25 @@ Then, specify your Kafka configuration and read from topics.
         end_offset="latest",
     )
 
-    # Read with authentication
-    from ray.data import KafkaAuthConfig
-
-    auth_config = KafkaAuthConfig(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username="your-username",
-        sasl_plain_password="your-password",
+    # Read messages within a datetime range (datetimes with no timezone info are treated as UTC)
+    from datetime import datetime
+    ds = ray.data.read_kafka(
+        topics="my-topic",
+        bootstrap_servers="localhost:9092",
+        start_offset=datetime(2025, 1, 1),
+        end_offset=datetime(2025, 1, 2),
     )
 
+    # Read with authentication (Confluent/librdkafka options)
     ds = ray.data.read_kafka(
         topics="secure-topic",
         bootstrap_servers="localhost:9092",
-        kafka_auth_config=auth_config,
+        consumer_config={
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": "your-username",
+            "sasl.password": "your-password",
+        },
     )
 
     print(ds.schema())

@@ -106,6 +106,24 @@ def test_log_scheduling_updates():
     ]
 
 
+def test_log_scheduling_updates_without_cluster_shape():
+    mock_logger = MockEventLogger(logger)
+    event_logger = AutoscalerEventLogger(mock_logger, log_cluster_shape=False)
+
+    event_logger.log_cluster_scheduling_update(
+        launch_requests=[launch_request("m4.large", 1)],
+        terminate_requests=[termination_request("m4.xlarge", OUTDATED)],
+        infeasible_requests=[ResourceRequestUtil.make({"CPU": 4})],
+        cluster_resources={"CPU": 5},
+    )
+
+    assert mock_logger.get_logs("info") == []
+    assert mock_logger.get_logs("warning") == [
+        "No available node types can fulfill resource requests {'CPU': 4.0}*1. Add suitable node types to this cluster to resolve this issue."
+    ]
+    assert mock_logger.get_logs("debug") == []
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

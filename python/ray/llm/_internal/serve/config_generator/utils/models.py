@@ -2,7 +2,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from ray.llm._internal.serve.config_generator.utils.gpu import GPUType
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
 TEXT_COMPLETION_MODEL_TYPE: Literal["TextCompletion"] = "TextCompletion"
 
@@ -13,7 +13,7 @@ class ServeModel(BaseModel):
     id: str
     hf_token: Optional[str] = None
     remote_storage_uri: Optional[str] = None
-    gpu_type: GPUType
+    gpu_type: AcceleratorType
 
 
 class TextCompletionLoraModelConfig(BaseModel):

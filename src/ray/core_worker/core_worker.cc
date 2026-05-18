@@ -34,6 +34,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
@@ -43,6 +44,7 @@
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 
@@ -397,7 +399,9 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  SubscribeToNodeChanges();
+  if (options_.worker_type == WorkerType::DRIVER) {
+    SubscribeToNodeChanges();
+  }
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -494,6 +498,16 @@ CoreWorker::CoreWorker(
       [this] { InternalHeartbeat(); },
       RayConfig::instance().core_worker_internal_heartbeat_ms(),
       "CoreWorker.InternalHeartbeat");
+
+  periodical_runner_->RunFnPeriodically(
+      [this] {
+        // Periodically report the backlog so that the local raylet can report the
+        // resources needed for tasks that haven't had their dependencies resolved yet to
+        // the GCS + Autoscaler.
+        normal_task_submitter_->ReportWorkerBacklog();
+      },
+      RayConfig::instance().report_worker_backlog_interval_ms(),
+      "CoreWorker.ReportWorkerBacklog");
 
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
@@ -815,15 +829,7 @@ void CoreWorker::InternalHeartbeat() {
   }
 
   // Check timeout tasks that are waiting for death info.
-  if (actor_task_submitter_ != nullptr) {
-    actor_task_submitter_->CheckTimeoutTasks();
-  }
-
-  // Periodically report the latest backlog so that
-  // local raylet will have the eventually consistent view of worker backlogs
-  // even in cases where backlog reports from normal_task_submitter
-  // are lost or reordered.
-  normal_task_submitter_->ReportWorkerBacklog();
+  actor_task_submitter_->CheckTimeoutTasks();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
@@ -842,6 +848,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush percentile metrics: swap histogram buffers and update exported gauges.
+  normal_task_submitter_->FlushMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -2307,6 +2315,63 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   return status;
 }
 
+ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
+    const PlacementGroupID &placement_group_id,
+    const std::string &serialized_object_data,
+    const std::string &serialized_object_metadata) {
+  // Generate ObjectID and register ownership.
+  // The object will be stored directly in memory_store_ and fate-shares with the owner,
+  // so we set pinned_at_node_id to nullopt (same as small task returns).
+  ObjectID object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
+                                           worker_context_->GetNextPutIndex());
+  reference_counter_->AddOwnedObject(object_id,
+                                     /*contained_object_ids=*/{},
+                                     rpc_address_,
+                                     CurrentCallSite(),
+                                     /*object_size=*/-1,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true,
+                                     /*pinned_at_node_id=*/std::nullopt);
+
+  // Async RPC to GCS that returns when the placement group is ready (or removed).
+  // The callback puts the result into memory store, completing ray.get()/wait()/await.
+  rpc::WaitPlacementGroupUntilReadyRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+
+  gcs_client_->GetGcsRpcClient().WaitPlacementGroupUntilReady(
+      std::move(request),
+      [this, object_id, serialized_object_data, serialized_object_metadata](
+          const Status &status, const rpc::WaitPlacementGroupUntilReadyReply &reply) {
+        // timeout_ms=-1 retries transient gRPC failures, so any other error
+        // here indicates an unexpected GCS server-side failure.
+        RAY_CHECK(status.ok() || status.IsNotFound())
+            << "Unexpected status from WaitPlacementGroupUntilReady: " << status;
+
+        std::shared_ptr<RayObject> result;
+        if (status.ok()) {
+          auto data = std::make_shared<LocalMemoryBuffer>(serialized_object_data.size());
+          memcpy(
+              data->Data(), serialized_object_data.data(), serialized_object_data.size());
+          auto metadata =
+              std::make_shared<LocalMemoryBuffer>(serialized_object_metadata.size());
+          memcpy(metadata->Data(),
+                 serialized_object_metadata.data(),
+                 serialized_object_metadata.size());
+          result = std::make_shared<RayObject>(
+              data, metadata, std::vector<rpc::ObjectReference>());
+        } else {
+          result =
+              std::make_shared<RayObject>(rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED);
+        }
+        memory_store_->Put(*result, object_id, /*has_reference=*/true);
+      },
+      // timeout_ms=-1 means infinite wait with automatic retry.
+      // Users can still set their own timeout via ray.get(ref, timeout=...).
+      /*timeout_ms=*/-1);
+
+  return object_id;
+}
+
 Status CoreWorker::SubmitActorTask(
     const ActorID &actor_id,
     const RayFunction &function,
@@ -2384,7 +2449,7 @@ Status CoreWorker::SubmitActorTask(
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
-                      /*labels=*/{},
+                      /*labels=*/task_options.labels,
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
@@ -2395,6 +2460,7 @@ Status CoreWorker::SubmitActorTask(
                                  max_retries,
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist,
+                                 task_options.concurrency_group_name,
                                  task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
@@ -2724,6 +2790,12 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.GetName();
   bool is_retry = task_spec.IsRetry();
 
+  // Modify the worker's per-function counters. This should be done before updating any
+  // substates (running_in_ray_get, running_in_ray_wait, getting_and_pinning_args) since
+  // the metric callback subtracts substate counts from running_total. Incrementing
+  // substates before kRunning could result in wrong values of RUNNING metric.
+  task_counter_.MovePendingToRunning(func_name, is_retry);
+
   ++num_get_pin_args_in_flight_;
   task_counter_.SetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
@@ -2736,7 +2808,8 @@ Status CoreWorker::ExecuteTask(
     ++num_failed_get_pin_args_;
     // If this has happened, it's because we are unable to talk to our local raylet.
     // This very likely means that the raylet has shutdown before this worker
-    // unexpectedly. In whic case we'll trigger shut down.
+    // unexpectedly. In which case we'll mark the task finished and trigger shut down.
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
                       pin_args_request_status.message()),
@@ -2746,9 +2819,6 @@ Status CoreWorker::ExecuteTask(
 
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
-
-  // Modify the worker's per-function counters.
-  task_counter_.MovePendingToRunning(func_name, is_retry);
 
   worker::TaskStatusEvent::TaskStateUpdate update;
   {

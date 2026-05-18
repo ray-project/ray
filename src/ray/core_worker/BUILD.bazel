@@ -45,6 +45,7 @@ ray_cc_library(
         "//src/ray/raylet_ipc_client",
         "//src/ray/raylet_rpc_client:raylet_client_lib",
         "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/stats:percentile_metric",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:container_util",
         "//src/ray/util:env",
@@ -53,6 +54,7 @@ ray_cc_library(
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
@@ -73,7 +75,7 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:grpc_server",
@@ -120,6 +122,7 @@ ray_cc_library(
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/util:process",
+        "//src/ray/util:process_utils",
     ],
 )
 
@@ -192,7 +195,8 @@ ray_cc_library(
     hdrs = ["task_event_buffer.h"],
     visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:task_common",
@@ -216,7 +220,7 @@ ray_cc_library(
     hdrs = ["store_provider/memory_store/memory_store.h"],
     deps = [
         ":core_worker_context",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:metrics",
         "//src/ray/common:ray_config",
@@ -305,7 +309,7 @@ ray_cc_library(
     hdrs = ["experimental_mutable_object_provider.h"],
     deps = [
         ":experimental_mutable_object_manager",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
         "//src/ray/rpc:client_call",
     ],

@@ -42,6 +42,8 @@ class TestWandaImageName:
                 DEFAULT_ARCHITECTURE,
                 "ray-extra-py3.10-cpu",
             ),
+            # TPU images
+            (RayType.RAY, "3.10", "tpu", DEFAULT_ARCHITECTURE, "ray-py3.10-tpu"),
             # CUDA images
             (
                 RayType.RAY,
@@ -66,17 +68,17 @@ class TestWandaImageName:
             ),
             (
                 RayType.RAY_LLM,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-llm-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-llm-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
                 RayType.RAY_LLM_EXTRA,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-llm-extra-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-llm-extra-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
         ],
     )
@@ -133,6 +135,8 @@ class TestPlatformSuffixes:
             ("cpu", RayType.RAY, ["-cpu", ""]),
             ("cpu", RayType.RAY_EXTRA, ["-cpu", ""]),
             ("cpu", RayType.RAY_ML, ["-cpu"]),  # ray-ml doesn't get empty for cpu
+            # TPU images
+            ("tpu", RayType.RAY, ["-tpu"]),
             # CUDA images
             ("cu11.7.1-cudnn8", RayType.RAY, ["-cu117"]),
             ("cu11.8.0-cudnn8", RayType.RAY, ["-cu118"]),

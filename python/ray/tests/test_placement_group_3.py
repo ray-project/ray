@@ -9,7 +9,10 @@ import ray
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
 from ray import ObjectRef
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
@@ -19,7 +22,6 @@ from ray._private.test_utils import (
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
     reset_autoscaler_v2_enabled_cache,
-    run_string_as_driver,
 )
 from ray.autoscaler._private.commands import debug_status
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
@@ -28,22 +30,51 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
+def _get_status_section(
+    status_output: str, headers: List[str], next_headers: List[str]
+) -> str:
+    lines = status_output.splitlines()
+    start_index = None
+    header_set = set(headers)
+    next_header_set = set(next_headers)
+
+    for index, line in enumerate(lines):
+        if line.strip() in header_set:
+            start_index = index + 1
+            break
+
+    if start_index is None:
+        return ""
+
+    section_lines = []
+    for line in lines[start_index:]:
+        if line.strip() in next_header_set:
+            break
+        if not section_lines and not line.strip():
+            continue
+        section_lines.append(line.rstrip())
+
+    return "\n".join(section_lines).strip()
+
+
 def get_ray_status_output(address):
     gcs_client = ray._raylet.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
-    print(debug_status(status, error, address=address))
+    status_output = debug_status(status, error, address=address)
+    print(status_output)
     return {
-        "demand": debug_status(status, error, address=address)
-        .split("Demands:")[1]
-        .strip("\n")
-        .strip(" "),
-        "usage": debug_status(status, error, address=address)
-        .split("Demands:")[0]
-        .split("Usage:")[1]
-        .strip("\n")
-        .strip(" "),
+        "demand": _get_status_section(
+            status_output,
+            headers=["Demands:", "Pending Demands:"],
+            next_headers=[],
+        ),
+        "usage": _get_status_section(
+            status_output,
+            headers=["Usage:", "Total Usage:"],
+            next_headers=["Demands:", "Pending Demands:"],
+        ),
     }
 
 
@@ -616,7 +647,11 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
             return False
         return True
 
-    wait_for_condition(is_usage_updated, AUTOSCALER_UPDATE_INTERVAL_S)
+    wait_for_condition(
+        is_usage_updated,
+        timeout=3 * AUTOSCALER_UPDATE_INTERVAL_S,
+        retry_interval_ms=1000,
+    )
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
@@ -629,12 +664,17 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
 
     ray.get([actor.ready.remote() for actor in actors])
     ray.get([actor.ready.remote() for actor in actors_in_pg])
-    # Wait long enough until the usage is propagated to GCS.
-    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
+
+    def is_pg_usage_propagated():
+        demand_output = get_ray_status_output(cluster.address)
+        cpu_usage = demand_output["usage"].split("\n")[0]
+        return cpu_usage == "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
+
+    wait_for_condition(
+        is_pg_usage_propagated,
+        timeout=3 * AUTOSCALER_UPDATE_INTERVAL_S,
+        retry_interval_ms=1000,
+    )
 
 
 def test_placement_group_removal_leak_regression(ray_start_cluster):

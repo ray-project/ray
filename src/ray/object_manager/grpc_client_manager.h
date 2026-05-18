@@ -16,11 +16,13 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/util/logging.h"
 
 namespace ray::rpc {
 
@@ -50,10 +52,18 @@ class GrpcClientManagerImpl final : public GrpcClientManager<ServiceType> {
                         ClientCallManager &client_call_manager) {
     const int conn_num = ::RayConfig::instance().object_manager_client_connection_num();
     grpc_clients_.reserve(conn_num);
-    for (int idx = 0; idx < conn_num; ++idx) {
-      grpc_clients_.emplace_back(
-          std::make_unique<GrpcClient<ServiceType>>(address, port, client_call_manager));
+    bool use_multiple_connections =
+        ::RayConfig::instance().experimental_object_manager_enable_multiple_connections();
+    grpc::ChannelArguments args = CreateDefaultChannelArguments();
+    if (use_multiple_connections) {
+      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
     }
+    for (int idx = 0; idx < conn_num; ++idx) {
+      grpc_clients_.emplace_back(std::make_unique<GrpcClient<ServiceType>>(
+          address, port, client_call_manager, args));
+    }
+    RAY_LOG(INFO) << "Starting gRPC client manager with enable_multiple_conns="
+                  << use_multiple_connections << ", num_clients=" << conn_num;
   }
 
   // Keeps track of gRPC clients and returns the next client

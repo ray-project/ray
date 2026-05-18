@@ -6,10 +6,10 @@ from typing import Callable
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import ValidationError
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import check_running, get_application_url
 from ray.serve._private.utils import get_random_string
@@ -147,7 +147,7 @@ def test_reconfigure_with_exception(serve_instance):
 def test_redeploy_single_replica(serve_instance, use_handle):
     """Tests redeploying a deployment with a single replica.
 
-    The new replica should should start without waiting for the
+    The new replica should start without waiting for the
     old version replica to completely shut down.
     """
 

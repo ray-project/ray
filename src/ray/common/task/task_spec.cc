@@ -474,9 +474,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::SequenceNumber() const {
+uint64_t TaskSpecification::ConcurrencyGroupSequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().sequence_number();
+  return message_->actor_task_spec().concurrency_group_sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -551,7 +551,8 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
+           << ", actor_caller_id=" << CallerId()
+           << ", seq_no=" << ConcurrencyGroupSequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
@@ -566,6 +567,16 @@ std::string TaskSpecification::DebugString() const {
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
     }
   }
+
+  stream << ", dependencies={";
+  const auto dependencies = GetDependencyIds();
+  for (size_t i = 0; i < dependencies.size(); ++i) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << dependencies[i];
+  }
+  stream << "}";
 
   return stream.str();
 }
