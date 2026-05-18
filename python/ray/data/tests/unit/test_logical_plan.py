@@ -5,9 +5,9 @@ from ray.data.context import DataContext
 class DummyLogicalOperator(LogicalOperator):
     def __init__(self, input_dependencies, name=None, num_outputs=None):
         super().__init__(
-            _input_dependencies=input_dependencies,
             _num_outputs=num_outputs,
         )
+        object.__setattr__(self, "_input_dependencies", input_dependencies)
         if name is not None:
             object.__setattr__(self, "_name", name)
 

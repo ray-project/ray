@@ -226,8 +226,7 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
     # Read just two of the five columns of the Iris dataset.
     ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
-        columns=["sepal.length", "variety"],
-    )
+    ).select_columns(["sepal.length", "variety"])
     
     print(ds.schema())
 
@@ -441,9 +440,6 @@ You can configure execution options with the global DataContext. The options are
         gpu=5,
         object_store_memory=10e9,
     )
-
-.. note::
-    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
 
 Reproducibility
 ---------------

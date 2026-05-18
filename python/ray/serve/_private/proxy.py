@@ -52,6 +52,7 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    _matches_session_id_header,
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
@@ -826,6 +827,7 @@ class gRPCProxy(GenericProxy):
         handle.
         """
         multiplexed_model_id = proxy_request.multiplexed_model_id
+        session_id = proxy_request.session_id
         request_id = proxy_request.request_id
         if not request_id:
             request_id = generate_request_id()
@@ -834,6 +836,7 @@ class gRPCProxy(GenericProxy):
         handle = handle.options(
             stream=proxy_request.stream,
             multiplexed_model_id=multiplexed_model_id,
+            session_id=session_id,
             method_name=proxy_request.method_name,
         )
 
@@ -843,6 +846,7 @@ class gRPCProxy(GenericProxy):
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "session_id": session_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
             "_client": proxy_request.client,
         }
@@ -1241,6 +1245,10 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            elif _matches_session_id_header(key.decode()):
+                session_id = value.decode()
+                handle = handle.options(session_id=session_id)
+                request_context_info["session_id"] = session_id
             if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
