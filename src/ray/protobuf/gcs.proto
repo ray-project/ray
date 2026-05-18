@@ -681,13 +681,21 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
-  // Tracks the selected label domain values for label-domain-aware scheduling.
-  // Key is the node label key (e.g. "ray.io/gpu-domain"), value is the selected
-  // domain value (e.g. "rack-1").
-  map<string, string> label_domain_assignments = 17;
-  // The node label key that identifies the label domain for this placement group
-  // (e.g. "ray.io/gpu-domain"). Empty if the PG does not use label-domain scheduling.
-  string label_domain_key = 18;
+  // Tracks the selected topology values, per level. The outer list is indexed
+  // by topology level (currently always one level). Within a level, the map
+  // key is the topology label (e.g. "rack_id") and the value is the selected
+  // value for this PG (e.g. "rack-1").
+  repeated TopologyAssignmentLevel topology_assignments = 17;
+  // The per-level topology strategy that applies to this PG. Mirrors
+  // PlacementGroupSpec.topology_strategy. Empty if the PG does not use
+  // topology-aware scheduling.
+  repeated TopologyStrategyLevel topology_strategy = 18;
+}
+
+// One level of topology assignments. Maps each topology label to the value
+// the scheduler has selected for this PG at that level.
+message TopologyAssignmentLevel {
+  map<string, string> assignments = 1;
 }
 
 message JobTableData {

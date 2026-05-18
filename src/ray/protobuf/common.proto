@@ -685,6 +685,12 @@ message Bundle {
   map<string, string> label_selector = 4;
 }
 
+// A single level of topology strategy. Maps label keys (e.g. "ray.io/node-id",
+// "rack_id") to the placement strategy applied at that label.
+message TopologyStrategyLevel {
+  map<string, PlacementStrategy> entries = 1;
+}
+
 message PlacementGroupSpec {
   // ID of the PlacementGroup.
   bytes placement_group_id = 1;
@@ -709,6 +715,11 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // Per-level topology strategy. Each level is a map from label key to
+  // placement strategy. For now exactly one level is supported, and the
+  // single level must contain "ray.io/node-id" plus optionally one other
+  // topology label (e.g. "rack_id").
+  repeated TopologyStrategyLevel topology_strategy = 12;
 }
 
 message ObjectReference {

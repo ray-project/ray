@@ -727,14 +727,14 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             iter->second->GetPlacementGroupTableData(),
             {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
       } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
-        // are now unplaced (total domain failure), move the PG back to the pending queue
-        // so the scheduler can clear the stale domain assignment and retry on a new
-        // domain. The manager here is just reponsible for rescheduling the
-        // placment group, clearing the domain is handled by
+        // For topology-aware PGs that are stuck in the infeasible queue: if ALL
+        // bundles are now unplaced (total failure), move the PG back to the
+        // pending queue so the scheduler can clear the stale topology
+        // assignments and retry on a fresh selection. The manager here is just
+        // responsible for rescheduling; clearing the assignments is handled by
         // ScheduleUnplacedBundles within the scheduler.
         if (iter->second->AllUnplacedBundles() &&
-            iter->second->GetLabelDomainKey().has_value()) {
+            iter->second->GetTopologyStrategyKeys(/*level=*/0).has_value()) {
           auto infeasible_pg_iter =
               std::find_if(infeasible_placement_groups_.begin(),
                            infeasible_placement_groups_.end(),

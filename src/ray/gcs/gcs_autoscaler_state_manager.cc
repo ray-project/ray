@@ -259,24 +259,35 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       }
     }
 
-    // Populate locality_requirement if this PG uses label-domain scheduling.
-    // TODO(#61777): Add support for multiple tiers of label domains.
-    const auto &label_domain_key = pg_data.label_domain_key();
-    if (!label_domain_key.empty()) {
-      auto *locality_req = bundle_selector->mutable_locality_requirement();
-      auto *locality_constraint = locality_req->mutable_locality_constraint();
-      locality_constraint->set_label_name(label_domain_key);
-      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+    // Populate locality_requirement if this PG uses topology-aware scheduling.
+    // TODO(#61777): Add support for multiple topology levels.
+    if (pg_data.topology_strategy_size() > 0) {
+      const auto &entries = pg_data.topology_strategy(0).entries();
+      if (!entries.empty()) {
+        // v1 invariant: at most one entry per level. ray.io/node-id is never
+        // stored in topology_strategy (it's folded into PlacementGroupSpec's
+        // `strategy` field on the Python side), so any entry here is a real
+        // topology label above the node level.
+        const auto &[topology_label_key, _strategy] = *entries.begin();
 
-      // If the PG already has a domain assignment (rescheduling case),
-      // add a label selector to constrain to that specific domain.
-      const auto &assignments = pg_data.label_domain_assignments();
-      if (auto it = assignments.find(label_domain_key); it != assignments.end()) {
-        auto *label_constraint =
-            locality_req->mutable_label_selector()->add_label_constraints();
-        label_constraint->set_label_key(label_domain_key);
-        label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
-        label_constraint->add_label_values(it->second);
+        auto *locality_req = bundle_selector->mutable_locality_requirement();
+        auto *locality_constraint = locality_req->mutable_locality_constraint();
+        locality_constraint->set_label_name(topology_label_key);
+        locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+
+        // If the scheduler has already picked a value for this topology label
+        // (rescheduling case), pin the autoscaler request to that value.
+        if (pg_data.topology_assignments_size() > 0) {
+          const auto &assignments = pg_data.topology_assignments(0).assignments();
+          if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
+            auto *label_constraint =
+                locality_req->mutable_label_selector()->add_label_constraints();
+            label_constraint->set_label_key(topology_label_key);
+            label_constraint->set_operator_(
+                rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+            label_constraint->add_label_values(it->second);
+          }
+        }
       }
     }
   }

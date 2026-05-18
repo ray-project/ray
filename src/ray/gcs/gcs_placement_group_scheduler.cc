@@ -58,14 +58,15 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
-  // domain assignment so a new domain can be selected. If only some bundles are
-  // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
+  // For topology-aware PGs: if ALL bundles are unplaced (total failure), clear
+  // the topology assignments so new values can be selected. If only some bundles
+  // are unplaced (partial failure), we attempt to reschedule onto the same
+  // assignments.
   if (placement_group->AllUnplacedBundles() &&
-      placement_group->GetLabelDomainKey().has_value()) {
-    placement_group->ClearLabelDomainAssignments();
+      placement_group->GetTopologyStrategyKeys(0).has_value()) {
+    placement_group->ClearTopologyAssignments();
     RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
-                  << " are unplaced, rescheduling on a new label domain";
+                  << " are unplaced, rescheduling on a new topology level";
   }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
@@ -108,9 +109,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   if (scheduling_result.selected_label_domain.has_value()) {
     const auto &[label_domain_key, label_domain_value] =
         *scheduling_result.selected_label_domain;
-    placement_group->SetLabelDomainAssignment(label_domain_key, label_domain_value);
+    placement_group->SetTopologyAssignment(
+        /*level=*/0, label_domain_key, label_domain_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
-                  << " assigned to label domain " << label_domain_key << ": "
+                  << " assigned to topology label " << label_domain_key << ": "
                   << label_domain_value;
   }
 
@@ -492,13 +494,17 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
   std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
-  std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
-  if (label_domain.has_value()) {
-    const std::string &label_domain_key = label_domain.value();
+  // v1 supports a single topology level (level 0). Take the first non-node-id
+  // key as the label domain the scheduler should pin to.
+  // TODO: extend once nested topology levels are supported.
+  std::optional<std::vector<std::string>> topology_keys =
+      placement_group.GetTopologyStrategyKeys(/*level=*/0);
+  if (topology_keys.has_value()) {
+    const std::string &label_domain_key = topology_keys.value()[0];
     std::optional<std::string> label_value =
-        placement_group.GetLabelDomainAssignment(label_domain_key);
-    // If the label domain value is already selected for this pg, it means
-    // the bundles are being rescheduled and must be on the same domain.
+        placement_group.GetTopologyAssignment(/*level=*/0, label_domain_key);
+    // If a topology value has already been selected for this PG, the bundles
+    // are being rescheduled and must land on the same selection.
     target_label_domain = {label_domain_key, label_value};
   }
 

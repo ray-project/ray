@@ -17,6 +17,8 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_SPREAD",
 }
 
+NODE_ID_LABEL_KEY = "ray.io/node-id"
+
 
 @PublicAPI
 class PlacementGroup:
@@ -125,11 +127,12 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
 @client_mode_wrap
 def placement_group(
     bundles: List[Dict[str, float]],
-    strategy: str = "PACK",
+    strategy: Optional[str] = None,
     name: str = "",
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    topology_strategy: Optional[List[Dict[str, str]]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -137,6 +140,8 @@ def placement_group(
         bundles: A list of bundles which
             represent the resources requirements.
         strategy: The strategy to create the placement group.
+            Mutually exclusive with `topology_strategy`. Defaults to "PACK"
+            when neither is provided.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -157,11 +162,20 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
+        topology_strategy: Per-level topology-aware placement. A list of dicts,
+            where each dict maps a label key to a placement strategy. For now
+            exactly one level is supported, and the single level must contain
+            "ray.io/node-id" (the node-level packing strategy) plus optionally
+            one other label such as "rack_id" (e.g.
+            ``[{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}]``).
+            Mutually exclusive with `strategy`.
 
     Raises:
         ValueError: if bundle type is not a list.
         ValueError: if empty bundle or empty resource bundles are given.
         ValueError: if the wrong lifetime arguments are given.
+        ValueError: if `topology_strategy` and `strategy` are both provided,
+            or if `topology_strategy` does not match the v1 shape.
 
     Return:
         PlacementGroup: Placement group object.
@@ -175,10 +189,26 @@ def placement_group(
         lifetime=lifetime,
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
+        topology_strategy=topology_strategy,
     )
 
     if bundle_label_selector is None:
         bundle_label_selector = []
+
+    # Resolve the effective strategy and the topology_strategy passed downstream.
+    # When the caller supplies topology_strategy, validation guarantees that
+    # `ray.io/node-id` is present in the single level; that entry's value is
+    # the node-level packing strategy (equivalent to passing `strategy=`), so
+    # we derive `strategy` from it and drop the entry before the proto sees it.
+    # The proto's topology_strategy carries only the levels above node.
+    if topology_strategy is not None:
+        level = topology_strategy[0]
+        effective_strategy = level[NODE_ID_LABEL_KEY]
+        stripped_level = {k: v for k, v in level.items() if k != NODE_ID_LABEL_KEY}
+        topology_strategy_for_core = [stripped_level] if stripped_level else []
+    else:
+        effective_strategy = strategy if strategy is not None else "PACK"
+        topology_strategy_for_core = []
 
     if lifetime == "detached":
         detached = True
@@ -188,10 +218,11 @@ def placement_group(
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
-        strategy,
+        effective_strategy,
         detached,
         _soft_target_node_id,
         bundle_label_selector,
+        topology_strategy_for_core,
     )
 
     return PlacementGroup(placement_group_id)
@@ -320,19 +351,31 @@ def check_placement_group_index(
 
 def validate_placement_group(
     bundles: List[Dict[str, float]],
-    strategy: str = "PACK",
+    strategy: Optional[str] = None,
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    topology_strategy: Optional[List[Dict[str, str]]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
     Raises ValueError if inputs are invalid.
     """
-    if _soft_target_node_id and strategy != "STRICT_PACK":
+    # Mutual exclusion: `strategy` and `topology_strategy` cannot both be passed.
+    if topology_strategy is not None and strategy is not None:
+        raise ValueError(
+            "`strategy` and `topology_strategy` cannot both be specified. "
+            "Pass node-level packing via "
+            f"`topology_strategy[0]['{NODE_ID_LABEL_KEY}']`."
+        )
+
+    # Resolve the effective strategy for the rest of validation that depends on it.
+    effective_strategy = strategy if strategy is not None else "PACK"
+
+    if _soft_target_node_id and effective_strategy != "STRICT_PACK":
         raise ValueError(
             "_soft_target_node_id currently only works "
-            f"with STRICT_PACK but got {strategy}"
+            f"with STRICT_PACK but got {effective_strategy}"
         )
 
     if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
@@ -350,9 +393,9 @@ def validate_placement_group(
             )
         _validate_bundle_label_selector(bundle_label_selector)
 
-    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+    if effective_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
-            f"Invalid placement group strategy {strategy}. "
+            f"Invalid placement group strategy {effective_strategy}. "
             f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
         )
 
@@ -361,6 +404,70 @@ def validate_placement_group(
             "Placement group `lifetime` argument must be either `None` or "
             f"'detached'. Got {lifetime}."
         )
+
+    if topology_strategy is not None:
+        _validate_topology_strategy(topology_strategy)
+
+
+def _validate_topology_strategy(topology_strategy: List[Dict[str, str]]) -> None:
+    """Validates topology_strategy v1 shape.
+
+    v1 accepts a single level whose dict contains "ray.io/node-id" and at most
+    one other topology label. The "ray.io/node-id" entry is equivalent to the
+    `strategy=` parameter and accepts any value in
+    VALID_PLACEMENT_GROUP_STRATEGIES. The other (topology) label is restricted
+    to "STRICT_PACK" for now.
+    """
+    if not isinstance(topology_strategy, list):
+        raise ValueError(
+            "`topology_strategy` must be a list of dicts, "
+            f"got {type(topology_strategy).__name__}."
+        )
+
+    if len(topology_strategy) != 1:
+        raise ValueError(
+            "`topology_strategy` currently supports exactly one level. "
+            f"Got {len(topology_strategy)}."
+        )
+
+    level = topology_strategy[0]
+    if not isinstance(level, dict):
+        raise ValueError(
+            "`topology_strategy[0]` must be a dict, " f"got {type(level).__name__}."
+        )
+
+    if not (1 <= len(level) <= 2):
+        raise ValueError(
+            "`topology_strategy[0]` must contain 1 or 2 entries: "
+            f"`{NODE_ID_LABEL_KEY}` plus an optional topology label. "
+            f"Got {len(level)} entries."
+        )
+
+    if NODE_ID_LABEL_KEY not in level:
+        raise ValueError(
+            f"`topology_strategy[0]` must include `{NODE_ID_LABEL_KEY}` to "
+            "specify the node-level packing strategy."
+        )
+
+    for key, value in level.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "`topology_strategy` keys must be non-empty strings, " f"got {key!r}."
+            )
+        if value not in VALID_PLACEMENT_GROUP_STRATEGIES:
+            raise ValueError(
+                f"Invalid topology strategy {value!r} for label {key!r}. "
+                f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+            )
+        # The node-id entry is just a redirect to the existing `strategy=`
+        # parameter and accepts any valid placement-group strategy. For other
+        # topology labels (e.g. rack_id), v1 only supports STRICT_PACK.
+        if key != NODE_ID_LABEL_KEY and value != "STRICT_PACK":
+            raise ValueError(
+                f"Topology strategy {value!r} for label {key!r} is not "
+                "supported yet; only 'STRICT_PACK' is supported for topology "
+                "labels other than `ray.io/node-id` for now."
+            )
 
 
 def _validate_bundles(bundles: List[Dict[str, float]]):

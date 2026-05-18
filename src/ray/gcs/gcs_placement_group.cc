@@ -151,15 +151,29 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
 }
 
-std::optional<std::string> GcsPlacementGroup::GetLabelDomainKey() const {
-  const std::string &key = placement_group_table_data_.label_domain_key();
-  if (key.empty()) {
+std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKeys(
+    size_t level) const {
+  if (level >=
+      static_cast<size_t>(placement_group_table_data_.topology_strategy_size())) {
     return std::nullopt;
   }
-  return key;
+  const auto &entries = placement_group_table_data_.topology_strategy(level).entries();
+  if (entries.empty()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> keys;
+  keys.reserve(entries.size());
+  for (const auto &entry : entries) {
+    keys.push_back(entry.first);
+  }
+  return keys;
 }
 
-void GcsPlacementGroup::ComputeLabelDomainKey() {
+void GcsPlacementGroup::ComputeTopologyStrategy() {
+  // If the user has already supplied a topology_strategy, don't override it.
+  if (placement_group_table_data_.topology_strategy_size() > 0) {
+    return;
+  }
   const auto &proto_bundles = placement_group_table_data_.bundles();
   if (proto_bundles.empty()) {
     return;
@@ -172,15 +186,22 @@ void GcsPlacementGroup::ComputeLabelDomainKey() {
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
         (constraint.GetLabelValues().contains(kGB300) ||
          constraint.GetLabelValues().contains(kGB200))) {
-      placement_group_table_data_.set_label_domain_key(kGpuDomainLabelKey);
+      auto *level = placement_group_table_data_.add_topology_strategy();
+      auto *entries = level->mutable_entries();
+      (*entries)[kGpuDomainLabelKey] = rpc::PlacementStrategy::STRICT_PACK;
       return;
     }
   }
 }
 
-std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
-    const std::string &label_key) const {
-  const auto &assignments = placement_group_table_data_.label_domain_assignments();
+std::optional<std::string> GcsPlacementGroup::GetTopologyAssignment(
+    size_t level, const std::string &label_key) const {
+  if (level >=
+      static_cast<size_t>(placement_group_table_data_.topology_assignments_size())) {
+    return std::nullopt;
+  }
+  const auto &assignments =
+      placement_group_table_data_.topology_assignments(level).assignments();
   auto it = assignments.find(label_key);
   if (it != assignments.end()) {
     return it->second;
@@ -188,14 +209,19 @@ std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
   return std::nullopt;
 }
 
-void GcsPlacementGroup::SetLabelDomainAssignment(const std::string &label_key,
-                                                 const std::string &label_value) {
-  (*placement_group_table_data_.mutable_label_domain_assignments())[label_key] =
-      label_value;
+void GcsPlacementGroup::SetTopologyAssignment(size_t level,
+                                              const std::string &label_key,
+                                              const std::string &label_value) {
+  while (static_cast<size_t>(placement_group_table_data_.topology_assignments_size()) <=
+         level) {
+    placement_group_table_data_.add_topology_assignments();
+  }
+  (*placement_group_table_data_.mutable_topology_assignments(static_cast<int>(level))
+        ->mutable_assignments())[label_key] = label_value;
 }
 
-void GcsPlacementGroup::ClearLabelDomainAssignments() {
-  placement_group_table_data_.mutable_label_domain_assignments()->clear();
+void GcsPlacementGroup::ClearTopologyAssignments() {
+  placement_group_table_data_.mutable_topology_assignments()->Clear();
 }
 
 }  // namespace gcs

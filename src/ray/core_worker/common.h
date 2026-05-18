@@ -232,13 +232,16 @@ struct PlacementGroupCreationOptions {
       bool is_detached_p,
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
+          {},
+      std::vector<std::unordered_map<std::string, PlacementStrategy>> topology_strategy =
           {})
       : name_(std::move(name)),
         strategy_(strategy),
         bundles_(std::move(bundles)),
         is_detached_(is_detached_p),
         soft_target_node_id_(soft_target_node_id),
-        bundle_label_selector_(std::move(bundle_label_selector)) {
+        bundle_label_selector_(std::move(bundle_label_selector)),
+        topology_strategy_(std::move(topology_strategy)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -259,6 +262,10 @@ struct PlacementGroupCreationOptions {
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
   const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
+  /// Per-level topology strategy. Each level is a label -> placement strategy
+  /// map. For v1 exactly one level is supported.
+  const std::vector<std::unordered_map<std::string, PlacementStrategy>>
+      topology_strategy_;
 };
 
 class ObjectLocation {

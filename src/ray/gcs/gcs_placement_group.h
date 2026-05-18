@@ -78,7 +78,9 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
-    ComputeLabelDomainKey();
+    placement_group_table_data_.mutable_topology_strategy()->CopyFrom(
+        placement_group_spec.topology_strategy());
+    ComputeTopologyStrategy();
     SetupStates();
   }
 
@@ -160,20 +162,25 @@ class GcsPlacementGroup {
 
   rpc::PlacementGroupStats *GetMutableStats();
 
-  /// Get the node label key used for label-domain-aware scheduling (e.g.
-  /// "ray.io/gpu-domain"), or std::nullopt if this PG doesn't use it.
-  std::optional<std::string> GetLabelDomainKey() const;
+  /// Get the topology label keys at the given level (e.g. {"ray.io/node-id",
+  /// "rack_id"} at level 0), or std::nullopt if this PG doesn't use
+  /// topology-aware scheduling at that level.
+  std::optional<std::vector<std::string>> GetTopologyStrategyKeys(size_t level) const;
 
-  /// Get the label domain assignment for the given label key.
-  std::optional<std::string> GetLabelDomainAssignment(const std::string &label_key) const;
+  /// Get the topology assignment value selected for `label_key` at the given
+  /// level (e.g. the chosen rack_id for this PG).
+  std::optional<std::string> GetTopologyAssignment(size_t level,
+                                                   const std::string &label_key) const;
 
-  /// Set the label domain assignment for the given label key.
-  void SetLabelDomainAssignment(const std::string &label_key,
-                                const std::string &label_value);
+  /// Record that `label_value` has been selected for `label_key` at the given
+  /// level.
+  void SetTopologyAssignment(size_t level,
+                             const std::string &label_key,
+                             const std::string &label_value);
 
-  /// Clear all label domain assignments (used when all bundles for label-domain PGs are
-  /// unplaced).
-  void ClearLabelDomainAssignments();
+  /// Clear all topology assignments across all levels (used when every bundle
+  /// of a topology-aware PG becomes unplaced, so a fresh selection can be made).
+  void ClearTopologyAssignments();
 
  private:
   // XXX.
@@ -213,9 +220,10 @@ class GcsPlacementGroup {
     last_metric_state_ = cur_state;
   }
 
-  /// Inspects bundle label selectors to determine if this PG requires
-  /// label-domain-aware scheduling and persists the result in the proto.
-  void ComputeLabelDomainKey();
+  /// Inspects bundle label selectors to auto-populate topology_strategy for
+  /// well-known accelerator types (e.g. GB200/GB300 imply gpu-domain packing).
+  /// No-op if the user already supplied a topology_strategy.
+  void ComputeTopologyStrategy();
 
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).

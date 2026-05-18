@@ -723,6 +723,17 @@ cdef int prepare_actor_concurrency_groups(
     return 1
 
 
+cdef CPlacementStrategy prepare_c_strategy(c_string strategy) except *:
+    if strategy == b"PACK":
+        return PLACEMENT_STRATEGY_PACK
+    elif strategy == b"SPREAD":
+        return PLACEMENT_STRATEGY_SPREAD
+    elif strategy == b"STRICT_PACK":
+        return PLACEMENT_STRATEGY_STRICT_PACK
+    else:
+        return PLACEMENT_STRATEGY_STRICT_SPREAD
+
+
 def raise_sys_exit_with_custom_error_message(
         ray_terminate_msg: str,
         exit_code: int = 0) -> None:
@@ -3693,23 +3704,22 @@ cdef class CoreWorker:
                             c_string strategy,
                             c_bool is_detached,
                             soft_target_node_id,
-                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
+                            topology_strategy):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
             CNodeID c_soft_target_node_id = CNodeID.Nil()
+            c_vector[unordered_map[c_string, CPlacementStrategy]] c_topology_strategy
+            unordered_map[c_string, CPlacementStrategy] c_level
 
-        if strategy == b"PACK":
-            c_strategy = PLACEMENT_STRATEGY_PACK
-        elif strategy == b"SPREAD":
-            c_strategy = PLACEMENT_STRATEGY_SPREAD
-        elif strategy == b"STRICT_PACK":
-            c_strategy = PLACEMENT_STRATEGY_STRICT_PACK
-        else:
-            if strategy == b"STRICT_SPREAD":
-                c_strategy = PLACEMENT_STRATEGY_STRICT_SPREAD
-            else:
-                raise TypeError(strategy)
+        c_strategy = prepare_c_strategy(strategy)
+
+        for level in topology_strategy:
+            c_level.clear()
+            for label, level_strategy in level.items():
+                c_level[label] = prepare_c_strategy(level_strategy)
+            c_topology_strategy.push_back(c_level)
 
         if soft_target_node_id is not None:
             c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)
@@ -3724,7 +3734,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 c_soft_target_node_id,
-                                bundle_label_selector),
+                                bundle_label_selector,
+                                c_topology_strategy),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
