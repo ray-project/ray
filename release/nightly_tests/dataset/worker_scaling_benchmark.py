@@ -195,38 +195,30 @@ def main(args: argparse.Namespace):
         num_rows = num_blocks * rows_per_block
         ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
+        map_kwargs = {"num_cpus": 1}
         if args.worker_type == "actors":
-            if wide:
-                ds = ds.map_batches(
-                    RealisticSchemaUDF,
-                    fn_constructor_kwargs={
-                        "seed": args.seed,
-                        "num_scalar_cols": args.num_scalar_cols,
-                        "num_array_64_cols": args.num_array64_cols,
-                        "num_array_32_cols": args.num_array32_cols,
-                    },
-                    num_cpus=1,
-                    compute=ray.data.ActorPoolStrategy(size=args.num_workers),
-                )
+            map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=args.num_workers)
+
+        if wide:
+            if args.worker_type == "actors":
+                udf = RealisticSchemaUDF
+                map_kwargs["fn_constructor_kwargs"] = {
+                    "seed": args.seed,
+                    "num_scalar_cols": args.num_scalar_cols,
+                    "num_array_64_cols": args.num_array64_cols,
+                    "num_array_32_cols": args.num_array32_cols,
+                }
             else:
-                ds = ds.map_batches(
-                    NoOpUDF,
-                    num_cpus=1,
-                    compute=ray.data.ActorPoolStrategy(size=args.num_workers),
+                udf = make_realistic_schema_udf(
+                    args.seed,
+                    args.num_scalar_cols,
+                    args.num_array64_cols,
+                    args.num_array32_cols,
                 )
         else:
-            if wide:
-                ds = ds.map_batches(
-                    make_realistic_schema_udf(
-                        args.seed,
-                        args.num_scalar_cols,
-                        args.num_array64_cols,
-                        args.num_array32_cols,
-                    ),
-                    num_cpus=1,
-                )
-            else:
-                ds = ds.map_batches(no_op_udf, num_cpus=1)
+            udf = NoOpUDF if args.worker_type == "actors" else no_op_udf
+
+        ds = ds.map_batches(udf, **map_kwargs)
 
         ds = ds.materialize()
         metrics = collect_dataset_stats(ds)
