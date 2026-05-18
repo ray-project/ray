@@ -219,6 +219,15 @@ of the event loop.
 
 In async actors, only one task can be running at any point in time (though tasks can be multiplexed). There will be only one thread in AsyncActor! See :ref:`threaded-actors` if you want a threadpool.
 
+.. warning::
+    Sync methods (regular ``def`` methods) defined on an async actor also run
+    on that actor's single asyncio event loop. Because a sync method does not
+    yield control back to the loop until it returns, a long-running or blocking
+    sync method blocks every other async task on the actor until it completes.
+    If you need to call blocking code from an async actor, run it in a thread
+    using ``asyncio.get_event_loop().run_in_executor(...)`` or
+    ``asyncio.to_thread(...)`` so the event loop stays responsive.
+
 Setting concurrency in Async Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
