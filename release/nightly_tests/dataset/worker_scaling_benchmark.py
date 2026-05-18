@@ -10,8 +10,8 @@ default no-op UDF is replaced by a ``RealisticSchemaUDF`` that expands
 each input batch into the specified number of:
 
   - scalar float32 columns
-  - float32[64] array columns (sequence / embedding-shaped)
-  - float32[32] array columns (target-level shape)
+  - float32[64] array columns
+  - float32[32] array columns
 
 This shape is useful for stress-testing the per-block schema
 propagation path (``ray.get(meta_ref)`` + schema deserialization in
@@ -53,7 +53,7 @@ def _rows_per_block_for_wide_schema(
     num_scalar: int, num_array_64: int, num_array_32: int
 ) -> int:
     bpr = _bytes_per_row(num_scalar, num_array_64, num_array_32)
-    return max(WIDE_SCHEMA_TARGET_BLOCK_SIZE_BYTES // bpr, 1) if bpr else ROWS_PER_BLOCK
+    return max(WIDE_SCHEMA_TARGET_BLOCK_SIZE_BYTES // bpr, 1)
 
 
 def parse_args() -> argparse.Namespace:
