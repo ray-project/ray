@@ -1637,6 +1637,7 @@ sphinx==7.3.7 \
     #   sphinx-remove-toctrees
     #   sphinxcontrib-redoc
     #   sphinxemoji
+    #   sphinxext-opengraph
 sphinx-autobuild==2024.4.16 \
     --hash=sha256:1c0ed37a1970eed197f9c5a66d65759e7c4e4cba7b5a5d77940752bf1a59f2c7 \
     --hash=sha256:f2522779d30fcbf0253e09714f274ce8c608cb6ebcd67922b1c54de59faba702
@@ -1710,6 +1711,10 @@ sphinxcontrib-serializinghtml==2.0.0 \
 sphinxemoji==0.3.2 \
     --hash=sha256:0fb07a95bca5960a3b312bc05b65b0c3040456414a076c363f4ecaf546c6e09e \
     --hash=sha256:814da89a9a7603b7e4d85c487c7381656fa83632f20065e5ed782ab1dbbb5083
+    # via -r doc/requirements-doc.txt
+sphinxext-opengraph==0.13.0 \
+    --hash=sha256:103335d08567ad8468faf1425f575e3b698e9621f9323949a6c8b96d9793e80b \
+    --hash=sha256:936c07828edc9ad9a7b07908b29596dc84ed0b3ceaa77acdf51282d232d4d80e
     # via -r doc/requirements-doc.txt
 sqlalchemy==2.0.44 \
     --hash=sha256:0765e318ee9179b3718c4fd7ba35c434f4dd20332fbc6857a5e8df17719c24d7 \
@@ -1818,9 +1823,9 @@ termcolor==3.3.0 \
     --hash=sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5 \
     --hash=sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5
     # via tensorflow
-tf-keras==2.20.0 \
-    --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
-    --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
+tf-keras==2.20.1 \
+    --hash=sha256:3f0e0a34d9a4c8758f24fdc1053e6e335f16ab5534c7d34f1899b8924779760c \
+    --hash=sha256:884be5938fb0b2b53b1583c1ae2b660ef87215377c29b5b6a77fd221b472aeaf
     # via -r doc/requirements-doc.txt
 toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
