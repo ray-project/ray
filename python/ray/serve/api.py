@@ -63,7 +63,12 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+    TracingConfig,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -78,6 +83,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ):
@@ -104,6 +110,9 @@ def start(
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        tracing_config: Tracing config for distributed tracing. Can be passed as
+            a dictionary or a ``TracingConfig`` instance. See ``TracingConfig``
+            for supported options.
         controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
           Currently scoped to a strictly-validated ``runtime_env.env_vars``
           (other ``runtime_env`` keys are rejected). See
@@ -116,6 +125,7 @@ def start(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        global_tracing_config=tracing_config,
         controller_options=controller_options,
         **kwargs,
     )

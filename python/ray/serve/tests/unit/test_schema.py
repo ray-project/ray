@@ -27,6 +27,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TracingConfig,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -1499,6 +1500,60 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
 
     schema = _deployment_info_to_schema("test_deployment", info)
     assert schema.max_replicas_per_node is DEFAULT.VALUE
+
+
+class TestTracingConfig:
+    """Tests for the TracingConfig schema."""
+
+    def test_default_values(self):
+        """Test that default TracingConfig has sensible defaults."""
+        config = TracingConfig()
+        assert config.enabled is False
+        assert config.exporter_import_path == ""
+        assert config.sampling_ratio == 0.01
+
+    def test_enabled(self):
+        """Test creating an enabled tracing config."""
+        config = TracingConfig(enabled=True)
+        assert config.enabled is True
+
+    def test_disabled(self):
+        """Test creating an explicitly disabled tracing config."""
+        config = TracingConfig(enabled=False)
+        assert config.enabled is False
+
+    def test_custom_exporter(self):
+        """Test setting a custom exporter import path."""
+        config = TracingConfig(
+            enabled=True,
+            exporter_import_path="my.module:custom_exporter",
+            sampling_ratio=0.5,
+        )
+        assert config.exporter_import_path == "my.module:custom_exporter"
+        assert config.sampling_ratio == 0.5
+
+    def test_sampling_ratio_validation(self):
+        """Test that sampling_ratio must be between 0.0 and 1.0."""
+        with pytest.raises(ValidationError):
+            TracingConfig(sampling_ratio=-0.1)
+        with pytest.raises(ValidationError):
+            TracingConfig(sampling_ratio=1.1)
+
+        # Boundary values should work
+        config = TracingConfig(sampling_ratio=0.0)
+        assert config.sampling_ratio == 0.0
+        config = TracingConfig(sampling_ratio=1.0)
+        assert config.sampling_ratio == 1.0
+
+    def test_extra_fields_forbidden(self):
+        """Test that extra fields are not allowed."""
+        with pytest.raises(ValidationError):
+            TracingConfig(enabled=True, unknown_field="value")
+
+    def test_enabled_with_empty_exporter(self):
+        """Test that enabled=True with empty exporter stays empty (no auto-fill)."""
+        config = TracingConfig(enabled=True, exporter_import_path="")
+        assert config.exporter_import_path == ""
 
 
 if __name__ == "__main__":

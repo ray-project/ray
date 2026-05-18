@@ -103,7 +103,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import EncodingType, LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig, TracingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -1493,6 +1493,7 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config: Optional[TracingConfig] = None,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
@@ -1501,11 +1502,13 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
+            tracing_config: Tracing configuration
             log_buffer_size: Size of the log buffer
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
         self._log_buffer_size = log_buffer_size
 
         self._update_logging_config(logging_config)
@@ -1641,10 +1644,17 @@ class ProxyActor(ProxyActorInterface):
         logging_config: LoggingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
+        # Fetch tracing config from controller before calling super
+        controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+        tracing_config = ray.get(controller_handle.get_tracing_config.remote())
+
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
         self._grpc_options = grpc_options
@@ -1652,7 +1662,7 @@ class ProxyActor(ProxyActorInterface):
         grpc_enabled = is_grpc_enabled(self._grpc_options)
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(
-            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
+            controller_handle,
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
@@ -1661,17 +1671,13 @@ class ProxyActor(ProxyActorInterface):
             client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
-        try:
-            is_tracing_setup_successful = setup_tracing(
-                component_name="proxy", component_id=node_ip_address
-            )
-            if is_tracing_setup_successful:
-                logger.info("Successfully set up tracing for proxy")
-        except Exception as e:
-            logger.warning(
-                f"Failed to set up tracing: {e}. "
-                "The proxy will continue running, but traces will not be exported."
-            )
+        is_tracing_setup_successful = setup_tracing(
+            component_name="proxy",
+            component_id=node_ip_address,
+            tracing_config=self._tracing_config,
+        )
+        if is_tracing_setup_successful:
+            logger.info("Successfully set up tracing for proxy")
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
         if grpc_enabled:
