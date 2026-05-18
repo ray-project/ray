@@ -113,7 +113,8 @@ def _partition_single_int_column(
     """Hash-partition a single integer column without going through pandas.
 
     Computes ``partition_id = avalanche(key) % num_partitions`` per row,
-    where ``avalanche(x) = (x * 2^64/phi) ^ ((x * 2^64/phi) >> 33)``.
+    where ``avalanche(x) = ((x ^ K) * K) ^ (((x ^ K) * K) >> 33)`` and
+    ``K = 2^64 / phi``.
 
     Nulls are deterministically routed to ``_NULL_KEY_PARTITION_ID`` so that
     all rows with a null key co-locate in the same partition across blocks
@@ -134,6 +135,7 @@ def _partition_single_int_column(
     else:
         # int{8,16,32} / uint{8,16,32}: widen to int64 then bit-reinterpret.
         keys = arr.astype(np.int64).view(np.uint64).copy()
+    keys ^= np.uint64(0x9E3779B97F4A7C15)  # pre-mix: break zero fixed point
     keys *= np.uint64(0x9E3779B97F4A7C15)  # Knuth's multiplicative hash: 2^64 / phi
     keys ^= keys >> np.uint64(33)
     np.mod(keys, np.uint64(num_partitions), out=keys)
