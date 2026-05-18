@@ -13,7 +13,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.util.annotations import Deprecated
+from ray.util.annotations import Deprecated, RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -105,7 +105,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             warnings.warn(
                 "ConcurrencyCapBackpressurePolicy is deprecated and will be "
                 "removed on or after Ray 2.59.",
-                DeprecationWarning,
+                RayDeprecationWarning,
                 stacklevel=2,
             )
 

@@ -20,6 +20,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data.context import DataContext
 from ray.data.tests.conftest import mock_all_to_all_op
+from ray.util.annotations import RayDeprecationWarning
 
 
 class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
@@ -465,7 +466,7 @@ def test_emits_deprecation_warning_when_dynamic_backpressure_enabled(
     input_op = InputDataBuffer(ctx, input_data=[MagicMock()])
     topology = {input_op: MagicMock()}
 
-    with pytest.warns(DeprecationWarning, match="deprecated"):
+    with pytest.warns(RayDeprecationWarning, match="deprecated"):
         ConcurrencyCapBackpressurePolicy(ctx, topology, MagicMock())
 
 
