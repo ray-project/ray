@@ -35,7 +35,6 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
-    DEFAULT_HTTP_HOST,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -212,16 +211,13 @@ class ServeController:
 
         if self._ha_proxy_enabled:
             all_interfaces = get_all_interfaces_ip()
-            if http_options.host == all_interfaces and DEFAULT_HTTP_HOST not in (
-                None,
-                all_interfaces,
-            ):
-                logger.info(
-                    f"RAY_SERVE_ENABLE_HA_PROXY=1: HTTPOptions.host defaults to {all_interfaces!r} (overriding RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r}) so HAProxy on remote nodes can reach replica backends."
-                )
-            elif http_options.host not in (None, all_interfaces):
+            if http_options.host not in (None, all_interfaces):
                 logger.warning(
-                    f"HTTPOptions.host={http_options.host!r} is not reachable from HAProxy on other nodes. Replica HTTP ports should bind to {all_interfaces!r} (the default when RAY_SERVE_ENABLE_HA_PROXY=1) so cross-node routing works."
+                    f"HTTPOptions.host={http_options.host!r} won't accept "
+                    "connections from HAProxy on other nodes; cross-node "
+                    "routing will fail with connection refused. Set host to "
+                    f"{all_interfaces!r} or omit it to use the HAProxy-mode "
+                    "default."
                 )
 
         # Configure proxy default HTTP and gRPC options.
