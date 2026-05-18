@@ -106,9 +106,21 @@ class ResultGrid:
     ) -> Result:
         """Get the best result from all the trials run.
 
+        For metrics that are reported in a nested dict, use a slash-separated
+        flat key to refer to the nested entry. For example, if a trial reports
+        ``{"eval": {"metrics": {"loss": 0.1}}}``, pass ``metric="eval/metrics/loss"``:
+
+        >>> best_result = result_grid.get_best_result( # doctest: +SKIP
+        ...     metric="eval/metrics/loss", mode="min")
+
+        This works because Tune flattens reported result dicts with ``/`` as the
+        delimiter before tracking metrics.
+
         Args:
             metric: Key for trial info to order on. Defaults to
                 the metric specified in your Tuner's ``TuneConfig``.
+                For nested metrics, use a slash-separated flat key
+                (e.g. ``"eval/metrics/loss"``).
             mode: One of [min, max]. Defaults to the mode specified
                 in your Tuner's ``TuneConfig``.
             scope: One of [all, last, avg, last-5-avg, last-10-avg].
