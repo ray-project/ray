@@ -95,9 +95,11 @@ def match_uris_to_tests(
 def parse_override(raw_json: str) -> Dict[str, str]:
     """Parse the `release-test-image-override` JSON meta-data into `{test_name: image_uri}`.
 
-    Input is `{image_uri: [test_name, ...]}`. Each test name must appear
-    exactly once across all values. Raises `ReleaseTestConfigError` for
-    JSON parse failures, type errors, duplicate test names, or empty
+    Input is `{image_uri: [test_name, ...]}`. A name repeated within the
+    same URI's list is silently deduped (the user clearly meant one pin).
+    A name appearing under multiple URIs is an error because the intended
+    mapping is ambiguous. Raises `ReleaseTestConfigError` for JSON parse
+    failures, type errors, cross-URI duplicate test names, or empty
     payloads.
     """
     try:
@@ -119,9 +121,11 @@ def parse_override(raw_json: str) -> Dict[str, str]:
                 f"release-test-image-override value for URI {uri!r} must be a "
                 f"list of test names; got {names!r}"
             )
-        for name in names:
+        # Dedupe within this URI's list before recording so a repeat name
+        # under the same URI is treated as a single pin, not a duplicate.
+        for name in dict.fromkeys(names):
             if name in result:
-                # First duplicate captures original; later ones append.
+                # First cross-URI duplicate captures original; later ones append.
                 duplicates.setdefault(name, [result[name]]).append(uri)
             else:
                 result[name] = uri

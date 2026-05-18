@@ -231,6 +231,24 @@ class TestParseOverride:
         assert "dup" in msg
         assert "uri-a" in msg and "uri-b" in msg
 
+    def test_within_uri_duplicate_is_silently_deduped(self):
+        # A name listed twice under the same URI is unambiguous (one pin),
+        # so we dedupe silently instead of raising. Cross-URI duplicates
+        # are still errors (covered by test_duplicate_test_name).
+        raw = json.dumps({"uri-a": ["dup", "x", "dup"]})
+        result = parse_override(raw)
+        assert result == {"dup": "uri-a", "x": "uri-a"}
+
+    def test_within_uri_duplicate_does_not_mask_cross_uri_duplicate(self):
+        # Repeats inside uri-a's list are deduped, but `dup` also appearing
+        # under uri-b is still a cross-URI duplicate and must raise.
+        raw = json.dumps({"uri-a": ["dup", "dup"], "uri-b": ["dup"]})
+        with pytest.raises(ReleaseTestConfigError) as exc:
+            parse_override(raw)
+        msg = str(exc.value)
+        assert "dup" in msg
+        assert "uri-a" in msg and "uri-b" in msg
+
     def test_type_error_raises_before_duplicate_detection(self):
         # Payload has BOTH a duplicate test name (across uri-a and uri-b) AND
         # a malformed value at uri-c. The type error should surface first
