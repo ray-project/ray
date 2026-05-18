@@ -207,6 +207,20 @@ class AsyncPartitionActor(PartitionActor):
     ):
         super().__init__(uri_column_names, data_context, filesystem)
         fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+        if fs_kwargs is None:
+            # Fail closed. ``plan_download_op`` routes filesystems we can't
+            # extract credentials from to ``PartitionActor`` (PyArrow path),
+            # so reaching ``AsyncPartitionActor`` with an unextractable FS is
+            # a bug. Silently seeding an empty kwargs dict would hand the
+            # user's filesystem over to obstore's ambient credential chain
+            # (IMDS / env), which is exactly the silent-drop behavior the
+            # routing was designed to prevent.
+            raise RuntimeError(
+                "AsyncPartitionActor was constructed with a filesystem whose "
+                f"credentials cannot be statically extracted ({type(filesystem).__name__}). "
+                "This indicates a dispatch bug: use PartitionActor for such "
+                "filesystems so the user's credentials are not silently dropped."
+            )
         self._registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:

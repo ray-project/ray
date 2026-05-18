@@ -154,6 +154,7 @@
 - name: "iceberg_benchmark_{{mode}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_pyiceberg.sh
       runtime_env:
@@ -373,6 +374,47 @@
       run:
         script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
+############
+# Mix tests
+############
+
+- name: mix
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: dataset_mixing/compute_8_cpu.yaml
+  run:
+    timeout: 600
+    wait_for_nodes:
+      num_nodes: 8
+
+  variations:
+    - __suffix__: 8ds_equal
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_equal_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
 ################
 # Training tests
 ################
@@ -382,6 +424,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
     cluster_compute: dataset/multi_node_train_16_workers.yaml
@@ -409,6 +452,9 @@
 - name: training_ingest_benchmark
   python: "3.10"
   working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
 
   variations:
     - __suffix__: s3_parquet_cpu
@@ -513,6 +559,7 @@
 - name: iter_torch_batches
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -970,6 +1017,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=1
+    anyscale_sdk_2026: true
     cluster_compute: autoscaling_gpu_g2_gce.yaml
 
   run:
@@ -1289,6 +1337,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=1
+    anyscale_sdk_2026: true
     cluster_compute: cross_az_250_350_compute_gce.yaml
 
   run:
@@ -1330,6 +1379,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -1365,6 +1415,7 @@
   frequency: manual
 
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
 
