@@ -40,7 +40,7 @@ def _clear_cache():
     _read_arrow_schema_cached.cache_clear()
 
 
-def _make_bm(schema):
+def _make_bm(schema: "pa.Schema | None") -> BlockMetadataWithSchema:
     md = BlockMetadata(
         num_rows=10,
         size_bytes=1024,

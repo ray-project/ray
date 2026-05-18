@@ -380,9 +380,7 @@ class BlockMetadataWithSchema(BlockMetadata):
 
     def __setstate__(self, state: Dict[str, Any]):
         schema_val: bytes | Schema | None = state["schema"]
-        if isinstance(schema_val, (bytes, bytearray)):
-            if isinstance(schema_val, bytearray):
-                schema_val = bytes(schema_val)
+        if isinstance(schema_val, bytes):
             state["schema"] = _read_arrow_schema_cached(schema_val)
         self.__dict__.update(state)
 
