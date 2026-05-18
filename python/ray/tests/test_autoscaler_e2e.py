@@ -45,8 +45,8 @@ def test_ray_status_activity(local_autoscaling_cluster, shutdown_only, enable_v2
 
     ray.init(address="auto")
     if enable_v2:
-        assert (
-            subprocess.check_output("ray status --verbose", shell=True)
+        wait_for_condition(
+            lambda: subprocess.check_output("ray status --verbose", shell=True)
             .decode()
             .count("Idle: ")
             > 0
