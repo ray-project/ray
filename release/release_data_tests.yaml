@@ -566,9 +566,9 @@
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
-      --num-scalar-cols 20
-      --num-array64-cols 27
-      --num-array32-cols 229
+      --num-scalar-cols 100
+      --num-array64-cols 100
+      --num-array32-cols 100
 
 
 ########################
