@@ -54,8 +54,11 @@ def _build_direct_streaming_llm_deployment(
 ) -> Application:
     """Build an LLM deployment with late-bound ASGI ingress enabled.
 
-    The real ASGI app (vLLM FastAPI) is constructed inside
-    `LLMServer.__serve_build_asgi_app__` after the engine starts.
+    Used by the OpenAI, DP, and PD builders to wrap their respective server
+    class (``LLMServer``, ``DPServer``, ``PDDecodeServer``/``DPPDDecodeServer``)
+    as the ingress. The real ASGI app (vLLM FastAPI) is constructed inside
+    ``LLMServer.__serve_build_asgi_app__`` after the engine starts; subclasses
+    inherit this hook.
 
     Replica selection is driven by the deployment's ``request_router_config``.
     Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise

@@ -27,6 +27,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_deployment,
 )
@@ -38,6 +39,8 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer,  # TODO(Kourosh): Deprecate, remove in Ray 2.58.
 )
 from ray.serve.deployment import Application
+
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Deprecated: ProxyClsConfig
@@ -198,7 +201,6 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     prefill_builder = (
         build_dp_deployment if prefill_dp_size > 1 else build_llm_deployment
     )
-    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
 
     # When DP > 1, use combined DP+PD server classes that inherit from both
     # the PD server and DPServer (for gang scheduling, DP master info, etc.).
@@ -218,10 +220,16 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             bind_kwargs={"prefill_server": prefill_deployment},
             deployment_cls=decode_cls,
         )
+        logger.info(
+            "Direct streaming enabled for PD: "
+            "%s=ingress, LLMRouter=ingress_request_router",
+            decode_cls.__name__,
+        )
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(server=decode_deployment)
         )
 
+    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
     decode_deployment = decode_builder(
         pd_config.decode_config,
         name_prefix="Decode:",
