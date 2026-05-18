@@ -55,6 +55,29 @@ Every DOC ticket created for an OSS Ray issue has:
 
 ---
 
+## Bash invocation discipline
+
+Claude Code permission patterns like `Bash(git commit:*)` prefix-match the **whole command string**. Multi-line scripts defeat the allowlist — every line after the first is unguarded and prompts. To minimize friction:
+
+- **One shell command per Bash call.** Don't bundle "cd, then inspect, then diff" into a single multi-line Bash invocation. Each Bash call is one logical command.
+- **CWD resets between Bash calls.** Use a single-line `cd <wt> && <command>` when you need the worktree CWD — `Bash(cd:*)` matches the prefix and the inner command's allowlist entry handles the rest.
+- **Avoid `git -C <path>`.** It breaks `Bash(git <subcmd>:*)` prefix-matches because the command starts with `git -C`, not `git <subcmd>`.
+- **For commit messages with multiple paragraphs**, use repeated `-m` flags (each becomes a paragraph separated by `\n\n`) — *not* a `"$(cat <<'EOF' ... EOF)"` heredoc, which is multi-line.
+- **For long PR bodies**, write the body to a file with the `Write` tool, then pass `--body-file <path>` to `gh pr create`. Same reason.
+
+In practice every CWD-dependent step becomes a one-liner:
+
+```bash
+cd .claude/worktrees/doc-XXX-<short> && git diff --name-only HEAD
+cd .claude/worktrees/doc-XXX-<short> && git add <target-file>
+cd .claude/worktrees/doc-XXX-<short> && git commit -s -m "[Docs] Title (#NNNN)" -m "Body." -m "Closes ray-project/ray#NNNN" -m "[DOC-XXX]" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+cd .claude/worktrees/doc-XXX-<short> && git push -u origin doc-XXX-<short>
+```
+
+One step per Bash call. Never bundle inspection-and-action.
+
+---
+
 ## Resolve mode (DOC-XXX → fix PR)
 
 ### 1. Pull the ticket
@@ -125,31 +148,25 @@ Run `/lint` on the modified files. Pre-commit fixes whitespace, line length, and
 
 ### 6. Commit (signed off)
 
-Single commit. Stage by name, never `git add -A`. Sign off with `-s` so the commit carries a `Signed-off-by:` trailer alongside the Co-Authored-By trailer:
+Single commit. Stage by name, never `git add -A`. Sign off with `-s` so the commit carries a `Signed-off-by:` trailer alongside the Co-Authored-By trailer. Use repeated `-m` flags (each becomes a paragraph) instead of a heredoc — see the [Bash invocation discipline](#bash-invocation-discipline) section:
 
 ```bash
-git commit -s -m "$(cat <<'EOF'
-[Docs] <short imperative summary> (#<NNNN>)
-
-<1-3 sentences: what was wrong, what the fix is, any cross-link or
-alternative chosen. Mention the target file once.>
-
-Closes ray-project/ray#<NNNN>
-
-[DOC-XXX]
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-EOF
-)"
+cd .claude/worktrees/doc-XXX-<short> && git commit -s -m "[Docs] <short imperative summary> (#<NNNN>)" -m "<1-3 sentences: what was wrong, what the fix is, any cross-link or alternative chosen. Mention the target file once.>" -m "Closes ray-project/ray#<NNNN>" -m "[DOC-XXX]" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```
 
 The `[Docs]` prefix matches the Ray repo's commit-message convention (`[<area>] <subject>` — see `git log --oneline` for examples like `[RLlib]`, `[core]`, `[Data]`).
 
 ### 7. Push and open the PR
 
+Two single-line Bash calls (no compound `&&` between push and gh; they're separate logical steps). For the PR body, write it to a file first so `gh pr create` can take `--body-file <path>` instead of an inline multi-line heredoc:
+
 ```bash
-git push -u origin doc-XXX-<short-desc>
-gh pr create --repo ray-project/ray --title "[Docs] <subject> (#<NNNN>)" --body "$(cat <<'EOF'
+cd .claude/worktrees/doc-XXX-<short> && git push -u origin doc-XXX-<short>
+```
+
+Then use the `Write` tool to put the PR body at e.g. `/tmp/doc-XXX-pr-body.md`. Body template (follows the headings in `.github/PULL_REQUEST_TEMPLATE.md`; check that file before opening in case the template changes):
+
+```markdown
 ## Description
 
 <2-4 sentences echoing the commit body. State the defect and the fix.>
@@ -166,11 +183,13 @@ Closes ray-project/ray#<NNNN>
 or any cross-link the reviewer needs.>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
 ```
 
-The body follows the headings in `.github/PULL_REQUEST_TEMPLATE.md`; check that file before opening the PR in case the template changes.
+Then open the PR:
+
+```bash
+gh pr create --repo ray-project/ray --base master --head dstrodtman:doc-XXX-<short> --title "[Docs] <subject> (#<NNNN>)" --body-file /tmp/doc-XXX-pr-body.md
+```
 
 Both markers — `Closes ray-project/ray#<NNNN>` and `[DOC-XXX]` — must appear in the PR body literally. The first is what GitHub uses to auto-close the issue on merge; the second is what Jira's GitHub integration uses to render the back-link and transition the DOC ticket. Keep them on their own lines.
 
