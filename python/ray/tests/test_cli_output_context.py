@@ -145,9 +145,11 @@ class TestHeadNodeContextGating(unittest.TestCase):
             if isinstance(node, ast.If):
                 # Check if this If block contains our call
                 for child in ast.walk(node):
-                    if isinstance(child, ast.Call) and getattr(
-                        child.func, "id", None
-                    ) == "print_head_node_context_separator":
+                    if (
+                        isinstance(child, ast.Call)
+                        and getattr(child.func, "id", None)
+                        == "print_head_node_context_separator"
+                    ):
                         # Verify the condition of the If statement is ray_start_commands
                         test_node = node.test
                         self.assertIsInstance(test_node, ast.Name)
@@ -155,7 +157,8 @@ class TestHeadNodeContextGating(unittest.TestCase):
                         call_found = True
 
         self.assertTrue(
-            call_found, "Could not find conditional call to print_head_node_context_separator"
+            call_found,
+            "Could not find conditional call to print_head_node_context_separator",
         )
 
 

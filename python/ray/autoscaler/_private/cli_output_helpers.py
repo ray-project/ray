@@ -13,12 +13,8 @@ def print_next_steps_context_note(cli_logger, cf):
     Informs the user that the commands below are intended for the head node
     or for machines within the cluster network.
     """
-    cli_logger.print(
-        cf.dimmed("Note: The following commands are intended for use on")
-    )
-    cli_logger.print(
-        cf.dimmed("the head node or within the cluster network.")
-    )
+    cli_logger.print(cf.dimmed("Note: The following commands are intended for use on"))
+    cli_logger.print(cf.dimmed("the head node or within the cluster network."))
     cli_logger.newline()
 
 
@@ -30,14 +26,10 @@ def print_head_node_context_separator(cli_logger, cf):
     """
     cli_logger.print(cf.dimmed("-" * 60))
     cli_logger.print(
-        cf.dimmed(
-            "Note: The output above is from the head node (via `ray start`)."
-        )
+        cf.dimmed("Note: The output above is from the head node (via `ray start`).")
     )
     cli_logger.print(
-        cf.dimmed(
-            "  Commands shown in 'Next steps' may only work from the head node"
-        )
+        cf.dimmed("  Commands shown in 'Next steps' may only work from the head node")
     )
     cli_logger.print(cf.dimmed("  or from within the cluster network."))
     cli_logger.newline()
