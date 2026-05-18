@@ -66,8 +66,10 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         remaining_iters = num_boost_round
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
         train_df = train_ds_iter.materialize().to_pandas()
+        train_df = train_df.convert_dtypes(dtype_backend="numpy_nullable")
 
         eval_df = valid_dataset.materialize().to_pandas()
+        eval_df = eval_df.convert_dtypes(dtype_backend="numpy_nullable")
         eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
         valid_set = lightgbm.Dataset(eval_X, label=eval_y)
 

@@ -219,6 +219,7 @@ Convert this into a native `lightgbm.Dataset <https://lightgbm.readthedocs.io/en
     def get_dataset(dataset_name: str) -> lightgbm.Dataset:
         shard = ray.train.get_dataset_shard(dataset_name)
         df = shard.materialize().to_pandas()
+        df = df.convert_dtypes(dtype_backend="numpy_nullable")
         X, y = df.drop("target", axis=1), df["target"]
         return lightgbm.Dataset(X, label=y)
 
@@ -226,6 +227,14 @@ Convert this into a native `lightgbm.Dataset <https://lightgbm.readthedocs.io/en
         train_set = get_dataset("train")
         eval_set = get_dataset("eval")
         ...
+
+.. note::
+
+    Starting in 2.55, Ray Data preserves Arrow-backed pandas dtypes when converting
+    Arrow blocks to pandas, for example ``int64[pyarrow]``. LightGBM's pandas input
+    validation may reject these dtypes. If you pass a pandas DataFrame from Ray
+    Data to ``lightgbm.Dataset``, convert it first with
+    ``df.convert_dtypes(dtype_backend="numpy_nullable")``.
 
 
 Finally, pass the dataset to the Trainer. This will automatically shard the dataset across the workers. These keys must match the keys used when calling ``get_dataset_shard`` in the training function.

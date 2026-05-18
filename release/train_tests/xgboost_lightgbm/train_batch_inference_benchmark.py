@@ -85,6 +85,7 @@ def xgboost_train_loop_function(config: Dict):
 def lightgbm_train_loop_function(config: Dict):
     train_ds_iter = ray.train.get_dataset_shard("train")
     train_df = train_ds_iter.materialize().to_pandas()
+    train_df = train_df.convert_dtypes(dtype_backend="numpy_nullable")
 
     label_column, params = config["label_column"], config["params"]
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
