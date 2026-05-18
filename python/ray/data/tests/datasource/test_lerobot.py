@@ -11,6 +11,7 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -85,8 +86,10 @@ def create_lerobot_dataset(
         "state": {"dtype": "float32", "shape": [2]},
     }
     info = {
+        "codebase_version": "v3.0",
         "total_frames": total_frames,
         "total_episodes": num_episodes,
+        "total_tasks": 1,
         "fps": FPS,
         "data_path": "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet",
         "features": features,
@@ -114,13 +117,14 @@ def create_lerobot_dataset(
         json.dump(stats, f)
 
     # -- meta/tasks.parquet --
-    tasks_table = pa.table(
-        {
-            "task_index": pa.array([0], type=pa.int64()),
-            "task": pa.array(["test_task"], type=pa.string()),
-        }
+    # lerobot expects task names as the DataFrame *index* (named "task")
+    # with `task_index` as a column.  Write via pandas so the index round-
+    # trips through parquet correctly.
+    tasks_df = pd.DataFrame(
+        {"task_index": [0]},
+        index=pd.Index(["test_task"], name="task"),
     )
-    pq.write_table(tasks_table, os.path.join(meta_dir, "tasks.parquet"))
+    tasks_df.to_parquet(os.path.join(meta_dir, "tasks.parquet"))
 
     # -- meta/episodes/chunk-000/*.parquet --
     ep_dir = os.path.join(meta_dir, "episodes", "chunk-000")
@@ -428,14 +432,15 @@ def test_read_lerobot_missing_dependency(ray_start_regular_shared, lerobot_datas
 
 
 def test_read_lerobot_metadata(ray_start_regular_shared, lerobot_dataset):
-    """Test that metadata is accessible via the datasource."""
+    """Test that metadata is accessible via the datasource as a pristine
+    lerobot ``LeRobotDatasetMetadata`` instance."""
     from ray.data.datasource import LeRobotDatasource
 
     source = LeRobotDatasource(lerobot_dataset)
     assert source.meta.total_frames == 15
     assert source.meta.total_episodes == 3
     assert source.meta.video_keys == ["observation.image"]
-    assert source.meta.info["fps"] == FPS
+    assert source.meta.fps == FPS
 
 
 def test_read_lerobot_all_modes_same_row_count(

@@ -3,7 +3,6 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
 )
 from ray.data._internal.datasource.lerobot_datasource import (
     LeRobotDatasource,
-    LeRobotDatasourceMetadata,
     LeRobotPartitioning,
 )
 from ray.data._internal.datasource.mcap_datasource import (
@@ -65,7 +64,6 @@ __all__ = [
     "FileMetadataProvider",
     "FilenameProvider",
     "LeRobotDatasource",
-    "LeRobotDatasourceMetadata",
     "LeRobotPartitioning",
     "MCAPDatasource",
     "PartitionStyle",
