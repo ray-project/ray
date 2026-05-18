@@ -112,15 +112,7 @@ def no_op_udf(batch):
 
 
 class RealisticSchemaUDF:
-    """Expands each input batch into a mixed-type wide-schema table.
-
-    For producer-side efficiency, one example value per column is
-    pre-rolled in ``__init__`` and tiled across rows. The output schema
-    is genuinely mixed-type (scalar float32 + ``list<float32>`` of two
-    different lengths), so the per-block ``BlockMetadataWithSchema``
-    reflects realistic deserialization cost without paying the data
-    generation cost on every call.
-    """
+    """Expands each input batch into a mixed-type wide-schema table."""
 
     def __init__(
         self,
@@ -157,11 +149,6 @@ class RealisticSchemaUDF:
         for i, col in enumerate(self._scalar_cols):
             out[col] = np.full(n_rows, self._scalar_template[i], dtype=np.float32)
 
-        # Array columns: each row gets a reference to the same template
-        # array. The producer-side memory footprint is one buffer per
-        # column type, but PyArrow serializes each row's array
-        # independently so the per-block payload reflects realistic
-        # ``list<float32>`` storage.
         for i, col in enumerate(self._array_64_cols):
             out[col] = [self._arr64_templates[i]] * n_rows
 
