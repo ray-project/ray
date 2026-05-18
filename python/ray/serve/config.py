@@ -20,7 +20,7 @@ from pydantic import (
 )
 
 from ray import cloudpickle
-from ray._common.network_utils import get_localhost_ip
+from ray._common.network_utils import get_all_interfaces_ip, get_localhost_ip
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.actor import ActorClass
 
@@ -776,6 +776,14 @@ class ProxyLocation(str, Enum):
             return ProxyLocation(deployment_mode.value)
 
 
+# HAProxy on remote nodes must reach replica backend HTTP ports, so bind
+# to all interfaces when HAProxy is the ingress.
+if RAY_SERVE_ENABLE_HA_PROXY:
+    _DEFAULT_HTTP_HOST_VALUE = get_all_interfaces_ip()
+else:
+    _DEFAULT_HTTP_HOST_VALUE = DEFAULT_HTTP_HOST or get_localhost_ip()
+
+
 @PublicAPI(stability="stable")
 class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
@@ -811,13 +819,7 @@ class HTTPOptions(BaseModel):
       internal Serve HTTP proxy actor.
     """
 
-    # HAProxy on remote nodes must reach replica backend ports, so flip
-    # the default to 0.0.0.0 when RAY_SERVE_ENABLE_HA_PROXY=1.
-    host: Optional[str] = (
-        "0.0.0.0"
-        if RAY_SERVE_ENABLE_HA_PROXY
-        else (DEFAULT_HTTP_HOST or get_localhost_ip())
-    )
+    host: Optional[str] = _DEFAULT_HTTP_HOST_VALUE
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly

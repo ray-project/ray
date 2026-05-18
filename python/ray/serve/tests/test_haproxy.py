@@ -13,6 +13,7 @@ import requests
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip
 from ray._common.test_utils import (
     SignalActor,
     wait_for_condition,
@@ -1104,8 +1105,8 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
 
 
 def test_default_host_is_all_interfaces(ray_shutdown):
-    """When HAProxy is enabled, the default HTTPOptions.host is 0.0.0.0
-    so HAProxy on other nodes can reach the replica backend ports.
+    """When HAProxy is enabled, the default HTTPOptions.host binds to all
+    interfaces so HAProxy on other nodes can reach the replica backend ports.
     """
     serve.start(http_options=HTTPOptions())
 
@@ -1128,10 +1129,11 @@ def test_default_host_is_all_interfaces(ray_shutdown):
 
     wait_for_condition(lambda: len(_direct_ingress_listeners()) > 0, timeout=30)
 
+    expected = get_all_interfaces_ip()
     for conn in _direct_ingress_listeners():
-        assert conn.laddr.ip == "0.0.0.0", (
+        assert conn.laddr.ip == expected, (
             f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
-            "expected '0.0.0.0'"
+            f"expected {expected!r}"
         )
 
 

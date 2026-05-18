@@ -15,7 +15,7 @@ from typing import (
 )
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -211,13 +211,17 @@ class ServeController:
             http_options.location = DeploymentMode.HeadOnly
 
         if self._ha_proxy_enabled:
-            if http_options.host == "0.0.0.0" and DEFAULT_HTTP_HOST != "0.0.0.0":
+            all_interfaces = get_all_interfaces_ip()
+            if http_options.host == all_interfaces and DEFAULT_HTTP_HOST not in (
+                None,
+                all_interfaces,
+            ):
                 logger.info(
-                    f"RAY_SERVE_ENABLE_HA_PROXY=1: HTTPOptions.host defaults to '0.0.0.0' (overriding RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r}) so HAProxy on remote nodes can reach replica backends."
+                    f"RAY_SERVE_ENABLE_HA_PROXY=1: HTTPOptions.host defaults to {all_interfaces!r} (overriding RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r}) so HAProxy on remote nodes can reach replica backends."
                 )
-            elif http_options.host not in (None, "0.0.0.0"):
+            elif http_options.host not in (None, all_interfaces):
                 logger.warning(
-                    f"HTTPOptions.host={http_options.host!r} is not reachable from HAProxy on other nodes. Replica HTTP ports should bind to '0.0.0.0' (the default when RAY_SERVE_ENABLE_HA_PROXY=1) so cross-node routing works."
+                    f"HTTPOptions.host={http_options.host!r} is not reachable from HAProxy on other nodes. Replica HTTP ports should bind to {all_interfaces!r} (the default when RAY_SERVE_ENABLE_HA_PROXY=1) so cross-node routing works."
                 )
 
         # Configure proxy default HTTP and gRPC options.
