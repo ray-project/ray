@@ -126,11 +126,16 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             dim=0,
         )
 
-        # Discount = gamma * (1 - terminated) * loss_mask. See
-        # `impala_torch_learner.py` for the rationale -- the loss_mask factor
-        # gates the appended bootstrap timestep so its delta (which references
-        # `bootstrap_values` from a neighbouring trajectory) does not leak into
-        # the V-trace recursion of the last real step.
+        # Discount = gamma * (1 - terminated) * loss_mask.
+        # - The (1 - terminated) factor implements the Bellman gating: no
+        #   bootstrap from t -> t+1 across a terminal step.
+        # - The loss_mask factor zeros out the discount at the appended bootstrap
+        #   timestep (loss_mask=False there). Without it, the bootstrap-ts delta
+        #   (which references `bootstrap_values` from a neighbouring trajectory)
+        #   would leak into the V-trace recursion of the last real step. The
+        #   loss_mask gating is equivalent to the legacy convention of marking
+        #   the bootstrap ts as `terminated=True`, but keeps `terminateds`
+        #   meaning only "Gymnasium terminal state reached".
         discounts_time_major = (
             (
                 1.0
