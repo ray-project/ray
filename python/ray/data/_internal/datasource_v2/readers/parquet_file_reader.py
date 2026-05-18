@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
+    _fragments_from_chunk_metadata,
+)
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -238,6 +242,46 @@ class ParquetFileReader(FileReader):
             return
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+
+    @override
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[pds.Fragment]:
+        """Fan file fragments into chunk-level sub-fragments per manifest row.
+
+        For each manifest row, looks up the file's fragment by path and:
+
+        - If ``chunk_metadata`` is ``None`` (whole-file case), the file
+          fragment is yielded as-is. This matches ``ParquetFileChunker``'s
+          behavior for files at or below ``target_chunk_size`` and the
+          default ``WholeFileChunker`` for non-chunking callers.
+        - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
+          we slice the fragment via
+          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
+          which returns one sub-fragment per row group in the chunk's
+          row-group range.
+
+        Paths are deduped by :meth:`FileReader.read` before the dataset is
+        built, so the dataset has exactly one fragment per file. The
+        per-row chunk metadata drives the fan-out here, not the dataset
+        itself — multiple manifest rows can share a single path with
+        different chunk indices.
+        """
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        fragments: List[pds.Fragment] = []
+        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+            fragment = path_to_fragment[path]
+            if chunk_metadata is None:
+                fragments.append(fragment)
+            else:
+                fragments.extend(
+                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                )
+        return fragments
 
     @override
     def _iter_fragment_tables(

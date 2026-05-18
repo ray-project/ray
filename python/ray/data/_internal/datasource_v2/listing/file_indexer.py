@@ -6,6 +6,11 @@ from typing import Iterable, Iterator, List, Optional
 from pyarrow.fs import FileSystem
 
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ChunkMetadata,
+    FileChunker,
+    WholeFileChunker,
+)
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
 from ray.data._internal.datasource_v2.listing.indexing_utils import _get_file_infos
@@ -69,6 +74,7 @@ class NonSamplingFileIndexer(FileIndexer):
         ignore_missing_paths: bool,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
+        file_chunker: Optional[FileChunker] = None,
     ):
         self._ignore_missing_paths = ignore_missing_paths
         self._max_paths_per_output = (
@@ -83,6 +89,18 @@ class NonSamplingFileIndexer(FileIndexer):
             "RAY_DATA_LIST_FILES_QUEUE_SIZE_PER_THREAD",
             self._max_paths_per_output * 4,
         )
+        self._file_chunker: FileChunker = (
+            file_chunker if file_chunker is not None else WholeFileChunker()
+        )
+
+    @property
+    def file_chunker(self) -> FileChunker:
+        """The file chunker that this indexer uses.
+
+        Exposed primarily for tests and shuffle-aware planning code that needs
+        to introspect or override the chunking strategy.
+        """
+        return self._file_chunker
 
     def list_files(
         self,
@@ -159,8 +177,9 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
+        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
-        files_count = 0
+        chunks_count = 0
 
         for file_info in file_infos:
             path, file_size = file_info.path, file_info.size
@@ -172,21 +191,39 @@ class NonSamplingFileIndexer(FileIndexer):
             if not all(pruner.should_include(path) for pruner in pruners):
                 continue
 
-            running_paths.append(path)
-            running_file_sizes.append(file_size)
-            files_count += 1
+            # Drive the chunker once per file; emit one manifest row per chunk.
+            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
+            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
+            # smaller than the target chunk size).
+            for (
+                chunk_metadata,
+                chunk_size,
+            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
+                running_paths.append(path)
+                running_file_sizes.append(chunk_size)
+                running_chunk_metadatas.append(chunk_metadata)
+                chunks_count += 1
 
-            if len(running_paths) >= self._max_paths_per_output:
-                manifests_count += 1
-                yield FileManifest.construct_manifest(running_paths, running_file_sizes)
-                running_paths = []
-                running_file_sizes = []
+                if len(running_paths) >= self._max_paths_per_output:
+                    manifests_count += 1
+                    yield FileManifest.construct_manifest(
+                        running_paths,
+                        running_file_sizes,
+                        running_chunk_metadatas,
+                    )
+                    running_paths = []
+                    running_file_sizes = []
+                    running_chunk_metadatas = []
 
         if running_paths:
             manifests_count += 1
-            yield FileManifest.construct_manifest(running_paths, running_file_sizes)
+            yield FileManifest.construct_manifest(
+                running_paths,
+                running_file_sizes,
+                running_chunk_metadatas,
+            )
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "
-            f"with {files_count} files"
+            f"with {chunks_count} file chunks"
         )

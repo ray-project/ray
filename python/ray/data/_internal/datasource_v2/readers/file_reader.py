@@ -204,7 +204,12 @@ class FileReader(Reader[FileManifest]):
         if len(input_split) == 0:
             return
 
-        paths = list(input_split.paths)
+        # Dedupe paths before handing them to pyarrow. When chunking is on,
+        # a manifest can carry multiple rows per file (each describing a
+        # different row-group slice); pyarrow only needs one fragment per
+        # file, and ``_get_fragments_to_read`` then fans out chunk-level
+        # sub-fragments using the per-row chunk metadata.
+        paths = list(dict.fromkeys(list(input_split.paths)))
         filesystem = self._filesystem or LocalFileSystem()
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
         # listing + column metadata is shared, but then iterate its
@@ -249,7 +254,7 @@ class FileReader(Reader[FileManifest]):
 
         rows_read = 0
         for table, fragment_path, fragment_row_offset in self._read_fragment_batches(
-            dataset, scanner_kwargs
+            dataset, scanner_kwargs, input_split
         ):
             if self._limit is not None:
                 if rows_read >= self._limit:
@@ -343,10 +348,27 @@ class FileReader(Reader[FileManifest]):
         """
         return {}
 
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[pds.Fragment]:
+        """Return the fragments to scan for this manifest.
+
+        Default impl returns one fragment per file in the dataset (paths are
+        deduped in :meth:`read` before the dataset is built). Subclasses that
+        support per-row chunk metadata (e.g. :class:`ParquetFileReader`)
+        override this to fan a single file fragment out into N sub-fragments
+        — one per row-group slice — based on
+        :attr:`FileManifest.file_chunk_metadatas`.
+        """
+        return list(dataset.get_fragments())
+
     def _read_fragment_batches(
         self,
         dataset: pds.Dataset,
         scanner_kwargs: dict,
+        manifest: FileManifest,
     ) -> Iterator[Tuple[pa.Table, str, int]]:
         """Yield non-empty (table, fragment_path, fragment_row_offset) triples.
 
@@ -376,7 +398,7 @@ class FileReader(Reader[FileManifest]):
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
-        is the finite fragment manifest from ``dataset.get_fragments()``,
+        is the finite fragment manifest from ``_get_fragments_to_read``,
         which we materialize below anyway. File data is still read lazily
         by the worker threads.
         """
@@ -386,7 +408,10 @@ class FileReader(Reader[FileManifest]):
         # eagerly anyway, so materialize once here to (a) cap
         # ``num_workers`` at the actual fragment count and (b) avoid
         # an early-fallback when the manifest has a single fragment.
-        fragments = list(dataset.get_fragments())
+        # Subclasses (e.g. ``ParquetFileReader``) override
+        # ``_get_fragments_to_read`` to fan out chunk-level
+        # sub-fragments from the manifest's chunk metadata.
+        fragments = self._get_fragments_to_read(dataset, manifest)
         if not fragments:
             return
 
