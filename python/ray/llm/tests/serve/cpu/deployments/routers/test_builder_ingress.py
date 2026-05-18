@@ -27,15 +27,6 @@ from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 
-@pytest.fixture(autouse=True)
-def disable_direct_streaming_by_default(monkeypatch):
-    monkeypatch.setattr(
-        "ray.llm._internal.serve.core.ingress.builder."
-        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
-        False,
-    )
-
-
 @pytest.fixture
 def get_llm_serve_args(llm_config_with_mock_engine):
     yield LLMServingArgs(llm_configs=[llm_config_with_mock_engine])
@@ -83,13 +74,6 @@ def serve_config_separate_model_config_files():
                 yaml.dump(llm_config_yaml, f)
 
         application["args"]["llm_configs"] = tmp_llm_config_files
-        application["runtime_env"] = application.get("runtime_env", {})
-        application["runtime_env"]["env_vars"] = application["runtime_env"].get(
-            "env_vars", {}
-        )
-        application["runtime_env"]["env_vars"][
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING"
-        ] = "0"
 
     with open(serve_config_dst, "w") as f:
         yaml.dump(serve_config_yaml, f)
