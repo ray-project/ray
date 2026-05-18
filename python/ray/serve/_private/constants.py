@@ -917,7 +917,7 @@ if RAY_SERVE_ENABLE_HA_PROXY:
     # Replica HTTP ports must be reachable from HAProxy on remote nodes, so
     # the effective default binds to all interfaces regardless of
     # RAY_SERVE_DEFAULT_HTTP_HOST.
-    if DEFAULT_HTTP_HOST is not None:
+    if DEFAULT_HTTP_HOST not in (None, get_all_interfaces_ip()):
         logger.warning(
             f"RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r} is ignored "
             "because RAY_SERVE_ENABLE_HA_PROXY=1 forces host to all interfaces "
