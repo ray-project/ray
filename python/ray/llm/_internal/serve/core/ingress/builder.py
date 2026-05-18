@@ -29,8 +29,30 @@ from ray.serve.experimental.round_robin_router import RoundRobinRouter
 logger = get_logger(__name__)
 
 
-def _build_direct_streaming_llm_deployment(llm_config: LLMConfig) -> Application:
-    """Build the LLMServer deployment with late-bound ASGI ingress enabled.
+def _get_direct_streaming_serve_options(
+    llm_config: LLMConfig,
+    override_serve_options: Optional[dict] = None,
+) -> Optional[dict]:
+    override_serve_options = dict(override_serve_options or {})
+    if (
+        "request_router_config" not in llm_config.deployment_config
+        and "request_router_config" not in override_serve_options
+    ):
+        override_serve_options["request_router_config"] = RequestRouterConfig(
+            request_router_class=RoundRobinRouter,
+        )
+    return override_serve_options or None
+
+
+def _build_direct_streaming_llm_deployment(
+    llm_config: LLMConfig,
+    *,
+    name_prefix: Optional[str] = None,
+    bind_kwargs: Optional[dict] = None,
+    override_serve_options: Optional[dict] = None,
+    deployment_cls: Optional[Type[LLMServer]] = None,
+) -> Application:
+    """Build an LLM deployment with late-bound ASGI ingress enabled.
 
     The real ASGI app (vLLM FastAPI) is constructed inside
     `LLMServer.__serve_build_asgi_app__` after the engine starts.
@@ -39,18 +61,15 @@ def _build_direct_streaming_llm_deployment(llm_config: LLMConfig) -> Application
     Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise
     leave their configured value untouched.
     """
-    server_cls = llm_config.server_cls or LLMServer
-    override_serve_options: Optional[dict] = None
-    if "request_router_config" not in llm_config.deployment_config:
-        override_serve_options = {
-            "request_router_config": RequestRouterConfig(
-                request_router_class=RoundRobinRouter,
-            ),
-        }
+    server_cls = deployment_cls or llm_config.server_cls or LLMServer
     return build_llm_deployment(
         llm_config,
+        name_prefix=name_prefix,
+        bind_kwargs=bind_kwargs,
         deployment_cls=serve.ingress()(server_cls),
-        override_serve_options=override_serve_options,
+        override_serve_options=_get_direct_streaming_serve_options(
+            llm_config, override_serve_options
+        ),
     )
 
 
@@ -153,6 +172,29 @@ class LLMServingArgs(BaseModelExtended):
         return self
 
 
+def _validate_direct_streaming_ingress_config(
+    ingress_deployment_config: Optional[dict],
+    ingress_cls_config: IngressClsConfig,
+) -> None:
+    if ingress_deployment_config:
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
+            "ingress_deployment_config because LLMServer is used directly as "
+            "the ingress deployment. Configure LLMServer through each "
+            "LLMConfig.deployment_config instead."
+        )
+
+    if (
+        ingress_cls_config.ingress_cls != OpenAiIngress
+        or ingress_cls_config.ingress_extra_kwargs
+    ):
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
+            "ingress_cls_config because LLMServer is used directly as the "
+            "ingress deployment."
+        )
+
+
 def _validate_direct_streaming_builder_config(
     builder_config: LLMServingArgs,
 ) -> None:
@@ -164,24 +206,10 @@ def _validate_direct_streaming_builder_config(
             "supported yet."
         )
 
-    if builder_config.ingress_deployment_config:
-        raise ValueError(
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
-            "ingress_deployment_config because LLMServer is used directly as "
-            "the ingress deployment. Configure LLMServer through each "
-            "LLMConfig.deployment_config instead."
-        )
-
-    ingress_cls_config = builder_config.ingress_cls_config
-    if (
-        ingress_cls_config.ingress_cls != OpenAiIngress
-        or ingress_cls_config.ingress_extra_kwargs
-    ):
-        raise ValueError(
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
-            "ingress_cls_config because LLMServer is used directly as the "
-            "ingress deployment."
-        )
+    _validate_direct_streaming_ingress_config(
+        builder_config.ingress_deployment_config,
+        builder_config.ingress_cls_config,
+    )
 
 
 def build_openai_app(builder_config: dict) -> Application:

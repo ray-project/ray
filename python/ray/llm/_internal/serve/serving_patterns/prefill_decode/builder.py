@@ -13,10 +13,14 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
+from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
+    _build_direct_streaming_llm_deployment,
+    _build_openai_ingress_request_router,
+    _validate_direct_streaming_ingress_config,
     load_class,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
@@ -181,6 +185,12 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_ingress_config(
+            pd_config.ingress_deployment_config,
+            pd_config.ingress_cls_config,
+        )
+
     prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
         "data_parallel_size", 1
     )
@@ -200,6 +210,17 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         name_prefix="Prefill:",
         deployment_cls=prefill_cls,
     )
+
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        decode_deployment = _build_direct_streaming_llm_deployment(
+            pd_config.decode_config,
+            name_prefix="Decode:",
+            bind_kwargs={"prefill_server": prefill_deployment},
+            deployment_cls=decode_cls,
+        )
+        return decode_deployment._with_ingress_request_router(
+            _build_openai_ingress_request_router(server=decode_deployment)
+        )
 
     decode_deployment = decode_builder(
         pd_config.decode_config,

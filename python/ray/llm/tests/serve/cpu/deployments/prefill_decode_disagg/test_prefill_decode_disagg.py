@@ -16,9 +16,27 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     build_pd_openai_app,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    DPPDDecodeServer,
     PDDecodeServer,
     PDPrefillServer,
 )
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve.config import RequestRouterConfig
+from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
+
+
+def _router_class_path(cls: type) -> str:
+    return f"{cls.__module__}.{cls.__name__}"
+
+
+@pytest.fixture(autouse=True)
+def disable_direct_streaming_by_default(monkeypatch):
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.serving_patterns.prefill_decode.builder."
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+        False,
+    )
 
 
 class TestPDServingArgs:
@@ -326,6 +344,128 @@ class TestBuildPDOpenaiApp:
             )
             # App should still be valid — proxy config is just ignored
             assert app is not None
+
+
+class TestBuildPDOpenaiAppDirectStreaming:
+    """Test suite for direct-streaming P/D builder structure."""
+
+    @pytest.fixture
+    def pd_configs(self):
+        base_config = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        prefill = LLMConfig.model_validate(base_config)
+        decode = LLMConfig.model_validate(base_config)
+        return prefill, decode
+
+    def _enable_direct_streaming(self, monkeypatch):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.serving_patterns.prefill_decode.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+    def test_direct_streaming_uses_decode_as_ingress(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+        decode_deployment = app._bound_deployment
+        ingress_request_router = app._ingress_request_router
+
+        assert decode_deployment.name == "Decode:test-model"
+        assert issubclass(decode_deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert issubclass(decode_deployment.func_or_class, PDDecodeServer)
+        assert ingress_request_router is not None
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        assert "prefill_server" in decode_deployment.init_kwargs
+        prefill_app = decode_deployment.init_kwargs["prefill_server"]
+        prefill_deployment = prefill_app._bound_deployment
+        assert prefill_deployment.func_or_class is PDPrefillServer
+
+        request_router_config = (
+            decode_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == _router_class_path(
+            RoundRobinRouter
+        )
+
+    def test_direct_streaming_decode_dp_uses_combined_server(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        decode.engine_kwargs["data_parallel_size"] = 2
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+        decode_deployment = app._bound_deployment
+
+        assert issubclass(decode_deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert issubclass(decode_deployment.func_or_class, DPPDDecodeServer)
+        assert decode_deployment.init_kwargs["prefill_server"]._bound_deployment
+
+    def test_direct_streaming_user_request_router_config_wins(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        decode.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == _router_class_path(
+            ConsistentHashRouter
+        )
+
+    @pytest.mark.parametrize(
+        ("builder_kwargs", "match"),
+        [
+            (
+                {"ingress_deployment_config": {"num_replicas": 2}},
+                "does not support ingress_deployment_config",
+            ),
+            (
+                {"ingress_cls_config": {"ingress_extra_kwargs": {"key": "value"}}},
+                "does not support ingress_cls_config",
+            ),
+        ],
+    )
+    def test_direct_streaming_rejects_ingress_config(
+        self,
+        pd_configs,
+        disable_placement_bundles,
+        monkeypatch,
+        builder_kwargs,
+        match,
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+
+        with pytest.raises(ValueError, match=match):
+            build_pd_openai_app(
+                {
+                    "prefill_config": prefill,
+                    "decode_config": decode,
+                    **builder_kwargs,
+                }
+            )
 
 
 if __name__ == "__main__":

@@ -6,15 +6,26 @@ from unittest.mock import patch
 import pytest
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+    build_dp_openai_app,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
     GangMasterInfoRegistry,
 )
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    RequestRouterConfig,
 )
+from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
+
+
+def _router_class_path(cls: type) -> str:
+    return f"{cls.__module__}.{cls.__name__}"
 
 
 class TestGetDeploymentOptions:
@@ -190,6 +201,87 @@ class TestBundleIndices:
             dp_rank, bundles_per_replica, sorted_indices
         )
         assert result == expected
+
+
+class TestBuildDPOpenAiAppDirectStreaming:
+    def _make_llm_config(self) -> LLMConfig:
+        return LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs={"data_parallel_size": 2},
+        )
+
+    def test_direct_streaming_builds_dp_ingress_with_router_attached(
+        self, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.serving_patterns.data_parallel.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        app = build_dp_openai_app({"llm_config": self._make_llm_config()})
+        deployment = app._bound_deployment
+        ingress_request_router = app._ingress_request_router
+
+        assert deployment.name == "DPServer:test_model"
+        assert issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert issubclass(deployment.func_or_class, DPServer)
+        assert ingress_request_router is not None
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        request_router_config = deployment._deployment_config.request_router_config
+        assert request_router_config.request_router_class == _router_class_path(
+            RoundRobinRouter
+        )
+
+    def test_direct_streaming_user_request_router_config_wins(
+        self, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.serving_patterns.data_parallel.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        llm_config = self._make_llm_config()
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_dp_openai_app({"llm_config": llm_config})
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == _router_class_path(
+            ConsistentHashRouter
+        )
+
+    @pytest.mark.parametrize(
+        ("builder_kwargs", "match"),
+        [
+            (
+                {"ingress_deployment_config": {"num_replicas": 2}},
+                "does not support ingress_deployment_config",
+            ),
+            (
+                {"ingress_cls_config": {"ingress_extra_kwargs": {"key": "value"}}},
+                "does not support ingress_cls_config",
+            ),
+        ],
+    )
+    def test_direct_streaming_rejects_ingress_config(
+        self, disable_placement_bundles, monkeypatch, builder_kwargs, match
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.serving_patterns.data_parallel.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        with pytest.raises(ValueError, match=match):
+            build_dp_openai_app(
+                {"llm_config": self._make_llm_config(), **builder_kwargs}
+            )
 
 
 if __name__ == "__main__":
