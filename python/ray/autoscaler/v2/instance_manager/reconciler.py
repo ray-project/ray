@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
+from ray._raylet import GcsClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
     KubeRayProvider,
 )
@@ -32,8 +33,13 @@ from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer impor
     RayInstallError,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
-from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
+from ray.autoscaler.v2.scheduler import (
+    IResourceScheduler,
+    SchedulingReply,
+    SchedulingRequest,
+)
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.sdk import count_active_drivers
 from ray.autoscaler.v2.utils import is_head_node
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
@@ -72,6 +78,7 @@ class Reconciler:
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
+        gcs_client: Optional[GcsClient] = None,
         cloud_provider_errors: Optional[List[CloudInstanceProviderError]] = None,
         ray_install_errors: Optional[List[RayInstallError]] = None,
         ray_stop_errors: Optional[List[RayStopError]] = None,
@@ -95,11 +102,15 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
+            scheduler: The resource scheduler to make scaling decisions.
+            cloud_provider: The cloud provider interface.
             cloud_resource_monitor: The cloud resource monitor for monitoring resource
                 availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
+            autoscaling_config: The autoscaling config.
+            gcs_client: Optional GCS client; None forces fail-closed.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
@@ -135,6 +146,7 @@ class Reconciler:
             ray_cluster_resource_state=ray_cluster_resource_state,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
+            gcs_client=gcs_client,
             _logger=_logger,
         )
 
@@ -245,6 +257,7 @@ class Reconciler:
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
+        gcs_client: Optional[GcsClient] = None,
         _logger: Optional[logging.Logger] = None,
     ):
         """
@@ -271,14 +284,18 @@ class Reconciler:
             7. Handle any stuck instances with timeouts.
 
         Args:
+            autoscaling_state: The autoscaling state to populate as the
+                reconcile runs.
             instance_manager: The instance manager to reconcile.
             scheduler: The resource scheduler to make scaling decisions.
+            cloud_provider: The cloud provider interface.
             cloud_resource_monitor: The cloud resource monitor for monitoring resource
                 availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
             autoscaling_config: The autoscaling config.
+            gcs_client: Optional GCS client for the cluster-idle Layer 3 mask.
             _logger: The logger (for testing).
 
         """
@@ -297,6 +314,7 @@ class Reconciler:
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
             cloud_provider=cloud_provider,
+            gcs_client=gcs_client,
         )
 
         Reconciler._handle_instances_launch(
@@ -1089,6 +1107,7 @@ class Reconciler:
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
         cloud_provider: ICloudInstanceProvider,
+        gcs_client: Optional[GcsClient] = None,
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1107,6 +1126,7 @@ class Reconciler:
             scheduler: The resource scheduler to make scaling decisions.
             autoscaling_config: The autoscaling config.
             cloud_provider: The cloud provider interface.
+            gcs_client: Optional GCS client for the cluster-idle Layer 3 mask.
         """
 
         # Get the current instance states.
@@ -1144,6 +1164,9 @@ class Reconciler:
             cluster_resource_constraints=ray_state.cluster_resource_constraints,
             current_instances=autoscaler_instances,
             idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
+            idle_termination_seconds=(
+                autoscaling_config.get_idle_termination_seconds()
+            ),
             disable_launch_config_check=(
                 autoscaling_config.disable_launch_config_check()
             ),
@@ -1158,6 +1181,15 @@ class Reconciler:
 
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
+
+        # Layer 3 of the cluster-idle predicate; catches driver-only work.
+        Reconciler._apply_cluster_idle_driver_mask(reply, gcs_client)
+
+        # KubeRay is the only provider with the annotation contract today.
+        if reply.cluster_idle_termination_expired and isinstance(
+            cloud_provider, KubeRayProvider
+        ):
+            cloud_provider.set_cluster_idle_annotation()
 
         # Populate the autoscaling state.
         autoscaling_state.infeasible_resource_requests.extend(
@@ -1239,6 +1271,23 @@ class Reconciler:
             cloud_provider.do_ippr_requests(reply.to_ippr)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
+    def _apply_cluster_idle_driver_mask(
+        reply: SchedulingReply, gcs_client: Optional[GcsClient]
+    ) -> None:
+        """Cluster-idle Layer 3: mask the predicate when drivers are attached.
+
+        Fails closed: GCS query failure (active=None) cancels the signal.
+        """
+        if not reply.cluster_idle_termination_expired:
+            return
+        active = count_active_drivers(gcs_client) if gcs_client is not None else None
+        if active is None or active > 0:
+            reply.cluster_idle_termination_expired = False
+            logger.info(
+                "Cluster idle predicate masked by Layer 3: active_drivers=%s", active
+            )
 
     @staticmethod
     def _terminate_instances(instance_manager: InstanceManager):

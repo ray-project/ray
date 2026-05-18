@@ -42,6 +42,10 @@ from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
+# Annotation written when the cluster-idle predicate fires; KubeRay operator
+# observes it and performs the terminal action.
+IDLE_TTL_EXPIRED_ANNOTATION = "ray.io/idle-ttl-expired"
+
 
 class KubeRayProvider(ICloudInstanceProvider):
     """
@@ -632,6 +636,53 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
+
+    def set_cluster_idle_annotation(self) -> None:
+        """Sets `ray.io/idle-ttl-expired=true` on the RayCluster CR.
+
+        Idempotent: skips PATCH when annotation already set. Failures are
+        logged and swallowed; the next reconcile retries.
+        """
+        path = f"rayclusters/{self._cluster_name}"
+        try:
+            cr = self._get(path)
+        except Exception:
+            logger.exception(
+                "Failed to fetch RayCluster %s while setting idle annotation",
+                self._cluster_name,
+            )
+            return
+
+        current = (
+            cr.get("metadata", {})
+            .get("annotations", {})
+            .get(IDLE_TTL_EXPIRED_ANNOTATION)
+        )
+        if current == "true":
+            return
+
+        # Merge patch covers both "annotations missing" and "annotations
+        # present" cases in one call.
+        payload = {"metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}}
+        try:
+            self._k8s_api_client.patch(
+                path,
+                payload,
+                content_type="application/merge-patch+json",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to PATCH %s=true on RayCluster %s",
+                IDLE_TTL_EXPIRED_ANNOTATION,
+                self._cluster_name,
+            )
+            return
+
+        logger.info(
+            "Set %s=true on RayCluster %s.",
+            IDLE_TTL_EXPIRED_ANNOTATION,
+            self._cluster_name,
+        )
 
     def _get_head_pod_resource_version(self) -> str:
         """

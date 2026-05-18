@@ -1,6 +1,7 @@
+import logging
 import time
 from collections import Counter
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional
 
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.schema import ClusterStatus, Stats
@@ -10,6 +11,8 @@ from ray.core.generated.autoscaler_pb2 import (
     GetClusterResourceStateReply,
     GetClusterStatusReply,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT_S = 10
 
@@ -119,3 +122,19 @@ def get_cluster_resource_state(gcs_client: GcsClient) -> ClusterResourceState:
     reply = GetClusterResourceStateReply()
     reply.ParseFromString(str_reply)
     return reply.cluster_resource_state
+
+
+def count_active_drivers(gcs_client: GcsClient) -> Optional[int]:
+    """Returns the number of alive drivers, or None when the GCS query fails.
+
+    Callers must treat None as "unknown" and fail closed.
+    """
+    try:
+        jobs = gcs_client.get_all_job_info(
+            skip_submission_job_info_field=True,
+            skip_is_running_tasks_field=True,
+        )
+    except Exception:
+        logger.exception("Failed to query GCS job table for cluster-idle check.")
+        return None
+    return sum(1 for job in jobs.values() if not job.is_dead)

@@ -19,6 +19,7 @@ from ray.autoscaler.v2.schema import (
     ResourceRequestByCount,
 )
 from ray.autoscaler.v2.sdk import (
+    count_active_drivers,
     get_cluster_status,
     request_cluster_resources,
 )
@@ -986,6 +987,50 @@ def _clear_token():
 
     authentication_test_utils.clear_auth_token_sources()
     authentication_test_utils.reset_auth_token_state()
+
+
+class _FakeJob:
+    def __init__(self, is_dead: bool):
+        self.is_dead = is_dead
+
+
+def _make_mock_gcs(jobs):
+    class _MockGcs:
+        def __init__(self, jobs_):
+            self._jobs = jobs_
+            self.calls = []
+
+        def get_all_job_info(self, **kwargs):
+            self.calls.append(kwargs)
+            return dict(enumerate(self._jobs))
+
+    return _MockGcs(jobs)
+
+
+def test_count_active_drivers_counts_only_alive():
+    gcs = _make_mock_gcs(
+        [_FakeJob(False), _FakeJob(True), _FakeJob(False), _FakeJob(True)]
+    )
+    assert count_active_drivers(gcs) == 2
+    # Both skip flags must be set; the cluster-idle path does not need either.
+    assert gcs.calls == [
+        {
+            "skip_submission_job_info_field": True,
+            "skip_is_running_tasks_field": True,
+        }
+    ]
+
+
+def test_count_active_drivers_empty():
+    assert count_active_drivers(_make_mock_gcs([])) == 0
+
+
+def test_count_active_drivers_returns_none_on_failure():
+    class _FailingGcs:
+        def get_all_job_info(self, **_):
+            raise RuntimeError("gcs unreachable")
+
+    assert count_active_drivers(_FailingGcs()) is None
 
 
 if __name__ == "__main__":

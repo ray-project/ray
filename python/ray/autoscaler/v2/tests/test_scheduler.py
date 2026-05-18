@@ -58,6 +58,7 @@ def sched_request(
     cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[float] = None,
+    idle_termination_seconds: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
     ippr_specs: Optional[IPPRSpecs] = None,
     ippr_statuses: Optional[Dict[str, IPPRStatus]] = None,
@@ -97,6 +98,7 @@ def sched_request(
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
+        idle_termination_seconds=idle_termination_seconds,
         disable_launch_config_check=disable_launch_config_check,
         ippr_specs=ippr_specs,
         ippr_statuses=ippr_statuses,
@@ -1650,6 +1652,170 @@ def test_idle_termination_with_node_type_idle_timeout(node_type_idle_timeout_s):
         assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
     else:
         assert len(to_terminate) == 0
+
+
+def _make_cluster_idle_request(
+    *,
+    idle_termination_seconds: Optional[float] = 5,
+    # idle_timeout_s defaults high so per-node idle termination does not
+    # preempt _check_cluster_idle. Tests that exercise the interaction set it
+    # explicitly.
+    idle_timeout_s: Optional[float] = 10_000,
+    head_idle_ms: int = 999_000,
+    worker_count: int = 0,
+    worker_idle_ms: int = 999_000,
+    worker_min: int = 0,
+    resource_requests: Optional[List[ResourceRequest]] = None,
+    gang_resource_requests: Optional[List[List[ResourceRequest]]] = None,
+    cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
+) -> SchedulingRequest:
+    """Builds a SchedulingRequest tailored for cluster-idle predicate tests.
+
+    Defaults satisfy every layer of _check_cluster_idle (head alone, idle past
+    threshold, no demand). Each test perturbs one knob to verify a single
+    failure mode.
+    """
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=worker_min,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+        "head_node": NodeTypeConfig(
+            name="head_node",
+            resources={"CPU": 0},
+            launch_config_hash="hash2",
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    instances = [
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_id="i-head",
+                instance_type="head_node",
+                status=Instance.RAY_RUNNING,
+                launch_config_hash="hash2",
+                node_kind=NodeKind.HEAD,
+                node_id="r-head",
+            ),
+            ray_node=NodeState(
+                ray_node_type_name="head_node",
+                node_id=b"r-head",
+                available_resources={"CPU": 0},
+                total_resources={"CPU": 0},
+                idle_duration_ms=head_idle_ms,
+                status=(NodeStatus.IDLE if head_idle_ms > 0 else NodeStatus.RUNNING),
+            ),
+            cloud_instance_id="c-head",
+        )
+    ]
+    for i in range(worker_count):
+        instances.append(
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id=f"i-w{i}",
+                    instance_type="type_cpu",
+                    status=Instance.RAY_RUNNING,
+                    launch_config_hash="hash1",
+                    node_id=f"r-w{i}",
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name="type_cpu",
+                    node_id=f"r-w{i}".encode(),
+                    available_resources={"CPU": 1},
+                    total_resources={"CPU": 1},
+                    idle_duration_ms=worker_idle_ms,
+                    status=(
+                        NodeStatus.IDLE if worker_idle_ms > 0 else NodeStatus.RUNNING
+                    ),
+                ),
+                cloud_instance_id=f"c-w{i}",
+            )
+        )
+
+    return sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+        idle_timeout_s=idle_timeout_s,
+        idle_termination_seconds=idle_termination_seconds,
+        resource_requests=resource_requests or [],
+        gang_resource_requests=gang_resource_requests or [],
+        cluster_resource_constraints=cluster_resource_constraints or [],
+    )
+
+
+def test_cluster_idle_fires_when_all_layers_pass():
+    scheduler = ResourceDemandScheduler(event_logger)
+    reply = scheduler.schedule(_make_cluster_idle_request())
+    assert reply.cluster_idle_termination_expired is True
+
+
+def test_cluster_idle_disabled_when_threshold_none():
+    scheduler = ResourceDemandScheduler(event_logger)
+    request = _make_cluster_idle_request(idle_termination_seconds=None)
+    reply = scheduler.schedule(request)
+    assert reply.cluster_idle_termination_expired is False
+
+
+@pytest.mark.parametrize(
+    "kwargs,reason",
+    [
+        # Gate 0: worker above minReplicas.
+        ({"worker_count": 1, "worker_min": 0}, "gate-0-above-min"),
+        # Layer 1: any alive node has idle_duration_ms == 0.
+        ({"head_idle_ms": 0}, "layer-1-head-busy"),
+        (
+            {"worker_count": 1, "worker_min": 1, "worker_idle_ms": 0},
+            "layer-1-worker-busy",
+        ),
+        # Layer 1: min(idle_ms) below threshold.
+        (
+            {"head_idle_ms": 1_000, "idle_termination_seconds": 10},
+            "layer-1-below-threshold",
+        ),
+        # Layer 2: outstanding resource demand of any kind.
+        (
+            {"resource_requests": [ResourceRequestUtil.make({"CPU": 1})]},
+            "layer-2-resource-request",
+        ),
+        (
+            {"gang_resource_requests": [[ResourceRequestUtil.make({"CPU": 1})]]},
+            "layer-2-gang-request",
+        ),
+        (
+            {"cluster_resource_constraints": [ResourceRequestUtil.make({"CPU": 1})]},
+            "layer-2-cluster-constraint",
+        ),
+    ],
+)
+def test_cluster_idle_blocked(kwargs, reason):
+    scheduler = ResourceDemandScheduler(event_logger)
+    reply = scheduler.schedule(_make_cluster_idle_request(**kwargs))
+    assert reply.cluster_idle_termination_expired is False, reason
+
+
+def test_cluster_idle_fires_after_per_node_drains_workers():
+    """Per-node idle termination drains idle workers in the same scheduling
+    tick before _check_cluster_idle runs. Gate 0 sees count_by_type == min
+    (workers marked TO_TERMINATE are excluded from the count) and the cluster
+    idle predicate fires."""
+    scheduler = ResourceDemandScheduler(event_logger)
+    request = _make_cluster_idle_request(
+        worker_count=1,
+        worker_min=0,
+        worker_idle_ms=999_000,
+        idle_timeout_s=1,
+    )
+    reply = scheduler.schedule(request)
+    assert reply.cluster_idle_termination_expired is True
+    _, to_terminate = _launch_and_terminate(reply)
+    assert any(
+        cause == TerminationRequest.Cause.IDLE for _, _, cause in to_terminate
+    ), "per-node idle termination should also fire"
 
 
 def test_gang_scheduling():

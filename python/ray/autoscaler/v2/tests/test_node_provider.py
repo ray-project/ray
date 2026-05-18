@@ -776,6 +776,46 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
+    def test_set_cluster_idle_annotation_adds_when_absent(self):
+        from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (  # noqa: E501
+            IDLE_TTL_EXPIRED_ANNOTATION,
+        )
+
+        self.provider.set_cluster_idle_annotation()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        patch = self.mock_client.get_patches(path)
+        assert patch == {
+            "metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}
+        }
+
+    def test_set_cluster_idle_annotation_idempotent(self):
+        from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (  # noqa: E501
+            IDLE_TTL_EXPIRED_ANNOTATION,
+        )
+
+        self.mock_client._ray_cluster.setdefault("metadata", {}).setdefault(
+            "annotations", {}
+        )[IDLE_TTL_EXPIRED_ANNOTATION] = "true"
+
+        self.provider.set_cluster_idle_annotation()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path not in self.mock_client._patches
+
+    def test_set_cluster_idle_annotation_swallows_get_failure(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        original_get = self.mock_client.get
+
+        def failing_get(p):
+            if "rayclusters" in p:
+                raise RuntimeError("k8s unreachable")
+            return original_get(p)
+
+        self.mock_client.get = failing_get
+        # Should not raise.
+        self.provider.set_cluster_idle_annotation()
+        assert path not in self.mock_client._patches
+
     def test_scale_down_with_multi_host_group(self):
         """
         Test the case where a worker group has numOfHosts > 1.

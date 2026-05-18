@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
+IDLE_TERMINATION_SECONDS_KEY = "idleTerminationSeconds"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
@@ -110,6 +111,8 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     else:
         idle_timeout_minutes = 1.0
 
+    idle_termination_seconds = _parse_idle_termination_seconds(autoscaler_options)
+
     if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_CONSERVATIVE:
         upscaling_speed = 1  # Rate-limit upscaling if "Conservative" is set by user.
     # This elif is redudant but included for clarity.
@@ -130,6 +133,8 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
         # Should consider exposing `idleTimeoutMinutes` in the RayCluster CRD,
         # under an `autoscaling` field.
         "idle_timeout_minutes": idle_timeout_minutes,
+        # Cluster-level idle termination threshold (seconds). V2 only.
+        "idle_termination_seconds": idle_termination_seconds,
         # Should consider exposing `upscalingSpeed` in the RayCluster CRD,
         # under an `autoscaling` field.
         "upscaling_speed": upscaling_speed,
@@ -140,6 +145,42 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     validate_config(autoscaling_config)
 
     return autoscaling_config
+
+
+def _parse_idle_termination_seconds(
+    autoscaler_options: Dict[str, Any],
+) -> Optional[float]:
+    """Parses `idleTerminationSeconds` from autoscalerOptions.
+
+    Returns None when unset, invalid, or not strictly greater than
+    `idleTimeoutSeconds`. The strict inequality avoids racing per-node
+    scale-down within the same reconcile loop.
+    """
+    raw = autoscaler_options.get(IDLE_TERMINATION_SECONDS_KEY)
+    if raw is None:
+        return None
+
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        logger.error(
+            "%s=%r is not a number; disabling cluster idle termination.",
+            IDLE_TERMINATION_SECONDS_KEY,
+            raw,
+        )
+        return None
+
+    # 60 matches the KubeRay default for `idleTimeoutSeconds` when unset.
+    idle_timeout_seconds = autoscaler_options.get(IDLE_SECONDS_KEY, 60)
+    if raw <= idle_timeout_seconds:
+        logger.error(
+            "%s=%s must be greater than %s=%s.",
+            IDLE_TERMINATION_SECONDS_KEY,
+            raw,
+            IDLE_SECONDS_KEY,
+            idle_timeout_seconds,
+        )
+        return None
+
+    return float(raw)
 
 
 def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
