@@ -112,6 +112,38 @@ def test_none_schema_unaffected_by_cache():
     assert info_after.hits == info_before.hits
 
 
+def test_bytearray_schema_payload_is_decoded():
+    """If state["schema"] arrives as bytearray (e.g. from an alternative
+    serialization path), __setstate__ must still decode it to a pa.Schema —
+    not store it raw — and must reuse the LRU-cached entry keyed by the
+    equivalent bytes payload."""
+    schema = _wide_arrow_schema(20)
+    bm = _make_bm(schema)
+    state = bm.__getstate__()
+    assert isinstance(state["schema"], bytes)
+
+    # Prime the cache via the normal bytes path.
+    bytes_restored = pickle.loads(pickle.dumps(bm))
+    assert bytes_restored.schema.equals(schema)
+    info_after_bytes = _read_arrow_schema_cached.cache_info()
+
+    # Now feed __setstate__ a bytearray with the same contents.
+    bytearray_state = dict(state)
+    bytearray_state["schema"] = bytearray(state["schema"])
+    bytearray_restored = BlockMetadataWithSchema.from_metadata(bm.metadata, schema=None)
+    bytearray_restored.__setstate__(bytearray_state)
+
+    # It must be decoded to a real pa.Schema, not stored raw.
+    assert isinstance(bytearray_restored.schema, pa.Schema)
+    assert bytearray_restored.schema.equals(schema)
+
+    # And it must hit the same cache entry as the bytes path (no extra miss).
+    info_after_bytearray = _read_arrow_schema_cached.cache_info()
+    assert info_after_bytearray.misses == info_after_bytes.misses
+    assert info_after_bytearray.hits == info_after_bytes.hits + 1
+    assert bytearray_restored.schema is bytes_restored.schema
+
+
 if __name__ == "__main__":
     import sys
 
