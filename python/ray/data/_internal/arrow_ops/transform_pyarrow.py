@@ -129,12 +129,14 @@ def _partition_single_int_column(
 
     arr = column.to_numpy(zero_copy_only=False)
     if arr.dtype == np.uint64:
-        keys = arr.copy()
+        keys = arr
     elif arr.dtype == np.int64:
-        keys = arr.view(np.uint64).copy()
+        keys = arr.view(np.uint64)
     else:
-        # int{8,16,32} / uint{8,16,32}: widen to int64 then bit-reinterpret.
-        keys = arr.astype(np.int64).view(np.uint64).copy()
+        # int{8,16,32} / uint{8,16,32}: widen to uint64.
+        keys = arr.astype(np.uint64)
+    if not keys.flags.writeable:
+        keys = keys.copy()
     keys ^= np.uint64(0x9E3779B97F4A7C15)  # pre-mix: break zero fixed point
     keys *= np.uint64(0x9E3779B97F4A7C15)  # Knuth's multiplicative hash: 2^64 / phi
     keys ^= keys >> np.uint64(33)
