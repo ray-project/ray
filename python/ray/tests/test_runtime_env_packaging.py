@@ -374,6 +374,77 @@ class TestCreatePackageSizeWarning:
             for record in records
         ), [r.getMessage() for r in records]
 
+    def test_env_var_disables_warning(self, tmp_path, monkeypatch):
+        """`RAY_PACKAGE_SIZE_WARNING_MIB=-1` must silence the warning even
+        when the package is well over the default threshold."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        # Default threshold would normally fire (we set it small here just to
+        # make sure the *only* reason it's silent is the env-var disable).
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        monkeypatch.setenv(packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "-1")
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert target.exists()
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_overrides_threshold_high_disables(self, tmp_path, monkeypatch):
+        """A high env-var threshold must suppress warnings the default would
+        have raised."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        # 10 GiB threshold; small fixture zip will not approach this.
+        monkeypatch.setenv(packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "10240")
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_overrides_threshold_low_warns(self, tmp_path, monkeypatch):
+        """A low env-var threshold must *raise* warnings the default would
+        have suppressed, and the message must advertise how to disable it."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        # Default threshold (half of GCS_STORAGE_MAX_SIZE) is far above the
+        # small fixture zip, so without the env override no warning would fire.
+        monkeypatch.setenv(packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "0")
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert any(
+            "approaching the maximum upload size" in record.getMessage()
+            and packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_malformed_falls_back_to_default(self, tmp_path, monkeypatch):
+        """A malformed env value must not silently disable the warning."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        monkeypatch.setenv(
+            packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "not-a-number"
+        )
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
 
 class TestStorePackageInGcs:
     class DisconnectedClient:
