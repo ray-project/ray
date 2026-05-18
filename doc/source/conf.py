@@ -139,7 +139,7 @@ def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
-    with urlopen(api_url) as resp:
+    with urlopen(api_url, timeout=30) as resp:
         data = json.loads(resp.read())
     url = data["url"]
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
@@ -160,7 +160,7 @@ def _fetch_and_extract_zip(config):
         shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
     logger.info("sphinx-collections: downloading %s -> %s", url, target)
-    with urlopen(url) as resp:
+    with urlopen(url, timeout=30) as resp:
         zip_bytes = io.BytesIO(resp.read())
     with zipfile.ZipFile(zip_bytes) as zf:
         zf.extractall(target)
@@ -900,6 +900,8 @@ intersphinx_mapping = {
     "torchvision": ("https://pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
+
+intersphinx_timeout = 15
 
 # Ray must not be imported in conf.py because third party modules initialized by
 # `import ray` will no be mocked out correctly. Perform a check here to ensure
