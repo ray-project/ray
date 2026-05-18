@@ -209,7 +209,6 @@ class LimitPushdownRule(Rule):
                     if isinstance(op.scanner, SupportsLimitPushdown):
                         return replace(
                             op,
-                            input_op=op.input_dependency,
                             scanner=op.scanner.push_limit(limit),
                         )
                     return op
