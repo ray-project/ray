@@ -44,12 +44,6 @@ CLOUD = "serve_release_tests_cloud"
 JOB_NAME = "serve_llm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
 SERVICE_NAME = "serve_llm_release_test_service"
-SERVE_ENV_VARS_TO_FORWARD = [
-    "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
-    "RAY_SERVE_THROUGHPUT_OPTIMIZED",
-    "RAY_SERVE_ENABLE_HA_PROXY",
-    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
-]
 
 
 @click.command()
@@ -113,13 +107,6 @@ def main(
     compute_config = get_service_compute_config(compute_config)
     logger.info("Using service compute config: %s", compute_config)
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
-    env_vars.update(
-        {
-            env_var: os.environ[env_var]
-            for env_var in SERVE_ENV_VARS_TO_FORWARD
-            if env_var in os.environ
-        }
-    )
 
     if run_vllm_profiler:
 
