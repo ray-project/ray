@@ -12,11 +12,6 @@ from ray.data._internal.object_extensions.arrow import (
 from ray.data._internal.object_extensions.pandas import PythonObjectArray
 
 
-@pytest.fixture
-def allow_pickle_object_scalar(monkeypatch):
-    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
-
-
 def test_object_array_validation():
     # Test unknown input type raises TypeError.
     with pytest.raises(TypeError):
@@ -26,7 +21,7 @@ def test_object_array_validation():
     PythonObjectArray([object(), object()])
 
 
-def test_arrow_scalar_object_array_roundtrip(allow_pickle_object_scalar):
+def test_arrow_scalar_object_array_roundtrip():
     arr = np.array(
         ["test", 20, False, {"some": "value"}, None, np.zeros((10, 10))], dtype=object
     )
@@ -39,14 +34,14 @@ def test_arrow_scalar_object_array_roundtrip(allow_pickle_object_scalar):
     assert np.all(out[-1] == arr[-1])
 
 
-def test_arrow_python_object_array_slice(allow_pickle_object_scalar):
+def test_arrow_python_object_array_slice():
     arr = np.array(["test", 20, "test2", 40, "test3", 60], dtype=object)
     ata = ArrowPythonObjectArray.from_objects(arr)
     assert list(ata[1:3].to_pandas()) == [20, "test2"]
     assert ata[2:4].to_pylist() == ["test2", 40]
 
 
-def test_arrow_pandas_roundtrip(allow_pickle_object_scalar):
+def test_arrow_pandas_roundtrip():
     obj = types.SimpleNamespace(a=1, b="test")
     t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj]), "b": [0, 1]})
     t2 = pa.Table.from_pandas(t1.to_pandas())
@@ -79,24 +74,6 @@ def test_pandas_python_object_concat():
     concat_arr = PythonObjectArray._concat_same_type([ta1, ta2])
     assert len(concat_arr) == arr1.shape[0] + arr2.shape[0]
     np.testing.assert_array_equal(concat_arr.to_numpy(), np.concatenate([arr1, arr2]))
-
-
-def test_as_py_rejects_pickle_by_default():
-    ata = ArrowPythonObjectArray.from_objects(np.array(["hello"], dtype=object))
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        ata[0].as_py()
-
-
-def test_as_py_allows_pickle_with_env_var(allow_pickle_object_scalar):
-    ata = ArrowPythonObjectArray.from_objects(np.array(["hello"], dtype=object))
-    assert ata[0].as_py() == "hello"
-
-
-def test_as_py_none_value_always_allowed():
-    ext_type = ArrowPythonObjectType()
-    storage = pa.array([None], type=ext_type.storage_type)
-    arr = pa.ExtensionArray.from_storage(ext_type, storage)
-    assert arr[0].as_py() is None
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import os
 import pathlib
+import pickle
 import shutil
 import time
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
@@ -3120,10 +3122,6 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
 
 
 def test_read_parquet_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
-    import pickle
-
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
     ext_type = ArrowPythonObjectType()
     storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
     table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
@@ -3137,10 +3135,6 @@ def test_read_parquet_rejects_pickle_object_columns(tmp_path, ray_start_regular_
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
     tmp_path, ray_start_regular_shared, monkeypatch
 ):
-    import pickle
-
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
     monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
 
     ext_type = ArrowPythonObjectType()
