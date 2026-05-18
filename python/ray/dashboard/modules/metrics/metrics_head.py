@@ -42,6 +42,11 @@ PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 DEFAULT_PROMETHEUS_NAME = "Prometheus"
 PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
 PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
+# Fallback healthcheck path. Some managed Prometheus services (e.g. Tencent
+# Cloud TMP) disable the open-source `/-/healthy` and `/-/ready` endpoints,
+# but still serve the standard query API. We use a cheap query as a liveness
+# probe in that case.
+PROMETHEUS_HEALTHCHECK_FALLBACK_PATH = "api/v1/query?query=vector(1)"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -185,22 +190,76 @@ class MetricsHead(SubprocessModule):
 
     @routes.get("/api/prometheus_health")
     async def prometheus_health(self, req):
-        try:
-            path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
+        # Try the standard `/-/healthy` endpoint first. Some managed
+        # Prometheus services (e.g. Tencent Cloud TMP) disable
+        # `/-/healthy` / `/-/ready` and return 404, in which case we
+        # fall back to a cheap query against `/api/v1/query` which every
+        # Prometheus-compatible service must support.
+        primary_path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
+        fallback_path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_FALLBACK_PATH}"
 
+        primary_status = None
+        primary_error = None
+        try:
             async with self.http_session.get(
-                path, headers=self.prometheus_headers
+                primary_path, headers=self.prometheus_headers
+            ) as resp:
+                if resp.status == 200:
+                    return dashboard_optional_utils.rest_response(
+                        status_code=dashboard_utils.HTTPStatusCode.OK,
+                        message="prometheus running",
+                        used_path=PROMETHEUS_HEALTHCHECK_PATH,
+                    )
+                primary_status = resp.status
+                logger.info(
+                    "Prometheus primary healthcheck %s returned status %s, "
+                    "falling back to query API.",
+                    primary_path,
+                    primary_status,
+                )
+        except Exception as e:
+            primary_error = str(e)
+            logger.info(
+                "Error fetching prometheus primary healthcheck endpoint %s "
+                "(%s), falling back to query API.",
+                primary_path,
+                primary_error,
+            )
+
+        # Fallback: a successful query response indicates the Prometheus
+        # service is reachable and serving requests.
+        try:
+            async with self.http_session.get(
+                fallback_path, headers=self.prometheus_headers
             ) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                         message="prometheus healthcheck failed.",
                         status=resp.status,
+                        primary_status=primary_status,
+                        primary_error=primary_error,
+                        used_path=PROMETHEUS_HEALTHCHECK_FALLBACK_PATH,
                     )
-
+                try:
+                    body = await resp.json(content_type=None)
+                except Exception:
+                    body = None
+                if not isinstance(body, dict) or body.get("status") != "success":
+                    return dashboard_optional_utils.rest_response(
+                        status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                        message="prometheus healthcheck failed.",
+                        status=resp.status,
+                        primary_status=primary_status,
+                        primary_error=primary_error,
+                        used_path=PROMETHEUS_HEALTHCHECK_FALLBACK_PATH,
+                    )
                 return dashboard_optional_utils.rest_response(
                     status_code=dashboard_utils.HTTPStatusCode.OK,
                     message="prometheus running",
+                    used_path=PROMETHEUS_HEALTHCHECK_FALLBACK_PATH,
+                    primary_status=primary_status,
+                    primary_error=primary_error,
                 )
         except Exception as e:
             logger.debug(
@@ -210,6 +269,8 @@ class MetricsHead(SubprocessModule):
                 status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                 message="prometheus healthcheck failed.",
                 reason=str(e),
+                primary_status=primary_status,
+                primary_error=primary_error,
             )
 
     def _create_default_grafana_configs(self):
