@@ -213,17 +213,11 @@ class ServeController:
         if self._ha_proxy_enabled:
             if http_options.host == "0.0.0.0" and DEFAULT_HTTP_HOST != "0.0.0.0":
                 logger.info(
-                    "RAY_SERVE_ENABLE_HA_PROXY=1: HTTPOptions.host defaults "
-                    f"to '0.0.0.0' (overriding RAY_SERVE_DEFAULT_HTTP_HOST="
-                    f"{DEFAULT_HTTP_HOST!r}) so HAProxy on remote nodes can "
-                    "reach replica backends."
+                    f"RAY_SERVE_ENABLE_HA_PROXY=1: HTTPOptions.host defaults to '0.0.0.0' (overriding RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r}) so HAProxy on remote nodes can reach replica backends."
                 )
             elif http_options.host not in (None, "0.0.0.0"):
                 logger.warning(
-                    f"HTTPOptions.host={http_options.host!r} is not reachable "
-                    "from HAProxy on other nodes. Replica HTTP ports should "
-                    "bind to '0.0.0.0' (the default when "
-                    "RAY_SERVE_ENABLE_HA_PROXY=1) so cross-node routing works."
+                    f"HTTPOptions.host={http_options.host!r} is not reachable from HAProxy on other nodes. Replica HTTP ports should bind to '0.0.0.0' (the default when RAY_SERVE_ENABLE_HA_PROXY=1) so cross-node routing works."
                 )
 
         # Configure proxy default HTTP and gRPC options.
