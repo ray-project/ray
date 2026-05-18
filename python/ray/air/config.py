@@ -109,6 +109,19 @@ class ScalingConfig:
             rank 0 worker, so one example use case is to set a minimum amount
             of resources (e.g. CPU memory) required by the rank 0 node.
             By default, this assigns 1 CPU to the training coordinator.
+
+            Accepts the same resource keys that Ray uses for scheduling tasks
+            and actors (see :ref:`Resources <core-resources>`):
+
+            - ``"CPU"``: number of logical CPUs.
+            - ``"GPU"``: number of logical GPUs.
+            - ``"memory"``: heap memory reserved on the node, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"TPU": 1``, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"`` and ``"GPU"`` (uppercase),
+            and ``"memory"`` (lowercase).
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -121,7 +134,20 @@ class ScalingConfig:
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` key (case-sensitive) to
             override the number of CPUs used by each worker.
-            This can also be used to request :ref:`custom resources <custom-resources>`.
+
+            Accepts the same resource keys as ``trainer_resources``:
+
+            - ``"CPU"``: number of logical CPUs per worker.
+            - ``"GPU"``: number of logical GPUs per worker. Prefer setting
+              ``use_gpu=True`` (which reserves 1 GPU per worker) and only
+              override this key when you need a different per-worker count.
+            - ``"memory"``: heap memory reserved per worker, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB per worker).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"TPU": 1``, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"`` and ``"GPU"`` (uppercase),
+            and ``"memory"`` (lowercase).
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
