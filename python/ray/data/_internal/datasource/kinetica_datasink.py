@@ -17,6 +17,7 @@ from ray.data.datasource.datasink import Datasink
 
 if TYPE_CHECKING:
     import pyarrow as pa
+    from gpudb import GPUdb
 
 
 logger = logging.getLogger(__name__)
@@ -402,7 +403,7 @@ class KineticaDatasink(Datasink):
             return GPUdbRecordType(columns=columns, label=self._table_name)
         return None
 
-    def _create_gpudb_table(self, client, table_exists: bool = False):
+    def _create_gpudb_table(self, client: "GPUdb", table_exists: bool = False):
         """Create a GPUdbTable instance for writing records.
 
         Args:
