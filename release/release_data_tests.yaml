@@ -455,6 +455,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
 
   variations:
     - __suffix__: s3_parquet_cpu
@@ -561,6 +567,12 @@
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
 
   run:
     timeout: 2400
@@ -637,6 +649,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -901,6 +914,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING=1
   run:
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
@@ -991,6 +1005,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING=1
       type: cu123
       post_build_script: byod_install_text_embedding.sh
 
