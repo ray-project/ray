@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 def _get_direct_streaming_serve_options(
     llm_config: LLMConfig,
     override_serve_options: Optional[dict] = None,
-) -> Optional[dict]:
+) -> dict:
     override_serve_options = dict(override_serve_options or {})
     if (
         "request_router_config" not in llm_config.deployment_config
@@ -41,7 +41,7 @@ def _get_direct_streaming_serve_options(
         override_serve_options["request_router_config"] = RequestRouterConfig(
             request_router_class=RoundRobinRouter,
         )
-    return override_serve_options or None
+    return override_serve_options
 
 
 def _build_direct_streaming_llm_deployment(
@@ -182,9 +182,9 @@ def _validate_direct_streaming_ingress_config(
     if ingress_deployment_config:
         raise ValueError(
             "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
-            "ingress_deployment_config because LLMServer is used directly as "
-            "the ingress deployment. Configure LLMServer through each "
-            "LLMConfig.deployment_config instead."
+            "ingress_deployment_config because the LLM server class is used "
+            "directly as the ingress deployment. Configure the server through "
+            "each LLMConfig.deployment_config instead."
         )
 
     if (
@@ -193,8 +193,8 @@ def _validate_direct_streaming_ingress_config(
     ):
         raise ValueError(
             "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
-            "ingress_cls_config because LLMServer is used directly as the "
-            "ingress deployment."
+            "ingress_cls_config because the LLM server class is used directly "
+            "as the ingress deployment."
         )
 
 
