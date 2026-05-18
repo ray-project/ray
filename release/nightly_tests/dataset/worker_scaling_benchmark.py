@@ -14,6 +14,7 @@ production workloads.
 """
 
 import argparse
+import pickle
 from typing import Dict, List
 
 import numpy as np
@@ -81,7 +82,13 @@ def parse_args() -> argparse.Namespace:
         default=42,
         help="Seed used to pre-roll template values once per UDF instance.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.num_scalar_cols + args.num_array64_cols + args.num_array32_cols <= 0:
+        parser.error(
+            "At least one of --num-scalar-cols / --num-array64-cols / "
+            "--num-array32-cols must be > 0."
+        )
+    return args
 
 
 class RealisticSchemaUDF:
@@ -194,6 +201,7 @@ def main(args: argparse.Namespace):
             args.num_array64_cols,
             args.num_array32_cols,
         )
+        metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
