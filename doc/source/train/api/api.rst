@@ -131,8 +131,14 @@ Ray Train Configuration
     ~train.FailureConfig
     ~train.LoggingConfig
     ~train.RunConfig
-    ~train.ScalingConfig
     ~train.ValidationConfig
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.ScalingConfig
 
 .. _train-loop-api:
 
