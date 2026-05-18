@@ -24,7 +24,7 @@ class SQLDatasink(Datasink[None]):
                 block_accessor = BlockAccessor.for_block(block)
 
                 values = []
-                for row in block_accessor.iter_rows(public_row_format=False):
+                for row in block_accessor.iter_rows(public_row_format=True):
                     values.append(tuple(row.values()))
                     assert len(values) <= self._MAX_ROWS_PER_WRITE, len(values)
                     if len(values) == self._MAX_ROWS_PER_WRITE:

@@ -297,7 +297,7 @@ def _make_iterable(block: BlockAccessor):
     Returns:
         Iterable[Dict[str,Any]]: Iterable of samples
     """
-    return block.iter_rows(public_row_format=False)
+    return block.iter_rows(public_row_format=True)
 
 
 class WebDatasetDatasource(FileBasedDatasource):

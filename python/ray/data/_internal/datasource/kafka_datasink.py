@@ -249,7 +249,7 @@ class KafkaDatasink(Datasink):
             for block in blocks:
                 block_accessor = BlockAccessor.for_block(block)
 
-                for row in block_accessor.iter_rows(public_row_format=False):
+                for row in block_accessor.iter_rows(public_row_format=True):
                     row_dict = self._row_to_dict(row)
                     key = self._extract_key(row_dict)
                     value = self._serialize_value(row_dict)

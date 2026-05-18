@@ -130,7 +130,7 @@ class AggregateFn:
 
             def accumulate_block(a: AccumulatorType, block: Block) -> AccumulatorType:
                 block_acc = BlockAccessor.for_block(block)
-                for r in block_acc.iter_rows(public_row_format=False):
+                for r in block_acc.iter_rows(public_row_format=True):
                     a = accumulate_row(a, r)
                 return a
 
@@ -980,7 +980,7 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
         block_acc = BlockAccessor.for_block(block)
         ls = []
 
-        for row in block_acc.iter_rows(public_row_format=False):
+        for row in block_acc.iter_rows(public_row_format=True):
             ls.append(row.get(self._target_col_name))
 
         return ls

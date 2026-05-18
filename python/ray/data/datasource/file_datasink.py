@@ -220,7 +220,7 @@ class RowBasedFileDatasink(_FileDatasink):
             ctx.task_idx,
         )
         base, ext = _split_base_and_ext(task_filename)
-        for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
+        for row_index, row in enumerate(block.iter_rows(public_row_format=True)):
             filename = f"{base}_{block_index:06}_{row_index:06}{ext}"
             write_path = posixpath.join(self.path, filename)
             logger.debug(f"Writing {write_path} file.")
