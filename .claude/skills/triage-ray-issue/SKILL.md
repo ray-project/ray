@@ -67,13 +67,36 @@ Use Atlassian `getJiraIssue` on the `DOC-XXX` key. Extract:
 
 If the description is missing those markers, stop and tell the user — the ticket isn't in resolve-ready shape.
 
-### 2. Confirm the GH issue is still open
+### 2. Pre-flight: is the defect still real?
+
+GH issues stay open long after the underlying defect is fixed — a different PR may have removed the page, restructured the section, or replaced the broken link as a side effect. Verify before paying the worktree cost (worktree creation copies the full Ray checkout, ~10k files).
+
+First check GH state:
 
 ```bash
-gh issue view <NNNN> --repo ray-project/ray --json number,state,title
+gh issue view <NNNN> --repo ray-project/ray --json state,title
 ```
 
-If `CLOSED`, the work may be done already. Stop and confirm with the user before continuing.
+If `CLOSED`, stop.
+
+Then confirm the broken thing named in the Action still exists in `upstream/master`. From any existing checkout of the repo (don't create the worktree yet):
+
+```bash
+git fetch upstream master --quiet
+# Broken URL fragment or anchor name:
+git grep "<broken-fragment>" upstream/master -- <target-file>
+# Removed/renamed file:
+git cat-file -e upstream/master:<target-file> 2>/dev/null && echo present || echo absent
+```
+
+If the grep returns no hits, or the named target file is absent, the defect is gone. Do **not** open a stale PR. Instead:
+
+1. Find the resolving PR with `git log upstream/master --oneline -S "<broken-fragment>" -- <target-file>` (pickaxe) or `git log upstream/master --oneline --grep "#<NNNN>"` (commit-message reference).
+2. Close the GH issue citing it: `gh issue close <NNNN> --repo ray-project/ray --reason completed --comment "Fixed in #<RESOLVING_PR> ..."`.
+3. Transition the DOC ticket to Done via the Atlassian `transitionJiraIssue` tool, with a comment pointing at the resolving PR.
+4. Stop. Skip the worktree.
+
+This step caught ~40% of one batch of broken-link tickets; the cheap pre-flight is the right place for it.
 
 ### 3. Worktree
 
