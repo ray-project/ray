@@ -31,9 +31,9 @@ _SD_SECTION_RE = re.compile(r"\[" + re.escape(_SD_ID) + r"(?P<body>[^\]]*)\]")
 # Capture the key="value" pairs.
 _KV_RE = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
 
-# HAProxy emits the literal dash `-` for unset txn vars. We map it to None
-# so callers don't have to handle the sentinel themselves.
-_UNSET = "-"
+# HAProxy renders unset txn vars as an empty string in log-format. We map
+# that to None so callers don't have to distinguish "unset" from "empty".
+_UNSET = ""
 
 
 @dataclass
@@ -158,7 +158,7 @@ class HAProxyMetricsCollector:
             actual_server=kv.get("actual"),
             router_latency_us=as_int("router_latency_us"),
             body_truncated_full_length=as_int("body_truncated_full_length"),
-            # HAProxy renders booleans as "1"/"0"; absence as "-" -> None.
+            # HAProxy renders booleans as "1"/"0"; absence as "" -> False.
             via_router=kv.get("via_router") == "1",
             failed=kv.get("failed"),
         )

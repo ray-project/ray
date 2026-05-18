@@ -44,8 +44,8 @@ def _line(sd_body: str) -> bytes:
     [
         pytest.param(
             'app="llm" intended="replica-1" actual="replica-1" '
-            'router_latency_us="1234" body_truncated_full_length="-" '
-            'via_router="1" failed="-"',
+            'router_latency_us="1234" body_truncated_full_length="" '
+            'via_router="1" failed=""',
             ParsedMetrics(
                 app="llm",
                 intended_server="replica-1",
@@ -59,8 +59,8 @@ def _line(sd_body: str) -> bytes:
         ),
         pytest.param(
             'app="llm" intended="replica-1" actual="replica-2" '
-            'router_latency_us="9000" body_truncated_full_length="-" '
-            'via_router="1" failed="-"',
+            'router_latency_us="9000" body_truncated_full_length="" '
+            'via_router="1" failed=""',
             ParsedMetrics(
                 app="llm",
                 intended_server="replica-1",
@@ -75,7 +75,7 @@ def _line(sd_body: str) -> bytes:
         pytest.param(
             'app="llm" intended="replica-1" actual="replica-1" '
             'router_latency_us="2000" body_truncated_full_length="500000" '
-            'via_router="1" failed="-"',
+            'via_router="1" failed=""',
             ParsedMetrics(
                 app="llm",
                 intended_server="replica-1",
@@ -88,9 +88,9 @@ def _line(sd_body: str) -> bytes:
             id="truncated-body",
         ),
         pytest.param(
-            'app="llm" intended="-" actual="<NOSRV>" '
-            'router_latency_us="-" body_truncated_full_length="-" '
-            'via_router="-" failed="router_unreachable"',
+            'app="llm" intended="" actual="<NOSRV>" '
+            'router_latency_us="" body_truncated_full_length="" '
+            'via_router="" failed="router_unreachable"',
             ParsedMetrics(
                 app="llm",
                 intended_server=None,
@@ -103,8 +103,8 @@ def _line(sd_body: str) -> bytes:
             id="failure-router-unreachable",
         ),
         pytest.param(
-            'app="-" intended="-" actual="<NOSRV>" router_latency_us="-" '
-            'body_truncated_full_length="-" via_router="-" failed="-"',
+            'app="" intended="" actual="<NOSRV>" router_latency_us="" '
+            'body_truncated_full_length="" via_router="" failed=""',
             ParsedMetrics(
                 app=None,
                 intended_server=None,
@@ -149,7 +149,7 @@ def test_parse_line_handles_unknown_int_value() -> None:
     # rather than raise.
     line = _line(
         'app="llm" intended="r" actual="r" router_latency_us="notanint" '
-        'body_truncated_full_length="-" via_router="1" failed="-"'
+        'body_truncated_full_length="" via_router="1" failed=""'
     )
     parsed = HAProxyMetricsCollector.parse_line(line)
     assert parsed is not None
@@ -330,7 +330,7 @@ def test_datagram_handler_dispatches_to_record(collector) -> None:
     handler.datagram_received(
         _line(
             'app="llm" intended="X" actual="X" router_latency_us="100" '
-            'body_truncated_full_length="-" via_router="1" failed="-"'
+            'body_truncated_full_length="" via_router="1" failed=""'
         ),
         ("addr", 0),
     )
@@ -376,7 +376,7 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
         try:
             line = _line(
                 'app="llm" intended="r" actual="r" router_latency_us="500" '
-                'body_truncated_full_length="-" via_router="1" failed="-"'
+                'body_truncated_full_length="" via_router="1" failed=""'
             )
             client.sendto(line, sock_path)
         finally:
