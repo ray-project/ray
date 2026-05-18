@@ -825,29 +825,15 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
 )
 
-# Optional HAProxy retry knobs applied to the `-via-ingress-request-router`
-# backend (i.e. the data path that runs after the Lua dispatch picked a
-# replica). When set, HAProxy can redispatch a slow-first-byte request to
-# a different replica via `option redispatch` instead of head-of-line-
-# blocking on the original pick. All three default to None (unset) so the
-# behavior is unchanged unless an operator opts in.
-#
-# `retry-on` follows HAProxy's syntax (space-separated tokens). Sensible
-# value for LLM serving: "conn-failure empty-response response-timeout".
-# Full list of accepted tokens:
-#   https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+# Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
+# `retry-on` token reference:
+# https://docs.haproxy.org/2.8/configuration.html#4-retry-on
 RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
     "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
 )
-
-# Number of retry attempts (default 3 in HAProxy when unset). Each retry
-# is sent via `option redispatch` to a different replica.
 RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
 )
-
-# `timeout server` for the via-ingress-request-router backend specifically.
-# Pair with `retry-on response-timeout` to redispatch on slow first byte.
 RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
 )
