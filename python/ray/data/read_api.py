@@ -1915,7 +1915,7 @@ def read_text(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
-    The column name default to "text".
+    The column name defaults to "text".
 
     Examples:
         Read a file in remote storage.
@@ -2604,6 +2604,8 @@ def read_binary_files(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
+
+    The column name defaults to "bytes".
 
     Examples:
         Read a file in remote storage.
