@@ -39,6 +39,10 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
    * Click handler for when one clicks on the expand/unexpand button in this row.
    */
   onExpandButtonClick: () => void;
+  /**
+   * Whether to show GPU and GRAM columns. If false, GPU/GRAM cells are hidden.
+   */
+  showGPUColumns?: boolean;
 };
 
 /**
@@ -49,6 +53,7 @@ export const NodeRow = ({
   node,
   expanded,
   onExpandButtonClick,
+  showGPUColumns = true,
 }: NodeRowProps) => {
   const {
     hostname = "",
@@ -157,12 +162,16 @@ export const NodeRow = ({
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <NodeGPUView node={node} />
-      </TableCell>
-      <TableCell>
-        <NodeGRAM node={node} />
-      </TableCell>
+      {showGPUColumns && (
+        <>
+          <TableCell>
+            <NodeGPUView node={node} />
+          </TableCell>
+          <TableCell>
+            <NodeGRAM node={node} />
+          </TableCell>
+        </>
+      )}
       <TableCell>
         {raylet && objectStoreTotalMemory && (
           <PercentageBar
@@ -220,12 +229,16 @@ type WorkerRowProps = {
    * Detail of the node the worker is inside.
    */
   node: NodeDetail;
+  /**
+   * Whether to show GPU and GRAM columns.
+   */
+  showGPUColumns?: boolean;
 };
 
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
+export const WorkerRow = ({ node, worker, showGPUColumns = true }: WorkerRowProps) => {
   const {
     mem,
     raylet: { nodeId },
@@ -297,12 +310,16 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
-      </TableCell>
-      <TableCell>
-        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
-      </TableCell>
+      {showGPUColumns && (
+        <>
+          <TableCell>
+            <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
+          </TableCell>
+          <TableCell>
+            <WorkerGRAM workerPID={pid} gpus={node.gpus} />
+          </TableCell>
+        </>
+      )}
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
@@ -326,6 +343,10 @@ type NodeRowsProps = {
    * Whether the row should start expanded. By default, this is false.
    */
   startExpanded?: boolean;
+  /**
+   * Whether to show GPU and GRAM columns.
+   */
+  showGPUColumns?: boolean;
 };
 
 /**
@@ -335,6 +356,7 @@ export const NodeRows = ({
   node,
   isRefreshing,
   startExpanded = false,
+  showGPUColumns = true,
 }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
 
@@ -371,10 +393,11 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
+        showGPUColumns={showGPUColumns}
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow key={worker.pid} node={node} worker={worker} />
+          <WorkerRow key={worker.pid} node={node} worker={worker} showGPUColumns={showGPUColumns} />
         ))}
     </React.Fragment>
   );

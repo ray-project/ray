@@ -247,6 +247,14 @@ const Nodes = () => {
     maxPage,
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
+  // Check if any node in the list has GPUs to decide whether to show GPU/GRAM columns
+  const hasGPU = nodeList.some((node) => node.gpus && node.gpus.length > 0);
+
+  // Hide GPU and GRAM columns when no nodes have GPUs
+  const visibleColumns = hasGPU
+    ? columns
+    : columns.filter((col) => col.label !== "GPU" && col.label !== "GRAM");
+
   return (
     <Box
       sx={{
@@ -351,7 +359,7 @@ const Nodes = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  {columns.map(({ label, helpInfo }) => (
+                  {visibleColumns.map(({ label, helpInfo }) => (
                     <TableCell align="center" key={label}>
                       <Box
                         display="flex"
@@ -374,6 +382,7 @@ const Nodes = () => {
                     node={node}
                     isRefreshing={isRefreshing}
                     startExpanded={nodeList.length === 1}
+                    showGPUColumns={hasGPU}
                   />
                 ))}
               </TableBody>
