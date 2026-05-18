@@ -65,7 +65,6 @@ class TrainStateManager:
         datasets: Dict[str, ray.data.Dataset],
         dataset_config: DataConfig,
     ) -> None:
-
         run_config_schema = RunConfigSchema(
             name=run_config.name,
             failure_config=FailureConfigSchema(
@@ -298,8 +297,9 @@ class TrainStateManager:
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)
-        # Block to avoid case where controller is dead but run is not terminal.
-        if run.status.is_terminal():
+        # Block on INITIALIZING to ensure ExportTrainRun is recorded before any ExportTrainRunAttempt
+        # Block on terminal status so the final state isn't lost if the controller exits right after.
+        if run.status == RunStatus.INITIALIZING or run.status.is_terminal():
             ray.get(ref)
 
     def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
