@@ -395,10 +395,6 @@ class TableBlockAccessor(BlockAccessor):
         stats = BlockExecStats.builder()
         keys = sort_key.get_columns()
 
-        # `iter_rows(public_row_format=True)` yields plain `Dict[str, Any]`
-        # rows; the previous `tuple(r[keys])` relied on
-        # `ArrowRow.__getitem__` accepting a list of column names, which
-        # plain dicts don't support. Iterate keys individually instead.
         def _key_fn(r):
             if keys:
                 return tuple(r[k] for k in keys)
