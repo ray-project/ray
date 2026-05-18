@@ -215,18 +215,38 @@ def test_hash_partition_integer_fast_path_balanced_on_dbgen_sparse_orderkey():
     assert min(sizes) > mean * 0.95, sizes
 
 
-def test_hash_partition_integer_with_nulls_falls_through_to_pandas_path():
-    # null_count == 0 gate: integer columns with nulls still partition
-    # correctly via the pandas fallback (and the gate doesn't crash on them).
-    t = pa.Table.from_pydict({"k": pa.array([1, None, 2, None, 3], type=pa.int64())})
+def test_hash_partition_integer_consistent_across_blocks_with_and_without_nulls():
+    # Cross-block hash-partitioning invariant: for any key value k, every
+    # row with key=k must land in the same partition, regardless of which
+    # block it appears in. This fails silently if blocks with nulls take a
+    # different hash path from blocks without nulls (Bugbot review on
+    # commit 79ee7b5).
+    num_partitions = 16
+    no_nulls = pa.Table.from_pydict(
+        {"k": pa.array([1, 2, 3, 42, 100], type=pa.int64())}
+    )
+    with_null = pa.Table.from_pydict(
+        {"k": pa.array([1, 2, None, 42, 100], type=pa.int64())}
+    )
 
-    parts = hash_partition(t, hash_cols=["k"], num_partitions=4)
+    parts_a = hash_partition(no_nulls, hash_cols=["k"], num_partitions=num_partitions)
+    parts_b = hash_partition(with_null, hash_cols=["k"], num_partitions=num_partitions)
 
-    recombined = pa.concat_tables(parts.values())
-    assert recombined.num_rows == t.num_rows
-    # All nulls co-locate in one partition (cross-block invariant).
+    def partition_of(parts, key):
+        for pid, tbl in parts.items():
+            if key in tbl["k"].to_pylist():
+                return pid
+        return None
+
+    for k in [1, 2, 42, 100]:
+        assert partition_of(parts_a, k) == partition_of(
+            parts_b, k
+        ), f"key {k} mapped to different partitions across blocks"
+
+    # Nulls must also co-locate deterministically (so join/groupby on a
+    # nullable key behave correctly across blocks).
     null_pids = {
-        pid for pid, tbl in parts.items() if any(tbl["k"].is_null().to_pylist())
+        pid for pid, tbl in parts_b.items() if any(tbl["k"].is_null().to_pylist())
     }
     assert len(null_pids) == 1
 
