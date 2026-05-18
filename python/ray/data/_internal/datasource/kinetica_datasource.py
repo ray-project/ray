@@ -639,7 +639,12 @@ class KineticaDatasource(Datasource):
             read_fn = self._create_read_fn(offset, partition_size)
 
             read_tasks.append(
-                ReadTask(read_fn, metadata, per_task_row_limit=per_task_row_limit)
+                ReadTask(
+                    read_fn,
+                    metadata,
+                    schema=self._arrow_schema,
+                    per_task_row_limit=per_task_row_limit,
+                )
             )
             offset += partition_size
 
