@@ -48,21 +48,23 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.execution.operators.hash_shuffle import (
-        HashShuffleOperator,
+    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+        HashShuffleOperatorV2,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
 
-    return HashShuffleOperator(
+    return HashShuffleOperatorV2(
         input_physical_op,
         data_context,
         key_columns=tuple(normalized_key_columns),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
         num_partitions=logical_op.num_outputs,
-        should_sort=logical_op.sort,
+        # `Repartition.sort` requires a reduce function that sees the full
+        # partition, which is exactly what blocking_reduce gives us.
+        blocking_reduce=logical_op.sort,
         # TODO wire in aggregator args overrides
     )
 
