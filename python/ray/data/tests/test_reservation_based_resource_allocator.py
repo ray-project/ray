@@ -825,7 +825,6 @@ class TestReservationOpResourceAllocator:
         assert allocator.get_budget(o2).gpu == 2
 
         # o3 (unbounded) gets remaining GPUs after o2's excess is returned
-        # With 8 total GPUs and o2 capped at 2, o3 gets 6
         assert allocator.get_budget(o3).gpu == 6
 
     @pytest.mark.parametrize("max_actors", [4, float("inf")])
@@ -1123,7 +1122,6 @@ class TestReservationOpResourceAllocator:
         assert allocator._total_shared == ExecutionResources(
             cpu=7.5, object_store_memory=850
         )
-        # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
         assert allocator.get_budget(o6) == ExecutionResources(
             cpu=5.5, object_store_memory=381
         )
