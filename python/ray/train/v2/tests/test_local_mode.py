@@ -27,6 +27,7 @@ from ray.train.huggingface.transformers import (
 from ray.train.lightgbm import (
     LightGBMTrainer,
     RayTrainReportCallback as LightGBMRayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
 )
 from ray.train.lightning import (
     RayDDPStrategy,
@@ -129,8 +130,9 @@ def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
     ):
         remaining_iters = num_boost_round
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-        train_df = train_ds_iter.materialize().to_pandas()
-        train_df = train_df.convert_dtypes(dtype_backend="numpy_nullable")
+        train_df = normalize_pandas_for_lightgbm(
+            train_ds_iter.materialize().to_pandas()
+        )
 
         eval_ds_iters = {
             k: ray.train.get_dataset_shard(k)
@@ -138,9 +140,7 @@ def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
             if k != TRAIN_DATASET_KEY
         }
         eval_dfs = {
-            k: d.materialize()
-            .to_pandas()
-            .convert_dtypes(dtype_backend="numpy_nullable")
+            k: normalize_pandas_for_lightgbm(d.materialize().to_pandas())
             for k, d in eval_ds_iters.items()
         }
 

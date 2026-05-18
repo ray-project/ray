@@ -216,10 +216,11 @@ Convert this into a native `lightgbm.Dataset <https://lightgbm.readthedocs.io/en
 .. testcode:: python
     :skipif: True
 
+    from ray.train.lightgbm import normalize_pandas_for_lightgbm
+
     def get_dataset(dataset_name: str) -> lightgbm.Dataset:
         shard = ray.train.get_dataset_shard(dataset_name)
-        df = shard.materialize().to_pandas()
-        df = df.convert_dtypes(dtype_backend="numpy_nullable")
+        df = normalize_pandas_for_lightgbm(shard.materialize().to_pandas())
         X, y = df.drop("target", axis=1), df["target"]
         return lightgbm.Dataset(X, label=y)
 
@@ -230,11 +231,17 @@ Convert this into a native `lightgbm.Dataset <https://lightgbm.readthedocs.io/en
 
 .. note::
 
-    Starting in 2.55, Ray Data preserves Arrow-backed pandas dtypes when converting
-    Arrow blocks to pandas, for example ``int64[pyarrow]``. LightGBM's pandas input
-    validation may reject these dtypes. If you pass a pandas DataFrame from Ray
-    Data to ``lightgbm.Dataset``, convert it first with
-    ``df.convert_dtypes(dtype_backend="numpy_nullable")``.
+    Starting in Ray 2.56, Ray Data preserves Arrow-backed pandas dtypes when
+    converting Arrow blocks to pandas, for example ``int64[pyarrow]``. LightGBM's
+    pandas input validation rejects these dtypes, so a pandas DataFrame coming
+    from Ray Data must be normalized before being passed to ``lightgbm.Dataset``.
+
+    :func:`ray.train.lightgbm.normalize_pandas_for_lightgbm` maps Arrow-backed
+    numeric/boolean columns to NumPy-nullable equivalents and leaves all other
+    columns untouched. Prefer it over
+    ``df.convert_dtypes(dtype_backend="numpy_nullable")``, which scans every
+    value in every column and also rewrites NumPy-backed columns into nullable
+    equivalents even when no Arrow dtypes are present.
 
 
 Finally, pass the dataset to the Trainer. This will automatically shard the dataset across the workers. These keys must match the keys used when calling ``get_dataset_shard`` in the training function.

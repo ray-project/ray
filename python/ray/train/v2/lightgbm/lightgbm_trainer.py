@@ -28,8 +28,11 @@ class LightGBMTrainer(DataParallelTrainer):
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm import LightGBMTrainer
+        from ray.train.lightgbm import (
+            LightGBMTrainer,
+            RayTrainReportCallback,
+            normalize_pandas_for_lightgbm,
+        )
 
 
         def train_fn_per_worker(config: dict):
@@ -42,9 +45,8 @@ class LightGBMTrainer(DataParallelTrainer):
                 ray.train.get_dataset_shard("validation"),
             )
             train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
-            train_df = train_df.convert_dtypes(dtype_backend="numpy_nullable")
-            eval_df = eval_df.convert_dtypes(dtype_backend="numpy_nullable")
+            train_df = normalize_pandas_for_lightgbm(train_ds.to_pandas())
+            eval_df = normalize_pandas_for_lightgbm(eval_ds.to_pandas())
             train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
             eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
 
