@@ -1385,6 +1385,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_small.yaml
 
   run:
@@ -1414,6 +1415,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -1467,6 +1469,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1495,6 +1498,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1526,6 +1530,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
@@ -1537,6 +1543,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
@@ -1574,6 +1581,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # specifically testing haproxy here because with serve
@@ -1607,6 +1615,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
@@ -1618,6 +1628,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1635,6 +1646,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_throughput_optimized_microbenchmarks
@@ -1646,6 +1659,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
@@ -1668,6 +1682,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_router_benchmark
@@ -1679,6 +1695,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1733,6 +1750,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
@@ -1757,6 +1775,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
