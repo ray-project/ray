@@ -584,8 +584,16 @@ class KineticaDatasource(Datasource):
         # Estimate row size for metadata
         avg_row_size = self._estimate_row_size(client)
 
-        # Ensure parallelism is at least 1 to handle unresolved or invalid values
-        effective_parallelism = max(1, parallelism)
+        # Handle parallelism=-1 (auto-detect) by computing based on data size.
+        # Use min_records_per_task to determine a reasonable parallelism.
+        min_records_per_task = 1000
+        if parallelism == -1:
+            # Auto-detect: aim for ~min_records_per_task rows per task
+            effective_parallelism = max(1, self._total_count // min_records_per_task)
+        else:
+            # Ensure parallelism is at least 1 to handle invalid values
+            effective_parallelism = max(1, parallelism)
+
         if not self._sort_by and effective_parallelism > 1:
             # Without a deterministic sort order, offset-based pagination
             # with parallelism > 1 will produce incorrect results (duplicates
@@ -604,7 +612,6 @@ class KineticaDatasource(Datasource):
         records_per_task = max(1, self._total_count // effective_parallelism)
 
         # Ensure we don't create too many tiny tasks
-        min_records_per_task = 1000
         if (
             records_per_task < min_records_per_task
             and self._total_count > min_records_per_task
