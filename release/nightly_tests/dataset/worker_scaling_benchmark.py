@@ -143,9 +143,16 @@ def main(args: argparse.Namespace):
         num_rows = num_blocks * rows_per_block
         ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
-        map_kwargs = {"num_cpus": 0.5}
+        # Scale the actor pool inversely with `num_cpus` so the total CPU
+        # reservation (and therefore concurrent in-flight units of work) is the
+        # same as the task path, where concurrent task count is
+        # `cluster_cpu / num_cpus`. This keeps the actor / task results
+        # comparable across `num_cpus` settings.
+        cpus_per_worker = 0.5
+        map_kwargs = {"num_cpus": cpus_per_worker}
         if args.worker_type == "actors":
-            map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=args.num_workers)
+            actor_pool_size = int(args.num_workers / cpus_per_worker)
+            map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=actor_pool_size)
             udf = RealisticSchemaUDF
             map_kwargs["fn_constructor_kwargs"] = {
                 "seed": args.seed,
