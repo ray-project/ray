@@ -214,6 +214,13 @@ class DistributedTrainContext(TrainContext):
     def get_storage(self):
         return get_internal_train_context().get_storage()
 
+    def preemption_status(self):
+        """Return preemption info if pending for this worker group, else None.
+
+        See :func:`ray.train.preemption_status` for full docs.
+        """
+        return get_internal_train_context().preemption_status()
+
 
 @DeveloperAPI
 class LocalTrainContext(TrainContext):

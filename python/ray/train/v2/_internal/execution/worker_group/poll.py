@@ -8,6 +8,7 @@ from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
@@ -41,6 +42,14 @@ class WorkerStatus:
     error: Optional[Exception] = None
     training_report: Optional[_TrainingReport] = None
     return_value: Any = field(default=None)
+    # The preemption info this worker is currently carrying, set by the
+    # mark_preempt RPC and reported back on each poll so the controller can
+    # confirm signal delivery.
+    preemption_info: Optional[PreemptionInfo] = None
+    # Wall-clock timestamp (UNIX) when the UDF first observed the preemption
+    # signal via ``ray.train.preemption_status()``. ``None`` means the UDF
+    # has not yet acknowledged it.
+    preempt_acknowledged_at: Optional[float] = None
 
 
 @dataclass(frozen=True)

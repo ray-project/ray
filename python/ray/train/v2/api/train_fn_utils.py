@@ -15,6 +15,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -130,6 +131,44 @@ def report(
         checkpoint_upload_fn=checkpoint_upload_fn,
         validation=validation,
     )
+
+
+@PublicAPI(stability="alpha")
+@requires_train_worker(raise_in_tune_session=True)
+def preemption_status() -> Optional["PreemptionInfo"]:
+    """Return preemption info if one or more workers in the current worker
+    group have been marked for preemption (e.g., GKE node drain), or
+    ``None`` otherwise.
+
+    Non-blocking. Safe to call once per training step. The ``None`` case
+    costs microseconds and performs no RPC, I/O, or collective.
+
+    Recommended call site: top of the training loop, before any collective op.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray.train
+
+            def train_loop_per_worker():
+                for step in range(total_steps):
+                    info = ray.train.preemption_status()
+                    if info is not None:
+                        if info.this_worker_preempted:
+                            cleanup_local()
+                        else:
+                            save_checkpoint(state)
+                        return
+                    train_step()
+    """
+    # Route through the internal TrainContext (where the preempt event +
+    # info live as thread-shared state) rather than the public
+    # DistributedTrainContext, which is a thin facade and does not have
+    # preemption-related fields.
+    from ray.train.v2._internal.execution.context import get_train_context
+    return get_train_context().preemption_status()
 
 
 @PublicAPI(stability="stable")

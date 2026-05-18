@@ -1,9 +1,13 @@
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ScalingDecision,
 )
 from ray.train.v2.api.exceptions import TrainingFailedError
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
 
 
 class TrainControllerStateType(Enum):
@@ -39,6 +43,7 @@ class TrainControllerStateType(Enum):
     SCHEDULING = ("SCHEDULING", False, False)
     RESCHEDULING = ("RESCHEDULING", False, False)
     RUNNING = ("RUNNING", False, False)
+    PREEMPTING = ("PREEMPTING", False, False)
     RESTARTING = ("RESTARTING", False, True)
     RESIZING = ("RESIZING", False, True)
     SHUTTING_DOWN = ("SHUTTING_DOWN", False, False)
@@ -111,6 +116,26 @@ class RunningState(TrainControllerState):
     # For example, we may want to indicate if any health checks failed.
     def __init__(self):
         super().__init__(state_type=TrainControllerStateType.RUNNING)
+
+
+class PreemptingState(TrainControllerState):
+    """Transient state between Running and Restarting/ShuttingDown.
+
+    Entered when ``PreemptionCallback`` observes ``get_draining_nodes()``
+    reporting a node that hosts one of our workers. Holds the ``PreemptionInfo``
+    that has been fanned out to affected ranks. Exited when either:
+      (a) every preempted-rank actor has exited (and, in non-TorchFT mode,
+          survivor actors have also exited or the deadline has passed); OR
+      (b) the preemption deadline has expired regardless of worker state.
+
+    On exit, the controller synthesizes a ``PreemptionError`` and routes it
+    through the failure policy, which decides RETRY (→ RestartingState) or
+    RAISE (→ ShuttingDownState).
+    """
+
+    def __init__(self, preemption_info: "PreemptionInfo"):
+        super().__init__(state_type=TrainControllerStateType.PREEMPTING)
+        self.preemption_info = preemption_info
 
 
 class RestartingState(TrainControllerState):

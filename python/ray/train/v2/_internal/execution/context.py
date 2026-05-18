@@ -1,6 +1,7 @@
 import logging
 import sys
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
         DatasetShardProvider,
     )
     from ray.train.v2._internal.execution.callback import TrainContextCallback
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -138,10 +140,42 @@ class TrainContext:
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
+    # Preemption signal state. Written by the actor main thread when the
+    # controller's PreemptionCallback fans out mark_preempt RPCs; read by the
+    # UDF thread via ``preemption_status()``. ``_preempt_event`` is a one-way
+    # latch: once set, stays set. The ``_preempt_info`` content may be refined
+    # (e.g., more nodes drain on the same TPU slice) via subsequent RPCs.
+    _preempt_lock: threading.Lock = field(default_factory=threading.Lock)
+    _preempt_event: threading.Event = field(default_factory=threading.Event)
+    _preempt_info: Optional["PreemptionInfo"] = None
+    _preempt_acknowledged_at: Optional[float] = None
+
     def __post_init__(self):
         # Ray train initializes worker with current report index
         # report_call_index should start at the current report index
         self.report_call_index = self.current_report_index
+
+    # ─── Preemption API ────────────────────────────────────────────────────
+
+    def preemption_status(self) -> Optional["PreemptionInfo"]:
+        """Return the current preemption status, or ``None`` if no preemption
+        is pending for this worker group.
+
+        Non-blocking. Safe to call once per training step. The ``None`` case
+        costs microseconds and performs no RPC, I/O, or collective.
+        """
+        if not self._preempt_event.is_set():
+            return None
+        with self._preempt_lock:
+            if self._preempt_acknowledged_at is None:
+                self._preempt_acknowledged_at = time.time()
+            return self._preempt_info
+
+    def _set_preemption_info(self, info: "PreemptionInfo") -> None:
+        """Internal: called from the actor main thread via mark_preempt RPC."""
+        with self._preempt_lock:
+            self._preempt_info = info
+        self._preempt_event.set()
 
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name

@@ -29,6 +29,7 @@ from ray.train.v2._internal.execution.context import (
     get_train_context,
     set_train_context,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.train_fn_utils import (
     DistributedTrainFnUtils,
@@ -120,6 +121,20 @@ class Worker:
             fn, *fn_args, **fn_kwargs
         )
 
+    @property
+    def rank(self) -> int:
+        """World rank of this worker, sourced from the distributed context."""
+        if self.distributed_context is None:
+            raise RuntimeError(
+                "Worker.rank accessed before distributed_context was assigned."
+            )
+        return self.distributed_context.world_rank
+
+    def mark_preempt(self, info: "PreemptionInfo") -> ObjectRef:
+        """Send a mark_preempt RPC to this worker actor. Fire-and-forget;
+        returns the ObjectRef for the caller to optionally await."""
+        return self.actor.mark_preempt.remote(info)
+
 
 class RayTrainWorker:
     def __init__(self):
@@ -177,7 +192,8 @@ class RayTrainWorker:
         )
 
     def poll_status(self) -> WorkerStatus:
-        execution_context = get_train_context().execution_context
+        ctx = get_train_context()
+        execution_context = ctx.execution_context
 
         # TODO: We can implement two phase commit here.
         # Only mark the task done when the result has been processed by the controller.
@@ -208,6 +224,26 @@ class RayTrainWorker:
             error=error,
             training_report=training_report,
             return_value=return_value,
+            preemption_info=ctx._preempt_info,
+            preempt_acknowledged_at=ctx._preempt_acknowledged_at,
+        )
+
+    def mark_preempt(self, info: PreemptionInfo) -> None:
+        """Inject a preemption signal into this worker's TrainContext.
+
+        Called from the actor's main thread when the controller's
+        PreemptionCallback fans out the signal. Sets a thread-safe event +
+        info struct that the UDF thread reads via
+        ``ray.train.preemption_status()``. Idempotent: subsequent calls update
+        the latest info (e.g., when more nodes drain on the same TPU slice).
+        """
+        ctx = get_train_context()
+        ctx._set_preemption_info(info)
+        logger.info(
+            f"Rank {ctx.get_world_rank()}: received preemption signal "
+            f"(this_worker_preempted={info.this_worker_preempted}, "
+            f"preempted_ranks={info.preempted_ranks}, "
+            f"deadline_in={info.seconds_remaining:.1f}s)"
         )
 
     def clear_result_queue(self) -> bool:
