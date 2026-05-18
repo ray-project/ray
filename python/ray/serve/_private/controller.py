@@ -202,16 +202,8 @@ class ServeController:
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
                 "with HAProxy."
             )
-        elif self._direct_ingress_enabled:
-            logger.info(
-                "Direct ingress is enabled in ServeController, enabling proxy "
-                "on head node only."
-            )
-            http_options.location = DeploymentMode.HeadOnly
-
-        if self._ha_proxy_enabled:
             all_interfaces = get_all_interfaces_ip()
-            if http_options.host not in (None, all_interfaces):
+            if http_options.host != all_interfaces:
                 logger.warning(
                     f"HTTPOptions.host={http_options.host!r} won't accept "
                     "connections from HAProxy on other nodes; cross-node "
@@ -219,6 +211,12 @@ class ServeController:
                     f"{all_interfaces!r} or omit it to use the HAProxy-mode "
                     "default."
                 )
+        elif self._direct_ingress_enabled:
+            logger.info(
+                "Direct ingress is enabled in ServeController, enabling proxy "
+                "on head node only."
+            )
+            http_options.location = DeploymentMode.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
