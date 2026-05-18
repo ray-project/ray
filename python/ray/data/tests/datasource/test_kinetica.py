@@ -1415,7 +1415,7 @@ class TestTryCreateGpudbTable:
         result = ds._try_create_gpudb_table(mock_client)
 
         assert result == mock_gpudb_table
-        mock_create_gpudb_table.assert_called_once_with(mock_client)
+        mock_create_gpudb_table.assert_called_once_with(mock_client, table_exists=False)
 
     @patch.object(KineticaDatasink, "_init_client")
     @patch.object(KineticaDatasink, "_create_gpudb_table")
