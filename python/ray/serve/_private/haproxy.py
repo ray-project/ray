@@ -1254,10 +1254,11 @@ class HAProxyManager(ProxyActorInterface):
         if self._haproxy.cfg.ingress_request_router_metrics_enabled:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 
-            os.makedirs(
-                os.path.dirname(self._haproxy.cfg.metrics_socket_path), exist_ok=True
-            )
             try:
+                os.makedirs(
+                    os.path.dirname(self._haproxy.cfg.metrics_socket_path),
+                    exist_ok=True,
+                )
                 self._metrics_collector = HAProxyMetricsCollector()
                 self._metrics_attach_task = self.event_loop.create_task(
                     self._metrics_collector.bind_and_attach(
