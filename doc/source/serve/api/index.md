@@ -475,6 +475,7 @@ Content-Type: application/json
    :template: autosummary/autopydantic.rst
 
    schema.LoggingConfig
+   schema.TracingConfig
 ```
 
 (serve-llm-api)=

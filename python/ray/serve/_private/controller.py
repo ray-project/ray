@@ -111,6 +111,7 @@ from ray.serve.schema import (
     ServeInstanceDetails,
     Target,
     TargetGroup,
+    TracingConfig,
     gRPCOptionsSchema,
 )
 from ray.util import metrics
@@ -157,11 +158,14 @@ class ServeController:
         *,
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
+        global_tracing_config: Optional[TracingConfig] = None,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_location: Optional[ProxyLocation] = None,
     ):
         if RAY_SERVE_THROUGHPUT_OPTIMIZED:
             self._log_throughput_opt_message()
+
+        self.global_tracing_config = global_tracing_config
 
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
@@ -332,6 +336,10 @@ class ServeController:
             msg += "  • Garbage collector is frozen on startup\n"
         msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
         logger.info(msg)
+
+    def get_tracing_config(self) -> Optional[TracingConfig]:
+        """Return the global tracing config."""
+        return self.global_tracing_config
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
