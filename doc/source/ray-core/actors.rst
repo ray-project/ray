@@ -91,6 +91,20 @@ that specific worker. The methods can access and mutate the state of that worker
 
 
 
+.. note::
+
+   Each remote actor runs in its own Python process, so Python class
+   variables aren't shared across actor instances. Each actor receives its
+   own copy of the class state at instantiation time, and any subsequent
+   mutations (for example, ``Counter.value += 1`` from inside a method)
+   are local to that actor's process. They aren't visible to the driver
+   or to other actors created from the same class.
+
+   To share state across actors, store it on a dedicated actor (often a
+   :ref:`named actor <actor-lifetimes>`) and call its methods from the
+   other actors, or place immutable data into the object store with
+   :func:`ray.put`.
+
 Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
 
 .. code-block:: bash
