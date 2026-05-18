@@ -1685,6 +1685,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_eval_workers_all_unhealthy",
+    size = "medium",
+    srcs = ["algorithms/tests/test_eval_workers_all_unhealthy.py"],
+    tags = [
+        "algorithms",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Specific Algorithms
 
 # APPO
@@ -1926,6 +1938,17 @@ py_test(
     name = "algorithms/tests/test_get_main_process_bundle",
     size = "small",
     srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "algorithms/tests/test_custom_resources_per_learner",
+    size = "small",
+    srcs = ["algorithms/tests/test_custom_resources_per_learner.py"],
     tags = [
         "algorithms",
         "team:rllib",

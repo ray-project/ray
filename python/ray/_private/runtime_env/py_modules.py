@@ -36,12 +36,13 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
-    if (
-        protocol in Protocol.remote_protocols()
-        and not path.endswith(".zip")
-        and not path.endswith(".whl")
+    supported_extensions = (".zip", ".whl", ".tar.gz", ".tgz")
+    if protocol in Protocol.remote_protocols() and not any(
+        path.endswith(ext) for ext in supported_extensions
     ):
-        raise ValueError("Only .zip or .whl files supported for remote URIs.")
+        raise ValueError(
+            "Only .zip, .whl, .tar.gz, and .tgz files supported for remote URIs."
+        )
 
     return protocol is not None
 

@@ -325,6 +325,47 @@
       run:
         script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
+############
+# Mix tests
+############
+
+- name: mix
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: dataset_mixing/compute_8_cpu.yaml
+  run:
+    timeout: 600
+    wait_for_nodes:
+      num_nodes: 8
+
+  variations:
+    - __suffix__: 8ds_equal
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_equal_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
 ################
 # Training tests
 ################
