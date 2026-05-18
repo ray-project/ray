@@ -45,6 +45,30 @@ _EXPERIMENT_PARAMS = {
 }
 
 
+def _convert_arrow_dtypes_for_lightgbm(dataframe: pd.DataFrame) -> pd.DataFrame:
+    import pandas as pd
+    import pyarrow as pa
+
+    dtype_mapping = {}
+    for column, dtype in dataframe.dtypes.items():
+        if not isinstance(dtype, pd.ArrowDtype):
+            continue
+
+        arrow_dtype = dtype.pyarrow_dtype
+        if pa.types.is_signed_integer(arrow_dtype):
+            dtype_mapping[column] = f"Int{arrow_dtype.bit_width}"
+        elif pa.types.is_unsigned_integer(arrow_dtype):
+            dtype_mapping[column] = f"UInt{arrow_dtype.bit_width}"
+        elif pa.types.is_floating(arrow_dtype):
+            dtype_mapping[column] = f"Float{arrow_dtype.bit_width}"
+        elif pa.types.is_boolean(arrow_dtype):
+            dtype_mapping[column] = "boolean"
+
+    if dtype_mapping:
+        dataframe = dataframe.astype(dtype_mapping, copy=False)
+    return dataframe
+
+
 class BasePredictor:
     def __init__(self, report_callback_cls, result: ray.train.Result):
         self.model = report_callback_cls.get_model(result.checkpoint)
@@ -85,7 +109,7 @@ def xgboost_train_loop_function(config: Dict):
 def lightgbm_train_loop_function(config: Dict):
     train_ds_iter = ray.train.get_dataset_shard("train")
     train_df = train_ds_iter.materialize().to_pandas()
-    train_df = train_df.convert_dtypes(dtype_backend="numpy_nullable")
+    train_df = _convert_arrow_dtypes_for_lightgbm(train_df)
 
     label_column, params = config["label_column"], config["params"]
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]

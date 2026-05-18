@@ -27,6 +27,10 @@ LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE = (
 )
 
 
+def _convert_dtypes_for_lightgbm(dataframe):
+    return dataframe
+
+
 def _lightgbm_train_fn_per_worker(
     config: dict,
     label_column: str,
@@ -50,13 +54,17 @@ def _lightgbm_train_fn_per_worker(
 
     train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
     train_df = train_ds_iter.materialize().to_pandas()
+    train_df = _convert_dtypes_for_lightgbm(train_df)
 
     eval_ds_iters = {
         k: ray.train.get_dataset_shard(k)
         for k in dataset_keys
         if k != TRAIN_DATASET_KEY
     }
-    eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+    eval_dfs = {
+        k: d.materialize().to_pandas().convert_dtypes(dtype_backend="numpy_nullable")
+        for k, d in eval_ds_iters.items()
+    }
 
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lightgbm.Dataset(train_X, label=train_y)
