@@ -1644,17 +1644,10 @@ class ProxyActor(ProxyActorInterface):
         logging_config: LoggingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
-        # Fetch tracing config from controller before calling super
-        controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        )
-        tracing_config = ray.get(controller_handle.get_tracing_config.remote())
-
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
-            tracing_config=tracing_config,
         )
 
         self._grpc_options = grpc_options
@@ -1662,7 +1655,7 @@ class ProxyActor(ProxyActorInterface):
         grpc_enabled = is_grpc_enabled(self._grpc_options)
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(
-            controller_handle,
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,

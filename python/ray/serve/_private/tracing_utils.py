@@ -178,10 +178,10 @@ def tracing_decorator_factory(
     """
 
     def tracing_decorator(func):
-        # NOTE: We intentionally check is_tracing_enabled() INSIDE each wrapper
-        # rather than here at decoration time. This is because decorators are
-        # applied at import/class-definition time, before setup_tracing() has
-        # been called, so the check would always be False at decoration time.
+        # NOTE: We check is_tracing_enabled() INSIDE each wrapper rather than
+        # at decoration time. Decorators are applied at import/class-definition
+        # time, before setup_tracing() has been called, so the check would
+        # always return False at decoration time.
 
         @wraps(func)
         def synchronous_wrapper(*args, **kwargs):

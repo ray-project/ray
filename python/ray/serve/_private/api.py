@@ -113,9 +113,7 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    if global_tracing_config is None:
-        global_tracing_config = TracingConfig()
-    elif isinstance(global_tracing_config, dict):
+    if isinstance(global_tracing_config, dict):
         global_tracing_config = TracingConfig(**global_tracing_config)
 
     controller_options = _coerce_controller_options(controller_options)
