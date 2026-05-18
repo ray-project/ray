@@ -696,7 +696,9 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
                 return f.read()
 
     unset = render({})
-    assert "retry-on" not in unset
+    # Match the actual HAProxy directive at line-start (4-space indent), not
+    # any occurrences of "retry-on" inside template comments.
+    assert "\n    retry-on " not in unset
     assert "\n    retries " not in unset
     assert "ingress-request-router" in unset  # backend still rendered
 
