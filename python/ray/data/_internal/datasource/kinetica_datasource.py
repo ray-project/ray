@@ -64,14 +64,14 @@ def _has_balanced_quotes(expr: str) -> bool:
     while i < len(expr):
         char = expr[i]
         if not in_double and char == "'":
-            # Check for escaped quote ''
-            if i + 1 < len(expr) and expr[i + 1] == "'":
+            # Check for escaped quote '' only when inside a single-quoted string
+            if in_single and i + 1 < len(expr) and expr[i + 1] == "'":
                 i += 2  # Skip escaped quote
                 continue
             in_single = not in_single
         elif not in_single and char == '"':
-            # Check for escaped quote ""
-            if i + 1 < len(expr) and expr[i + 1] == '"':
+            # Check for escaped quote "" only when inside a double-quoted string
+            if in_double and i + 1 < len(expr) and expr[i + 1] == '"':
                 i += 2  # Skip escaped quote
                 continue
             in_double = not in_double

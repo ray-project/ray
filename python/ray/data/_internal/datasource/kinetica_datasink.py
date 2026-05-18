@@ -246,7 +246,11 @@ class KineticaDatasink(Datasink):
             label=self._table_name,
         )
 
-        options = {}
+        options = {
+            # Avoid error if table already exists (e.g., race condition
+            # or retry scenario). The table schema must still be compatible.
+            "no_error_if_exists": "true",
+        }
 
         if self._table_settings.is_replicated:
             options["is_replicated"] = "true"
@@ -398,8 +402,18 @@ class KineticaDatasink(Datasink):
             return GPUdbRecordType(columns=columns, label=self._table_name)
         return None
 
-    def _create_gpudb_table(self, client):
-        """Create a GPUdbTable instance for writing records."""
+    def _create_gpudb_table(self, client, table_exists: bool = False):
+        """Create a GPUdbTable instance for writing records.
+
+        Args:
+            client: GPUdb client instance.
+            table_exists: If True, the table already exists and table creation
+                options (is_replicated, chunk_size, ttl, etc.) will be ignored
+                since they only apply when creating a new table.
+
+        Returns:
+            GPUdbTable instance configured for writing.
+        """
         from gpudb import GPUdbException, GPUdbTable, GPUdbTableOptions
 
         record_type = self._get_record_type()
@@ -409,22 +423,25 @@ class KineticaDatasink(Datasink):
                 "Cannot create GPUdbTable: no schema information available"
             )
 
+        # Only set table creation options when the table doesn't exist.
+        # These options have no effect on existing tables and could cause
+        # issues with some GPUdb SDK versions.
         table_options = GPUdbTableOptions()
+        if not table_exists:
+            if self._table_settings.is_replicated:
+                table_options.is_replicated = True
 
-        if self._table_settings.is_replicated:
-            table_options.is_replicated = True
+            if self._table_settings.chunk_size is not None:
+                table_options.chunk_size = self._table_settings.chunk_size
 
-        if self._table_settings.chunk_size is not None:
-            table_options.chunk_size = self._table_settings.chunk_size
+            if self._table_settings.ttl >= 0:
+                table_options.ttl = self._table_settings.ttl
 
-        if self._table_settings.ttl >= 0:
-            table_options.ttl = self._table_settings.ttl
+            if not self._table_settings.persist:
+                table_options.no_persist = True
 
-        if not self._table_settings.persist:
-            table_options.no_persist = True
-
-        if self._table_settings.collection_name:
-            table_options.collection_name = self._table_settings.collection_name
+            if self._table_settings.collection_name:
+                table_options.collection_name = self._table_settings.collection_name
 
         gpudb_table = GPUdbTable(
             _type=record_type,
@@ -442,11 +459,13 @@ class KineticaDatasink(Datasink):
 
         return gpudb_table
 
-    def _try_create_gpudb_table(self, client: Any):
+    def _try_create_gpudb_table(self, client: Any, table_exists: bool = False):
         """Try to create GPUdbTable, handling errors based on multihead setting.
 
         Args:
             client: GPUdb client instance.
+            table_exists: If True, the table already exists and table creation
+                options will be skipped.
 
         Returns:
             GPUdbTable instance if successful, None if failed and multihead
@@ -456,7 +475,7 @@ class KineticaDatasink(Datasink):
             RuntimeError: If multihead is required but GPUdbTable creation fails.
         """
         try:
-            return self._create_gpudb_table(client)
+            return self._create_gpudb_table(client, table_exists=table_exists)
         except Exception as e:
             if self._use_multihead:
                 raise RuntimeError(
@@ -503,7 +522,8 @@ class KineticaDatasink(Datasink):
 
         gpudb_table = None
         if self._schema_string is not None or self._column_defs is not None:
-            gpudb_table = self._try_create_gpudb_table(client)
+            # Table already exists at this point (created in on_write_start)
+            gpudb_table = self._try_create_gpudb_table(client, table_exists=True)
 
         for block in blocks:
             accessor = BlockAccessor.for_block(block)
@@ -524,7 +544,8 @@ class KineticaDatasink(Datasink):
                 # are used by _get_record_type (called from _create_gpudb_table).
                 self._create_table(client, kinetica_columns)
 
-                gpudb_table = self._try_create_gpudb_table(client)
+                # Table was just created by _create_table, so it exists now
+                gpudb_table = self._try_create_gpudb_table(client, table_exists=True)
 
             for batch in arrow_table.to_batches():
                 records = convert_arrow_batch_to_records(
