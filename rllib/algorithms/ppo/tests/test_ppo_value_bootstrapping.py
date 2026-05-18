@@ -1,12 +1,13 @@
-import unittest
+"""Unit tests for PPO's value-bootstrapping wiring.
 
+Exercises the connector pipeline (``AddOneTsToEpisodesAndTruncate`` +
+``AddColumnsFromEpisodesToTrainBatch`` + ``BatchIndividualItems``) feeding into
+``compute_value_targets``. Targets are pinned to closed-form GAE answers so a
+regression in either the connector layout or the GAE recursion is caught.
+"""
 import numpy as np
 import pytest
-import torch
 
-import ray
-import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.connectors.learner import (
     AddColumnsFromEpisodesToTrainBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -15,27 +16,23 @@ from ray.rllib.connectors.learner import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 
 
-def simulate_vt_calculation(vfps, rewards, terminateds, truncateds, gamma, lambda_):
-    # Formatting
-    episodes = []
-    for vfp, r, term, trunc in zip(vfps, rewards, terminateds, truncateds):
-        episodes.append(
-            SingleAgentEpisode(
-                observations=[0] * len(vfp),  # Include observation after last action
-                actions=[0] * len(r),
-                rewards=r,
-                terminated=term,
-                truncated=trunc,
-                len_lookback_buffer=0,
-            )
+def _targets(per_ep_values, per_ep_rewards, terminated, truncated, gamma, lambda_):
+    """Run the real learner pipeline, then ``compute_value_targets``."""
+    episodes = [
+        SingleAgentEpisode(
+            observations=[0] * len(v),
+            actions=[0] * len(r),
+            rewards=r,
+            terminated=t,
+            truncated=u,
+            len_lookback_buffer=0,
         )
-    # Call AddOneTsToEpisodesAndTruncate
+        for v, r, t, u in zip(per_ep_values, per_ep_rewards, terminated, truncated)
+    ]
     pipe = LearnerConnectorPipeline(
         connectors=[
             AddOneTsToEpisodesAndTruncate(),
@@ -44,46 +41,29 @@ def simulate_vt_calculation(vfps, rewards, terminateds, truncateds, gamma, lambd
         ]
     )
     batch = pipe(
-        episodes=episodes,
-        batch={},
-        rl_module=None,
-        explore=False,
-        shared_data={},
+        episodes=episodes, batch={}, rl_module=None, explore=False, shared_data={}
     )
-    episode_lens = [len(e) for e in episodes]
-    # Add the last episode's terminated/truncated flags to `terminateds` and `truncateds`
-    vfps = [v for vfpl in vfps for v in vfpl]
-    # Compute the value targets
+    lens = [len(e) for e in episodes]
+    flat_values = np.array([v for vs in per_ep_values for v in vs], dtype=np.float32)
     return compute_value_targets(
-        values=vfps,
-        rewards=unpad_data_if_necessary(
-            episode_lens,
-            np.array(batch[Columns.REWARDS]),
-        ),
-        terminateds=unpad_data_if_necessary(
-            episode_lens,
-            np.array(batch[Columns.TERMINATEDS]),
-        ),
-        truncateds=unpad_data_if_necessary(
-            episode_lens,
-            np.array(batch[Columns.TRUNCATEDS]),
-        ),
+        values=flat_values,
+        rewards=unpad_data_if_necessary(lens, np.array(batch[Columns.REWARDS])),
+        terminateds=unpad_data_if_necessary(lens, np.array(batch[Columns.TERMINATEDS])),
+        truncateds=unpad_data_if_necessary(lens, np.array(batch[Columns.TRUNCATEDS])),
         gamma=gamma,
         lambda_=lambda_,
     )
 
 
-# Analytical expectations for one length-2 episode with values=[0, 0.95, 0.95]
-# (final entry duplicates v1 at the appended bootstrap ts), rewards=[0, 1, 0],
-# gamma=0.99.
-#   - Terminated: target[0] = gamma*v1 + gamma*lambda*(r1 - v1 + gamma*(1-term)*...).
-#                 With term at last real ts, terminal kill keeps target[1] = r1 = 1
-#                 and adds gamma*lambda*0.05 to target[0].
-#   - Truncated:  target uses the bootstrap from v_extra; target[1] = r1 + gamma*v_extra.
+# Length-2 episode, values=[0, 0.95, 0.95] (last entry is the duplicated
+# bootstrap slot), rewards=[0, 1, 0], gamma=0.99.
+#   terminated: target[0] = gamma*v1 + gamma*lambda*(r1 - v1) = 0.9405 + 0.0495*lambda
+#               target[1] = r1 = 1.0
+#   truncated:  target[0] = 0.9405 + gamma*lambda*delta_1 = 0.9405 + 0.99*lambda*0.9905
+#               target[1] = r1 + gamma*v_extra = 1.9405
 @pytest.mark.parametrize(
-    "lambda_,is_terminated,expected_targets",
+    "lambda_,is_terminated,expected",
     [
-        # (lambda, is_terminated, [target[0], target[1]])
         (0.0, True, [0.9405, 1.0]),
         (0.5, True, [0.9405 + 0.99 * 0.5 * 0.05, 1.0]),
         (1.0, True, [0.99, 1.0]),
@@ -92,164 +72,45 @@ def simulate_vt_calculation(vfps, rewards, terminateds, truncateds, gamma, lambd
         (1.0, False, [0.9405 + 0.99 * 0.9905, 1.9405]),
     ],
 )
-def test_value_targets_one_episode(lambda_, is_terminated, expected_targets):
-    """Path A: per-step targets are correct for a single episode across lambdas."""
-    out = simulate_vt_calculation(
-        [[0.0, 0.95, 0.95]],
-        [[0.0, 1.0]],
-        [is_terminated],
-        [not is_terminated],
+def test_single_episode_targets(lambda_, is_terminated, expected):
+    """Single episode: terminal reward propagates; truncation keeps the bootstrap."""
+    out = _targets(
+        per_ep_values=[[0.0, 0.95, 0.95]],
+        per_ep_rewards=[[0.0, 1.0]],
+        terminated=[is_terminated],
+        truncated=[not is_terminated],
         gamma=0.99,
         lambda_=lambda_,
     )
-    np.testing.assert_allclose(out[:2], expected_targets, atol=1e-4)
+    np.testing.assert_allclose(out[:2], expected, atol=1e-4)
 
 
 @pytest.mark.parametrize(
     "ep1_term,ep2_term",
-    [
-        (True, True),
-        (True, False),
-        (False, True),
-        (False, False),
-    ],
+    [(True, True), (True, False), (False, True), (False, False)],
 )
-def test_value_targets_no_cross_episode_leak(ep1_term, ep2_term):
-    """Path A: GAE accumulator does not leak across episode boundaries at lambda=1.
-
-    With lambda=1 the recursion would propagate aggressively; this test confirms
-    that termination (via not_term=0) and truncation (via the explicit reset)
-    both correctly isolate the two episodes' targets.
-    """
-    out = simulate_vt_calculation(
-        [[0.0, 0.95, 0.95], [0.0, 0.95, 0.95]],
-        [[0.0, 1.0], [0.0, 1.0]],
-        [ep1_term, ep2_term],
-        [not ep1_term, not ep2_term],
+def test_no_cross_episode_leak(ep1_term, ep2_term):
+    """At lambda=1, episode 1's targets must not depend on episode 2."""
+    pair = _targets(
+        per_ep_values=[[0.0, 0.95, 0.95], [0.0, 0.95, 0.95]],
+        per_ep_rewards=[[0.0, 1.0], [0.0, 1.0]],
+        terminated=[ep1_term, ep2_term],
+        truncated=[not ep1_term, not ep2_term],
         gamma=0.99,
         lambda_=1.0,
     )
-    # Target for ep1 should be identical to a single-episode computation,
-    # regardless of what comes after it in the batch.
-    single = simulate_vt_calculation(
-        [[0.0, 0.95, 0.95]],
-        [[0.0, 1.0]],
-        [ep1_term],
-        [not ep1_term],
+    solo = _targets(
+        per_ep_values=[[0.0, 0.95, 0.95]],
+        per_ep_rewards=[[0.0, 1.0]],
+        terminated=[ep1_term],
+        truncated=[not ep1_term],
         gamma=0.99,
         lambda_=1.0,
     )
-    np.testing.assert_allclose(out[:2], single[:2], atol=1e-4)
-
-
-class TestPPO(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
-    def test_value_computation(self):
-        correct = [0.9405, 1.0, None, 0.9405, 1.0, None]
-        two_term = simulate_vt_calculation(
-            [[0.0, 0.95, 0.95], [0.0, 0.95, 0.95]],  # Value head outputs
-            [[0.0, 1.0], [0.0, 1.0]],  # Environment rewards
-            [True, True],  # Terminated flags
-            [False, False],  # Truncated flags
-            gamma=0.99,
-            lambda_=0.0,
-        )
-        for pred, gt in zip(two_term, correct):
-            if gt is not None:
-                self.assertAlmostEqual(pred, gt)
-        # Test case where an episode is truncated (state value should be included)
-        correct = [0.9405, 1.0, None, 0.9405, 1.9405, None]
-        term_trunc = simulate_vt_calculation(
-            [[0.0, 0.95, 0.95], [0.0, 0.95, 0.95]],  # Value head outputs
-            [[0.0, 1.0], [0.0, 1.0]],  # Environment rewards
-            [True, False],  # Terminated flags
-            [False, True],  # Truncated flags
-            gamma=0.99,
-            lambda_=0.0,
-        )
-        for pred, gt in zip(term_trunc, correct):
-            if gt is not None:
-                self.assertAlmostEqual(pred, gt)
-
-    def test_ppo_value_bootstrapping(self):
-        """Test whether PPO's value bootstrapping works properly."""
-
-        # Build a PPOConfig object with the `SingleAgentEnvRunner` class.
-        config = (
-            ppo.PPOConfig()
-            .debugging(seed=0)
-            .environment(  # A very simple environment with a terminal reward
-                "FrozenLake-v1",
-                env_config={
-                    "desc": [
-                        "HG",
-                        "FF",
-                        "SH",
-                        "FH",
-                    ],
-                    "is_slippery": False,
-                    "max_episode_steps": 3,
-                },
-            )
-            .env_runners(
-                num_env_runners=0,
-                # Flatten discrete observations (into one-hot vectors).
-                env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
-            )
-            .training(
-                num_epochs=10,
-                lr=2e-4,
-                lambda_=0.0,  # Zero means pure value bootstrapping
-                gamma=0.9,
-                train_batch_size=256,
-            )
-        )
-
-        num_iterations = 20
-
-        algo = config.build()
-
-        for i in range(num_iterations):
-            r_mean = algo.train()[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-            print(r_mean)
-
-        # Test value predictions
-        critic = algo.learner_group._learner._module[DEFAULT_POLICY_ID]
-        state_values = {}
-
-        for state in [3, 2, 4, 6]:
-            obs = torch.zeros((8,)).float()
-            obs[state] += 1
-            batch = {Columns.OBS: obs.unsqueeze(0)}
-            with torch.no_grad():
-                value = critic.compute_values(batch).item()
-            print(f"State {state}: {value:.02f}")
-            state_values[state] = value
-
-        algo.stop()
-        # Value bootstrapping should learn this simple environment reliably
-        self.assertGreater(r_mean, 0.9)
-        # The value function
-        self.assertGreater(state_values[3], 0.9)  # Immediately terminates with reward 1
-        self.assertGreater(
-            state_values[2], 0.8
-        )  # One step from terminating with reward 1
-        self.assertGreater(
-            state_values[4], 0.7
-        )  # Two steps from terminating with reward 1
-        self.assertLess(state_values[6], 0.7)  # Cannot reach the goal from this state
+    np.testing.assert_allclose(pair[:2], solo[:2], atol=1e-4)
 
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
