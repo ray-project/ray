@@ -24,10 +24,6 @@ from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 
-def _router_class_path(cls: type) -> str:
-    return f"{cls.__module__}.{cls.__name__}"
-
-
 class TestGetDeploymentOptions:
     """Mirrors test_dp_server.py but verifies gang scheduling config."""
 
@@ -211,7 +207,7 @@ class TestBuildDPOpenAiAppDirectStreaming:
         )
 
     def test_direct_streaming_builds_dp_ingress_with_router_attached(
-        self, disable_placement_bundles, monkeypatch
+        self, disable_placement_bundles, monkeypatch, router_class_path
     ):
         monkeypatch.setattr(
             "ray.llm._internal.serve.serving_patterns.data_parallel.builder."
@@ -231,12 +227,12 @@ class TestBuildDPOpenAiAppDirectStreaming:
         assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
 
         request_router_config = deployment._deployment_config.request_router_config
-        assert request_router_config.request_router_class == _router_class_path(
+        assert request_router_config.request_router_class == router_class_path(
             RoundRobinRouter
         )
 
     def test_direct_streaming_user_request_router_config_wins(
-        self, disable_placement_bundles, monkeypatch
+        self, disable_placement_bundles, monkeypatch, router_class_path
     ):
         monkeypatch.setattr(
             "ray.llm._internal.serve.serving_patterns.data_parallel.builder."
@@ -252,7 +248,7 @@ class TestBuildDPOpenAiAppDirectStreaming:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.request_router_class == _router_class_path(
+        assert request_router_config.request_router_class == router_class_path(
             ConsistentHashRouter
         )
 

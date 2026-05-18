@@ -214,6 +214,8 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
 
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        # Direct streaming makes decode the ASGI ingress, so it must be built
+        # with the ASGI wrapper while still receiving the prefill backend.
         decode_deployment = _build_direct_streaming_llm_deployment(
             pd_config.decode_config,
             name_prefix="Decode:",

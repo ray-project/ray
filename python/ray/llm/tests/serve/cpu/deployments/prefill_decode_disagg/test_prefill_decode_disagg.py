@@ -26,10 +26,6 @@ from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 
-def _router_class_path(cls: type) -> str:
-    return f"{cls.__module__}.{cls.__name__}"
-
-
 @pytest.fixture(autouse=True)
 def disable_direct_streaming_by_default(monkeypatch):
     monkeypatch.setattr(
@@ -375,7 +371,7 @@ class TestBuildPDOpenaiAppDirectStreaming:
         )
 
     def test_direct_streaming_uses_decode_as_ingress(
-        self, pd_configs, disable_placement_bundles, monkeypatch
+        self, pd_configs, disable_placement_bundles, monkeypatch, router_class_path
     ):
         self._enable_direct_streaming(monkeypatch)
         prefill, decode = pd_configs
@@ -399,7 +395,7 @@ class TestBuildPDOpenaiAppDirectStreaming:
         request_router_config = (
             decode_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.request_router_class == _router_class_path(
+        assert request_router_config.request_router_class == router_class_path(
             RoundRobinRouter
         )
 
@@ -418,7 +414,7 @@ class TestBuildPDOpenaiAppDirectStreaming:
         assert decode_deployment.init_kwargs["prefill_server"]._bound_deployment
 
     def test_direct_streaming_user_request_router_config_wins(
-        self, pd_configs, disable_placement_bundles, monkeypatch
+        self, pd_configs, disable_placement_bundles, monkeypatch, router_class_path
     ):
         self._enable_direct_streaming(monkeypatch)
         prefill, decode = pd_configs
@@ -430,7 +426,7 @@ class TestBuildPDOpenaiAppDirectStreaming:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.request_router_class == _router_class_path(
+        assert request_router_config.request_router_class == router_class_path(
             ConsistentHashRouter
         )
 
