@@ -2,6 +2,7 @@ assess_quality
 autoscaler
 [Aa]vro
 [Bb]ackpressure
+conda
 Dask
 [Dd]ata('s)?
 [Dd]atasource(s)?
@@ -55,3 +56,5 @@ YOLO
 [Ss]harded
 [Pp]arameterization(s)?
 repr
+[Uu]psample(d|s)?
+[Rr]ebatch(ing|ed|es)?

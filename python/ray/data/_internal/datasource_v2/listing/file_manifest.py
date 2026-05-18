@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pyarrow as pa
@@ -57,6 +57,54 @@ class FileManifest:
         This doesn't make a copy of the underlying data.
         """
         return self._block
+
+    @classmethod
+    def concat(cls, manifests: List["FileManifest"]) -> "FileManifest":
+        """Return a new `FileManifest` whose rows are the concatenation of
+        ``manifests`` in order.
+
+        Row alignment of ``paths`` / ``file_sizes`` is preserved because
+        each input already satisfies it.
+        """
+        assert len(manifests) > 0, "concat requires at least one manifest"
+        if len(manifests) == 1:
+            return manifests[0]
+
+        merged = pa.concat_tables(
+            [
+                BlockAccessor.for_block(manifest._block).to_arrow()
+                for manifest in manifests
+            ]
+        )
+        return cls(merged)
+
+    def shuffle(self, seed: Optional[int]) -> "FileManifest":
+        """Return a new `FileManifest` with rows permuted.
+
+        Args:
+            seed: Random seed. ``None`` for non-deterministic shuffling.
+                When set, input rows are first sorted by path so the shuffle
+                is reproducible regardless of upstream listing order
+                (the threaded ``FileIndexer`` doesn't preserve order).
+
+        Returns:
+            A new `FileManifest` with the same rows in a shuffled order. The
+            underlying row alignment between `paths` and `file_sizes` is
+            preserved because the permutation is applied to the block as a
+            whole.
+        """
+        n = len(self)
+        if n <= 1:
+            return self
+        block = self._block
+        if seed is not None:
+            sort_indices = pa.compute.sort_indices(
+                BlockAccessor.for_block(block).to_arrow(),
+                sort_keys=[(PATH_COLUMN_NAME, "ascending")],
+            )
+            block = block.take(sort_indices)
+        permutation = np.random.default_rng(seed).permutation(n)
+        return FileManifest(block.take(permutation))
 
     @classmethod
     def construct_manifest(

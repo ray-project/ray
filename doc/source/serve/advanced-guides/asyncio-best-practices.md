@@ -129,6 +129,8 @@ Blocking I/O example:
 
 Even though the method is `async def`, `requests.get` blocks the loop. No other requests can run on this replica during the request call. Blocking in `async def` is still blocking.
 
+If the blocking call hangs and you've configured a request timeout, Ray Serve cancels the request when that timeout expires, but that cancellation is best-effort. Python only delivers `asyncio` cancellation when the task cooperates and yields control back to the event loop. A synchronous call such as `requests.get` doesn't do that, so one hung request can stall the replica's event loop and prevent later requests from running on that replica.
+
 Non-blocking equivalent with async HTTP client:
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py

@@ -123,6 +123,18 @@ class DeploymentAutoscalingState:
             tag_keys=("deployment", "application", "policy_scope"),
         )
 
+        self.autoscaling_target_ongoing_requests_gauge = metrics.Gauge(
+            "serve_autoscaling_target_ongoing_requests",
+            description=(
+                "The configured target number of ongoing requests per replica. "
+                "For the default policy, this can be combined with "
+                "serve_autoscaling_total_requests to compute the raw desired number "
+                "of replicas (total_requests / target_ongoing_requests) and detect "
+                "autoscaling regressions."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
 
@@ -321,6 +333,9 @@ class DeploymentAutoscalingState:
         self.autoscaling_policy_execution_time_gauge.set(
             policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
         )
+        self.autoscaling_target_ongoing_requests_gauge.set(
+            self._config.get_target_ongoing_requests(), tags=tags
+        )
 
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
@@ -497,11 +512,27 @@ class DeploymentAutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
+
+            # Exclude early "partial" period: when series have misaligned start times,
+            # late-starting series are implicitly 0 before their first data point, which
+            # undercounts the total and biases aggregations. Start the window at the
+            # timestamp when all series have contributed at least one point.
+            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+            # to 10ms; if aligned_start is before the first merged point, the gap would
+            # be treated as 0 and bias the average downward.
+            window_start = None
+            non_empty_series = [ts for ts in timeseries_list if ts]
+            if len(non_empty_series) > 1:
+                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+                if aligned_start <= merged_timeseries[-1].timestamp:
+                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
+                window_start=window_start,
             )
             return value if value is not None else 0.0
 
@@ -927,8 +958,8 @@ class ApplicationAutoscalingState:
             self._policy_state = returned_policy_state
 
             # Validate returned decisions
-            assert (
-                type(decisions) is dict
+            assert isinstance(
+                decisions, dict
             ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
 
             # assert that deployment_id is in decisions is valid

@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
@@ -143,6 +144,9 @@ class DeploymentConfig(BaseModel):
         request_router_config: Configuration for deployment request router.
         max_constructor_retry_count: Maximum number of times to retry the
             deployment constructor. Defaults to 20.
+        rolling_update_percentage: The fraction of replicas (of
+            ``target_num_replicas``) to update at a time during a rolling
+            update. Must be in ``(0.0, 1.0]``. Defaults to 0.2 (20%).
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -217,6 +221,13 @@ class DeploymentConfig(BaseModel):
     deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
+    rolling_update_percentage: float = Field(
+        default=DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+        gt=0.0,
+        le=1.0,
+        update_type=DeploymentOptionUpdateType.LightWeight,
     )
 
     # Contains the names of deployment options manually set by the user
@@ -445,6 +456,16 @@ class DeploymentConfig(BaseModel):
                         ] = proto.request_router_config.request_router_kwargs
                 else:
                     data["request_router_config"]["request_router_kwargs"] = {}
+
+            # Remove falsy proto defaults so Pydantic uses its Field defaults.
+            # This is important during rolling upgrades when older controllers
+            # send configs without these fields (proto3 defaults to 0.0).
+            if not data["request_router_config"].get("initial_backoff_s"):
+                data["request_router_config"].pop("initial_backoff_s", None)
+            if not data["request_router_config"].get("backoff_multiplier"):
+                data["request_router_config"].pop("backoff_multiplier", None)
+            if not data["request_router_config"].get("max_backoff_s"):
+                data["request_router_config"].pop("max_backoff_s", None)
 
             data["request_router_config"] = RequestRouterConfig(
                 **data["request_router_config"]

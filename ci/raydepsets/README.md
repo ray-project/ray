@@ -27,8 +27,8 @@ raydepsets solves this by:
 - Modeling the relationships between lock files as a dependency
   graph, so that updating one file automatically propagates to all
   dependents
-- Supporting three composable operations (**compile**, **subset**,
-  **expand**) to express how lock files derive from each other
+- Supporting four composable operations (**compile**, **subset**,
+  **expand**, **relax**) to express how lock files derive from each other
 - Defining dependency sets declaratively in YAML with template
   variables for matrix builds
 - Automatically resolving execution order via topological sort
@@ -115,7 +115,7 @@ A list of dependency set definitions. Each depset has these common fields:
 | Field | Type | Description |
 |---|---|---|
 | `name` | string | Unique identifier (supports `${VAR}` substitution) |
-| `operation` | string | One of `compile`, `subset`, `expand` |
+| `operation` | string | One of `compile`, `subset`, `expand`, `relax` |
 | `output` | string | Output lock file path relative to workspace root |
 | `build_arg_sets` | list | Which build arg sets to expand this depset with |
 | `append_flags` | list | Additional flags passed to `uv pip compile` |
@@ -179,6 +179,24 @@ Combines multiple depsets into one, optionally adding new requirements. Recursiv
 ```
 
 Additional fields: `depsets` (list of depset names to combine), `requirements` (extra requirements to include), `constraints` (constraint files).
+
+#### Operation: `relax`
+
+Removes specified packages from another depset's lock file. Validates that all specified packages exist in the source before removing them.
+
+```yaml
+- name: relaxed_depset_${PYTHON_SHORT}
+  operation: relax
+  source_depset: ray_img_depset_${PYTHON_SHORT}
+  packages:
+    - some-unwanted-package
+    - another-package
+  output: python/deplocks/ray_img/ray_img_relaxed_py${PYTHON_SHORT}.lock
+```
+
+Additional fields: `source_depset` (name of the depset to relax from), `packages` (list of package names to remove from the lock file).
+
+> **Warning:** This operation performs a simple removal of packages from the lock file and does not re-evaluate the dependency graph. Removing a package that is required by another package in the lock file may result in an inconsistent environment. Use with caution.
 
 ### YAML Anchors
 

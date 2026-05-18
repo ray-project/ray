@@ -7,7 +7,6 @@ import traceback
 import warnings
 from collections import defaultdict, deque
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -35,7 +34,6 @@ from ray.tune.experiment import Experiment, Trial
 from ray.tune.experiment.trial import (
     _get_trainable_kwargs,
     _Location,
-    _noop_logger_creator,
     _TrialInfo,
 )
 from ray.tune.result import (
@@ -56,7 +54,10 @@ from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -445,7 +446,7 @@ class TuneController:
             f"{Path(newest_state_path).name}"
         )
         with self._storage.storage_filesystem.open_input_stream(newest_state_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         self.__setstate__(experiment_state["runner_data"])
 
@@ -1908,17 +1909,12 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(
-            _noop_logger_creator, logdir=trial.storage.trial_working_directory
-        )
-
         self._resetting_trials.add(trial)
         self._schedule_trial_task(
             trial=trial,
             method_name="reset",
             args=(extra_config,),
             kwargs={
-                "logger_creator": logger_creator,
                 "storage": trial.storage,
             },
             on_result=self._on_trial_reset,

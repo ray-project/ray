@@ -302,5 +302,39 @@ def test_record_histogram_aggregated_batch(
     mock_logger_warning.assert_not_called()
 
 
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_init_metrics_runs_only_once_per_class(
+    mock_get_meter,
+    mock_set_meter_provider,
+    mock_prometheus_reader,
+    mock_meter_provider,
+):
+    """
+    Regression test: _init_metrics must run exactly once per process, regardless of
+    how many OpenTelemetryMetricRecorder instances are created. Previously the guard
+    flag was written via `self._metrics_initialized = True`, which created an
+    instance attribute and left the class attribute as False, so each new instance
+    re-ran the body and registered another PrometheusMetricReader on the global
+    prometheus_client REGISTRY. That produced duplicate `target_info` series.
+    """
+    mock_get_meter.return_value = MagicMock()
+    # Reset the class-level flag so the test is hermetic regardless of order.
+    original_flag = OpenTelemetryMetricRecorder._metrics_initialized
+    OpenTelemetryMetricRecorder._metrics_initialized = False
+    try:
+        for _ in range(3):
+            OpenTelemetryMetricRecorder()
+
+        assert mock_prometheus_reader.call_count == 1
+        assert mock_meter_provider.call_count == 1
+        assert mock_set_meter_provider.call_count == 1
+        assert OpenTelemetryMetricRecorder._metrics_initialized is True
+    finally:
+        OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-svv", __file__]))

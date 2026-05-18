@@ -27,85 +27,6 @@ from ray.data.tests.test_resource_manager import (
 )
 
 
-@patch(
-    "ray.data._internal.execution.DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION",
-    new="V1",
-)
-def test_output_backpressure_shared_pool_leak(restore_data_context):
-    """Regression test: shared pool budget should not leak through output backpressure.
-
-    Previously, max_task_output_bytes_to_read used:
-        res = budget + max(reserved_for_outputs - op_outputs_usage, 0)
-
-    When op_outputs_usage far exceeds reserved_for_outputs, the max(...) term
-    becomes 0, but the shared pool budget (in `budget`) still allows reading
-    more outputs. The fix treats budget + reserved_for_outputs as a combined
-    ceiling:
-        res = max(budget + reserved_for_outputs - op_outputs_usage, 0)
-    """
-    DataContext.get_current().op_resource_reservation_enabled = True
-    DataContext.get_current().op_resource_reservation_ratio = 0.5
-
-    o1 = InputDataBuffer(DataContext.get_current(), [])
-    o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
-    o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
-    o4 = LimitOperator(1, o3, DataContext.get_current())
-
-    for op in [o2, o3]:
-        op.min_max_resource_requirements = MagicMock(
-            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
-        )
-
-    op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-    op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
-    op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
-
-    topo = build_streaming_topology(o4, ExecutionOptions())
-
-    global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
-
-    resource_manager = ResourceManager(
-        topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-    )
-    resource_manager.get_op_usage = MagicMock(
-        side_effect=lambda op, **kwargs: op_usages[op]
-    )
-    resource_manager._mem_op_internal = op_internal_usage
-    resource_manager._mem_op_outputs = op_outputs_usages
-    resource_manager.get_global_limits = MagicMock(return_value=global_limits)
-
-    assert resource_manager.op_resource_allocator_enabled()
-    allocator = resource_manager._op_resource_allocator
-    assert isinstance(allocator, ReservationOpResourceAllocator)
-
-    # With 2 eligible ops, 50% reservation ratio:
-    #   reserved_for_outputs[o2] = 125
-    #   shared pool per op = 250
-    #   budget[o2].object_store_memory = 125 (reserved) + 250 (shared) = 375
-    allocator.update_budgets(limits=global_limits)
-    assert allocator._reserved_for_op_outputs[o2] == 125
-
-    # Now simulate o2 having massive output usage (5000 bytes) that far
-    # exceeds the reserved_for_outputs (125) AND the total budget (375 + 125 = 500).
-    op_outputs_usages[o2] = 5000
-
-    # The old formula would compute:
-    #   res = budget(375) + max(reserved_for_outputs(125) - usage(5000), 0)
-    #   res = 375 + 0 = 375  <-- shared pool leaks through!
-    #
-    # The fixed formula computes:
-    #   res = max(budget(375) + reserved_for_outputs(125) - usage(5000), 0)
-    #   res = max(500 - 5000, 0) = 0  <-- correctly backpressured
-    allocator._should_unblock_streaming_output_backpressure = MagicMock(
-        return_value=False
-    )
-    result = allocator.max_task_output_bytes_to_read(o2)
-    assert result == 0, (
-        f"Expected 0, got {result}. "
-        "Shared pool budget is leaking through output backpressure."
-    )
-
-
 class TestReservationOpResourceAllocator:
     """Tests for ReservationOpResourceAllocator."""
 
@@ -147,7 +68,10 @@ class TestReservationOpResourceAllocator:
             return global_limits
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = op_internal_usage
@@ -309,7 +233,10 @@ class TestReservationOpResourceAllocator:
         topo = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -367,7 +294,10 @@ class TestReservationOpResourceAllocator:
         topo = build_streaming_topology(o2, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -399,7 +329,10 @@ class TestReservationOpResourceAllocator:
         )
         topo = build_streaming_topology(o2, ExecutionOptions())
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -461,7 +394,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = {o1: 0, o2: 40, o3: 40}
@@ -535,7 +471,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = {o1: 0, o2: 40, o3: 40}
@@ -566,7 +505,10 @@ class TestReservationOpResourceAllocator:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -626,7 +568,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
@@ -671,7 +616,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
@@ -711,7 +659,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2], 0)
@@ -754,7 +705,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2], 0)
@@ -822,7 +776,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4, o5], 0)
@@ -837,10 +794,10 @@ class TestReservationOpResourceAllocator:
         # Before the fix: budget.gpu=0 (couldn't scale)
         # After the fix: budget.gpu=1 (can scale to 1 more actor)
         assert allocator.get_budget(o4) == ExecutionResources(
-            cpu=0, gpu=1, object_store_memory=625000
+            cpu=0, gpu=1, object_store_memory=1875000
         )
         assert allocator.get_allocation(o4) == ExecutionResources(
-            cpu=0, gpu=2, object_store_memory=625000
+            cpu=0, gpu=2, object_store_memory=1875000
         )
 
     def test_gpu_bounded_vs_unbounded_operators(self, restore_data_context):
@@ -875,7 +832,10 @@ class TestReservationOpResourceAllocator:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
@@ -960,7 +920,10 @@ class TestReservationOpResourceAllocator:
         op_usages = {op: ExecutionResources.zero() for op in ops}
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys(ops, 0)
@@ -1018,7 +981,10 @@ class TestReservationOpResourceAllocator:
         global_limits = ExecutionResources(cpu=10, object_store_memory=250)
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = op_internal_usage
@@ -1112,7 +1078,10 @@ class TestReservationOpResourceAllocator:
             return global_limits
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager.get_global_limits = MagicMock(

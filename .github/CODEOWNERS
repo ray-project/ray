@@ -29,7 +29,7 @@
 /doc/source/ray-core/ @ray-project/ray-core
 
 # Public protobuf files.
-/src/ray/protobuf/public/ @edoakes @israbbani @MengjinYan
+/src/ray/protobuf/public/ @edoakes @dayshah @MengjinYan
 
 # Azure autoscaler
 /python/ray/autoscaler/azure/ @ray-project/ray-core @marosset @jackfrancis @alimaazamat
@@ -38,11 +38,11 @@
 # ==== Libraries and frameworks ====
 
 # Dependencies
-/python/setup.py @richardliaw @edoakes @aslonnie
+/python/setup.py @richardliaw @edoakes @ray-project/ray-ci
 
 # Common directory shared by core and the libraries.
 # Stricter enforcement because this defines the public boundary supported by core.
-/python/ray/_common/ @edoakes @israbbani @MengjinYan
+/python/ray/_common/ @edoakes @dayshah @MengjinYan
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data

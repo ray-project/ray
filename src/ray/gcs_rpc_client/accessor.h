@@ -792,6 +792,12 @@ class AutoscalerStateAccessor {
                            bool &is_accepted,
                            std::string &rejection_reason_message);
 
+  virtual Status ResizeRayletResourceInstances(
+      const std::string &node_id,
+      const std::unordered_map<std::string, double> &resources,
+      int64_t timeout_ms,
+      std::unordered_map<std::string, double> &total_resources);
+
  private:
   GcsClient *client_impl_;
 };

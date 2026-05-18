@@ -639,9 +639,26 @@ cdef class InnerGcsClient:
             reason: int32_t,
             reason_message: c_string,
             deadline_timestamp_ms: int64_t):
-        """Send the DrainNode request to GCS.
+        """Send a DrainNode request to GCS to gracefully terminate a node.
 
-        This is only for testing.
+        Used by the `ray drain-node` CLI command and by autoscaler v2's
+        ray_stopper for idle and preemption-based node termination.
+
+        Args:
+            node_id: Binary node ID of the target node.
+            reason: A `DrainNodeReason` enum value. `IDLE_TERMINATION`
+                requests are rejectable by the raylet; `PREEMPTION`
+                requests are non-rejectable.
+            reason_message: Human-readable explanation, used for
+                observability.
+            deadline_timestamp_ms: Timestamp (ms) when the node will be
+                force-killed. Used as a hint so workloads can drain
+                before the deadline.
+
+        Returns:
+            Tuple of (is_accepted, rejection_reason_message). When
+            `is_accepted` is False, `rejection_reason_message` describes
+            why the raylet rejected the request.
         """
         cdef:
             int64_t timeout_ms = -1
@@ -654,6 +671,23 @@ cdef class InnerGcsClient:
                 rejection_reason_message))
 
         return (is_accepted, rejection_reason_message.decode())
+
+    def resize_raylet_resource_instances(
+            self,
+            node_id: c_string,
+            resources: unordered_map[c_string, cython.double],
+            timeout_s=None):
+        """Send the ResizeRayletResourceInstances request to GCS."""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            unordered_map[c_string, cython.double] total_resources
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ResizeRayletResourceInstances(
+                    node_id, resources, timeout_ms, total_resources
+                )
+            )
+        return {key.decode(): value for key, value in total_resources}
 
     #############################################################
     # Publisher methods

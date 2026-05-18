@@ -1,4 +1,3 @@
-load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 py_library(
@@ -56,12 +55,9 @@ py_test(
 py_library(
     name = "build_image",
     srcs = ["build_image.py"],
-    data = ["//:ray-images.yaml"],
+    data = ["//:ray-images.json"],
     visibility = ["//visibility:public"],
-    deps = [
-        ":build_common",
-        ci_require("pyyaml"),
-    ],
+    deps = [":build_common"],
 )
 
 py_test(

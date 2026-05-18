@@ -2,6 +2,7 @@ import base64
 import os
 import sys
 import types
+from decimal import Decimal
 from tempfile import TemporaryDirectory
 
 import numpy as np
@@ -20,7 +21,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
 def test_combine_chunked_fixed_width_array_large():
@@ -215,9 +215,6 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension type not supported."
-)
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
     # fall back to pandas, because we couldn't convert it to
@@ -301,6 +298,53 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         assert pd.Timestamp(row["col2"]) == pd.Timestamp(
             result_timestamp
         ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
+
+
+@pytest.mark.parametrize(
+    "input_array,transform,expected_type,expected_values",
+    [
+        (
+            pa.array([None, None], type=pa.string()),
+            None,
+            pa.string(),
+            [None, None],
+        ),
+        (
+            pa.array([None, None], type=pa.list_(pa.string())),
+            None,
+            pa.list_(pa.string()),
+            [None, None],
+        ),
+        (
+            pa.array([None, None], type=pa.decimal128(10, 2)),
+            lambda df: df.fillna({"x": 0}),
+            pa.decimal128(10, 2),
+            [Decimal("0.00"), Decimal("0.00")],
+        ),
+        (
+            pa.array([["a", "b"], None], type=pa.list_(pa.string())),
+            None,
+            pa.list_(pa.string()),
+            [["a", "b"], None],
+        ),
+    ],
+)
+def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
+    input_array, transform, expected_type, expected_values
+):
+    table = pa.table({"x": input_array})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df.dtypes["x"].pyarrow_dtype == expected_type
+
+    if transform is not None:
+        df = transform(df)
+
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+
+    assert roundtripped.schema.field("x").type == expected_type
+    assert roundtripped.to_pydict() == {"x": expected_values}
 
 
 if __name__ == "__main__":

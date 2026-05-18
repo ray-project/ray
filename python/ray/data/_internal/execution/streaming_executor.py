@@ -1,5 +1,5 @@
 import logging
-import math
+import os
 import threading
 import time
 import typing
@@ -74,6 +74,28 @@ DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 _num_shutdown = 0
 
 
+# Extra environment variables to log that don't start with RAY_DATA.
+_EXTRA_ENV_VARS_TO_LOG = (
+    # We historically recommended users configure this value. If a Ray Data job uses
+    # more object store memory than expected, it's worth checking how this environment
+    # variable has been configured.
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
+)
+
+
+def _log_ray_data_env_vars() -> None:
+    env_vars = {
+        k: v
+        for k, v in os.environ.items()
+        if k.startswith("RAY_DATA") or k in _EXTRA_ENV_VARS_TO_LOG
+    }
+    if env_vars:
+        formatted = ", ".join(f"{k}={v}" for k, v in sorted(env_vars.items()))
+        logger.debug(f"RAY_DATA environment variables: {formatted}")
+    else:
+        logger.debug("No RAY_DATA environment variables set.")
+
+
 class StreamingExecutor(Executor, threading.Thread):
     """A streaming Dataset executor.
 
@@ -128,45 +150,15 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
-        self._initialize_metrics_gauges()
-
-        Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}"
-        threading.Thread.__init__(self, daemon=True, name=thread_name)
-
-    def _initialize_metrics_gauges(self) -> None:
-        """Initialize all Prometheus-style metrics gauges for monitoring execution."""
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
             tag_keys=("dataset",),
         )
 
-        self._cpu_budget_gauge: Gauge = Gauge(
-            "data_cpu_budget",
-            "Budget (CPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._gpu_budget_gauge: Gauge = Gauge(
-            "data_gpu_budget",
-            "Budget (GPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._memory_budget_gauge: Gauge = Gauge(
-            "data_memory_budget",
-            "Budget (Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._osm_budget_gauge: Gauge = Gauge(
-            "data_object_store_memory_budget",
-            "Budget (Object Store Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._max_bytes_to_read_gauge: Gauge = Gauge(
-            "data_max_bytes_to_read",
-            description="Maximum bytes to read from streaming generator buffer.",
-            tag_keys=("dataset", "operator"),
-        )
+        Executor.__init__(self, self._data_context.execution_options)
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self,
@@ -180,9 +172,16 @@ class StreamingExecutor(Executor, threading.Thread):
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
 
-        self._callbacks = callbacks if callbacks is not None else []
+        if callbacks is not None:
+            self._callbacks = callbacks
+        else:
+            self._callbacks = []
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
+
+        if logger.isEnabledFor(logging.DEBUG):
+            _log_ray_data_env_vars()
 
         if not isinstance(dag, InputDataBuffer):
             if self._data_context.print_on_execution_start:
@@ -325,6 +324,8 @@ class StreamingExecutor(Executor, threading.Thread):
             for op in self._topology.keys():
                 op.shutdown(timer, force=force)
 
+            self._clear_topology_queues_post_shutdown(force, exception)
+
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
             total = round(timer.get(), 3)
@@ -354,6 +355,26 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context.set_dataset_logger_id(
                 unregister_dataset_logger(self._dataset_id)
             )
+
+    def _clear_topology_queues_post_shutdown(
+        self, force: bool, exception: Optional[Exception] = None
+    ) -> None:
+        """Drain topology queues after operator shutdown (releases block refs)."""
+        for op, state in self._topology.items():
+            if isinstance(op, InternalQueueOperatorMixin):
+                op.clear_internal_input_queue()
+                op.clear_internal_output_queue()
+            # Input queues alias upstream output queues; clears the DAG except the sink.
+            for inqueue in state.input_queues:
+                inqueue.clear()
+
+        output_op, _ = self._output_node
+        # Clear sink output unless cooperative multi-split success (splits may still read).
+        is_live_multi_split_sink = (
+            output_op.num_output_splits() > 1 and not force and exception is None
+        )
+        if not is_live_multi_split_sink:
+            self._topology[output_op].output_queue.clear()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -393,48 +414,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._sched_loop_duration_s.set(
             sched_loop_duration, tags={"dataset": self._dataset_id}
         )
-        for i, op in enumerate(self._topology):
-            tags = {
-                "dataset": self._dataset_id,
-                "operator": self._get_operator_id(op, i),
-            }
-            self._update_budget_metrics(op, tags)
-            self._update_max_bytes_to_read_metric(op, tags)
-
-    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
-        budget = self._resource_manager.get_budget(op)
-        if budget is None:
-            cpu_budget = 0
-            gpu_budget = 0
-            memory_budget = 0
-            object_store_memory_budget = 0
-        else:
-            # Convert inf to -1 to represent unlimited budget in metrics
-            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
-            object_store_memory_budget = (
-                -1
-                if math.isinf(budget.object_store_memory)
-                else budget.object_store_memory
-            )
-
-        self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-        self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-        self._memory_budget_gauge.set(memory_budget, tags=tags)
-        self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
-
-    def _update_max_bytes_to_read_metric(
-        self, op: PhysicalOperator, tags: Dict[str, str]
-    ):
-        if self._resource_manager.op_resource_allocator_enabled():
-            resource_allocator = self._resource_manager.op_resource_allocator
-            output_budget_bytes = resource_allocator.get_output_budget(op)
-            if output_budget_bytes is not None:
-                if math.isinf(output_budget_bytes):
-                    # Convert inf to -1 to represent unlimited bytes to read
-                    output_budget_bytes = -1
-                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -460,10 +439,14 @@ class StreamingExecutor(Executor, threading.Thread):
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
+        # Always assign a ``Timer`` so downstream consumers can call
+        # ``.get()`` / ``.avg()`` / ``.max()`` unconditionally. When
+        # ``_initial_stats`` is absent we hand back an empty Timer (count
+        # 0); the Timer's zero-sample semantics yield 0 across all three.
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats
-            else None
+            else Timer()
         )
         return stats
 
@@ -538,7 +521,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._export_operator_schema(op)
 
             # Log metrics of newly completed operators.
-            if op.has_completed() and not self._has_op_completed[op]:
+            if not op.has_completed():
+                op.refresh_state()
+            elif not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
@@ -624,6 +609,10 @@ class StreamingExecutor(Executor, threading.Thread):
             f"Active & requested resources: "
             f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         )
+        if running_usage.memory > 0:
+            resources_status += (
+                f"{running_usage.memory_str()}/{limits.memory_str()} memory, "
+            )
         if running_usage.gpu > 0:
             resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
         resources_status += (
@@ -632,16 +621,15 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
         # Only include pending section when there are pending resources.
-        if pending_usage.cpu or pending_usage.gpu:
-            if pending_usage.cpu and pending_usage.gpu:
-                pending_str = (
-                    f"{pending_usage.cpu:.4g} CPU, {pending_usage.gpu:.4g} GPU"
-                )
-            elif pending_usage.cpu:
-                pending_str = f"{pending_usage.cpu:.4g} CPU"
-            else:
-                pending_str = f"{pending_usage.gpu:.4g} GPU"
-            resources_status += f" (pending: {pending_str})"
+        pending_parts = []
+        if pending_usage.cpu:
+            pending_parts.append(f"{pending_usage.cpu:.4g} CPU")
+        if pending_usage.memory:
+            pending_parts.append(f"{pending_usage.memory_str()} memory")
+        if pending_usage.gpu:
+            pending_parts.append(f"{pending_usage.gpu:.4g} GPU")
+        if pending_parts:
+            resources_status += f" (pending: {', '.join(pending_parts)})"
 
         self._progress_manager.update_total_resource_status(resources_status)
 

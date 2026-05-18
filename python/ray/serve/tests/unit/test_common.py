@@ -5,6 +5,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
     ReplicaID,
     RunningReplicaInfo,
@@ -122,6 +123,33 @@ class TestDeploymentStatusInfo:
 
         assert deployment_status_info == reconstructed_info
 
+    def test_handle_transition_deployment_actor_failed_when_already_deploy_failed(
+        self,
+    ):
+        """DEPLOYMENT_ACTOR_FAILED must be handled in DEPLOY_FAILED block.
+
+        When status is already DEPLOY_FAILED, repeated ticks call handle_transition
+        with DEPLOYMENT_ACTOR_FAILED. Without handling, the trigger falls through
+        and returns self (old message). With handling, returns updated copy.
+        """
+        info = DeploymentStatusInfo(
+            name="test",
+            status=DeploymentStatus.DEPLOY_FAILED,
+            status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message="original error message",
+        )
+        new_message = (
+            "The deployment failed to start deployment actors 2 times in a row."
+        )
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message=new_message,
+        )
+        assert result is not None
+        assert result.status == DeploymentStatus.DEPLOY_FAILED
+        assert result.status_trigger == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        assert result.message == new_message
+
 
 def test_running_replica_info():
     """Test hash value of RunningReplicaInfo"""
@@ -160,6 +188,67 @@ def test_running_replica_info():
     )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
+
+    # Test that backend_http_port affects hash so long-poll updates
+    # propagate when the backend HTTP port changes.
+    replica4 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8001,
+    )
+    replica5 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8002,
+    )
+    assert replica4._hash != replica1._hash
+    assert replica4._hash != replica5._hash
+
+    # Test that network endpoint changes affect hash so wrappers and
+    # long-poll consumers refresh when the replica moves or its gRPC
+    # port changes.
+    replica6 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica7 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_b",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica8 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9001,
+    )
+    assert replica6._hash != replica7._hash
+    assert replica6._hash != replica8._hash
 
 
 if __name__ == "__main__":
