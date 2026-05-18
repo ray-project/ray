@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import pytest
 import torch
 
 import ray
@@ -70,6 +71,75 @@ def simulate_vt_calculation(vfps, rewards, terminateds, truncateds, gamma, lambd
         gamma=gamma,
         lambda_=lambda_,
     )
+
+
+# Analytical expectations for one length-2 episode with values=[0, 0.95, 0.95]
+# (final entry duplicates v1 at the appended bootstrap ts), rewards=[0, 1, 0],
+# gamma=0.99.
+#   - Terminated: target[0] = gamma*v1 + gamma*lambda*(r1 - v1 + gamma*(1-term)*...).
+#                 With term at last real ts, terminal kill keeps target[1] = r1 = 1
+#                 and adds gamma*lambda*0.05 to target[0].
+#   - Truncated:  target uses the bootstrap from v_extra; target[1] = r1 + gamma*v_extra.
+@pytest.mark.parametrize(
+    "lambda_,is_terminated,expected_targets",
+    [
+        # (lambda, is_terminated, [target[0], target[1]])
+        (0.0, True, [0.9405, 1.0]),
+        (0.5, True, [0.9405 + 0.99 * 0.5 * 0.05, 1.0]),
+        (1.0, True, [0.99, 1.0]),
+        (0.0, False, [0.9405, 1.9405]),
+        (0.5, False, [0.9405 + 0.99 * 0.5 * 0.9905, 1.9405]),
+        (1.0, False, [0.9405 + 0.99 * 0.9905, 1.9405]),
+    ],
+)
+def test_value_targets_one_episode(lambda_, is_terminated, expected_targets):
+    """Path A: per-step targets are correct for a single episode across lambdas."""
+    out = simulate_vt_calculation(
+        [[0.0, 0.95, 0.95]],
+        [[0.0, 1.0]],
+        [is_terminated],
+        [not is_terminated],
+        gamma=0.99,
+        lambda_=lambda_,
+    )
+    np.testing.assert_allclose(out[:2], expected_targets, atol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "ep1_term,ep2_term",
+    [
+        (True, True),
+        (True, False),
+        (False, True),
+        (False, False),
+    ],
+)
+def test_value_targets_no_cross_episode_leak(ep1_term, ep2_term):
+    """Path A: GAE accumulator does not leak across episode boundaries at lambda=1.
+
+    With lambda=1 the recursion would propagate aggressively; this test confirms
+    that termination (via not_term=0) and truncation (via the explicit reset)
+    both correctly isolate the two episodes' targets.
+    """
+    out = simulate_vt_calculation(
+        [[0.0, 0.95, 0.95], [0.0, 0.95, 0.95]],
+        [[0.0, 1.0], [0.0, 1.0]],
+        [ep1_term, ep2_term],
+        [not ep1_term, not ep2_term],
+        gamma=0.99,
+        lambda_=1.0,
+    )
+    # Target for ep1 should be identical to a single-episode computation,
+    # regardless of what comes after it in the batch.
+    single = simulate_vt_calculation(
+        [[0.0, 0.95, 0.95]],
+        [[0.0, 1.0]],
+        [ep1_term],
+        [not ep1_term],
+        gamma=0.99,
+        lambda_=1.0,
+    )
+    np.testing.assert_allclose(out[:2], single[:2], atol=1e-4)
 
 
 class TestPPO(unittest.TestCase):

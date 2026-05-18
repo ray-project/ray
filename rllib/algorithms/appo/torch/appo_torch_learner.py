@@ -126,16 +126,23 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             dim=0,
         )
 
-        # The discount factor that is used should be gamma except for timesteps where
-        # the episode is terminated. In that case, the discount factor should be 0.
+        # Discount = gamma * (1 - terminated) * loss_mask. See
+        # `impala_torch_learner.py` for the rationale -- the loss_mask factor
+        # gates the appended bootstrap timestep so its delta (which references
+        # `bootstrap_values` from a neighbouring trajectory) does not leak into
+        # the V-trace recursion of the last real step.
         discounts_time_major = (
-            1.0
-            - make_time_major(
-                batch[Columns.TERMINATEDS],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            ).float()
-        ) * config.gamma
+            (
+                1.0
+                - make_time_major(
+                    batch[Columns.TERMINATEDS],
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=recurrent_seq_len,
+                ).float()
+            )
+            * config.gamma
+            * loss_mask_time_major
+        )
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
