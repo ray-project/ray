@@ -1734,8 +1734,8 @@ def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
     del ds
     gc.collect()
 
-    delta_small = rss_after_small - rss_before_small
-    delta_large = rss_after_large - rss_before_large
+    delta_small = max(rss_after_small - rss_before_small, 1)
+    delta_large = max(rss_after_large - rss_before_large, 0)
     ratio = delta_large / delta_small
 
     assert ratio < 2, (
