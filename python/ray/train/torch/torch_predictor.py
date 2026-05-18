@@ -87,6 +87,9 @@ class TorchPredictor(DLPredictor):
                 this model argument will be discarded.
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
+
+        Returns:
+            A new ``TorchPredictor`` instance.
         """
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
