@@ -47,6 +47,10 @@ PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
 # but still serve the standard query API. We use a cheap query as a liveness
 # probe in that case.
 PROMETHEUS_HEALTHCHECK_FALLBACK_PATH = "api/v1/query?query=vector(1)"
+# Timeout (in seconds) for the Prometheus healthcheck HTTP requests. Without an
+# explicit timeout, `aiohttp` defaults to 5 minutes, which would cause the
+# dashboard API to hang when the Prometheus host is unreachable or slow.
+PROMETHEUS_HEALTHCHECK_TIMEOUT_S = 5
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -202,7 +206,9 @@ class MetricsHead(SubprocessModule):
         primary_error = None
         try:
             async with self.http_session.get(
-                primary_path, headers=self.prometheus_headers
+                primary_path,
+                headers=self.prometheus_headers,
+                timeout=aiohttp.ClientTimeout(total=PROMETHEUS_HEALTHCHECK_TIMEOUT_S),
             ) as resp:
                 if resp.status == 200:
                     return dashboard_optional_utils.rest_response(
@@ -230,7 +236,9 @@ class MetricsHead(SubprocessModule):
         # service is reachable and serving requests.
         try:
             async with self.http_session.get(
-                fallback_path, headers=self.prometheus_headers
+                fallback_path,
+                headers=self.prometheus_headers,
+                timeout=aiohttp.ClientTimeout(total=PROMETHEUS_HEALTHCHECK_TIMEOUT_S),
             ) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
