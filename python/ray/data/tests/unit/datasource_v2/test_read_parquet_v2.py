@@ -45,7 +45,7 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     ds = ray.data.read_parquet(str(tmp_path))
 
     assert isinstance(ds._logical_plan.dag, ReadFiles)
-    assert isinstance(ds._logical_plan.dag.input_dependency, ListFiles)
+    assert isinstance(ds._logical_plan.dag.input_dependencies[0], ListFiles)
     schema = ds.schema()
     assert schema is not None
     assert "a" in schema.names
@@ -91,6 +91,16 @@ def test_read_parquet_v2_columns_raises(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = True
     with pytest.raises(NotImplementedError, match="`columns=` on `read_parquet`"):
         ray.data.read_parquet(str(tmp_path), columns=["a"])
+
+
+def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
+    import pyarrow.dataset as pds
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.raises(NotImplementedError, match="`filter=` on `read_parquet`"):
+        ray.data.read_parquet(str(tmp_path), filter=pds.field("a") > 1)
 
 
 def test_read_parquet_v2_empty_dir_raises(tmp_path, restore_ctx):

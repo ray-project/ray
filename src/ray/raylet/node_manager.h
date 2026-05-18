@@ -786,7 +786,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
    * @param node_id The ID of the node.
    * @param system_memory_snapshot The snapshot of the system memory.
    * @param process_memory_snapshot The snapshot of the process memory.
-   * @param usage_threshold The memory limit.
+   * @param trigger_reason The reason the memory monitor triggered the kill.
    * @return The detail message for the workers that are killed due to memory running low.
    */
   std::string CreateOomKillMessageDetails(
@@ -796,7 +796,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const MemoryUsageSnapshot &system_memory_snapshot,
       const std::string &object_store_memory_usage,
       const ProcessesMemorySnapshot &process_memory_snapshot,
-      float usage_threshold) const;
+      const std::string &trigger_reason) const;
 
   /**
    * @param workers_to_kill The workers to print the kill suggestions for.
