@@ -714,7 +714,7 @@ These metrics track proxy health and lifecycle.
 
 These metrics observe the **ingress request router** data path used by Serve's HAProxy proxy when a deployment opts in (e.g. the LLM ingress with `LLMRouter`). For each request that reaches a router-bearing app, HAProxy calls the router's `/internal/route` endpoint to pick a replica before forwarding traffic to it. The metrics below cover that consultation.
 
-To disable the feature (zero rendered overhead — no Lua timing calls, no extra log directive, no socket bind), set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=0`. The socket path defaults to `/tmp/haproxy-serve/<node_id>/metrics.sock` and can be overridden with `RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH`.
+To enable the feature, set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`. The socket path defaults to `/tmp/haproxy-serve/<node_id>/metrics.sock` and can be overridden with `RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH`.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
