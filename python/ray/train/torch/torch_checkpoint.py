@@ -156,6 +156,9 @@ class TorchCheckpoint(FrameworkCheckpoint):
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``. Otherwise, the model will be discarded.
+
+        Returns:
+            The loaded ``torch.nn.Module``.
         """
         with self.as_directory() as tempdir:
             model_path = Path(tempdir, self.MODEL_FILENAME).as_posix()

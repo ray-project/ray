@@ -825,6 +825,19 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
 )
 
+# Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
+# `retry-on` token reference:
+# https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
+    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
+)
+RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
+)
+RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
+)
+
 # Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
 # active. Bodies longer than this are truncated; the Lua forwards what it has
 # with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
