@@ -268,7 +268,7 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 from jax.experimental import mesh_utils
-from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
+from jax.sharding import Mesh
 
 import flax.nnx as nnx
 import optax
@@ -492,6 +492,7 @@ Each Ray Train worker runs the same Python function with a different world rank,
 
 - Read the distributed context (`world_rank`, `world_size`).
 - Get the per-worker dataset shard (`train.get_dataset_shard(...)`) to stream batches.
+- Stream sharded JAX Arrays directly to training devices using [`Dataset.iter_jax_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.Dataset.iter_jax_batches.html), which handles device sharding natively.
 - Report metrics and checkpoints back to the trainer with `ray.train.report(...)`.
 
 
@@ -517,7 +518,6 @@ def train_loop_per_worker(config_dict: dict) -> None:
     # Create a mesh per worker process. 
     device_mesh = mesh_utils.create_device_mesh((jax.process_count(), 1))
     mesh = Mesh(device_mesh, axis_names=("data", "model"))
-    data_sharding = NamedSharding(mesh, P("data", None))
     jax.set_mesh(mesh)
 
 
@@ -533,27 +533,21 @@ def train_loop_per_worker(config_dict: dict) -> None:
         raise RuntimeError("No Ray Train datasets provided. Pass datasets={...} to JaxTrainer.")
     
     local_batch_size = config.global_batch_size // jax.process_count()
-    global_input_shape = (config.global_batch_size, config.seqlen)
     
-    train_batches = iter(train_it.iter_batches(
-        batch_size=local_batch_size,
-        batch_format="numpy",
-        prefetch_batches=2,
-        drop_last=True,
-    ))
-    val_batches = iter(val_it.iter_batches(
-        batch_size=local_batch_size,
-        batch_format="numpy",
-        prefetch_batches=2,
-        drop_last=True,
-    ))
+    # A generator helper that yields JAX Array batches indefinitely.
+    # This removes the need for try/except StopIteration blocks in the training loop.
+    def batch_generator(dataset_shard):
+        while True:
+            # iter_jax_batches yields globally sharded JAX Array batches directly,
+            # mapped onto all process JAX-addressable training devices.
+            yield from dataset_shard.iter_jax_batches(
+                batch_size=local_batch_size,
+                prefetch_batches=2,
+                drop_last=True,
+            )
 
-    def make_global_batch(local_x: np.ndarray, local_y: np.ndarray, global_shape: tuple):
-        # jax.make_array_from_process_local_data automatically handles the transfer 
-        # from host memory (numpy) to device memory.
-        global_x = jax.make_array_from_process_local_data(data_sharding, local_x, global_shape)
-        global_y = jax.make_array_from_process_local_data(data_sharding, local_y, global_shape)
-        return global_x, global_y
+    train_batches = batch_generator(train_it)
+    val_batches = batch_generator(val_it)
 
     # Initialize the optimizer.
     schedule = optax.cosine_decay_schedule(
@@ -570,17 +564,8 @@ def train_loop_per_worker(config_dict: dict) -> None:
     val_metrics = nnx.metrics.Average('val_loss')
 
     for step in range(config.max_steps):
-        try:
-            local_batch = next(train_batches)
-        except StopIteration:
-            train_batches = iter(train_it.iter_batches(
-                batch_size=local_batch_size,
-                batch_format="numpy",
-                prefetch_batches=2,
-                drop_last=True,
-            ))
-            local_batch = next(train_batches)
-        global_x, global_y = make_global_batch(local_batch["x"], local_batch["y"], global_input_shape)
+        batch = next(train_batches)
+        global_x, global_y = batch["x"], batch["y"]
 
         train_loss = train_step(model, optimizer, train_metrics, (global_x, global_y))
 
@@ -591,22 +576,8 @@ def train_loop_per_worker(config_dict: dict) -> None:
             start_time = time.time()
         
         if (step + 1) % config.val_every_n_steps == 0:
-            try:
-                local_validation_batch = next(val_batches)
-            except StopIteration:
-                val_batches = iter(val_it.iter_batches(
-                    batch_size=local_batch_size,
-                    batch_format="numpy",
-                    prefetch_batches=2,
-                    drop_last=True,
-                ))
-                local_validation_batch = next(val_batches)
-
-            global_val_input, global_val_target = make_global_batch(
-                local_validation_batch["x"], 
-                local_validation_batch["y"], 
-                global_input_shape
-            )
+            validation_batch = next(val_batches)
+            global_val_input, global_val_target = validation_batch["x"], validation_batch["y"]
             
             loss, logits = loss_fn_eval(model, (global_val_input, global_val_target))
             val_metrics.update(val_loss=loss, logits=logits)
@@ -630,6 +601,10 @@ def train_loop_per_worker(config_dict: dict) -> None:
                 train.report(metrics, checkpoint=None)
 
 ```
+
+> [!NOTE]
+> [`iter_jax_batches`](https://docs.ray.io/en/latest/data/api/doc/ray.data.Dataset.iter_jax_batches.html) uses an internal 1D mesh for sharding. If your training loop uses a complex multi-dimensional mesh, JAX might perform implicit resharding. Ensure your mesh aligns with the device ordering to minimize overhead.
+
 
 ## Step 5: Define the `ScalingConfig`
 

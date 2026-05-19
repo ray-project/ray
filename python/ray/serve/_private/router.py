@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import sys
 import threading
 import time
 import weakref
@@ -8,23 +9,31 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
     Coroutine,
     DefaultDict,
     Dict,
     List,
     Optional,
+    Tuple,
     Union,
 )
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError, RayTaskError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnavailableError,
+    RayError,
+    RayTaskError,
+    TaskCancelledError,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -58,7 +67,10 @@ from ray.serve._private.request_router import PendingRequest, RequestRouter
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
-from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.replica_wrapper import (
+    ReplicaSelection,
+    RunningReplica,
+)
 from ray.serve._private.tracing_utils import (
     create_propagated_context,
     is_span_recording,
@@ -81,6 +93,7 @@ from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
+    ReplicaUnavailableError,
 )
 from ray.types import ObjectRef
 from ray.util import metrics
@@ -154,6 +167,25 @@ class RouterMetricsManager:
         # so non-atomic read and write operations need to be guarded by
         # this thread-safe lock.
         self._queries_lock = threading.Lock()
+
+        # Track reserved slots for choose_replica operations
+        self._num_reserved_slots = 0
+        self._reserved_slots_gauge = metrics.Gauge(
+            "serve_reserved_slots_active",
+            description=(
+                "The current number of reserved slots for choose_replica operations."
+            ),
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        )
+        self._reserved_slots_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+        self._reserved_slots_gauge.set(0)
         # Regularly aggregate and push autoscaling metrics to controller
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
@@ -356,6 +388,14 @@ class RouterMetricsManager:
         if not self._cached_metrics_enabled:
             self.num_queued_requests_gauge.set(self.num_queued_requests)
 
+    def inc_reserved_slots(self):
+        self._num_reserved_slots += 1
+        self._reserved_slots_gauge.set(self._num_reserved_slots)
+
+    def dec_reserved_slots(self):
+        self._num_reserved_slots -= 1
+        self._reserved_slots_gauge.set(self._num_reserved_slots)
+
     def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] += 1
@@ -526,6 +566,26 @@ class Router(ABC):
     @abstractmethod
     def assign_request(
         self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        yield
+
+    @abstractmethod
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
@@ -796,9 +856,15 @@ class AsyncioRouter:
                 max_backoff_s=self._max_backoff_s,
             )
 
+        # Guard against the case where request_router is None (e.g., when
+        # request_router_class is None and lazy initialization has not yet
+        # occurred). In that scenario there are no active replicas yet, so
+        # passing 0 is the correct and safe value.
+        _router = self.request_router
+        curr_num_replicas = len(_router.curr_replicas) if _router is not None else 0
         self._metrics_manager.update_deployment_config(
             deployment_config,
-            curr_num_replicas=len(self.request_router.curr_replicas),
+            curr_num_replicas=curr_num_replicas,
         )
 
     async def _resolve_request_arguments(
@@ -960,11 +1026,7 @@ class AsyncioRouter:
             # This ensures that queue metrics reflect actual pending work,
             # not time spent waiting for upstream DeploymentResponse arguments.
             # See: https://github.com/ray-project/ray/issues/60624
-            if not pr.resolved:
-                resolution_start = time.monotonic()
-                await self._resolve_request_arguments(pr)
-                resolution_ms = (time.monotonic() - resolution_start) * 1000
-                self._objref_resolution_latency_ms.observe(resolution_ms)
+            await self._resolve_args_with_metrics(pr)
 
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
@@ -983,47 +1045,23 @@ class AsyncioRouter:
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
 
-            # Keep track of requests that have been sent out to replicas
-            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                self._metrics_manager.inc_num_running_requests_for_replica(
-                    replica.replica_id
-                )
-            # Always register callback to notify router when request completes
-            # (needed for token release in queue-based routing, metrics tracking, etc.)
-            # NOTE: add_done_callback fires from a C++ worker thread (for actor
-            # ObjectRefs) or a gRPC callback thread. _process_finished_request
-            # and decrement_queue_len_cache both access shared router state
-            # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
-            # schedule them on the router's event loop.
-            callback = partial(
-                self._process_finished_request,
-                replica.replica_id,
-                pr.metadata.internal_request_id,
-                replica.actor_id,
-            )
-            result.add_done_callback(
-                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
-            )
+            self._register_completion_callback(result, replica, pr)
             callback_registered = True
 
             if not with_rejection:
-                result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
-                    )
+                self._register_decrement_queue_len_cache_callback(
+                    result, replica.replica_id
                 )
                 return result
 
             queue_info = await result.get_rejection_response()
-            self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
+            self.request_router.on_new_queue_len_info(
+                replica.replica_id, queue_info.num_ongoing_requests
+            )
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
-                result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
-                    )
+                self._register_decrement_queue_len_cache_callback(
+                    result, replica.replica_id
                 )
                 return result
 
@@ -1196,6 +1234,300 @@ class AsyncioRouter:
                     if exc:
                         set_span_exception(exc, escaped=True)
 
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Pick a replica, hold capacity on it, and yield a selection.
+
+        The yielded selection can be dispatched (consuming the held
+        capacity) or allowed to drop, in which case the capacity is
+        released automatically when the context exits.
+
+        Behavior:
+          1. Refuses immediately if the deployment is unavailable.
+          2. Waits for the router to finish initial setup before routing.
+          3. Refuses with backpressure if the queue limit is already
+             reached; otherwise the request counts against router-level
+             request and queue metrics for the duration of routing.
+          4. Resolves the request arguments (which may block on
+             upstream responses).
+          5. Picks a replica and asks it to hold capacity. Retries on
+             actor failure, transient unavailability, or replica-side
+             capacity rejection until a replica accepts.
+          6. Yields the selection while the reservation is held; on exit,
+             releases the capacity if dispatch never consumed it.
+             Reservation metrics stay accurate even if the release call
+             itself fails.
+        """
+        # TODO(jeffreywang): Add tracing support
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        await self._request_router_initialized.wait()
+
+        with self._metrics_manager.wrap_request_assignment(request_meta):
+            pr = PendingRequest(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            try:
+                await self._resolve_args_with_metrics(pr)
+            except ActorDiedError as e:
+                raise self._make_upstream_crash_error(e)
+            replica, slot_token = await self._pick_and_reserve_replica(pr)
+
+            selection = ReplicaSelection(
+                replica_id=replica.replica_id.unique_id,
+                node_ip=replica._replica_info.node_ip,
+                port=replica._replica_info.port,
+                node_id=replica.node_id,
+                availability_zone=replica.availability_zone,
+                _replica=replica,
+                _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
+                _request_metadata=request_meta,
+                _method_name=request_meta.call_method,
+                _slot_token=slot_token,
+            )
+
+        try:
+            self._metrics_manager.inc_reserved_slots()
+            yield selection
+        finally:
+            try:
+                await self._release_slot_and_refresh_cache(selection, replica)
+                # Every dispatched request must fire on_request_completed exactly
+                # once. When dispatch wires up the result's done-callback it fires
+                # there; otherwise (dispatch raised before registering the
+                # callback) fire it here. Skipped entirely when the caller exits
+                # without dispatch, since no request was sent to the replica.
+                if (
+                    selection._dispatched
+                    and not selection._completion_callback_registered
+                    and self.request_router
+                ):
+                    self.request_router.on_request_completed(
+                        replica.replica_id, request_meta.internal_request_id
+                    )
+            finally:
+                # Decrement reserved slots metric even if release failed,
+                # otherwise the gauge leaks for the lifetime of the process.
+                self._metrics_manager.dec_reserved_slots()
+
+    async def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> ReplicaResult:
+        """Dispatch to a specific replica, consuming the reserved slot.
+
+        Args:
+            selection: The replica selection from choose_replica().
+            request_meta: Request metadata.
+            *request_args: Request positional arguments.
+            **request_kwargs: Request keyword arguments.
+
+        Returns:
+            ReplicaResult for the dispatched request.
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+            ReplicaUnavailableError: If the replica is no longer available.
+        """
+        selection._mark_dispatched()
+        return await self._dispatch_to_marked_selection(
+            selection, request_meta, *request_args, **request_kwargs
+        )
+
+    async def _dispatch_to_marked_selection(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> ReplicaResult:
+        """Send a request to the replica chosen by `choose_replica`.
+
+        Mirrors the send half of `_route_and_send_request_once`: build a
+        PendingRequest, resolve args, send with `with_rejection=False`
+        (the reservation guarantees acceptance), and wire up the same
+        completion callbacks. On failure, releases the held slot before
+        re-raising.
+        """
+        replica = selection._replica
+        # Inject the slot token so the replica skips re-acquiring its semaphore.
+        # Args are re-resolved here because dispatch may carry augmented args.
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=replace(request_meta, _reserved_slot_token=selection._slot_token),
+        )
+
+        try:
+            if replica.replica_id not in self.request_router.curr_replicas:
+                raise ReplicaUnavailableError(
+                    f"Replica {selection.replica_id} is no longer available"
+                )
+            try:
+                await self._resolve_args_with_metrics(pr)
+            except ActorDiedError as e:
+                raise self._make_upstream_crash_error(e)
+            result = replica.try_send_request(pr, with_rejection=False)
+        except BaseException:
+            # Dispatch failed; release the reservation before re-raising.
+            await self._release_slot_and_refresh_cache(selection, replica, force=True)
+            raise
+
+        self._register_completion_callback(result, replica, pr)
+        # The done-callback registered above will fire on_request_completed
+        # when the result completes; flag the selection so choose_replica's
+        # finally skips its manual call (exactly one per reservation).
+        selection._completion_callback_registered = True
+        self._register_decrement_queue_len_cache_callback(result, replica.replica_id)
+
+        # Only the cancellation path needs a follow-up release_slot RPC: on
+        # success or replica-side failure, `_start_request` already consumed
+        # the slot. Skipping it on the happy path saves one actor RPC per
+        # dispatched request.
+        def _maybe_release_slot(fut, sel=selection):
+            cancelled = isinstance(fut, TaskCancelledError) or (
+                callable(getattr(fut, "cancelled", None)) and fut.cancelled()
+            )
+            if cancelled:
+                self._event_loop.call_soon_threadsafe(
+                    lambda: self._event_loop.create_task(
+                        self._release_slot_if_still_reserved(sel)
+                    )
+                )
+
+        result.add_done_callback(_maybe_release_slot)
+
+        return result
+
+    async def _release_slot_if_still_reserved(
+        self, selection: ReplicaSelection
+    ) -> None:
+        """Best-effort release_slot when a dispatched request was cancelled
+        before the replica could consume the reservation. A no-op on the
+        replica side if the slot was already consumed."""
+        try:
+            await selection._release_slot(force=True)
+        except Exception:
+            logger.debug("Failed to release reserved replica slot.", exc_info=True)
+
+    async def _resolve_args_with_metrics(self, pr: PendingRequest) -> None:
+        """Resolve a PendingRequest's arguments, observing resolution latency."""
+        if pr.resolved:
+            return
+        resolution_start = time.monotonic()
+        await self._resolve_request_arguments(pr)
+        resolution_ms = (time.monotonic() - resolution_start) * 1000
+        self._objref_resolution_latency_ms.observe(resolution_ms)
+
+    async def _pick_and_reserve_replica(
+        self, pr: PendingRequest
+    ) -> Tuple[RunningReplica, str]:
+        """Pick a replica and hold capacity on it.
+
+        Loops until a replica accepts the reservation, retrying on
+        capacity rejection, replica actor death, or transient
+        unavailability. Updates the queue-length cache from the replica's
+        reported count.
+        """
+        is_retry = False
+        while True:
+            num_curr_replicas = len(self.request_router.curr_replicas)
+            with self._metrics_manager.wrap_queued_request(
+                is_retry=is_retry, num_curr_replicas=num_curr_replicas
+            ):
+                replica = await self.request_router._choose_replica_for_request(
+                    pr, is_retry=is_retry
+                )
+                try:
+                    slot_token, queue_info = await replica.reserve_slot(pr.metadata)
+                except ActorDiedError as e:
+                    self._handle_actor_died_error(
+                        replica.replica_id, replica.actor_id, e
+                    )
+                    is_retry = True
+                    continue
+                except ActorUnavailableError:
+                    self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                    logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                    is_retry = True
+                    continue
+
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info.num_ongoing_requests
+                )
+                if queue_info.accepted:
+                    return replica, slot_token
+
+            is_retry = True
+
+    def _register_completion_callback(
+        self, result: ReplicaResult, replica: RunningReplica, pr: PendingRequest
+    ) -> None:
+        """Count this request as in-flight and register the cleanup
+        callback fired when the result completes or is cancelled.
+        """
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            self._metrics_manager.inc_num_running_requests_for_replica(
+                replica.replica_id
+            )
+        # Always register callback to notify router when request completes
+        # (needed for token release in queue-based routing, metrics tracking, etc.)
+        # NOTE: add_done_callback fires from a C++ worker thread (for actor
+        # ObjectRefs) or a gRPC callback thread. _process_finished_request
+        # and decrement_queue_len_cache both access shared router state
+        # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
+        # schedule them on the router's event loop.
+        callback = partial(
+            self._process_finished_request,
+            replica.replica_id,
+            pr.metadata.internal_request_id,
+            replica.actor_id,
+        )
+        result.add_done_callback(
+            lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+        )
+
+    def _register_decrement_queue_len_cache_callback(
+        self, result: ReplicaResult, replica_id: ReplicaID
+    ) -> None:
+        """Schedule a queue-length-cache decrement for when this result completes."""
+        result.add_done_callback(
+            lambda _: self._event_loop.call_soon_threadsafe(
+                self.request_router.decrement_queue_len_cache,
+                replica_id,
+            )
+        )
+
+    async def _release_slot_and_refresh_cache(
+        self,
+        selection: ReplicaSelection,
+        replica: RunningReplica,
+        *,
+        force: bool = False,
+    ) -> None:
+        """Release a reserved slot and feed the replica's reported queue
+        length back into the cache. Swallows release failures so callers
+        can put this in a finally without masking other errors."""
+        try:
+            num_ongoing_requests = await selection._release_slot(force=force)
+            if num_ongoing_requests is not None:
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, num_ongoing_requests
+                )
+        except Exception:
+            logger.exception("Failed to release reserved replica slot.")
+
     async def broadcast(
         self,
         request_meta: RequestMetadata,
@@ -1269,33 +1601,9 @@ class AsyncioRouter:
             # Proactively update the queue length cache.
             self.request_router.on_send_request(replica.replica_id)
 
-            # Track running requests and register callback for completion
-            # handling, matching the pattern in _route_and_send_request_once.
-            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                self._metrics_manager.inc_num_running_requests_for_replica(
-                    replica.replica_id
-                )
-            # NOTE: add_done_callback fires from a C++ worker thread (for
-            # actor ObjectRefs) or a gRPC callback thread.
-            # _process_finished_request and decrement_queue_len_cache both
-            # access shared router state that is not thread-safe, so we
-            # schedule them on the router's event loop.
-            callback = partial(
-                self._process_finished_request,
-                replica.replica_id,
-                replica_pr.metadata.internal_request_id,
-                replica.actor_id,
-            )
-            result.add_done_callback(
-                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
-            )
-            result.add_done_callback(
-                lambda _, rid=replica.replica_id: (
-                    self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        rid,
-                    )
-                )
+            self._register_completion_callback(result, replica, replica_pr)
+            self._register_decrement_queue_len_cache_callback(
+                result, replica.replica_id
             )
 
             results.append(result)
@@ -1394,6 +1702,98 @@ class SingletonThreadRouter(Router):
             A concurrent.futures.Future resolving to the ReplicaResult representing
             the assigned request.
         """
+        return self._wrap_asyncio_call_in_future(
+            self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            )
+        )
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Bridge async context manager to router event loop.
+
+        This ensures choose_replica runs on the singleton router loop,
+        maintaining thread safety for all state modifications.
+        """
+        # Enter context on router loop
+        async def enter_context():
+            cm = self._asyncio_router.choose_replica(
+                request_meta, *request_args, **request_kwargs
+            )
+            selection = await cm.__aenter__()
+            return selection, cm
+
+        async def exit_context(cm, exc_type, exc_val, exc_tb):
+            return await cm.__aexit__(exc_type, exc_val, exc_tb)
+
+        future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
+        try:
+            selection, context_manager = await asyncio.wrap_future(future)
+        except BaseException:
+            # Cancelled after __aenter__ reserved the slot but before we
+            # observed the result: exit the entered CM to release the slot.
+            if future.done() and not future.cancelled() and future.exception() is None:
+                entered_cm = future.result()[1]
+                exc_info = sys.exc_info()
+                cleanup = asyncio.run_coroutine_threadsafe(
+                    exit_context(entered_cm, *exc_info), self._asyncio_loop
+                )
+                await asyncio.shield(asyncio.wrap_future(cleanup))
+            raise
+
+        try:
+            yield selection
+        finally:
+            exc_info = sys.exc_info()
+            future = asyncio.run_coroutine_threadsafe(
+                exit_context(context_manager, *exc_info), self._asyncio_loop
+            )
+            # Shielded so a cancel landing during cleanup doesn't propagate
+            # through wrap_future and abort __aexit__ on the router loop.
+            await asyncio.shield(asyncio.wrap_future(future))
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Dispatch request to a previously selected replica."""
+        try:
+            selection._mark_dispatched()
+        except Exception as exc:
+            future = concurrent.futures.Future()
+            future.set_exception(exc)
+            return future
+
+        return self._wrap_asyncio_call_in_future(
+            self._asyncio_router._dispatch_to_marked_selection(
+                selection, request_meta, *request_args, **request_kwargs
+            )
+        )
+
+    def _wrap_asyncio_call_in_future(
+        self,
+        coro: Coroutine,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Wrap an async call in a concurrent.futures.Future for cross-thread execution.
+
+        This is a helper method to execute AsyncioRouter's async methods on the dedicated asyncio event loop thread.
+
+        Args:
+            coro: The coroutine to execute (e.g., _asyncio_router.assign_request(...))
+
+        Returns:
+            A concurrent.futures.Future that resolves to the ReplicaResult.
+        """
+        # Extract operation name from coroutine for logging
+        operation_name = coro.__name__
 
         def asyncio_future_callback(
             asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
@@ -1414,19 +1814,15 @@ class SingletonThreadRouter(Router):
             ):
                 result: ReplicaResult = asyncio_future.result()
                 logger.info(
-                    "Asyncio task completed despite cancellation attempt. "
-                    "Attempting to cancel the request that was assigned to a replica."
+                    f"Asyncio task completed despite cancellation attempt during {operation_name}. "
+                    "Attempting to cancel the request."
                 )
                 result.cancel()
 
         concurrent_future = concurrent.futures.Future()
 
         def create_task_and_setup():
-            task = self._asyncio_loop.create_task(
-                self._asyncio_router.assign_request(
-                    request_meta, *request_args, **request_kwargs
-                )
-            )
+            task = self._asyncio_loop.create_task(coro)
 
             # Set up your cancellation callback
             task.add_done_callback(
@@ -1576,6 +1972,43 @@ class CurrentLoopRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
+        )
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Delegate to AsyncioRouter's choose_replica."""
+        async with self._asyncio_router.choose_replica(
+            request_meta, *request_args, **request_kwargs
+        ) as selection:
+            yield selection
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> asyncio.Future[ReplicaResult]:
+        """Dispatch request to a previously selected replica.
+
+        Returns an asyncio.Future wrapping the async dispatch call.
+        """
+        try:
+            selection._mark_dispatched()
+        except Exception as exc:
+            future = self._asyncio_loop.create_future()
+            future.set_exception(exc)
+            return future
+
+        return self._asyncio_loop.create_task(
+            self._asyncio_router._dispatch_to_marked_selection(
+                selection, request_meta, *request_args, **request_kwargs
+            )
         )
 
     async def broadcast(

@@ -42,9 +42,9 @@ class WorkerKillingPolicyByTimeTest : public ::testing::Test {
   TimeBasedWorkerKillingPolicy policy_ =
       TimeBasedWorkerKillingPolicy(THRESHOLD_BYTES, KILL_BUFFER_BYTES);
 
-  SystemMemorySnapshot CreateSystemSnapshot(
+  MemoryUsageSnapshot CreateSystemSnapshot(
       int64_t used_bytes, int64_t total_bytes = TOTAL_SYSTEM_MEMORY_BYTES) {
-    SystemMemorySnapshot snapshot;
+    MemoryUsageSnapshot snapshot;
     snapshot.used_bytes = used_bytes;
     snapshot.total_bytes = total_bytes;
     return snapshot;
@@ -64,7 +64,7 @@ class WorkerKillingPolicyByTimeTest : public ::testing::Test {
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersOnEmptyWorkerPool) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(2000);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
   ProcessesMemorySnapshot process_snapshot;
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
@@ -84,7 +84,7 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesRetriableOverNonRetri
   workers.push_back(retriable_worker);
 
   // used_bytes - threshold + buffer = 1200 - 1000 + 100 = 300 bytes to free
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{non_retriable_worker, 500}, {retriable_worker, 500}});
 
@@ -114,7 +114,7 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(newer_non_retriable);
 
   // used_bytes - threshold + buffer = 2000 - 1000 + 100 = 1100 bytes to free
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(2000);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{older_retriable, 400},
                              {newer_retriable, 400},
@@ -153,7 +153,7 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyFreesEnoughWorkersToGetUnderThre
   workers.push_back(worker4);
 
   // Memory to free: 1500 - 1000 + 100 = 600 bytes
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1500);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1500);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{worker1, 100},  // oldest
                              {worker2, 200},
@@ -192,7 +192,7 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRetriableFlagSetCorrectly) {
   workers.push_back(non_retriable_actor);
 
   // Need to kill all workers
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(2000);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{retriable_task, 300},
                              {non_retriable_task, 300},
@@ -224,7 +224,7 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersWhenKillingInPro
   workers.push_back(worker2);
 
   // Memory to free: 1200 - 1000 + 100 = 300 bytes
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{worker1, 400}, {worker2, 400}});
 
@@ -250,7 +250,7 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(worker2);
 
   // Memory to free: 1200 - 1000 + 100 = 300 bytes
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{worker1, 400}, {worker2, 400}});
 
@@ -283,7 +283,7 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(worker_without_lease);
 
   // Memory to free: 1200 - 1000 + 100 = 300 bytes.
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
       {{worker_with_lease, 500},
        {worker_without_lease, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1}});
@@ -310,7 +310,7 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestKillingWorkerWithNoLeaseIfMemoryExceed
   workers.push_back(worker_without_lease);
 
   // Memory to free: 1200 - 1000 + 100 = 300 bytes.
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
       {{worker_with_lease, 50},
        {worker_without_lease, IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1}});
@@ -336,7 +336,7 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(idle_not_exceeding);
 
   // Memory to free: 1200 - 1000 + 100 = 300 bytes.
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
       {{idle_exceeding, IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1},
        {idle_not_exceeding, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1}});
@@ -362,7 +362,7 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestTwoIdleWorkersExceedingThresholdBothSe
   // Memory to free: 2100 - 1000 + 100 = 1200 bytes.
   // Each idle worker uses IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1 = 1001 bytes,
   // so freeing one worker leaves 199 bytes still needed — both must be selected.
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(2100);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2100);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{idle_exceed_1, IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1},
                              {idle_exceed_2, IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1}});
@@ -386,7 +386,7 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(idle_under_2);
 
   // Memory to free: 2000 - 1000 + 100 = 1100 bytes.
-  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(2000);
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{idle_under_1, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1},
                              {idle_under_2, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1}});

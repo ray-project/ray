@@ -820,6 +820,9 @@ class RequestMetadata:
     request_serialization: str = "cloudpickle"
     response_serialization: str = "cloudpickle"
 
+    # Token for a replica-side slot reserved by choose_replica().
+    _reserved_slot_token: Optional[str] = None
+
     @property
     def is_http_request(self) -> bool:
         return self._request_protocol == RequestProtocol.HTTP

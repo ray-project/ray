@@ -27,6 +27,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -71,7 +72,8 @@ class GcsJobManagerTest : public ::testing::Test {
                                              "test_session_name",
                                              fake_running_job_gauge_,
                                              fake_finished_job_counter_,
-                                             fake_job_duration_in_seconds_gauge_);
+                                             fake_job_duration_in_seconds_gauge_,
+                                             clock_);
   }
 
   ~GcsJobManagerTest() {
@@ -98,6 +100,7 @@ class GcsJobManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_running_job_gauge_;
   ray::observability::FakeCounter fake_finished_job_counter_;
   ray::observability::FakeGauge fake_job_duration_in_seconds_gauge_;
+  Clock clock_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -638,7 +641,8 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      "test_session_name",
                                      fake_running_job_gauge_,
                                      fake_finished_job_counter_,
-                                     fake_job_duration_in_seconds_gauge_);
+                                     fake_job_duration_in_seconds_gauge_,
+                                     clock_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
