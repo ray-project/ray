@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class FileIndexer(ABC):
+    @property
+    @abstractmethod
+    def file_chunker(self) -> FileChunker:
+        """The file chunker that this indexer uses."""
+        ...
+
     @abstractmethod
     def list_files(
         self,

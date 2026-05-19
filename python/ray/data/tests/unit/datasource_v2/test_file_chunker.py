@@ -1,4 +1,6 @@
 """Unit tests for ``FileChunker`` implementations in DataSourceV2."""
+from typing import cast
+
 import pytest
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
@@ -48,10 +50,12 @@ class TestLineDelimitedFileChunker:
         assert len(chunks) == 3
         for i, (md, size) in enumerate(chunks):
             assert md is not None
+            md = cast(LineDelimitedFileChunkMetadata, md)
             assert md["chunk_byte_start_idx"] == i * 256 * 1024 * 1024
             assert size == md["chunk_byte_end_idx"] - md["chunk_byte_start_idx"]
         # Final chunk should clip to file_size.
-        assert chunks[-1][0]["chunk_byte_end_idx"] == 600 * 1024 * 1024
+        last_md = cast(LineDelimitedFileChunkMetadata, chunks[-1][0])
+        assert last_md["chunk_byte_end_idx"] == 600 * 1024 * 1024
 
     def test_compressed_file_yields_whole(self):
         chunker = LineDelimitedFileChunker()

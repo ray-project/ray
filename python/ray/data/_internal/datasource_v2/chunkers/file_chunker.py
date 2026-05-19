@@ -7,7 +7,16 @@ reader carry the per-chunk metadata through to the read task.
 """
 import abc
 import math
-from typing import Iterable, Optional, Tuple, Type, TypedDict, get_type_hints
+from typing import (
+    Iterable,
+    Optional,
+    Tuple,
+    Type,
+    TypedDict,
+    TypeVar,
+    cast,
+    get_type_hints,
+)
 
 from ray.data._internal.util import GiB, infer_compression
 from ray.util.annotations import DeveloperAPI
@@ -19,7 +28,10 @@ class ChunkMetadata(TypedDict):
     pass
 
 
-def create_chunk_metadata(cls: Type[ChunkMetadata], **kwargs) -> ChunkMetadata:
+_ChunkMetadataT = TypeVar("_ChunkMetadataT", bound=ChunkMetadata)
+
+
+def create_chunk_metadata(cls: Type[_ChunkMetadataT], **kwargs) -> _ChunkMetadataT:
     """Create a metadata instance with validation, ensure the keys are correct."""
     required_keys = list(get_type_hints(cls).keys())
 
@@ -31,7 +43,7 @@ def create_chunk_metadata(cls: Type[ChunkMetadata], **kwargs) -> ChunkMetadata:
     if extra_keys:
         raise ValueError(f"Unexpected keys: {extra_keys}")
 
-    return kwargs
+    return cast(_ChunkMetadataT, kwargs)
 
 
 class LineDelimitedFileChunkMetadata(ChunkMetadata):

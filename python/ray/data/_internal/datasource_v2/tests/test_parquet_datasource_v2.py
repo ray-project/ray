@@ -13,7 +13,9 @@ import pytest
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     ParquetFileChunker,
+    ParquetFileChunkMetadata,
     WholeFileChunker,
+    create_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _calculate_row_group_range,
@@ -294,7 +296,9 @@ def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
     assert fragment.metadata.num_row_groups == 100
 
     # 100 row groups split into 4 chunks -> 25 row groups each.
-    chunk_md = {"chunk_idx": 1, "total_num_chunks": 4}
+    chunk_md = create_chunk_metadata(
+        ParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=4
+    )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
     assert len(sub_fragments) == 25
     for sub in sub_fragments:
@@ -315,7 +319,9 @@ def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
     (fragment,) = dataset.get_fragments()
 
     # chunk_idx=4 with 5 chunks but only 1 row group → no sub-fragments.
-    chunk_md = {"chunk_idx": 4, "total_num_chunks": 5}
+    chunk_md = create_chunk_metadata(
+        ParquetFileChunkMetadata, chunk_idx=4, total_num_chunks=5
+    )
     assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
 
 
