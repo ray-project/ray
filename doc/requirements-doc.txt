@@ -19,7 +19,7 @@ sphinx-remove-toctrees==0.0.3
 sphinx_design==0.5.0
 sphinx-autobuild==2024.4.16
 sphinxext-opengraph==0.13.0
-pydata-sphinx-theme==0.14.1
+pydata-sphinx-theme==0.17.1
 autodoc_pydantic==2.2.0
 appnope
 sphinx-docsearch==0.0.7
