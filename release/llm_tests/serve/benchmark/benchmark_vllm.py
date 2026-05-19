@@ -84,8 +84,13 @@ def get_vllm_cli_args(llm_config):
     engine_kwargs.pop("tokenizer_pool_size", None)
     engine_kwargs.pop("tokenizer_pool_type", None)
 
+    # Appended explicitly below; skip in the generic loop to avoid duplicates.
+    APPENDED_BELOW = {"tensor_parallel_size", "max_model_len"}
+
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
     for key, value in engine_kwargs.items():
+        if key in APPENDED_BELOW or value is None:
+            continue
         flag = "--" + key.replace("_", "-")
         if isinstance(value, bool):
             # vLLM's argparse treats `--flag` (no value) as True, so only emit
