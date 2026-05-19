@@ -27,9 +27,6 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    TaskDurationStats,
-)
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
@@ -1644,28 +1641,6 @@ def test_per_node_metrics_toggle(
             assert per_node_metrics is not None
         else:
             assert per_node_metrics is None
-
-
-def test_task_duration_stats():
-    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
-    stats = TaskDurationStats()
-
-    # Test initial state
-    assert stats.count() == 0
-    assert stats.mean() == 0.0
-    assert stats.stddev() == 0.0
-
-    # Add some task durations and verify stats
-    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
-    for d in durations:
-        stats.add_duration(d)
-
-    # Compare with numpy's implementations
-    assert stats.count() == len(durations)
-    assert pytest.approx(stats.mean()) == np.mean(durations)
-    assert pytest.approx(stats.stddev()) == np.std(
-        durations, ddof=1
-    )  # ddof=1 for sample standard deviation
 
 
 def test_dataset_throughput_calculation(ray_start_regular_shared):

@@ -1,4 +1,3 @@
-import math
 import time
 from collections import defaultdict
 from dataclasses import Field, dataclass, field
@@ -12,6 +11,9 @@ from ray.data._internal.execution.interfaces.common import (
     histogram_bucket_rows,
     histogram_buckets_bytes,
     histogram_buckets_s,
+)
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
@@ -51,6 +53,7 @@ class MetricsType(Enum):
     Counter = 0
     Gauge = 1
     Histogram = 2
+    Unsupported = 3
 
 
 @dataclass(frozen=True)
@@ -189,47 +192,6 @@ def node_id_from_block_metadata(meta: BlockMetadata) -> str:
     else:
         node_id = NODE_UNKNOWN
     return node_id
-
-
-class TaskDurationStats:
-    """
-    Tracks the running mean and variance incrementally with Welford's algorithm
-    by updating the current mean and a measure of total squared differences.
-    It allows stable updates of mean and variance in a single pass over the data
-    while reducing numerical instability often found in naive computations.
-
-    More on the algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
-    """
-
-    def __init__(self):
-        self._count = 0
-        self._mean = 0.0
-        self._m2 = 0.0  # Sum of (x - mean)^2
-
-    def add_duration(self, duration: float) -> None:
-        """Add a new sample (task duration in seconds)."""
-        self._count += 1
-        delta = duration - self._mean
-        self._mean += delta / self._count
-        delta2 = duration - self._mean
-        self._m2 += delta * delta2
-
-    def count(self) -> int:
-        return self._count
-
-    def mean(self) -> float:
-        return self._mean
-
-    def _variance(self) -> float:
-        """Return the current variance of the observed durations."""
-        # Variance is m2/(count-1) for sample variance
-        if self._count < 2:
-            return 0.0
-        return self._m2 / (self._count - 1)
-
-    def stddev(self) -> float:
-        """Return the current standard deviation of the observed durations."""
-        return math.sqrt(self._variance())
 
 
 @dataclass
@@ -517,6 +479,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_args={"boundaries": histogram_bucket_rows},
     )
 
+    op_task_duration_stats: DistributionTracker = metric_field(
+        default_factory=DistributionTracker,
+        description="Distribution of task durations in seconds.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+
     # === Actor-related metrics ===
     num_alive_actors: int = metric_field(
         default=0,
@@ -600,7 +569,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._internal_inqueues = [create_bundle_queue() for _ in range(num_inputs)]
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
-        self._op_task_duration_stats = TaskDurationStats()
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
@@ -609,11 +577,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._issue_detector_hanging = 0
         self._issue_detector_high_memory = 0
 
-        # Initialize the histogram metrics
+        # Initialize the histogram and distribution metrics
         self.task_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
         self.block_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
         self.block_size_bytes = RuntimeMetricsHistogram(histogram_buckets_bytes)
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
+        self.op_task_duration_stats = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -645,6 +614,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             if skip_internal_metrics and metric.internal_only:
                 continue
             value = getattr(self, metric.name)
+            if hasattr(value, "as_dict"):
+                value = value.as_dict()
             result.append((metric.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
@@ -1185,7 +1156,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.task_worker_completion_time_s += task_exec_stats.task_wall_time_s
 
         # NOTE: This is used for Issue Detection
-        self._op_task_duration_stats.add_duration(task_wall_time_s)
+        self.op_task_duration_stats.add_sample(task_wall_time_s)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
