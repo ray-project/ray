@@ -227,10 +227,6 @@ class BlockExecStats:
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
 
-    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
-    # as estimated by the memory profiler.
-    max_uss_bytes: int = 0
-
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
         return _BlockExecStatsBuilder()

@@ -566,7 +566,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
-        self._cum_max_uss_bytes: Optional[int] = None
         self._issue_detector_hanging = 0
         self._issue_detector_high_memory = 0
 
@@ -903,11 +902,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     def average_max_uss_per_task(self) -> Optional[float]:
         """Average max USS usage of tasks."""
-        if self._cum_max_uss_bytes is None:
+        if self.max_uss_bytes.num_samples == 0:
             return None
-        else:
-            assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
-            return self._cum_max_uss_bytes / self.num_task_outputs_generated
+        return self.max_uss_bytes.mean
 
     @metric_property(
         description="Indicates if the operator is hanging.",
@@ -1067,12 +1064,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             assert meta.num_rows is not None
 
             trace_allocation(block_ref, "operator_output")
-
-            if exec_stats.max_uss_bytes is not None:
-                if self._cum_max_uss_bytes is None:
-                    self._cum_max_uss_bytes = exec_stats.max_uss_bytes
-                else:
-                    self._cum_max_uss_bytes += exec_stats.max_uss_bytes
 
             output_node_id = node_id_from_block_metadata(meta)
             if first_output_node_id is None:

@@ -507,7 +507,6 @@ def op_two_block():
             cpu_time_s=block_params["cpu_time"][i],
             udf_time_s=block_params["udf_time"][i],
             node_id=block_params["node_id"][i],
-            max_uss_bytes=block_params["uss_bytes"][i],
             task_idx=block_params["task_idx"][i],
         )
         block_meta_list.append(

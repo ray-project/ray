@@ -731,7 +731,6 @@ def _map_task(
         else:
             block_iter = transform_iter_factory()
 
-        task_max_uss_bytes = 0
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
                 block_meta = BlockAccessor.for_block(block).get_metadata()
@@ -743,16 +742,12 @@ def _map_task(
                 # Yield block and retrieve its Ray object serialization timing
                 gen_stats: StreamingGeneratorStats = yield block
 
-                block_max_uss = profiler.estimate_max_uss()
-                task_max_uss_bytes = max(task_max_uss_bytes, block_max_uss)
-
                 exec_stats = blk_exec_stats_builder.build(
                     block_ser_time_s=(
                         gen_stats.object_creation_dur_s if gen_stats else None
                     ),
                     udf_time_s=map_transformer.udf_time_s(reset=True),
                     task_idx=ctx.task_idx,
-                    max_uss_bytes=block_max_uss,
                 )
 
                 # NOTE: This tracks task duration up to this point, though we're primarily
@@ -766,7 +761,7 @@ def _map_task(
                         exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s,
-                            max_uss_bytes=task_max_uss_bytes,
+                            max_uss_bytes=profiler.estimate_max_uss() or 0,
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,

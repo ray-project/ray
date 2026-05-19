@@ -40,7 +40,7 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     get_dataset_metadata_exporter,
 )
-from ray.data._internal.util import MiB, capfirst
+from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
@@ -1519,7 +1519,6 @@ class OperatorStatsSummary:
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
         udf_time_acc: _StatsAccumulator = _StatsAccumulator()
-        memory_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1542,7 +1541,6 @@ class OperatorStatsSummary:
                     cpu_time_acc.add(es.cpu_time_s)
                 if es.udf_time_s is not None:
                     udf_time_acc.add(es.udf_time_s)
-                memory_acc.add((es.max_uss_bytes or 0) / MiB)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1586,7 +1584,7 @@ class OperatorStatsSummary:
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
         udf_stats = udf_time_acc.get()
-        memory_stats = memory_acc.get(round_digits=2)
+        memory_stats = None
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
