@@ -164,7 +164,9 @@ def _inspect_generic_serialization(
             if found:
                 break
     if not found:
-        obj_name = getattr(base_obj, "__class__", type(base_obj)).__name__
+        obj_name = (
+            base_obj.__name__ if inspect.isclass(base_obj) else type(base_obj).__name__
+        )
         printer.print(
             f"WARNING: Did not find non-serializable object in "
             f"{obj_name} instance. "

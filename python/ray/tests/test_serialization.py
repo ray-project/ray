@@ -2,7 +2,6 @@
 import collections
 import io
 import logging
-import pickle
 import re
 import string
 import sys
@@ -778,9 +777,7 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 def test_inspect_serializability_warning_message_is_actionable():
     """Regression test: WARNING message should include actionable guidance,
     not just say 'this may be an oversight'."""
-    import io
-
-    from ray.util import inspect_serializability
+    from ray.util.check_serialize import inspect_serializability
 
     # A custom __reduce__ that lies to cloudpickle but trips
     # the traversal — produces the WARNING branch.
