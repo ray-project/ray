@@ -2,6 +2,7 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
+import ray
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
@@ -20,11 +21,107 @@ if TYPE_CHECKING:
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
-    from pyiceberg.table import Table
+    from pyiceberg.table import FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
     from pyiceberg.table.update.schema import UpdateSchema
 
 logger = logging.getLogger(__name__)
+
+
+@ray.remote
+def _rewrite_iceberg_file(
+    file_scan_task: "FileScanTask",
+    keys_ref: "pa.Table",
+    upsert_cols: List[str],
+    table_metadata: "TableMetadata",
+    io: "FileIO",
+) -> "tuple[Optional[DataFile], List[DataFile]]":
+    """Read one Iceberg file, anti-join against upsert keys, write false-positive rows.
+
+    False positives are rows in the file that are NOT in the upsert batch — the
+    coarse range filter would delete them, so we preserve them by writing them
+    as new data files before the delete.
+
+    Returns (original DataFile to delete, list of new FP DataFiles).
+    If the entire file is matched (no FPs), returns (file, []).
+    If the file has no matched rows at all, returns (None, []) — leave it untouched.
+    """
+    import hashlib
+    import time as _time
+    import uuid as _uuid
+
+    import pyarrow as pa
+    from pyiceberg.expressions import AlwaysTrue
+    from pyiceberg.io.pyarrow import ArrowScan, _dataframe_to_data_files
+
+    file_path = file_scan_task.file.file_path
+    file_size_mb = file_scan_task.file.file_size_in_bytes / 1e6
+    t_start = _time.perf_counter()
+
+    batch = ArrowScan(
+        table_metadata=table_metadata,
+        io=io,
+        projected_schema=table_metadata.schema(),
+        row_filter=AlwaysTrue(),
+    ).to_table(tasks=[file_scan_task])
+
+    t_read = _time.perf_counter()
+    logger.debug(
+        "[rewrite] read %d rows / %.1f MB (compressed) from %s in %.2fs",
+        len(batch),
+        file_size_mb,
+        file_path.split("/")[-1],
+        t_read - t_start,
+    )
+
+    if len(batch) == 0:
+        return (None, [])
+
+    # Cast batch key columns to match keys_ref types so PyArrow's join doesn't
+    # raise ArrowInvalid on utf8/large_utf8 or similar width mismatches.
+    key_cast = {f.name: f.type for f in keys_ref.schema if f.name in upsert_cols}
+    batch_keys = batch.select(upsert_cols)
+    for col_name, target_type in key_cast.items():
+        if batch_keys.schema.field(col_name).type != target_type:
+            col_idx = batch_keys.schema.get_field_index(col_name)
+            batch_keys = batch_keys.set_column(
+                col_idx, col_name, batch_keys[col_name].cast(target_type)
+            )
+
+    idx_col = pa.array(range(len(batch)), type=pa.int64())
+    fp_keys = (
+        batch_keys.append_column("__row_idx__", idx_col)
+        .join(keys_ref, keys=upsert_cols, join_type="left anti")
+    )
+
+    if len(fp_keys) == 0:
+        # Every row in this file is being upserted — delete the whole file, no FP file needed.
+        logger.debug("[rewrite] %s: all %d rows matched -> whole-file delete", file_path.split("/")[-1], len(batch))
+        return (file_scan_task.file, [])
+
+    if len(fp_keys) == len(batch):
+        # No rows in this file match any upsert key — leave it alone entirely.
+        logger.debug("[rewrite] %s: 0 rows matched -> untouched", file_path.split("/")[-1])
+        return (None, [])
+
+    fp_rows = batch.take(fp_keys["__row_idx__"])
+    # Derive a deterministic write_uuid from the source file path so that
+    # task retries overwrite the same object rather than leaking orphan files.
+    fp_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
+    fp_files = list(
+        _dataframe_to_data_files(
+            table_metadata=table_metadata, df=fp_rows, io=io, write_uuid=fp_write_uuid
+        )
+    )
+    logger.debug(
+        "[rewrite] %s: %d/%d rows are FPs -> wrote %d FP file(s) in %.2fs",
+        file_path.split("/")[-1],
+        len(fp_keys),
+        len(batch),
+        len(fp_files),
+        _time.perf_counter() - t_read,
+    )
+    return (file_scan_task.file, fp_files)
 
 
 @dataclass
@@ -205,6 +302,149 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     upsert_cols.append(col_name)
         return upsert_cols
 
+    def _build_coarse_range_filter(
+        self,
+        keys_table: "pa.Table",
+        upsert_cols: List[str],
+    ) -> "BooleanExpression":
+        """Build an O(1) coarse range filter covering all upsert key values.
+
+        For each upsert column computes AND(GTE(col, min), LTE(col, max)).
+        The filter may match rows outside the upsert batch (false positives);
+        callers must anti-join to identify and preserve those rows.
+        """
+        import pyarrow.compute as pc
+        from pyiceberg.expressions import AlwaysTrue, And, GreaterThanOrEqual, LessThanOrEqual
+
+        expr = None
+        for col_name in upsert_cols:
+            mm = pc.min_max(keys_table[col_name])
+            min_val = mm["min"].as_py()
+            max_val = mm["max"].as_py()
+            if min_val is None:
+                continue
+            col_expr = And(
+                GreaterThanOrEqual(col_name, min_val),
+                LessThanOrEqual(col_name, max_val),
+            )
+            expr = col_expr if expr is None else And(expr, col_expr)
+
+        return expr if expr is not None else AlwaysTrue()
+
+    def _commit_upsert_scan_merge(
+        self,
+        txn: "Table.transaction",
+        data_files: List["DataFile"],
+        keys_table: "pa.Table",
+        upsert_cols: List[str],
+        delete_kwargs: Dict[str, Any],
+    ) -> None:
+        """Upsert commit using coarse range filter + per-file distributed anti-join.
+
+        1. Build an O(1) coarse range filter covering all upsert key values.
+        2. plan_files() on the driver — manifest reads only, no data I/O on driver.
+        3. Dispatch one Ray task per candidate file. Each task reads its file,
+           anti-joins against the upsert keys to find false positives (rows that
+           the coarse delete would remove but that are NOT being upserted), and
+           writes them as new data files directly to storage.
+        4. Commit atomically via txn.update_snapshot().overwrite(): delete each
+           original candidate file and append FP files + new upsert data files.
+
+        No table data ever flows through the driver process, avoiding driver
+        OOM on wide-schema tables.
+        """
+        import time
+
+        import pyarrow as pa
+
+        # Dedup keys to minimise per-task anti-join hash table size.
+        keys_table = keys_table.group_by(upsert_cols).aggregate([])
+
+        coarse_filter = self._build_coarse_range_filter(keys_table, upsert_cols)
+        logger.debug("[scan-merge] coarse_filter=%s", coarse_filter)
+
+        # plan_files() reads only manifest metadata — no Parquet data on the driver.
+        t0 = time.perf_counter()
+        file_scan_tasks = list(self._table.scan(row_filter=coarse_filter).plan_files())
+        logger.info(
+            "[scan-merge] planned %d candidate file(s) in %.2fs",
+            len(file_scan_tasks),
+            time.perf_counter() - t0,
+        )
+
+        if not file_scan_tasks:
+            # No existing files match the coarse filter — pure inserts only.
+            self._append_and_commit(txn, data_files)
+            return
+
+        # Put the deduped keys in the object store once; all tasks share one copy.
+        keys_ref = ray.put(keys_table)
+
+        # Parquet decompression factor: compressed Parquet typically expands
+        # ~8-10x in memory once decoded. Conservative default keeps Ray's
+        # scheduler from stacking too many rewrite tasks on one node.
+        _PARQUET_EXPANSION = 8
+
+        t0 = time.perf_counter()
+        refs = [
+            _rewrite_iceberg_file.options(
+                memory=int(task.file.file_size_in_bytes * _PARQUET_EXPANSION)
+            ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
+            for task in file_scan_tasks
+        ]
+        logger.info("[scan-merge] dispatched %d rewrite task(s)", len(refs))
+
+        # Collect results with periodic progress logs so long rewrites aren't silent.
+        results = []
+        pending = list(refs)
+        _LOG_INTERVAL = max(1, len(refs) // 10)  # log ~10 times total
+        while pending:
+            done, pending = ray.wait(pending, num_returns=min(_LOG_INTERVAL, len(pending)))
+            results.extend(ray.get(done))
+            logger.debug(
+                "[scan-merge] rewrite progress: %d/%d file(s) done (%.1fs elapsed)",
+                len(results),
+                len(refs),
+                time.perf_counter() - t0,
+            )
+
+        logger.info(
+            "[scan-merge] all %d file(s) rewritten in %.2fs",
+            len(refs),
+            time.perf_counter() - t0,
+        )
+
+        # Count how many files were wholly deleted vs partially rewritten.
+        n_whole_delete = sum(1 for old, fps in results if old is not None and not fps)
+        n_partial = sum(1 for old, fps in results if fps)
+        n_untouched = sum(1 for old, fps in results if old is None)
+        logger.info(
+            "[scan-merge] files: %d whole-delete, %d partial-rewrite, %d untouched",
+            n_whole_delete,
+            n_partial,
+            n_untouched,
+        )
+
+        # Single atomic commit: schema update (already staged in txn) + this overwrite.
+        # _OverwriteFiles handles both file-level deletes and appends in one snapshot.
+        t0 = time.perf_counter()
+        with txn.update_snapshot(
+            snapshot_properties=self._snapshot_properties
+        ).overwrite() as snap:
+            for old_file, fp_files in results:
+                if old_file is not None:
+                    snap.delete_data_file(old_file)
+                for fp_file in fp_files:
+                    snap.append_data_file(fp_file)
+            for df in data_files:
+                snap.append_data_file(df)
+
+        self._with_retry(
+            txn.commit_transaction,
+            description=f"commit upsert transaction to Iceberg table '{self.table_identifier}'",
+        )
+        logger.info("[scan-merge] committed in %.2fs", time.perf_counter() - t0)
+
     def _append_and_commit(
         self, txn: "Table.transaction", data_files: List["DataFile"]
     ) -> None:
@@ -241,7 +481,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         import time
 
         import pyarrow as pa
-        from pyiceberg.table.upsert_util import create_match_filter
 
         # Create delete filter if we have join keys
         if upsert_keys is not None and len(upsert_keys) > 0:
@@ -267,39 +506,16 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
             # Only delete if we have non-NULL keys
             if len(keys_table) > 0:
-                logger.info(
-                    "[upsert commit] Building delete filter from %d keys (cols: %s) ...",
-                    len(keys_table),
-                    upsert_cols,
-                )
-                t0 = time.perf_counter()
-                # Use PyIceberg's helper to build delete filter
-                delete_filter = create_match_filter(keys_table, upsert_cols)
-                logger.info(
-                    "[upsert commit] create_match_filter done in %.2fs: filter type=%s",
-                    time.perf_counter() - t0,
-                    type(delete_filter).__name__,
-                )
-
-                # Prepare kwargs for delete
                 delete_kwargs = self._upsert_kwargs.copy()
                 delete_kwargs.pop(_UPSERT_COLS_ID, None)
-
-                logger.info("[upsert commit] Executing txn.delete() ...")
-                t0 = time.perf_counter()
-                txn.delete(
-                    delete_filter=delete_filter,
-                    snapshot_properties=self._snapshot_properties,
-                    **delete_kwargs,
+                self._commit_upsert_scan_merge(
+                    txn, data_files, keys_table, upsert_cols, delete_kwargs
                 )
-                logger.info(
-                    "[upsert commit] txn.delete() done in %.2fs",
-                    time.perf_counter() - t0,
-                )
+                return
         else:
             logger.info("[upsert commit] No upsert keys — skipping delete phase")
 
-        # Append new data files (includes updates and inserts) and commit
+        # No non-NULL keys — just append new data files and commit
         logger.info(
             "[upsert commit] Appending %d data files and committing ...",
             len(data_files),
