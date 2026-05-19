@@ -12,7 +12,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -36,20 +36,14 @@ _spillage_dict: Dict[str, Optional[int]] = {}
 _env_cache: Optional[dict] = None
 _lock = threading.Lock()
 
-# OSS scope per DATA-2200: only PyArrow version. Other dep versions, 3p
-# libraries, env vars, and DataContext fields are RT/Platform-only and
-# live downstream.
-
 
 def record_workload(
     executor: "StreamingExecutor",
-    logical_plan: Union["LogicalPlan", LogicalOperator],
+    logical_plan: "LogicalPlan",
 ) -> None:
     """Record the planning-time entry for an execution.
 
-    Called from ``_execute_dag`` before the executor runs. The resulting entry
-    sits in ``_executions`` with ``performance: None`` and is filled in by
-    ``record_execution_result`` after the executor finishes (success or fail).
+    The resulting entry sits in ``_executions`` with ``performance: None`` after the executor finishes (success or fail).
     Flushes eagerly so attempted executions are captured even if the process
     dies before completion.
 
@@ -132,9 +126,6 @@ def _serialize_locked() -> str:
 
 def _collect_env() -> dict:
     """Process-wide environment info. Memoized after the first call.
-
-    OSS scope is PyArrow version only (DATA-2200). Other dep versions and
-    third-party library presence are RT/Platform extensions.
     """
     global _env_cache
     if _env_cache is not None:
@@ -152,34 +143,18 @@ def _safe_version(pkg: str) -> Optional[str]:
         return None
 
 
-def _collect_workload(
-    logical_plan: Union["LogicalPlan", LogicalOperator],
-) -> dict:
-    """Anonymized plan + per-op config (batch_format only in OSS)."""
-    dag = _root(logical_plan)
+def _collect_workload(logical_plan: "LogicalPlan") -> dict:
+    """Collect anonymized plan and per-op config"""
     ops: List[dict] = []
-    _walk_operators(dag, ops)
+    _walk_operators(logical_plan.dag, ops)
     return {
         "plan": "->".join(op["name"] for op in ops),
         "ops": ops,
     }
 
 
-def _root(
-    logical_plan: Union["LogicalPlan", LogicalOperator],
-) -> LogicalOperator:
-    """Return the root LogicalOperator from a LogicalPlan or operator."""
-    if isinstance(logical_plan, LogicalOperator):
-        return logical_plan
-    return logical_plan.dag
-
-
 def _walk_operators(op: LogicalOperator, out: List[dict]) -> None:
     """Post-order walk producing anonymized op names + per-op config.
-
-    OSS scope: only ``batch_format`` is captured for ``AbstractUDFMap`` ops.
-    Other per-op configs (compute, num_cpus/num_gpus, batch_size) are
-    RT/Platform-only.
     """
     for child in op.input_dependencies:
         _walk_operators(child, out)
