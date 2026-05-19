@@ -212,8 +212,8 @@ class ConcatAggregation(ShuffleAggregation):
         if self._should_sort and result.num_rows > 0:
             from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
-            sortkey = SortKey(key=list(self._key_columns), descending=False)
-            result = BlockAccessor.for_block(result).sort(sortkey)
+            sort_key = SortKey(key=list(self._key_columns), descending=False)
+            result = BlockAccessor.for_block(result).sort(sort_key)
 
         yield result
 
