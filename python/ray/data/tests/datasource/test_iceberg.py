@@ -1301,6 +1301,266 @@ class TestUpsertMode:
         assert rows_same(result, expected)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestUpsertScanMerge:
+    """Test the scan-merge upsert algorithm for correctness.
+
+      See ``IcebergDatasink._commit_upsert_scan_merge`` for algorithm details.
+      """
+
+    def test_upsert_preserves_false_positives_sparse_keys(self, clean_table):
+        """Sparse upsert keys leave intermediate rows as false positives that
+        must be preserved after the rewrite."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": list(range(1, 11)),
+                "col_b": [f"seed_{i}" for i in range(1, 11)],
+                "col_c": [1] * 10,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 10],
+                "col_b": ["updated_1", "updated_10"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": list(range(1, 11)),
+                "col_b": ["updated_1"]
+                + [f"seed_{i}" for i in range(2, 10)]
+                + ["updated_10"],
+                "col_c": [1] * 10,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_across_multiple_files(self, clean_table):
+        """Two separate seed writes produce at least two data files. A sparse
+        upsert that spans both files must rewrite false positives in each."""
+        from ray.data import SaveMode
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {
+                    "col_a": [1, 2, 3],
+                    "col_b": ["seed_1", "seed_2", "seed_3"],
+                    "col_c": [1, 1, 1],
+                }
+            )
+        )
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {
+                    "col_a": [10, 11, 12],
+                    "col_b": ["seed_10", "seed_11", "seed_12"],
+                    "col_c": [1, 1, 1],
+                }
+            )
+        )
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 12],
+                "col_b": ["updated_1", "updated_12"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 10, 11, 12],
+                "col_b": [
+                    "updated_1",
+                    "seed_2",
+                    "seed_3",
+                    "seed_10",
+                    "seed_11",
+                    "updated_12",
+                ],
+                "col_c": [1] * 6,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_whole_file_delete_when_all_keys_match(self, clean_table):
+        """When every seed row in the coarse range is in the upsert batch, the
+        original file is wholly deleted and only upsert rows remain — no
+        duplicates."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["seed_1", "seed_2", "seed_3", "seed_4", "seed_5"],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": [f"updated_{i}" for i in range(1, 6)],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": [f"updated_{i}" for i in range(1, 6)],
+                "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_pure_insert_short_circuit(self, clean_table):
+        """Upsert keys outside the seed's coarse range hit zero candidate
+        files; the new rows must still be appended."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["seed_1", "seed_2", "seed_3"],
+                "col_c": [1, 1, 1],
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [100, 101],
+                "col_b": ["new_100", "new_101"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 100, 101],
+                "col_b": ["seed_1", "seed_2", "seed_3", "new_100", "new_101"],
+                "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_composite_key_preserves_false_positives(self, clean_table):
+        """Composite-key anti-join must match on all join columns; rows that
+        share one column with an upsert key but not the full composite are
+        false positives that must be preserved."""
+        from ray.data import SaveMode
+
+        composites = [(a, b) for a in [1, 2, 3] for b in ["x", "y", "z"]]
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [a for a, _ in composites],
+                "col_b": [b for _, b in composites],
+                "col_c": [1] * len(composites),
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 3],
+                "col_b": ["x", "z"],
+                "col_c": [99, 99],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a", "col_b"]},
+        )
+
+        result = _read_from_iceberg(sort_by=["col_a", "col_b"])
+        expected_col_c = [
+            99 if (a, b) in {(1, "x"), (3, "z")} else 1
+            for a, b in sorted(composites)
+        ]
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [a for a, _ in sorted(composites)],
+                "col_b": [b for _, b in sorted(composites)],
+                "col_c": expected_col_c,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_string_key(self, clean_table):
+        """String join column exercises the type-cast path in
+        _rewrite_iceberg_file that aligns utf8 / large_utf8 between the file
+        batch and the upsert-keys table."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["a", "b", "c", "d", "e"],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                "col_b": ["a", "e"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_b"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_b")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [10, 2, 3, 4, 20],
+                "col_b": ["a", "b", "c", "d", "e"],
+                "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+
 @pytest.fixture
 def table_with_identifier_fields() -> Generator[Tuple[Catalog, Table], None, None]:
     """Pytest fixture to create a table with identifier fields for upsert tests."""
