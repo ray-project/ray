@@ -62,7 +62,7 @@ class XGBoostPredictor(BasePredictor):
 
 class LightGBMPredictor(BasePredictor):
     def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
-        return {"predictions": self.model.predict(data)}
+        return {"predictions": self.model.predict(normalize_pandas_for_lightgbm(data))}
 
 
 def xgboost_train_loop_function(config: Dict):
