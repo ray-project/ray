@@ -18,40 +18,30 @@ from ray.data.context import DataContext
 
 
 def test_average_max_uss_per_task():
-    # No tasks submitted yet.
     metrics = OpRuntimeMetrics(MagicMock())
     assert metrics.average_max_uss_per_task is None
 
-    def create_bundle(uss_bytes: int):
-        block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats(
-            max_uss_bytes=uss_bytes,
-            wall_time_s=0,
-            block_ser_time_s=0,
-        )
-        metadata = BlockMetadata(
-            num_rows=0,
-            size_bytes=0,
-            input_files=None,
-            exec_stats=stats,
-        )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
-    # Submit two tasks.
-    bundle = create_bundle(uss_bytes=0)
-    metrics.on_task_submitted(0, bundle)
-    metrics.on_task_submitted(1, bundle)
-    assert metrics.average_max_uss_per_task is None
+    # Submit and finish first task with USS of 100 bytes.
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(
+        0,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.average_max_uss_per_task == 100
 
-    # Generate one output for the first task.
-    bundle = create_bundle(uss_bytes=1)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 1
-
-    # Generate one output for the second task.
-    bundle = create_bundle(uss_bytes=3)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 2  # (1 + 3) / 2 = 2
+    # Submit and finish second task with USS of 300 bytes.
+    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_finished(
+        1,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=300),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
 
 
 def test_task_completion_time_histogram():
@@ -170,7 +160,6 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         stats = BlockExecStats(
             wall_time_s=gen_time_s,
             block_ser_time_s=ser_time_s,
-            max_uss_bytes=0,
         )
         metadata = BlockMetadata(
             num_rows=1,
@@ -284,7 +273,6 @@ def test_block_size_bytes_histogram():
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats(
-            max_uss_bytes=0,
             wall_time_s=0,
             block_ser_time_s=0,
         )
@@ -333,7 +321,6 @@ def test_block_size_rows_histogram():
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats(
-            max_uss_bytes=0,
             wall_time_s=0,
             block_ser_time_s=0,
         )

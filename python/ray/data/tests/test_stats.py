@@ -127,8 +127,6 @@ def assert_basic_operator_metrics(
     assert op.wall_time is not None, "wall_time should not be None"
     assert op.wall_time.sum > 0, "wall_time sum should be positive"
 
-    assert op.memory is not None, "memory should not be None"
-
     assert op.output_num_rows is not None, "output_num_rows should not be None"
 
     assert op.output_size_bytes is not None, "output_size_bytes should not be None"
@@ -208,6 +206,7 @@ def gen_expected_metrics(
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
             "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -297,6 +296,7 @@ def gen_expected_metrics(
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
             "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -499,11 +499,18 @@ def canonicalize(
         r"\g<1> H",
         canonicalized_stats,
     )
-    # Percentile values in op_task_duration_stats can be None (when datasketches
+    # Percentile values in DistributionTracker dicts can be None (when datasketches
     # is not installed) or a number (canonicalized to N). Normalize to P.
     canonicalized_stats = re.sub(
         r"('pN': )(?:N|None)\b",
         r"\g<1>P",
+        canonicalized_stats,
+    )
+    # max_uss_bytes DistributionTracker may have 0 or N samples depending on
+    # platform (USS measurement only available on Linux). Normalize entire dict.
+    canonicalized_stats = re.sub(
+        r"(max_uss_bytes['\s:]+)\{[^}]+\}",
+        r"\g<1>H",
         canonicalized_stats,
     )
 
@@ -565,7 +572,6 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -623,7 +629,6 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -649,7 +654,6 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -751,6 +755,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -823,7 +828,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"         block_execution_summary_str={EXECUTION_STRING}\n"
         "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         memory=None,\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
@@ -916,6 +921,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -988,7 +994,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"         block_execution_summary_str={EXECUTION_STRING}\n"
         "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         memory=None,\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
@@ -1034,6 +1040,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
         "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            max_uss_bytes: H,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
@@ -1106,7 +1113,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"               block_execution_summary_str={EXECUTION_STRING}\n"
         "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "               memory=None,\n"
         "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
