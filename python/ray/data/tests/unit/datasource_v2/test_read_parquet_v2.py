@@ -169,7 +169,7 @@ def test_read_parquet_v2_dataset_kwargs_rejects_filters(tmp_path, restore_ctx):
 
     restore_ctx.use_datasource_v2 = True
     with pytest.warns(DeprecationWarning, match="`dataset_kwargs`"):
-        with pytest.raises(ValueError, match="'filters' parameter isn't supported"):
+        with pytest.raises(ValueError, match="Row filtering via 'filters'"):
             ray.data.read_parquet(
                 str(tmp_path), dataset_kwargs={"filters": [("a", ">", 0)]}
             )
