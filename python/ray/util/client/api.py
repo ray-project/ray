@@ -32,43 +32,62 @@ class _ClientAPI:
     def __init__(self, worker=None):
         self.worker = worker
 
-    def get(self, vals, *, timeout=None):
+    def get(
+        self,
+        vals: Union["ClientObjectRef", List["ClientObjectRef"]],
+        *,
+        timeout: Optional[float] = None,
+    ):
         """get is the hook stub passed on to replace `ray.get`
 
         Args:
             vals: [Client]ObjectRef or list of these refs to retrieve.
             timeout: Optional timeout in milliseconds
+
+        Returns:
+            The Python object(s) corresponding to ``vals``.
         """
         return self.worker.get(vals, timeout=timeout)
 
-    def put(self, *args, **kwargs):
+    def put(self, *args: Any, **kwargs: Any):
         """put is the hook stub passed on to replace `ray.put`
 
         Args:
-            val: The value to `put`.
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            *args: opaque arguments forwarded to the worker's ``put``.
+            **kwargs: opaque keyword arguments forwarded to the worker's ``put``.
+
+        Returns:
+            A ``ClientObjectRef`` for the stored value.
         """
         return self.worker.put(*args, **kwargs)
 
-    def wait(self, *args, **kwargs):
+    def wait(self, *args: Any, **kwargs: Any):
         """wait is the hook stub passed on to replace `ray.wait`
 
         Args:
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            *args: opaque arguments forwarded to the worker's ``wait``.
+            **kwargs: opaque keyword arguments forwarded to the worker's ``wait``.
+
+        Returns:
+            A tuple ``(ready, remaining)`` of object refs, mirroring ``ray.wait``.
         """
         return self.worker.wait(*args, **kwargs)
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args: Any, **kwargs: Any):
         """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
         but does not execute them.
 
         Args:
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            *args: opaque arguments; when used as ``@ray.remote`` with no
+                parentheses, contains the wrapped function or class.
+            **kwargs: opaque keyword arguments; the options forwarded to
+                ``ray.remote(...)``.
+
+        Returns:
+            A client-side stub for the remote function or actor, or a
+            decorator that produces one when applied.
         """
         # Delayed import to avoid a cyclic import
         from ray.util.client.common import remote_decorator
@@ -83,7 +102,9 @@ class _ClientAPI:
 
     # TODO(mwtian): consider adding _internal_ prefix to call_remote /
     # call_release / call_retain.
-    def call_remote(self, instance: "ClientStub", *args, **kwargs) -> List[Future]:
+    def call_remote(
+        self, instance: "ClientStub", *args: Any, **kwargs: Any
+    ) -> List[Future]:
         """call_remote is called by stub objects to execute them remotely.
 
         This is used by stub objects in situations where they're called
@@ -94,8 +115,11 @@ class _ClientAPI:
 
         Args:
             instance: The Client-side stub reference to a remote object
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            *args: opaque arguments forwarded to the remote invocation.
+            **kwargs: opaque keyword arguments forwarded to the remote invocation.
+
+        Returns:
+            A list of futures, one per return value of the remote call.
         """
         return self.worker.call_remote(instance, *args, **kwargs)
 
@@ -136,6 +160,11 @@ class _ClientAPI:
         Args:
             name: The name passed to this actor by
               Actor.options(name="name").remote()
+            namespace: The namespace the named actor was created in.
+              Defaults to the current namespace.
+
+        Returns:
+            A ``ClientActorHandle`` for the named actor.
         """
         return self.worker.get_actor(name, namespace)
 
@@ -154,16 +183,26 @@ class _ClientAPI:
         """
         return self.worker.list_named_actors(all_namespaces)
 
-    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
+    def kill(self, actor: "ClientActorHandle", *, no_restart: bool = True):
         """kill forcibly stops an actor running in the cluster
 
         Args:
+            actor: The client-side handle of the actor to kill.
             no_restart: Whether this actor should be restarted if it's a
               restartable actor.
+
+        Returns:
+            The result of the underlying ``terminate_actor`` call.
         """
         return self.worker.terminate_actor(actor, no_restart)
 
-    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
+    def cancel(
+        self,
+        obj: "ClientObjectRef",
+        *,
+        force: bool = False,
+        recursive: bool = True,
+    ):
         """Cancels a task on the cluster.
 
         If the specified task is pending execution, it will not be executed. If
@@ -174,12 +213,14 @@ class _ClientAPI:
         retried (max_retries will not be respected).
 
         Args:
-            object_ref: ObjectRef returned by the task
-                that should be canceled.
+            obj: ObjectRef returned by the task that should be canceled.
             force: Whether to force-kill a running task by killing
                 the worker that is running the task.
             recursive: Whether to try to cancel tasks submitted by
                 the task specified.
+
+        Returns:
+            The result of the underlying ``terminate_task`` call.
         """
         return self.worker.terminate_task(obj, force, recursive)
 
@@ -203,12 +244,19 @@ class _ClientAPI:
 
         return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODES)
 
-    def method(self, *args, **kwargs):
+    def method(self, *args: Any, **kwargs: Any):
         """Annotate an actor method
 
         Args:
-            num_returns: The number of object refs that should be returned by
-                invocations of this actor method.
+            *args: Positional arguments are not supported; ``@ray.method``
+                must be invoked with at least one keyword argument.
+            **kwargs: Supported keyword arguments are ``num_returns`` (the
+                number of object refs that should be returned by invocations
+                of this actor method) and ``concurrency_group``.
+
+        Returns:
+            A decorator that annotates an actor method with the supplied
+            options.
         """
 
         # NOTE: So this follows the same logic as in ray/actor.py::method()
