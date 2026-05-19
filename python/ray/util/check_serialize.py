@@ -1,4 +1,5 @@
 """A utility for debugging serialization issues."""
+
 import inspect
 from contextlib import contextmanager
 from typing import Any, Optional, Set, Tuple
@@ -111,9 +112,14 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set, printer, p
                 if found:
                     break
     if not found:
+        obj_name = getattr(base_obj, "__qualname__", None) or repr(base_obj)
         printer.print(
-            f"WARNING: Did not find non-serializable object in {base_obj}. "
-            "This may be an oversight."
+            f"WARNING: Did not find non-serializable object in {obj_name}. "
+            "This may be because the object is only non-serializable when "
+            "combined with other objects, or because cloudpickle and the "
+            "traversal disagree on which object causes the failure. "
+            "Try calling `ray.util.inspect_serializability` directly on "
+            "the suspected object, or simplify the closure to isolate the cause."
         )
     return found
 
@@ -158,9 +164,15 @@ def _inspect_generic_serialization(
             if found:
                 break
     if not found:
+        obj_name = getattr(base_obj, "__class__", type(base_obj)).__name__
         printer.print(
-            f"WARNING: Did not find non-serializable object in {base_obj}. "
-            "This may be an oversight."
+            f"WARNING: Did not find non-serializable object in "
+            f"{obj_name} instance. "
+            "This may be because the object is only non-serializable when "
+            "combined with other objects, or because cloudpickle and the "
+            "traversal disagree. "
+            "Try calling `ray.util.inspect_serializability` on individual "
+            "attributes to isolate the cause."
         )
     return found
 
