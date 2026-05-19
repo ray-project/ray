@@ -42,7 +42,7 @@ class _ClientAPI:
 
         Args:
             vals: [Client]ObjectRef or list of these refs to retrieve.
-            timeout: Optional timeout in milliseconds
+            timeout: Optional timeout in seconds
 
         Returns:
             The Python object(s) corresponding to ``vals``.
