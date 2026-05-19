@@ -232,7 +232,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path, allow_unsafe_deserializat
         assert sample["custom"] == "custom-value"
 
 
-def test_webdataset_decoding(ray_start_2_cpus, tmp_path, allow_unsafe_deserialization):
+def test_webdataset_decoding(ray_start_2_cpus, tmp_path):
     import numpy as np
     import torch
 
@@ -318,7 +318,7 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
     def safe_pkl_decoder(sample):
         sample = dict(sample)
         for key, value in sample.items():
-            if key.endswith(".pkl"):
+            if key == "pkl":
                 sample[key] = pickle.loads(value)
         return sample
 
