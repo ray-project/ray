@@ -148,20 +148,6 @@ py_test(
 )
 
 py_test(
-    name = "test_distribution_tracker",
-    size = "small",
-    srcs = ["tests/test_distribution_tracker.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_issue_detection",
     size = "small",
     srcs = ["tests/test_issue_detection.py"],
