@@ -44,6 +44,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    RAY_SERVE_HAPROXY_INGRESS_RETRIES,
+    RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
+    RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
@@ -60,6 +63,7 @@ from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
@@ -540,6 +544,10 @@ class HAProxyConfig:
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
+    ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
+    ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
+    ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
+
     is_head: bool = False
 
     @property
@@ -806,6 +814,10 @@ class HAProxyApi(ProxyApi):
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
+            # HAProxy's req_get_headers() returns lowercase header keys,
+            # so lowercase here for the Lua lookup. Empty string disables
+            # forwarding entirely.
+            SESSION_HEADER=SERVE_SESSION_ID.lower(),
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )
