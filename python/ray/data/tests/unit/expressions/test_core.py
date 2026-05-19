@@ -1,7 +1,7 @@
 """Tests for core expression types and basic functionality.
 
 This module tests:
-- ColumnExpr, LiteralExpr, BinaryExpr, UnaryExpr, AliasExpr, StarExpr
+- ColumnExpr, LiteralExpr, BinaryExpr, UnaryExpr, AliasExpr, RenameExpr, StarExpr
 - Structural equality for all expression types
 - Expression tree repr (string representation)
 - UDFExpr structural equality
@@ -12,15 +12,18 @@ import pyarrow.compute as pc
 import pytest
 
 from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _ColumnSubstitutionVisitor,
     _InlineExprReprVisitor,
 )
 from ray.data.datatype import DataType
 from ray.data.expressions import (
+    AliasExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
     Operation,
+    RenameExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -285,6 +288,87 @@ class TestAliasExpr:
         aliased_result = eval_expr(aliased, test_data)
 
         assert original_result.equals(aliased_result)
+
+    def test_alias_substitution_unalias_rename(self):
+        """Alias substitution should unalias rename wrappers."""
+        visitor = _ColumnSubstitutionVisitor({"b": col("a")._rename("b")})
+        expr = col("b").alias("c")
+        rewritten = visitor.visit(expr)
+        assert isinstance(rewritten, AliasExpr)
+        assert rewritten.name == "c"
+        assert isinstance(rewritten.expr, ColumnExpr)
+        assert rewritten.expr.name == "a"
+
+
+# ──────────────────────────────────────
+# Rename Expression Tests
+# ──────────────────────────────────────
+
+
+class TestRenameExpr:
+    """Tests for RenameExpr functionality."""
+
+    def test_rename_creation(self):
+        """Test that _rename creates a RenameExpr with correct name."""
+        expr = col("price")._rename("amount")
+        assert isinstance(expr, RenameExpr)
+        assert expr.name == "amount"
+        assert isinstance(expr.expr, ColumnExpr)
+        assert expr.expr.name == "price"
+
+    @pytest.mark.parametrize(
+        "expr1,expr2,expected",
+        [
+            (col("a")._rename("b"), col("a")._rename("b"), True),
+            (col("a")._rename("b"), col("a")._rename("c"), False),
+            (col("a")._rename("b"), col("c")._rename("b"), False),
+            (col("a")._rename("b"), col("a").alias("b"), False),
+        ],
+        ids=[
+            "same_rename",
+            "different_name",
+            "different_column",
+            "rename_vs_alias",
+        ],
+    )
+    def test_rename_structural_equality(self, expr1, expr2, expected):
+        """Test structural equality for rename expressions."""
+        assert expr1.structurally_equals(expr2) is expected
+
+    def test_rename_evaluation_equivalence(self):
+        """Test that rename evaluation produces same result as original."""
+        import pandas as pd
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
+
+        test_data = pd.DataFrame({"price": [10, 20], "qty": [2, 3]})
+        expr = col("price")
+        renamed = expr._rename("amount")
+
+        original_result = eval_expr(expr, test_data)
+        renamed_result = eval_expr(renamed, test_data)
+
+        assert original_result.equals(renamed_result)
+
+    def test_rename_substitution_to_alias(self):
+        """Renames should downgrade to alias when substitution removes column."""
+        visitor = _ColumnSubstitutionVisitor({"price": lit(1)})
+        expr = col("price")._rename("amount")
+        rewritten = visitor.visit(expr)
+        assert rewritten.name == "amount"
+        assert not isinstance(rewritten, RenameExpr)
+
+    def test_rename_substitution_unalias(self):
+        """Renames should unalias substitutions and preserve rename semantics."""
+        visitor = _ColumnSubstitutionVisitor({"a": col("c").alias("d")})
+        expr = col("a")._rename("b")
+        rewritten = visitor.visit(expr)
+        assert isinstance(rewritten, RenameExpr)
+        assert rewritten.name == "b"
+        assert isinstance(rewritten.expr, ColumnExpr)
+        assert rewritten.expr.name == "c"
 
 
 # ──────────────────────────────────────
