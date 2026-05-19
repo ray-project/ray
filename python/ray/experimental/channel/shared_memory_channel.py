@@ -48,9 +48,7 @@ def _create_channel_ref(
     value = b"0" * buffer_size_bytes
 
     try:
-        object_ref = worker.put_object(
-            value, _is_experimental_channel=True
-        )
+        object_ref = worker.put_object(value, _is_experimental_channel=True)
     except ray.exceptions.ObjectStoreFullError:
         logger.info(
             "Put failed since the value was either too large or the "
