@@ -2,9 +2,9 @@
 
 These tests exercise planning-time behavior: schema inference,
 ``ListFiles → ReadFiles`` attachment to the logical plan, and
-unsupported-option gating. Physical execution (take_all) requires a
-live Ray runtime and is covered by the CI parquet regression suite;
-these tests run with no Ray cluster.
+unsupported-option gating. They call ``ray.data.read_parquet`` which
+triggers Ray auto-init, so they live alongside the other datasource
+integration tests rather than under ``tests/unit/``.
 """
 import pyarrow as pa
 import pyarrow.parquet as pq
