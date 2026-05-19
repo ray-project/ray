@@ -858,18 +858,18 @@ def read_zarr(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.read_zarrv2("/path/to/store")  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr("/path/to/store")  # doctest: +SKIP
 
         Read specific arrays from a store. This doesn't require ``.zmetadata``.
 
-        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "/path/to/store",
         ...     array_paths=["images", "labels"],
         ... )
 
         Override the chunk shape used to generate chunk descriptors.
 
-        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "/path/to/store",
         ...     chunk_shape=[256, 256],
         ... )
@@ -878,7 +878,7 @@ def read_zarr(
 
         >>> import fsspec
         >>> fs = fsspec.filesystem("s3")  # doctest: +SKIP
-        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "s3://bucket/path/to/store.zarr",
         ...     filesystem=fs,
         ...     array_paths=["images"],
@@ -886,7 +886,7 @@ def read_zarr(
 
         Explicitly allow full metadata discovery when ``.zmetadata`` is missing.
 
-        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "/path/to/store",
         ...     allow_full_metadata_scan=True,
         ... )
