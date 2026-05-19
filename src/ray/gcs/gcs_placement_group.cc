@@ -170,10 +170,6 @@ std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKe
 }
 
 void GcsPlacementGroup::ComputeTopologyStrategy() {
-  // If the user has already supplied a topology_strategy, don't override it.
-  if (placement_group_table_data_.topology_strategy_size() > 0) {
-    return;
-  }
   const auto &proto_bundles = placement_group_table_data_.bundles();
   if (proto_bundles.empty()) {
     return;

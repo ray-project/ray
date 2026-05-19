@@ -716,9 +716,7 @@ message PlacementGroupSpec {
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
   // Per-level topology strategy. Each level is a map from label key to
-  // placement strategy. For now exactly one level is supported, and the
-  // single level must contain "ray.io/node-id" plus optionally one other
-  // topology label (e.g. "rack_id").
+  // placement strategy.
   repeated TopologyStrategyLevel topology_strategy = 12;
 }
 

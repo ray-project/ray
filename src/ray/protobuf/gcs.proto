@@ -682,7 +682,7 @@ message PlacementGroupTableData {
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
   // Tracks the selected topology values, per level. The outer list is indexed
-  // by topology level (currently always one level). Within a level, the map
+  // by topology level. Within a level, the map
   // key is the topology label (e.g. "rack_id") and the value is the selected
   // value for this PG (e.g. "rack-1").
   repeated TopologyAssignmentLevel topology_assignments = 17;

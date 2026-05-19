@@ -140,8 +140,6 @@ def placement_group(
         bundles: A list of bundles which
             represent the resources requirements.
         strategy: The strategy to create the placement group.
-            Mutually exclusive with `topology_strategy`. Defaults to "PACK"
-            when neither is provided.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -163,10 +161,7 @@ def placement_group(
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
         topology_strategy: Per-level topology-aware placement. A list of dicts,
-            where each dict maps a label key to a placement strategy. For now
-            exactly one level is supported, and the single level must contain
-            "ray.io/node-id" (the node-level packing strategy) plus optionally
-            one other label such as "rack_id" (e.g.
+            where each dict represents a level within the topology that maps a label key to a placement strategy. (e.g.
             ``[{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}]``).
             Mutually exclusive with `strategy`.
 
@@ -195,12 +190,8 @@ def placement_group(
     if bundle_label_selector is None:
         bundle_label_selector = []
 
-    # Resolve the effective strategy and the topology_strategy passed downstream.
-    # When the caller supplies topology_strategy, validation guarantees that
-    # `ray.io/node-id` is present in the single level; that entry's value is
-    # the node-level packing strategy (equivalent to passing `strategy=`), so
-    # we derive `strategy` from it and drop the entry before the proto sees it.
-    # The proto's topology_strategy carries only the levels above node.
+    # Derive effective strategy from topology_strategy if defined with
+    # ray.io/node-id
     if topology_strategy is not None:
         level = topology_strategy[0]
         effective_strategy = level[NODE_ID_LABEL_KEY]
