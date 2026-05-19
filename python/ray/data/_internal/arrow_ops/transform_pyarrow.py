@@ -163,9 +163,9 @@ def hash_partition(
     # Sort rows by partition id so each partition occupies a contiguous range
     # of the result, then carve out partitions with zero-copy slices. This
     # avoids defragmenting `table` (which combine_chunks would do as a full
-    # copy): radix-sorted indices give a segment-wise monotonic take access
+    # copy): sorted indices give a segment-wise monotonic take access
     # pattern that is fast even on chunked input — the slowness described in
-    # apache/arrow#35126 only hits *random*-access take on chunked tables.
+    # apache/arrow#35126 only hits random access take on chunked tables.
     sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
     counts = np.bincount(partitions_array, minlength=num_partitions)
     offsets = np.zeros(num_partitions + 1, dtype=np.int64)
