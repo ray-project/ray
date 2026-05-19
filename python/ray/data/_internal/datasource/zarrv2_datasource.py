@@ -25,12 +25,12 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 if TYPE_CHECKING:
     from ray.data.context import DataContext
 
+REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
 class ZarrArrayMeta(TypedDict):
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
     dtype: str
-
 
 class ZarrChunkRow(TypedDict):
     array: str
@@ -41,7 +41,14 @@ class ZarrChunkRow(TypedDict):
 class ZarrGridData(TypedDict):
     meta: ZarrArrayMeta
     grid_shape: tuple[int, ...]
+    
 
+def _zarr_array_meta_from_json(raw_meta: dict[str, Any]) -> ZarrArrayMeta:
+    return {
+        "shape": tuple(int(x) for x in raw_meta["shape"]),
+        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+        "dtype": str(raw_meta["dtype"]),
+    }
 
 def _resolve_store(
     path: str,
@@ -70,13 +77,20 @@ def _strip_protocol(path: str, filesystem) -> str:
     
     parsed = urlsplit(path)
     if parsed.scheme:
-        return path.removeprefix(f"{parsed.scheme}//")
+        return path.removeprefix(f"{parsed.scheme}://")
     return path
 
 def _create_read_fn(
     batch: list[ZarrChunkRow],
     root: ZarrGroup | None = None
 ) -> Callable[[], Iterable[pd.DataFrame]]:
+    """Build a read-task callable for a batch of Zarr chunk descriptors.
+
+    If ``root`` is provided, the returned callable reads and materializes each
+    chunk's data into a ``"chunk"`` column. Otherwise, it returns metadata-only
+    rows that describe the chunk bounds, shape, dtype, and edge padding needed
+    to reconstruct truncated boundary chunks.
+    """
     if root:
         def read_fn() -> Iterable[pd.DataFrame]:
             
@@ -280,10 +294,13 @@ class ZarrV2Datasource(Datasource):
         self._selected_arrays = self._load_array_metadata(array_paths, filesystem)
         self._grid_shape_dict = self._gen_grid_shape()
         
-        if self.materialize and filesystem:
+        if self.materialize:
             self.root = self._zarr_root_init(filesystem)
     
-    def _zarr_root_init(self, filesystem) -> ZarrGroup:
+    def _zarr_root_init(self, filesystem: AbstractFileSystem | None = None) -> ZarrGroup:
+        if filesystem is None:
+            filesystem, _ = _resolve_store(self.paths[0], filesystem)
+        
         mapper_path = _strip_protocol(self.paths[0], filesystem)
         mapper = filesystem.get_mapper(mapper_path)
 
@@ -291,6 +308,13 @@ class ZarrV2Datasource(Datasource):
         return root
         
     def _load_array_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
+        """Load validated ``.zarray`` metadata for the arrays selected by the user.
+
+        Metadata discovery prefers explicit ``array_paths`` first, then
+        consolidated ``.zmetadata``, and finally an optional full-store scan when
+        ``allow_full_metadata_scan`` is enabled. Every discovered ``.zarray``
+        entry must contain the required shape, chunk, and dtype fields.
+        """
         fs, store_path = _resolve_store(self.paths[0], filesystem)
         array_metadata: dict[str, ZarrArrayMeta] = {}
         
@@ -310,14 +334,27 @@ class ZarrV2Datasource(Datasource):
                     with fs.open(full_path, "r") as f:
                         data = json.load(f)
                     raw_meta = cast(dict[str, Any], data)
-                    meta: ZarrArrayMeta = {
-                        "shape": tuple(int(x) for x in raw_meta["shape"]),
-                        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-                        "dtype": str(raw_meta["dtype"]),
-                    }
+                    
+                    missing_keys = [
+                        key for key in REQUIRED_ZARRAY_KEYS
+                        if key not in raw_meta
+                    ]
+                    
+                    if missing_keys:
+                        raise ValueError(
+                            f"Invalid .zarray metadata for array path '{array}'. "
+                            f"Missing required key(s): {missing_keys}. "
+                            f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}. "
+                            f".zarray path: {full_path}"
+                        )
+            
+                    meta: ZarrArrayMeta = _zarr_array_meta_from_json(raw_meta)
                     array_metadata[normalized_array] = meta
                 except FileNotFoundError as e:
-                    raise ValueError(f"{array} is not a valid array path in the zarr store") from e
+                    raise ValueError(
+                        f"{array} is not a valid array path in the Zarr store. "
+                        f"Could not find .zarray file at: {full_path}"
+                    ) from e
         
         else:
             z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
@@ -334,11 +371,21 @@ class ZarrV2Datasource(Datasource):
                         continue
                     
                     raw_meta = cast(dict[str, Any], value)
-                    meta: ZarrArrayMeta = {
-                        "shape": tuple(int(x) for x in raw_meta["shape"]),
-                        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-                        "dtype": str(raw_meta["dtype"]),
-                    }
+                    
+                    missing_keys = [
+                        key for key in REQUIRED_ZARRAY_KEYS
+                        if key not in raw_meta
+                    ]
+                    
+                    if missing_keys:
+                        raise ValueError(
+                            f"Invalid .zarray metadata for array path '{array}'. "
+                            f"Missing required key(s): {missing_keys}. "
+                            f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}. "
+                            f".zarray path: {full_path}"
+                        )
+                    
+                    meta: ZarrArrayMeta = _zarr_array_meta_from_json(raw_meta)
                     
                     if key == ".zarray":
                         array_metadata[""] = meta
@@ -364,11 +411,21 @@ class ZarrV2Datasource(Datasource):
                                     with fs.open(array_path, 'r') as f:
                                         data = json.load(f)
                                         raw_meta = cast(dict[str, Any], data)
-                                        meta: ZarrArrayMeta = {
-                                            "shape": tuple(int(x) for x in raw_meta["shape"]),
-                                            "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-                                            "dtype": str(raw_meta["dtype"]),
-                                        }
+                                        
+                                        missing_keys = [
+                                            key for key in REQUIRED_ZARRAY_KEYS
+                                            if key not in raw_meta
+                                        ]
+                                        
+                                        if missing_keys:
+                                            raise ValueError(
+                                                f"Invalid .zarray metadata for array path '{array}'. "
+                                                f"Missing required key(s): {missing_keys}. "
+                                                f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}. "
+                                                f".zarray path: {full_path}"
+                                            )
+                                        
+                                        meta: ZarrArrayMeta = _zarr_array_meta_from_json(raw_meta)
                                         array_metadata[array.strip("/")] = meta
                                 except FileNotFoundError:
                                     continue
@@ -380,6 +437,12 @@ class ZarrV2Datasource(Datasource):
         return array_metadata
 
     def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
+        """Compute per-array chunk grid shapes from array metadata.
+
+        This applies any user-provided chunk-shape override, validates that the
+        chunk rank matches the array rank, and records the number of chunks
+        needed along each dimension for downstream read task generation.
+        """
         grid_shape_dict: dict[str, ZarrGridData] = {}
         for array, meta in self._selected_arrays.items():
             shape = meta["shape"]

@@ -830,13 +830,16 @@ def read_zarr(
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
     Each row in the resulting dataset describes a single chunk from one of the
-    selected arrays in the store. The returned rows contain chunk metadata,
-    per-dimension slice bounds that can be used to query the chunk, and
-    per-dimension padding for truncated edge chunks, but the datasource doesn't
-    materialize any array or chunk data.
+    selected arrays in the store. By default, the returned rows contain chunk
+    metadata, per-dimension slice bounds that can be used to query the chunk,
+    and per-dimension padding for truncated edge chunks. If
+    ``materialize=True``, the returned rows also include the fully materialized
+    chunk data for each tile.
 
     The column names are ``"array"``, ``"array_shape"``, ``"chunk_shape"``,
-    ``"dtype"``, ``"chunk_slices"``, and ``"padding"``.
+    ``"dtype"``, ``"chunk_slices"``, and ``"padding"``. When
+    ``materialize=True``, the dataset also includes a ``"chunk"`` column
+    containing the rendered chunk data.
 
     Metadata discovery follows three paths:
 
@@ -851,10 +854,15 @@ def read_zarr(
     ``allow_full_metadata_scan=True`` to recursively scan the store for
     ``.zarray`` files. This can be slow or expensive for large remote stores.
 
-    The datasource resolves storage with ``fsspec``. For private buckets or custom
-    authentication, pass a preconfigured ``fsspec`` filesystem through
-    ``filesystem``. If ``filesystem`` is omitted, the datasource infers the
-    filesystem from ``path``.
+    Each array's ``.zarray`` metadata must include the keys ``"shape"``,
+    ``"chunks"``, and ``"dtype"``. Reads fail if any discovered array metadata
+    is missing one or more of these required fields.
+
+    The datasource resolves storage with ``fsspec``. For non-local stores, you're
+    encouraged to pass a preconfigured ``fsspec`` filesystem through
+    ``filesystem`` so authentication and backend-specific settings are explicit.
+    Local paths typically don't need an explicit filesystem. If ``filesystem`` is
+    omitted, the datasource infers the filesystem from ``path``.
 
     Examples:
         >>> import ray
@@ -891,13 +899,22 @@ def read_zarr(
         ...     allow_full_metadata_scan=True,
         ... )
 
+        Materialize full chunk data instead of returning metadata only.
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "/path/to/store",
+        ...     materialize=True,
+        ... )
+
     Args:
         path: Path to the Zarr v2 store.
         filesystem: Optional preconfigured :class:`fsspec.spec.AbstractFileSystem`
             instance to use when reading from ``path``. Use this for private buckets,
             custom credentials, anonymous/public cloud access, or any storage backend
-            configuration that shouldn't be inferred internally. If omitted, the
-            datasource infers the filesystem from ``path`` using ``fsspec``.
+            configuration that shouldn't be inferred internally. Passing a
+            filesystem is recommended for non-local Zarr stores; for local paths,
+            it's usually fine to omit it. If omitted, the datasource infers the
+            filesystem from ``path`` using ``fsspec``.
         chunk_shape: Optional chunk shape override to use for all selected arrays.
             If unspecified, the datasource uses the chunk shape recorded in each
             array's ``.zarray`` metadata. If provided, the chunk shape must have the
@@ -905,11 +922,16 @@ def read_zarr(
         array_paths: Optional list of array paths within the Zarr store to read.
             If provided, the datasource reads each array's ``.zarray`` metadata file
             directly and doesn't require ``.zmetadata``. If unspecified, the
-            datasource first tries to discover arrays from ``.zmetadata``.
+            datasource first tries to discover arrays from ``.zmetadata``. Each
+            discovered ``.zarray`` entry must contain ``"shape"``, ``"chunks"``,
+            and ``"dtype"``.
         allow_full_metadata_scan: If ``True``, recursively scan the store for
             ``.zarray`` files when ``array_paths`` is unspecified and ``.zmetadata``
             is missing. This may be slow or expensive for large remote stores, so it
             is disabled by default.
+        materialize: If ``False``, return metadata-only rows describing each chunk.
+            If ``True``, read and return the chunk data itself in an additional
+            ``"chunk"`` column.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -928,7 +950,8 @@ def read_zarr(
     Returns:
         A :class:`~ray.data.Dataset` where each row contains the selected array
         path, array metadata, per-dimension chunk slice bounds, and per-dimension
-        trailing padding for one chunk.
+        trailing padding for one chunk. If ``materialize=True``, each row also
+        contains the chunk data itself.
     """
     datasource = ZarrV2Datasource(
         path=path, 
