@@ -36,7 +36,7 @@ def test_simple(init):
         time.sleep(1)
         return np.zeros(1024 * 1024, dtype=np.uint8)
 
-    future = asyncio.wrap_future(f.remote().future())
+    future = asyncio.ensure_future(f.remote())
     result = get_or_create_event_loop().run_until_complete(future)
     assert isinstance(result, np.ndarray)
 
