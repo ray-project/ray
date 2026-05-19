@@ -252,12 +252,14 @@ class ParquetFileReader(FileReader):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
-        for table in self._iter_fragment_tables_impl(fragment, scanner_kwargs):
+        for table in self._iter_fragment_tables_without_pickle_check(
+            fragment, scanner_kwargs
+        ):
             if not self._allow_pickle_object_columns:
                 _check_for_pickle_object_columns(table)
             yield table
 
-    def _iter_fragment_tables_impl(
+    def _iter_fragment_tables_without_pickle_check(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,

@@ -3121,8 +3121,13 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def use_datasource_v2(request, restore_data_context):
+    restore_data_context.use_datasource_v2 = request.param
+
+
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, ray_start_regular_shared, monkeypatch
+    tmp_path, ray_start_regular_shared, monkeypatch, use_datasource_v2
 ):
     monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
 
@@ -3138,7 +3143,9 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
     assert rows[0]["col"] == {"key": "value"}
 
 
-def test_read_parquet_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
+def test_read_parquet_rejects_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
     marker = tmp_path / "exploit_marker"
 
     class Exploit:
