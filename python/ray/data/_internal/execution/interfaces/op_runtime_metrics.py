@@ -576,6 +576,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_bytes = RuntimeMetricsHistogram(histogram_buckets_bytes)
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
         self._op_task_duration_stats = DistributionTracker()
+        self._max_uss_bytes = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -1158,6 +1159,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_sample(task_wall_time_s)
+
+        if task_exec_stats is not None and task_exec_stats.max_uss_bytes > 0:
+            self.max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s

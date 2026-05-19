@@ -196,6 +196,9 @@ class TaskExecWorkerStats:
     # Total task's wall-clock time from start to finish (measured on the worker)
     task_wall_time_s: float
 
+    # Peak USS (Unique Set Size) memory in bytes observed during the task.
+    max_uss_bytes: int = 0
+
 
 @DeveloperAPI
 @dataclass(frozen=True)
