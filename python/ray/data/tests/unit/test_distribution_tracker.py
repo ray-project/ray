@@ -67,9 +67,9 @@ def test_percentiles_approximate_expected_quantiles():
     for i in range(1, 101):
         tracker.add_sample(float(i))
 
-    assert 45 <= tracker.p50 <= 55
-    assert 85 <= tracker.p90 <= 95
-    assert 95 <= tracker.p99 <= 100
+    assert tracker.p50 is not None and 45 <= tracker.p50 <= 55
+    assert tracker.p90 is not None and 85 <= tracker.p90 <= 95
+    assert tracker.p99 is not None and 95 <= tracker.p99 <= 100
 
 
 if __name__ == "__main__":

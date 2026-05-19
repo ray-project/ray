@@ -78,6 +78,7 @@ extensions = [
     "sphinx_docsearch",
     "sphinx_collections",
     "sphinx_llms_txt",
+    "sphinxext.opengraph",
 ]
 
 # -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
@@ -295,6 +296,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
 sitemap_url_scheme = "{link}"
 
+# sphinxext-opengraph: emit Open Graph metadata per page. Pin `ogp_site_url`
+# to `html_baseurl` so the `og:url` tag tracks the same canonical URL as
+# Sphinx's `<link rel="canonical">`. If `ogp_site_url` were left unset, the
+# extension would fall back to Read the Docs' `READTHEDOCS_CANONICAL_URL`
+# env var (set by RtD's Addons framework from the project's "Canonical
+# version" admin setting), which can diverge from `html_baseurl`. Per-page
+# `:og:description:` and `:og:image:` can still be set in individual files.
+ogp_site_url = html_baseurl
+
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
 # - Bash prompts ("$ ")
@@ -493,8 +503,8 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "pygment_light_style": "stata-dark",
-    "pygment_dark_style": "stata-dark",
+    "pygments_light_style": "stata-dark",
+    "pygments_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
         "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
