@@ -191,15 +191,9 @@ def test_no_deadlock_on_resource_contention(
         insert_limit_op=insert_limit_op,
     )
 
-    from ray.data._internal.execution.resource_manager import (
-        ReservationOpResourceAllocator,
-    )
+    from ray.data._internal.execution.streaming_executor_state import IdleDetector
 
-    with patch.object(
-        ReservationOpResourceAllocator.IdleDetector,
-        "DETECTION_INTERVAL_S",
-        0.1,
-    ):
+    with patch.object(IdleDetector, "DETECTION_INTERVAL_S", 0.1):
         assert len(ds.take_all()) == num_blocks
 
 
