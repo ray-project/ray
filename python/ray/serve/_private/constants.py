@@ -817,7 +817,7 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
 )
 
 RAY_SERVE_HAPROXY_TUNE_BUFSIZE = get_env_int(
-    "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384 # 16KB
+    "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384  # 16KB
 )
 
 # Escape hatch: when true, HAProxy forwards the (possibly truncated) request
