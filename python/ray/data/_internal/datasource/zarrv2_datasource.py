@@ -117,7 +117,7 @@ def _create_read_fn(
                                 array,
                                 chunk_slices,
                                 attempt + 1,
-                                self.max_retries,
+                                max_retries,
                                 delay,
                                 e,
                             )
@@ -127,7 +127,7 @@ def _create_read_fn(
 
                 raise RuntimeError(
                     f"Failed to read array={array!r} slices={chunk_slices} "
-                    f"after {self.max_retries} attempts"
+                    f"after {max_retries} attempts"
                 ) from last_error
             
             arrays = []
@@ -277,7 +277,7 @@ class ZarrV2Datasource(Datasource):
         self._selected_arrays = self._load_array_metadata(array_paths, filesystem)
         self._grid_shape_dict = self._gen_grid_shape()
         
-        if self.materialize:
+        if self.materialize and filesystem:
             self.root = self._zarr_root_init(filesystem)
     
     def _zarr_root_init(self, filesystem) -> ZarrGroup:
