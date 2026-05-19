@@ -62,7 +62,6 @@ def test_async_actor_cancel(shutdown_only):
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
                 # It is False until this except block is finished.
-                print(asyncio.current_task().cancelled())
                 assert not asyncio.current_task().cancelled()
                 ray.get(verify_actor.called.remote())
                 raise
@@ -471,8 +470,6 @@ def test_concurrent_submission_and_cancellation(shutdown_only):
     for ref in refs:
         with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
-
-    print(f"All {NUM_TASKS} tasks were cancelled successfully.")
 
 
 def test_is_canceled_sync_actor_task(shutdown_only):
