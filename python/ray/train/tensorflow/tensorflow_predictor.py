@@ -25,7 +25,6 @@ class TensorflowPredictor(DLPredictor):
         model: A Tensorflow Keras model to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
-        model_weights: List of weights to use for the model.
         use_gpu: If set, the model will be moved to GPU on instantiation and
             prediction happens on GPU.
     """
@@ -92,6 +91,9 @@ class TensorflowPredictor(DLPredictor):
                 This is only needed if the `checkpoint` was created from
                 `TensorflowCheckpoint.from_model`.
             use_gpu: Whether GPU should be used during prediction.
+
+        Returns:
+            A new ``TensorflowPredictor`` instance.
         """
         if model_definition:
             raise DeprecationWarning(

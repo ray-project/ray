@@ -272,11 +272,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         filesystem: Optional["FileSystem"] = None,
         **options: Any,
     ) -> ParquetScanner:
-        # ``filter=`` in V1 read_parquet() is the legacy pyarrow-compute
-        # predicate. Stamp it on the scanner's ``predicate`` field so it's
-        # honored at scan time (V2 does not yet dispatch Ray-level
-        # predicate pushdown rules).
-        predicate = self._arrow_parquet_args.get("filter")
         # Callers (``_read_datasource_v2``) supply the sample-resolved
         # ``Partitioning`` via ``options["partitioning"]`` so the
         # datasource itself stays immutable — fall back to the
@@ -291,5 +286,4 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
             target_block_size=DataContext.get_current().target_max_block_size,
-            predicate=predicate,
         )
