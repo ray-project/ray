@@ -64,7 +64,7 @@ def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
 
 
 def test_topology_strategy_strict_pack(ray_start_cluster):
-    """Verify topology-aware rescheduling after total rack failure."""
+    """Testing STRICT_PACK on the node level and STRICT_PACK on the rack level"""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
@@ -88,7 +88,7 @@ def test_topology_strategy_strict_pack(ray_start_cluster):
 
 
 def test_topology_strategy_strict_spread(ray_start_cluster):
-    """Verify topology-aware rescheduling after total rack failure."""
+    """Testing STRICT_SPREAD on the node level and STRICT_PACK on the rack level"""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
