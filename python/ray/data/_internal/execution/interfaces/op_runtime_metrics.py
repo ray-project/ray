@@ -897,6 +897,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self._op_task_duration_stats
 
     @metric_property(
+        description="Distribution of max USS bytes across tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def max_uss_bytes(self) -> DistributionTracker:
+        return self._max_uss_bytes
+
+    @metric_property(
         description="Average USS usage of tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
@@ -1152,7 +1160,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._op_task_duration_stats.add_sample(task_wall_time_s)
 
         if task_exec_stats is not None and task_exec_stats.max_uss_bytes is not None:
-            self.max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
+            self._max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
