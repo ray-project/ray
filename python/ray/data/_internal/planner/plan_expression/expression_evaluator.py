@@ -871,9 +871,14 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         ordered_exprs: List[Expr] = []
         for c in input_column_names:
             if c in rename_exprs_by_source:
-                ordered_exprs.append(rename_exprs_by_source[c])
+                ordered_exprs.append(rename_exprs_by_source.pop(c))
             elif c not in input_column_rename_map:
                 ordered_exprs.append(col(c))
+
+        # Any rename whose source column isn't in the block falls through to
+        # ``extra_exprs`` so evaluation raises a "column not found" error
+        # instead of silently dropping the expression.
+        extra_exprs = list(rename_exprs_by_source.values()) + extra_exprs
 
         projection_exprs = ordered_exprs + extra_exprs
 
