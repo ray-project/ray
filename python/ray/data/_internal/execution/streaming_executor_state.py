@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
+    METADATA_GET_TIMEOUT_S,
     DataOpTask,
     MetadataOpTask,
     OpTask,
@@ -498,6 +499,47 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
+        # Prefetch metadata refs across all ready DataOpTasks in one batched
+        # ray.get to amortize per-call overhead. For each task, fully drain
+        # `peek_pending_pair` so every (block_ref, meta_ref) pair currently
+        # surfaced by the streaming generator is included; we then issue ONE
+        # ray.get on the union of meta_refs across every ready task and hand
+        # the resulting bytes back via `cache_prefetched_meta_bytes`. Tasks
+        # whose meta_refs aren't covered by the batched get (e.g. the get
+        # timed out) fall through to the per-ref ray.get inside
+        # `on_data_ready`. This collapses N×~1ms per-call ray.get overhead
+        # per scheduler iteration into one batched call.
+        meta_refs_by_task: List[Tuple[DataOpTask, List[ray.ObjectRef]]] = []
+        meta_refs_to_prefetch: List[ray.ObjectRef] = []
+        for ready_tasks in ready_tasks_by_op.values():
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    new_refs: List[ray.ObjectRef] = []
+                    while True:
+                        pair = task.peek_pending_pair()
+                        if pair is None:
+                            break
+                        new_refs.append(pair[1])
+                    if new_refs:
+                        meta_refs_by_task.append((task, new_refs))
+                        meta_refs_to_prefetch.extend(new_refs)
+        if meta_refs_to_prefetch:
+            try:
+                bytes_list = ray.get(
+                    meta_refs_to_prefetch, timeout=METADATA_GET_TIMEOUT_S
+                )
+                prefetched_bytes = dict(zip(meta_refs_to_prefetch, bytes_list))
+                for task, refs in meta_refs_by_task:
+                    task.cache_prefetched_meta_bytes(
+                        {ref: prefetched_bytes[ref] for ref in refs}
+                    )
+            except ray.exceptions.GetTimeoutError:
+                # One or more refs weren't ready in time. Tasks whose meta_ref
+                # didn't get cached will fall back to the per-ref ray.get path
+                # inside `on_data_ready` (which has its own timeout-handling
+                # and retry-next-iteration semantics).
+                pass
+
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
@@ -505,7 +547,7 @@ def process_completed_tasks(
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
+                            remaining_output_budget.get(state, None),
                         )
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
