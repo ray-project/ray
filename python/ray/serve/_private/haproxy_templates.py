@@ -22,6 +22,11 @@ HAPROXY_CONFIG_TEMPLATE = """global
     # Log to the standard system log socket with debug level.
     log /dev/log local0 debug
     log 127.0.0.1:{{ config.syslog_port }} local0 debug
+    {%- if config.log_access_to_stderr %}
+    # Mirror access logs to stderr (off by default; flip
+    # RAY_SERVE_HAPROXY_LOG_ACCESS_TO_STDERR=1 to enable).
+    log stderr local0 info
+    {%- endif %}
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}

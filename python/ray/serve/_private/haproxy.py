@@ -45,6 +45,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    RAY_SERVE_HAPROXY_LOG_ACCESS_TO_STDERR,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
@@ -538,6 +539,9 @@ class HAProxyConfig:
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
+
+    # Mirror access logs to stderr (lands in the per-spawn stderr file).
+    log_access_to_stderr: bool = RAY_SERVE_HAPROXY_LOG_ACCESS_TO_STDERR
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 

@@ -738,6 +738,14 @@ RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
 )
 
+# When enabled, emits `log stderr local0 info` in the HAProxy global
+# block so access logs land in the per-spawn stderr file alongside the
+# usual warnings. Off by default because high-RPS workloads produce
+# enormous access-log volume; turn on for diagnostics only.
+RAY_SERVE_HAPROXY_LOG_ACCESS_TO_STDERR = (
+    os.environ.get("RAY_SERVE_HAPROXY_LOG_ACCESS_TO_STDERR", "0") == "1"
+)
+
 # HAProxy timeout configurations (in seconds, None = no timeout)
 RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
     int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))
