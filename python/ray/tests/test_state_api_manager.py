@@ -18,15 +18,18 @@ from ray._private.state_api_test_utils import (
 )
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
+    PlacementStrategy,
     TaskInfoEntry,
     TaskStatus,
     TaskType,
+    TopologyStrategyLevel,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
     TaskEvents,
     TaskStateUpdate,
+    TopologyAssignmentLevel,
 )
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
@@ -293,20 +296,26 @@ async def test_api_manager_list_pgs(state_api_manager):
 
 
 @pytest.mark.asyncio
-async def test_api_manager_list_pgs_label_domain(state_api_manager):
+async def test_api_manager_list_pgs_topology(state_api_manager):
     data_source_client = state_api_manager.data_source_client
 
-    pg_with_domain = generate_pg_data(
+    pg_with_topology = generate_pg_data(
         b"1",
-        name="gpu-domain-pg",
-        label_domain_key="ray.io/gpu-domain",
-        label_domain_assignments={"ray.io/gpu-domain": "rack-1"},
+        name="topology-pg",
+        topology_strategy=[
+            TopologyStrategyLevel(
+                entries={"ray.io/gpu-domain": PlacementStrategy.STRICT_PACK},
+            ),
+        ],
+        topology_assignments=[
+            TopologyAssignmentLevel(assignments={"ray.io/gpu-domain": "rack-1"}),
+        ],
     )
-    pg_without_domain = generate_pg_data(b"2")
+    pg_without_topology = generate_pg_data(b"2")
 
     data_source_client.get_all_placement_group_info.return_value = (
         GetAllPlacementGroupReply(
-            placement_group_table_data=[pg_with_domain, pg_without_domain],
+            placement_group_table_data=[pg_with_topology, pg_without_topology],
             total=2,
         )
     )
@@ -316,23 +325,27 @@ async def test_api_manager_list_pgs_label_domain(state_api_manager):
     )
     assert len(result.result) == 2
 
-    pg_domain = next(r for r in result.result if r["name"] == "gpu-domain-pg")
-    verify_schema(PlacementGroupState, pg_domain, detail=True)
-    assert pg_domain["label_domain_key"] == "ray.io/gpu-domain"
-    assert pg_domain["label_domain_assignments"] == {"ray.io/gpu-domain": "rack-1"}
+    pg_topology = next(r for r in result.result if r["name"] == "topology-pg")
+    verify_schema(PlacementGroupState, pg_topology, detail=True)
+    assert pg_topology["topology_strategy"] == [
+        {"entries": {"ray.io/gpu-domain": "STRICT_PACK"}}
+    ]
+    assert pg_topology["topology_assignments"] == [
+        {"assignments": {"ray.io/gpu-domain": "rack-1"}}
+    ]
 
-    pg_no_domain = next(r for r in result.result if r["name"] == "abc")
-    verify_schema(PlacementGroupState, pg_no_domain, detail=True)
-    assert pg_no_domain["label_domain_key"] == ""
-    assert pg_no_domain["label_domain_assignments"] == {}
+    pg_no_topology = next(r for r in result.result if r["name"] == "abc")
+    verify_schema(PlacementGroupState, pg_no_topology, detail=True)
+    assert pg_no_topology["topology_strategy"] == []
+    assert pg_no_topology["topology_assignments"] == []
 
     # Verify the fields are excluded from non-detail responses.
     result = await state_api_manager.list_placement_groups(
         option=create_api_options(detail=False)
     )
     for pg in result.result:
-        assert "label_domain_key" not in pg
-        assert "label_domain_assignments" not in pg
+        assert "topology_strategy" not in pg
+        assert "topology_assignments" not in pg
 
 
 @pytest.mark.asyncio
