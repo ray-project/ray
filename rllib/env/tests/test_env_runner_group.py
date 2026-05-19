@@ -157,6 +157,36 @@ class TestEnvRunnerGroup(unittest.TestCase):
 
         ws.stop()
 
+    def test_num_env_runners_dropped_lifetime_ignores_fire_and_forget(self):
+        """Calls with ``timeout_seconds == 0`` must NOT inflate the counter.
+
+        ``sync_weights`` defaults to ``timeout_seconds=0.0`` (fire-and-forget)
+        and propagates that into ``foreach_env_runner``; under such calls
+        ``ray.wait(timeout=0.0)`` returns immediately and typically with zero
+        results. Treating that as a drop would make the metric meaningless
+        in normal training.
+        """
+        ws = EnvRunnerGroup(
+            config=(
+                PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
+            ),
+        )
+
+        # Force the call to return ~no completed results within the zero
+        # window by making the remote work non-trivial.
+        def _slow(w):
+            time.sleep(2)
+            return 1
+
+        ws.foreach_env_runner(
+            _slow,
+            local_env_runner=False,
+            timeout_seconds=0.0,
+        )
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
+
+        ws.stop()
+
     def test_num_env_runners_dropped_lifetime_counts_timeouts(self):
         """Verify the lifetime counter increments when remote calls time out."""
         ws = EnvRunnerGroup(
