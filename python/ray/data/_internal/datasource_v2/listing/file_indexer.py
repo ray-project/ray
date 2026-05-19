@@ -190,7 +190,7 @@ class NonSamplingFileIndexer(FileIndexer):
         for file_info in file_infos:
             path, file_size = file_info.path, file_info.size
 
-            if file_size == 0:
+            if file_size is None or file_size == 0:
                 logger.warning(f"Skipping zero-size file: {path!r}")
                 continue
 
