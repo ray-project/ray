@@ -563,7 +563,6 @@ def _read_datasource_v2(
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
 
     read_op = ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
@@ -571,9 +570,10 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        input_dependencies=[list_files_op],
     )
 
-    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    stats = DatasetStats(metadata={"ReadFiles": []}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(read_op, context)
 
@@ -1192,14 +1192,17 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col, lit
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            ).select_columns(["sepal.length", "variety"])
+            # Create a Dataset by reading a Parquet file, with column selection and
+            # row filtering pushed down to the file scan.
+            ds = (
+                ray.data.read_parquet(
+                    "s3://anonymous@ray-example-data/iris.parquet",
+                )
+                .filter(expr=col("sepal.length") > lit(5.0))
+                .select_columns(["sepal.length", "variety"])
+            )
 
             ds.show(2)
 

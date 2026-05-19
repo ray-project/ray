@@ -1946,6 +1946,17 @@ py_test(
 )
 
 py_test(
+    name = "algorithms/tests/test_custom_resources_per_learner",
+    size = "small",
+    srcs = ["algorithms/tests/test_custom_resources_per_learner.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_dependency_tf",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],

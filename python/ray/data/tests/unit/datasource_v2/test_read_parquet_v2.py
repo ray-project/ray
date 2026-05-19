@@ -45,7 +45,7 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     ds = ray.data.read_parquet(str(tmp_path))
 
     assert isinstance(ds._logical_plan.dag, ReadFiles)
-    assert isinstance(ds._logical_plan.dag.input_dependency, ListFiles)
+    assert isinstance(ds._logical_plan.dag.input_dependencies[0], ListFiles)
     schema = ds.schema()
     assert schema is not None
     assert "a" in schema.names

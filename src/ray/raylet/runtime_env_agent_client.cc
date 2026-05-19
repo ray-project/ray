@@ -344,7 +344,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       } else if (current_time_ms() > deadline_ms) {
         RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
                        << "ms. Status: " << status << ", address: " << this->address_
-                       << ", port: " << this->port_str_ << ", existing immediately...";
+                       << ", port: " << this->port_str_ << ", exiting immediately...";
         ExitImmediately();
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
