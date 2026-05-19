@@ -11,6 +11,10 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
 
@@ -132,6 +136,7 @@ def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restor
     # for this read only — the global DataContext must not be mutated.
     list_files_op = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files_op, ListFiles)
+    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
     assert list_files_op.file_partitioner._num_buckets == 7
     assert restore_ctx.read_op_min_num_blocks == original
 
@@ -190,6 +195,7 @@ def test_read_parquet_v2_dataset_kwargs_threads_through_to_scanner(
     # through unchanged.
     read_files_op = ds._logical_plan.dag
     assert isinstance(read_files_op, ReadFiles)
+    assert isinstance(read_files_op.scanner, ParquetScanner)
     assert read_files_op.scanner.parquet_format_kwargs == {
         "coerce_int96_timestamp_unit": "ms",
         "dictionary_columns": ["a"],
