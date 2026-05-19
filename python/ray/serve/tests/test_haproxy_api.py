@@ -276,6 +276,7 @@ global
     stats timeout 30s
     maxconn 1000
     nbthread 2
+    tune.bufsize 16384
     server-state-base /tmp/haproxy-serve
     server-state-file /tmp/haproxy-serve/server-state
     hard-stop-after 120s

@@ -53,6 +53,8 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
     tune.bufsize {{ ingress_request_router_bufsize }}
+    {%- else %}
+    tune.bufsize {{ config.bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
@@ -60,6 +62,13 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
+    {%- endif %}
+    {%- if config.grpc_enabled %}
+    tune.h2.max-frame-size {{ config.h2_max_frame_size }}
+    tune.h2.be.initial-window-size {{config.h2_be_initial_window_size}}
+    tune.h2.be.max-concurrent-streams {{config.h2_be_max_concurrent_streams}}
+    tune.h2.fe.initial-window-size {{config.h2_fe_initial_window_size}}
+    tune.h2.fe.max-concurrent-streams {{config.h2_fe_max_concurrent_streams}}
     {%- endif %}
 defaults
     mode http
@@ -267,6 +276,7 @@ backend default_grpc_backend
 backend {{ backend.name or 'unknown' }}
     mode http
     log global
+    http-reuse always
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
