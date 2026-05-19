@@ -397,10 +397,6 @@ class ParquetDatasource(Datasource):
         super().__init__()
         _check_pyarrow_version()
 
-        self._allow_pickle_object_columns = env_bool(
-            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
-        )
-
         supports_distributed_reads = not _is_local_scheme(paths)
         if not supports_distributed_reads and ray.util.client.ray.is_connected():
             raise ValueError(
@@ -569,6 +565,9 @@ class ParquetDatasource(Datasource):
         and ``from_state`` (used by alternate constructors like
         ``from_pyarrow_dataset``).
         """
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._supports_distributed_reads = supports_distributed_reads
         self._local_scheduling = local_scheduling
         self._source_paths_ref = source_paths_ref
@@ -636,9 +635,6 @@ class ParquetDatasource(Datasource):
         instance = cls.__new__(cls)
         Datasource.__init__(instance)
         _check_pyarrow_version()
-        instance._allow_pickle_object_columns = env_bool(
-            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
-        )
         instance._init_state(**kwargs)
         return instance
 
