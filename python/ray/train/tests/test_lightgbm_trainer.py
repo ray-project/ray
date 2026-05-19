@@ -100,12 +100,10 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
 
 
 def test_fit_with_arrow_backed_pandas_dtypes(ray_start_6_cpus):
-    train_dataset = ray.data.from_items(
-        [{"x": x, "target": x % 2} for x in range(32)]
-    )
-    valid_dataset = ray.data.from_items(
-        [{"x": x, "target": x % 2} for x in range(32, 48)]
-    )
+    # `from_items` produces Arrow-backed blocks, so `to_pandas()` inside the
+    # trainer returns Arrow-backed dtypes — the regression path this test guards.
+    train_dataset = ray.data.from_items(train_df.to_dict("records"))
+    valid_dataset = ray.data.from_items(test_df.to_dict("records"))
 
     trainer = LightGBMTrainer(
         scaling_config=scale_config,
