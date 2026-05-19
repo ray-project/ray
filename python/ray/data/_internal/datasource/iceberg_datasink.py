@@ -39,8 +39,8 @@ def _rewrite_iceberg_file(
 ) -> "tuple[Optional[DataFile], List[DataFile]]":
     """Read one Iceberg file, anti-join against upsert keys, write false-positive rows.
 
-    False positives are rows in the file that are NOT in the upsert batch — the
-    coarse range filter would delete them, so we preserve them by writing them
+    False positives are rows in the file that are not in the upsert batch. The
+    coarse range filter (see ``IcebergDatasink._build_coarse_range_filter``) would delete them, so we preserve them by writing them
     as new data files before the delete.
 
     Returns (original DataFile to delete, list of new FP DataFiles).
@@ -352,17 +352,14 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
     ) -> None:
         """Upsert commit using coarse range filter + per-file distributed anti-join.
 
-        1. Build an O(1) coarse range filter covering all upsert key values.
-        2. plan_files() on the driver — manifest reads only, no data I/O on driver.
+        1. Build an O(1) coarse range filter using min-max covering upsert key values (for each column).
+        2. plan_files() on the driver to find candidate files that could be updated
         3. Dispatch one Ray task per candidate file. Each task reads its file,
            anti-joins against the upsert keys to find false positives (rows that
            the coarse delete would remove but that are NOT being upserted), and
            writes them as new data files directly to storage.
         4. Commit atomically via txn.update_snapshot().overwrite(): delete each
            original candidate file and append FP files + new upsert data files.
-
-        No table data ever flows through the driver process, avoiding driver
-        OOM on wide-schema tables.
         """
         import time
 
