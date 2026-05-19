@@ -3122,9 +3122,9 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
 
 
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only
+    tmp_path, ray_start_regular_shared, monkeypatch
 ):
-    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
 
     ext_type = ArrowPythonObjectType()
     storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
@@ -3138,8 +3138,7 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
     assert rows[0]["col"] == {"key": "value"}
 
 
-def test_read_parquet_rejects_pickle_object_columns(tmp_path, shutdown_only):
-    ray.init()
+def test_read_parquet_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
 
     ext_type = ArrowPythonObjectType()
     storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)

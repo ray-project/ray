@@ -397,6 +397,10 @@ class ParquetDatasource(Datasource):
         super().__init__()
         _check_pyarrow_version()
 
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
+
         supports_distributed_reads = not _is_local_scheme(paths)
         if not supports_distributed_reads and ray.util.client.ray.is_connected():
             raise ValueError(
@@ -841,6 +845,7 @@ class ParquetDatasource(Datasource):
                 self._partitioning,
             )
 
+            allow_pickle = self._allow_pickle_object_columns
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
@@ -856,6 +861,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                         filter_expr,
                         filter_columns,
+                        allow_pickle,
                     ),
                     meta,
                     schema=target_schema,
@@ -1154,6 +1160,7 @@ def read_fragments(
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
+    allow_pickle: bool = False,
 ) -> Iterator["pyarrow.Table"]:
     """Yield Arrow tables from Parquet fragments via ``to_batches_kwargs``."""
     # This import is necessary to load the tensor extension type.
@@ -1161,8 +1168,6 @@ def read_fragments(
 
     # Ensure that we're reading at least one dataset fragment.
     assert len(fragments) > 0
-
-    allow_pickle = env_bool(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False)
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     for fragment in fragments:
