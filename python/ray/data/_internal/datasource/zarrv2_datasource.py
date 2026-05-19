@@ -78,7 +78,6 @@ def _create_read_fn(
         def read_fn() -> Iterable[pd.DataFrame]:
             
             def _read_with_retry(
-                self,
                 array: str,
                 chunk_slices: list[tuple[int, int]] | tuple[tuple[int, int], ...],
                 max_retries: int = 5,
