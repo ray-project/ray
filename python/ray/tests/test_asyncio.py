@@ -194,7 +194,7 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     signal = SignalActor.remote()
     waiting = signal.wait.remote()
 
-    future = asyncio.wrap_future(waiting.future())
+    future = asyncio.ensure_future(waiting)
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(future, timeout=0.1)
     assert future.cancelled()

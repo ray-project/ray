@@ -44,15 +44,14 @@ def test_simple(init):
 def test_gather(init):
     loop = get_or_create_event_loop()
     tasks = gen_tasks()
-    futures = [asyncio.wrap_future(obj_ref.future()) for obj_ref in tasks]
-    results = loop.run_until_complete(asyncio.gather(*futures))
+    results = loop.run_until_complete(asyncio.gather(*tasks))
     assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
 
 
 def test_wait(init):
     loop = get_or_create_event_loop()
     tasks = gen_tasks()
-    futures = [asyncio.wrap_future(obj_ref.future()) for obj_ref in tasks]
+    futures = [asyncio.ensure_future(obj_ref) for obj_ref in tasks]
     results, _ = loop.run_until_complete(asyncio.wait(futures))
     assert set(results) == set(futures)
 
@@ -60,7 +59,7 @@ def test_wait(init):
 def test_wait_timeout(init):
     loop = get_or_create_event_loop()
     tasks = gen_tasks(10)
-    futures = [asyncio.wrap_future(obj_ref.future()) for obj_ref in tasks]
+    futures = [asyncio.ensure_future(obj_ref) for obj_ref in tasks]
     fut = asyncio.wait(futures, timeout=1)
     results, _ = loop.run_until_complete(fut)
     assert list(results)[0] == futures[0]
@@ -79,9 +78,9 @@ def test_gather_mixup(init):
         return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
     tasks = [
-        asyncio.wrap_future(f.remote(1).future()),
+        f.remote(1),
         g(2),
-        asyncio.wrap_future(f.remote(3).future()),
+        f.remote(3),
         g(4),
     ]
     results = loop.run_until_complete(asyncio.gather(*tasks))
@@ -104,9 +103,9 @@ def test_wait_mixup(init):
         return asyncio.ensure_future(_g(n))
 
     tasks = [
-        asyncio.wrap_future(f.remote(0.1).future()),
+        asyncio.ensure_future(f.remote(0.1)),
         g(7),
-        asyncio.wrap_future(f.remote(5).future()),
+        asyncio.ensure_future(f.remote(5)),
         g(2),
     ]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
