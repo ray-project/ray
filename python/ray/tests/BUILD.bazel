@@ -816,7 +816,6 @@ py_test_module_list(
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
         "test_cli_logger.py",
-        "test_cli_output_context.py",
         "test_client_metadata.py",
         "test_client_terminate.py",
         "test_coordinator_server.py",
@@ -824,6 +823,22 @@ py_test_module_list(
         "test_node_provider_availability_tracker.py",
         "test_response_cache.py",
     ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_cli_output_context",
+    size = "small",
+    srcs = ["test_cli_output_context.py"],
+    data = ["//python/ray/autoscaler:cli_output_context_test_data"],
     tags = [
         "exclusive",
         "small_size_python_tests",

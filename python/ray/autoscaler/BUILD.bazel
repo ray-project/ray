@@ -29,3 +29,12 @@ filegroup(
     ]),
     visibility = ["//:__pkg__"],
 )
+
+filegroup(
+    name = "cli_output_context_test_data",
+    srcs = [
+        "_private/cli_output_helpers.py",
+        "_private/commands.py",
+    ],
+    visibility = ["//python/ray/tests:__pkg__"],
+)
