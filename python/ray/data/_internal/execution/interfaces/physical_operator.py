@@ -4,11 +4,13 @@ import pickle
 import time
 import uuid
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Deque,
     Dict,
     Iterator,
     List,
@@ -154,12 +156,28 @@ class DataOpTask(OpTask):
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
 
-        # If the generator hasn't produced block metadata yet, or if the block metadata
-        # object isn't available after we get a reference, we need store the pending
-        # references and wait until Ray (re)constructs the block metadata. Either case
-        # can happen if a node dies after producing a block.
-        self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
-        self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
+        # Queue of (block_ref, meta_ref) pairs already pulled from the
+        # streaming generator by ``peek_pending_pair`` but not yet consumed by
+        # ``on_data_ready``. Populated lazily and drained in order.
+        self._pending_pairs: Deque[
+            Tuple[ray.ObjectRef[Block], ray.ObjectRef[BlockMetadata]]
+        ] = deque()
+        # When ``peek_pending_pair`` pulled a block_ref but the matching
+        # meta_ref isn't ready yet, stash the block here and try again on the
+        # next peek. (The generator yields block then metadata; the two can
+        # arrive in separate scheduler ticks.)
+        self._partial_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
+        # Pre-fetched metadata bytes (from a batched ``ray.get`` in
+        # ``process_completed_tasks``) keyed by their ``meta_ref``. Cached on
+        # the task so they survive across iterations when ``on_data_ready``
+        # can't drain every pair in one call (e.g. ``max_bytes_to_read``
+        # budget exhaustion). Consumed in lockstep with ``_pending_pairs``.
+        self._cached_meta_bytes: Dict[ray.ObjectRef, bytes] = {}
+        # Termination flags set by ``peek_pending_pair`` when it detects the
+        # generator is done. ``on_data_ready`` handles them after fully
+        # draining ``_pending_pairs``.
+        self._gen_exhausted: bool = False
+        self._gen_errored_block: Optional[ray.ObjectRef] = None
 
         self._last_block_meta: Optional[BlockMetadata] = None
         self._has_finished = False
@@ -170,103 +188,151 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
-        """Callback when data is ready to be read from the streaming generator.
+    def peek_pending_pair(
+        self,
+    ) -> Optional[Tuple[ray.ObjectRef, ray.ObjectRef]]:
+        """Drain ONE more (block_ref, meta_ref) pair from the streaming
+        generator into ``_pending_pairs`` and return it. Returns ``None`` if
+        no complete pair is immediately ready.
+
+        Callable in a loop to fully drain whatever the generator has surfaced
+        so far — the caller (``process_completed_tasks``) does exactly that,
+        then issues one batched ``ray.get`` across the union of meta_refs
+        from every ready task. Does NOT call ``ray.get`` on metadata.
+
+        Termination of the generator is detected here and surfaced via the
+        ``_gen_exhausted`` / ``_gen_errored_block`` flags; ``on_data_ready``
+        handles those after draining any pairs still in the queue.
+        """
+        if (
+            self._has_finished
+            or self._gen_exhausted
+            or self._gen_errored_block is not None
+        ):
+            return None
+
+        # If a previous peek pulled a block_ref but didn't see the matching
+        # meta_ref yet, try to complete that pair first.
+        if not self._partial_block_ref.is_nil():
+            try:
+                meta_ref = self._streaming_gen._next_sync(timeout_s=0)
+            except StopIteration:
+                # The generator should always yield block then metadata. A
+                # StopIteration here means the task errored after yielding
+                # the block. ``on_data_ready`` will ``ray.get`` the block to
+                # surface the exception.
+                self._gen_errored_block = self._partial_block_ref
+                self._partial_block_ref = ray.ObjectRef.nil()
+                return None
+            if meta_ref.is_nil():
+                # Block is ready, meta still in flight — try again next peek.
+                return None
+            self._metadata_ready_callback(meta_ref)
+            pair = (self._partial_block_ref, meta_ref)
+            self._partial_block_ref = ray.ObjectRef.nil()
+            self._pending_pairs.append(pair)
+            return pair
+
+        # No partial block: try to pull a fresh block_ref.
+        try:
+            block_ref = self._streaming_gen._next_sync(timeout_s=0)
+        except StopIteration:
+            self._gen_exhausted = True
+            return None
+        if block_ref.is_nil():
+            return None  # nothing immediately ready
+        self._block_ready_callback(block_ref)
+
+        # Try to pair it with a meta_ref in the same peek.
+        try:
+            meta_ref = self._streaming_gen._next_sync(timeout_s=0)
+        except StopIteration:
+            self._gen_errored_block = block_ref
+            return None
+        if meta_ref.is_nil():
+            # Block ready, meta not yet — stash the block and come back.
+            self._partial_block_ref = block_ref
+            return None
+        self._metadata_ready_callback(meta_ref)
+
+        pair = (block_ref, meta_ref)
+        self._pending_pairs.append(pair)
+        return pair
+
+    def cache_prefetched_meta_bytes(
+        self, bytes_by_ref: Dict[ray.ObjectRef, bytes]
+    ) -> None:
+        """Hand pre-fetched metadata bytes (from a batched ``ray.get``) to
+        this task. The bytes are cached and consumed in ``on_data_ready`` in
+        lieu of a per-ref ``ray.get``.
+        """
+        self._cached_meta_bytes.update(bytes_by_ref)
+
+    def on_data_ready(
+        self,
+        max_bytes_to_read: Optional[int],
+        prefetched_meta_bytes: Optional[Dict[ray.ObjectRef, bytes]] = None,
+    ) -> int:
+        """Consume ``_pending_pairs`` (populated by ``peek_pending_pair``)
+        until ``max_bytes_to_read`` is exhausted or the queue is empty.
 
         Args:
-            max_bytes_to_read: Max bytes of blocks to read. If None, all available
-                will be read.
-        Returns: The number of blocks read.
+            max_bytes_to_read: Max bytes of blocks to read. If None, all
+                available will be read.
+            prefetched_meta_bytes: Optional dict mapping metadata ``ObjectRef``
+                to its already-fetched bytes; merged into the task's cache.
+                Equivalent to calling ``cache_prefetched_meta_bytes`` first.
+
+        Returns: The number of bytes read.
         """
         bytes_read = 0
-
         self._track_task_output_backpressure(max_bytes_to_read)
 
+        if prefetched_meta_bytes:
+            self._cached_meta_bytes.update(prefetched_meta_bytes)
+
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
-            if self._pending_block_ref.is_nil():
-                assert self._pending_meta_ref.is_nil(), (
-                    "This method expects streaming generators to yield blocks then "
-                    "metadata. So, if we have a reference to metadata but not the "
-                    "block, it means there's an error in the implementation."
-                )
+            # If we have nothing queued and the generator isn't known-done,
+            # try to peek a single pair so direct callers (tests, anyone not
+            # going through ``process_completed_tasks``) still make progress.
+            if (
+                not self._pending_pairs
+                and not self._gen_exhausted
+                and self._gen_errored_block is None
+            ):
+                self.peek_pending_pair()
 
+            if not self._pending_pairs:
+                break  # nothing ready right now; termination handled below
+
+            block_ref, meta_ref = self._pending_pairs[0]
+
+            meta_with_schema_bytes = self._cached_meta_bytes.pop(meta_ref, None)
+            if meta_with_schema_bytes is None:
                 try:
-                    self._pending_block_ref = self._streaming_gen._next_sync(
-                        timeout_s=0
+                    # The timeout for `ray.get` includes the time required to
+                    # ship the block metadata to this node. So, if we set the
+                    # timeout to 0, `ray.get` will timeout and possibly cancel
+                    # the download. Use a small non-zero value instead.
+                    meta_with_schema_bytes = ray.get(
+                        meta_ref, timeout=METADATA_GET_TIMEOUT_S
                     )
-                except StopIteration:
-                    self._task_done_callback(
-                        None,  # exception
-                        self._last_block_meta.task_exec_stats
-                        if self._last_block_meta is not None
-                        else None,
-                        TaskExecDriverStats(
-                            task_output_backpressure_s=self._total_output_backpressure_s,
-                        ),
+                except ray.exceptions.GetTimeoutError:
+                    # The metadata object isn't available (e.g., the worker
+                    # died after producing it). Leave the pair queued and
+                    # retry next iteration.
+                    logger.warning(
+                        f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                        f"operator '{self._operator_name}' "
+                        f"(metadata_ref={meta_ref.hex()}). "
+                        f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
+                        f"Will retry next iteration. "
+                        f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                     )
-
-                    self._has_finished = True
                     break
 
-                if self._pending_block_ref.is_nil():
-                    # The generator currently doesn't have new output.
-                    # And it's not stopped yet.
-                    break
-
-                self._block_ready_callback(self._pending_block_ref)
-
-            if self._pending_meta_ref.is_nil():
-                try:
-                    self._pending_meta_ref = self._streaming_gen._next_sync(
-                        timeout_s=METADATA_WAIT_TIMEOUT_S
-                    )
-                except StopIteration:
-                    # The generator should always yield 2 values (block and metadata)
-                    # each time. If we get a StopIteration here, it means an error
-                    # happened in the task.
-                    # And in this case, the block_ref is the exception object.
-                    # TODO(hchen): Ray Core should have a better interface for
-                    # detecting and obtaining the exception.
-                    try:
-                        ray.get(self._pending_block_ref)
-                        assert False, "Above ray.get should raise an exception."
-                    except Exception as ex:
-                        self._task_done_callback(
-                            ex,
-                            None,  # TaskExecStats
-                            None,  # TaskExecDriverStats
-                        )
-
-                        self._has_finished = True
-                        raise ex from None
-
-                if self._pending_meta_ref.is_nil():
-                    # We have a reference to the block but the metadata isn't ready
-                    # yet.
-                    break
-
-                self._metadata_ready_callback(self._pending_meta_ref)
-
-            try:
-                # The timeout for `ray.get` includes the time required to ship the
-                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
-                # will timeout and possible cancel the download. To avoid this issue,
-                # we set the timeout to a small non-zero value.
-                meta_with_schema_bytes: bytes = ray.get(
-                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
-                )
-            except ray.exceptions.GetTimeoutError:
-                # We have a reference to the block and its metadata, but the metadata
-                # object isn't available. This can happen if the node dies.
-                logger.warning(
-                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
-                    f"operator '{self._operator_name}' "
-                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
-                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
-                    f"Will retry next iteration. "
-                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
-                )
-                break
+            # Bytes are in hand — consume the pair from the queue.
+            self._pending_pairs.popleft()
 
             meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
                 meta_with_schema_bytes
@@ -274,17 +340,41 @@ class DataOpTask(OpTask):
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
-                    [(self._pending_block_ref, meta)],
+                    [(block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),
             )
-
             self._last_block_meta = meta
-            self._pending_block_ref = ray.ObjectRef.nil()
-            self._pending_meta_ref = ray.ObjectRef.nil()
-
             bytes_read += meta.size_bytes
+
+        # Handle generator-termination signals once the queue is drained.
+        if not self._pending_pairs:
+            if self._gen_errored_block is not None:
+                errored_block = self._gen_errored_block
+                self._gen_errored_block = None
+                try:
+                    ray.get(errored_block)
+                    assert False, "Above ray.get should raise an exception."
+                except Exception as ex:
+                    self._task_done_callback(
+                        ex,
+                        None,  # TaskExecStats
+                        None,  # TaskExecDriverStats
+                    )
+                    self._has_finished = True
+                    raise ex from None
+            if self._gen_exhausted:
+                self._task_done_callback(
+                    None,  # exception
+                    self._last_block_meta.task_exec_stats
+                    if self._last_block_meta is not None
+                    else None,
+                    TaskExecDriverStats(
+                        task_output_backpressure_s=self._total_output_backpressure_s,
+                    ),
+                )
+                self._has_finished = True
 
         return bytes_read
 
