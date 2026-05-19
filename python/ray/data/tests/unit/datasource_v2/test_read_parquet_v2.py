@@ -147,7 +147,7 @@ def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
-    with pytest.raises(NotImplementedError, match="`filter=` on `read_parquet`"):
+    with pytest.raises(ValueError, match="`filter=` on `read_parquet`"):
         ray.data.read_parquet(str(tmp_path), filter=pds.field("a") > 1)
 
 

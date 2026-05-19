@@ -1369,7 +1369,7 @@ def read_parquet(
                 stacklevel=2,
             )
         if "filter" in arrow_parquet_args:
-            raise NotImplementedError(
+            raise ValueError(
                 "`filter=` on `read_parquet` is not supported. "
                 "Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
