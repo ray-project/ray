@@ -308,6 +308,7 @@ steps:
     key: serve_flaky_gpu_tests
     tags:
       - serve
+      - python
       - gpu
       - flaky
       - skip-on-premerge
