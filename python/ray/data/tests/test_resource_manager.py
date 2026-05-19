@@ -912,6 +912,36 @@ class TestOutputBackpressureGuard:
         guard._idle_detector.detect_idle = MagicMock(return_value=False)
         assert guard.should_unblock(o2) is False
 
+    def test_unblock_when_resource_allocator_disabled(self, restore_data_context):
+        """When the op resource allocator is disabled, the guard treats
+        downstream as schedulable (no budget to consult), so
+        "downstream resource constrained" case never fires, but the other
+        liveness conditions still do.
+        """
+        # Disable resource allocator
+        DataContext.get_current().op_resource_reservation_enabled = False
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        assert not resource_manager.op_resource_allocator_enabled()
+
+        guard = OutputBackpressureGuard(topo, resource_manager)
+        o3.num_active_tasks = MagicMock(return_value=0)
+
+        # "Downstream idle with empty input queue" case should fire and unblock.
+        topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
+        assert guard.should_unblock(o2) is True
+
 
 class TestIdleDetector:
     """Tests for IdleDetector."""

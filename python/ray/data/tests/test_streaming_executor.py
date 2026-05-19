@@ -510,6 +510,53 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     assert o2._task_output_backpressure_policy is None
 
 
+def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_limit(
+    ray_start_regular_shared,
+):
+    """Test that the escape hatch fires when a non-resource-budget policy drives the aggregated output limit to 0."""
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions())
+
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        DataContext.get_current(),
+    )
+    guard = OutputBackpressureGuard(topo, resource_manager)
+
+    # Fake policy that returns 0 for o2
+    class ZeroLimitPolicy:
+        @property
+        def name(self):
+            return "ZeroLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None
+
+    process_completed_tasks(
+        topo, [ZeroLimitPolicy()], max_errored_blocks=0,
+        output_backpressure_guard=guard,
+    )
+
+    # o2 is terminal with no downstream eligible ops and no external
+    # consumer — the guard's terminal-op branch should unblock, bumping
+    # the limit from 0 to 1, so o2 is NOT flagged as in output backpressure
+    # and the policy attribution should be cleared.
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
 def test_summary_str_backpressure_policies(ray_start_regular_shared):
     """Test that summary_str correctly displays backpressure policy names."""
     opts = ExecutionOptions()
