@@ -71,6 +71,8 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             on_start: Optional callback invoked with the schema from the first input
                 bundle before any tasks are submitted.
+            isolate_workers: If ``True``, workers get their own process pool,
+                preventing side-effects from leaking across operators.
         """
         super().__init__(
             map_transformer,
@@ -85,8 +87,9 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
-            isolate_workers=isolate_workers,
         )
+
+        self._isolate_workers = isolate_workers
 
         if max_concurrency is not None and max_concurrency <= 0:
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")

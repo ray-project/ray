@@ -161,7 +161,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
-        isolate_workers: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -171,7 +170,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
-        self._isolate_workers = isolate_workers
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
@@ -370,6 +368,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 on_start=on_start,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
+            if isolate_workers:
+                logger.debug(
+                    "isolate_workers is set but has no effect with "
+                    "ActorPoolStrategy because actors are already isolated."
+                )
+
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
             )
