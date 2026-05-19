@@ -48,7 +48,9 @@ def test_average_max_uss_per_task():
 
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different completion times
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -90,7 +92,9 @@ def test_block_completion_time_histogram():
 
     Block completion time = (cum_block_gen_time_s + cum_block_ser_time_s) / num_outputs
     """
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -270,7 +274,9 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
@@ -318,7 +324,9 @@ def test_block_size_bytes_histogram():
 
 def test_block_size_rows_histogram():
     """Test block size rows histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
