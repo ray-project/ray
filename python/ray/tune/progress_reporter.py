@@ -97,13 +97,13 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
-    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
+    def report(self, trials: List[Trial], done: bool, *sys_info: str):
         """Reports progress across trials.
 
         Args:
             trials: Trials to report on.
             done: Whether this is the last progress report attempt.
-            *sys_info: System info dicts to include in the report.
+            *sys_info: System info strings to include in the report.
         """
         raise NotImplementedError
 
@@ -316,7 +316,7 @@ class TuneReporterBase(ProgressReporter):
         self,
         trials: List[Trial],
         done: bool,
-        *sys_info: Dict,
+        *sys_info: str,
         fmt: str = "psql",
         delim: str = "\n",
     ):
@@ -330,7 +330,7 @@ class TuneReporterBase(ProgressReporter):
         Args:
             trials: Trials to report on.
             done: Whether this is the last progress report attempt.
-            *sys_info: System info dicts appended below the status header.
+            *sys_info: System info strings appended below the status header.
             fmt: Table format. See `tablefmt` in tabulate API.
             delim: Delimiter between messages.
 
@@ -545,7 +545,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         self._display_handle = None
         self.display("")  # initialize empty display to update later
 
-    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
+    def report(self, trials: List[Trial], done: bool, *sys_info: str):
         progress = self._progress_html(trials, done, *sys_info)
 
         if self.output_queue is not None:
@@ -706,7 +706,7 @@ class CLIReporter(TuneReporterBase):
     def _print(self, msg: str):
         safe_print(msg)
 
-    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
+    def report(self, trials: List[Trial], done: bool, *sys_info: str):
         self._print(self._progress_str(trials, done, *sys_info))
 
 
