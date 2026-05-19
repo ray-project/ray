@@ -175,16 +175,16 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         lightgbm_config: The configuration for setting up the distributed lightgbm
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Datasets are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
+        datasets: The Ray Datasets to use for training and validation.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.

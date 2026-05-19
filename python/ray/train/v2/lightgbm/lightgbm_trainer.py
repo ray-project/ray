@@ -116,8 +116,11 @@ class LightGBMTrainer(DataParallelTrainer):
             If provided and ``ray.train.report`` is called with the ``validation``
             argument, Ray Train will validate the reported checkpoint using
             the validation function specified in this config.
-        resume_from_checkpoint: [Deprecated]
         metadata: [Deprecated]
+        resume_from_checkpoint: [Deprecated]
+        label_column: [Deprecated] Legacy LightGBMTrainer API.
+        params: [Deprecated] Legacy LightGBMTrainer API.
+        num_boost_round: [Deprecated] Legacy LightGBMTrainer API.
     """
 
     def __init__(
