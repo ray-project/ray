@@ -11,7 +11,11 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
-from ray._common.utils import env_integer
+from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource.parquet_datasource import (
+    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    _check_for_pickle_object_columns,
+)
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -191,6 +195,9 @@ class ParquetFileReader(FileReader):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._target_block_size = target_block_size
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
@@ -241,6 +248,18 @@ class ParquetFileReader(FileReader):
 
     @override
     def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        for table in self._iter_fragment_tables_without_pickle_check(
+            fragment, scanner_kwargs
+        ):
+            if not self._allow_pickle_object_columns:
+                _check_for_pickle_object_columns(table)
+            yield table
+
+    def _iter_fragment_tables_without_pickle_check(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,
@@ -408,23 +427,28 @@ class ParquetFileReader(FileReader):
 
     @override
     def _arrow_scanner_kwargs(self) -> dict:
-        # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
-        # decoded column chunks resident before yielding batches, so
-        # pa.total_allocated_bytes() climbs monotonically across batches and
-        # peaks near full fragment size. Disabling pre_buffer with
-        # use_buffered_stream caps peak near a small multiple of one row group
-        # while keeping throughput equal to the default.
-        # See apache/arrow#39808.
+        # ``pre_buffer`` is left at pyarrow's default (``True``). With
+        # ``pre_buffer=True`` pyarrow plans a single coalesced range
+        # request covering all needed column chunks for a fragment and
+        # issues it in one I/O burst, then decodes from memory. With
+        # ``pre_buffer=False`` pyarrow opens a per-column buffered
+        # stream and fetches lazily — fine on narrow schemas (few large
+        # columns) but catastrophic on wide schemas (thousands of small
+        # columns become thousands of range requests). V1
+        # ``ParquetDatasource`` also relies on the default. The
+        # cross-fragment memory accumulation that originally motivated
+        # disabling ``pre_buffer`` (apache/arrow#39808) is already
+        # addressed by V2's per-fragment scanners.
         #
-        # ``buffer_size`` controls the per-stream read-ahead buffer pyarrow
-        # issues against the filesystem. The default is small (8 KiB), which
-        # produces many tiny range requests on S3. 8 MiB amortizes S3
-        # latency across meaningful bytes per round-trip. Tunable via env
-        # var for workloads that need a different point on the
-        # latency/memory-peak curve.
+        # ``buffer_size`` controls the per-stream read-ahead buffer
+        # pyarrow issues against the filesystem when ``use_buffered_stream``
+        # is on. The default is small (8 KiB), which produces many tiny
+        # range requests on S3. 8 MiB amortizes S3 latency across
+        # meaningful bytes per round-trip. Tunable via env var for
+        # workloads that need a different point on the latency/memory-
+        # peak curve.
         kwargs: dict = {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
-                pre_buffer=False,
                 use_buffered_stream=True,
                 buffer_size=_PARQUET_FRAGMENT_BUFFER_SIZE,
             ),
