@@ -1559,6 +1559,109 @@ class TestUpsertScanMerge:
         )
         assert rows_same(result, expected)
 
+    def test_upsert_case_insensitive_join_cols(self, clean_table):
+        """``case_sensitive=False`` should let join_cols match table columns
+        whose casing differs from the supplied names."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["seed_1", "seed_2", "seed_3", "seed_4", "seed_5"],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 5, 6],
+                "col_b": ["updated_1", "updated_5", "new_6"],
+                "col_c": [1, 1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["COL_A"], "case_sensitive": False},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5, 6],
+                "col_b": [
+                    "updated_1",
+                    "seed_2",
+                    "seed_3",
+                    "seed_4",
+                    "updated_5",
+                    "new_6",
+                ],
+                "col_c": [1] * 6,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_with_new_column(self, clean_table):
+        """Upsert that introduces a new column must evolve the table schema,
+        populate the new column for upserted rows, and leave NULLs for
+        untouched seed rows (including false-positive rows preserved during
+        rewrite)."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": list(range(1, 6)),
+                "col_b": [f"seed_{i}" for i in range(1, 6)],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        # Upsert touches col_a=1 and col_a=5 (false positives at 2, 3, 4 in
+        # the same file) and introduces a new column ``col_d``.
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 5, 6],
+                "col_b": ["updated_1", "updated_5", "new_6"],
+                "col_c": [1, 1, 1],
+                "col_d": ["d_1", "d_5", "d_6"],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5, 6],
+                "col_b": [
+                    "updated_1",
+                    "seed_2",
+                    "seed_3",
+                    "seed_4",
+                    "updated_5",
+                    "new_6",
+                ],
+                "col_c": [1] * 6,
+                "col_d": ["d_1", None, None, None, "d_5", "d_6"],
+            }
+        )
+        assert rows_same(result, expected)
+
 
 @pytest.fixture
 def table_with_identifier_fields() -> Generator[Tuple[Catalog, Table], None, None]:
