@@ -379,7 +379,6 @@ if setup_spec.type == SetupType.RAY:
             [
                 "vllm[audio]==0.21.0",
                 "nixl[cu13]==1.1.0",
-                "nixl-cu12==1.1.0",
                 "nixl-cu13==1.1.0",
                 "jsonref>=1.1.0",
                 "jsonschema",

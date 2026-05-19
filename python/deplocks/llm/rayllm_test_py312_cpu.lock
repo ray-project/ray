@@ -3109,20 +3109,6 @@ ninja==1.13.0 \
 nixl==1.1.0 \
     --hash=sha256:f46f65768770fa508eb52921c41b5dc52b754478b0ebb606fff6d80f41375d8b
     # via -r python/requirements/llm/llm-requirements.txt
-nixl-cu12==1.1.0 \
-    --hash=sha256:7c7c90204b39dd936a3636bbaa85256a3818d4749bc700bc221f714e5ff5fdc7 \
-    --hash=sha256:95161ec1a0dbb3dccb191b768f116299e4bff7d2304aee741f474989b4097963 \
-    --hash=sha256:bb99e2e5288fecdd16d3935298ce14a98ae472321c48eb8da50f972bfdf23a05 \
-    --hash=sha256:c00bdb479b1de39ee94df516c2b6effb803fa7cae4d378c66f0a40148e3e9e3a \
-    --hash=sha256:c2050222be53d7abd243a1362497d5f1cf925e0417d11d439a17bb1132b0e81e \
-    --hash=sha256:c2cfc58abc8baef6ebdf6a184516e5e114ec20c19dff191e898971ddedb081f7 \
-    --hash=sha256:c6fef6445d2da46fa3476f1a4c134f224f38884bbfc1230c3a207d66cc4faa38 \
-    --hash=sha256:c9d4ef0b057c06e3fd7492b02605fb6cfb3d88c02d46ea7cdd3373b3050d2f79 \
-    --hash=sha256:cf270a5319f4feb80cedc7ae19029ef48eb4428f587bbcdcd3b787933430890b \
-    --hash=sha256:ee1e1710757c006c73b2a3ee48c6070f917cd05ef8cfbdfc26f7fffaaeed9294
-    # via
-    #   -r python/requirements/llm/llm-requirements.txt
-    #   nixl
 nixl-cu13==1.1.0 \
     --hash=sha256:1991d7899603907099f3e3ac3bf59f950de194bfe8d92c01ef9f06ce1639efa4 \
     --hash=sha256:1c4e8142eff7cabe6107b3b65bc7a09da27ed585efb7972e45b1faabe74726c7 \
@@ -6758,3 +6744,4 @@ zipp==3.23.1 \
 
 # The following packages were excluded from the output:
 # setuptools
+# nixl-cu12

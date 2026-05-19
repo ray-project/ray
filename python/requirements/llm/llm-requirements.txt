@@ -3,7 +3,6 @@ vllm[audio]==0.21.0
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
 # https://github.com/vllm-project/vllm/blob/v0.21.0/requirements/kv_connectors.txt#L2
 nixl[cu13]==1.1.0
-nixl-cu12==1.1.0
 nixl-cu13==1.1.0
 anyio>=4.5.0
 # For json mode
