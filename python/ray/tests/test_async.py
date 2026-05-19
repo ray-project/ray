@@ -12,12 +12,14 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 
+
 @pytest.fixture
 def init():
     ray.init(num_cpus=4)
     get_or_create_event_loop().set_debug(False)
     yield
     ray.shutdown()
+
 
 def gen_tasks(time_scale=0.1):
     @ray.remote
@@ -76,7 +78,12 @@ def test_gather_mixup(init):
         await asyncio.sleep(n * 0.1)
         return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
-    tasks = [asyncio.wrap_future(f.remote(1).future()), g(2), asyncio.wrap_future(f.remote(3).future()), g(4)]
+    tasks = [
+        asyncio.wrap_future(f.remote(1).future()),
+        g(2),
+        asyncio.wrap_future(f.remote(3).future()),
+        g(4),
+    ]
     results = loop.run_until_complete(asyncio.gather(*tasks))
     assert [result[0] for result in results] == [1, 2, 3, 4]
 
@@ -96,7 +103,12 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [asyncio.wrap_future(f.remote(0.1).future()), g(7), asyncio.wrap_future(f.remote(5).future()), g(2)]
+    tasks = [
+        asyncio.wrap_future(f.remote(0.1).future()),
+        g(7),
+        asyncio.wrap_future(f.remote(5).future()),
+        g(2),
+    ]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}
 
