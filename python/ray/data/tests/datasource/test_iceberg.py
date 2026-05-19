@@ -1308,8 +1308,8 @@ class TestUpsertMode:
 class TestUpsertScanMerge:
     """Test the scan-merge upsert algorithm for correctness.
 
-      See ``IcebergDatasink._commit_upsert_scan_merge`` for algorithm details.
-      """
+    See ``IcebergDatasink._commit_upsert_scan_merge`` for algorithm details.
+    """
 
     def test_upsert_preserves_false_positives_sparse_keys(self, clean_table):
         """Sparse upsert keys leave intermediate rows as false positives that
@@ -1510,8 +1510,7 @@ class TestUpsertScanMerge:
 
         result = _read_from_iceberg(sort_by=["col_a", "col_b"])
         expected_col_c = [
-            99 if (a, b) in {(1, "x"), (3, "z")} else 1
-            for a, b in sorted(composites)
+            99 if (a, b) in {(1, "x"), (3, "z")} else 1 for a, b in sorted(composites)
         ]
         expected = _create_typed_dataframe(
             {

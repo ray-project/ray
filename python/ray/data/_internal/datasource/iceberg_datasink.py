@@ -2,10 +2,10 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
-import ray
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
+import ray
 from ray._common.retry import call_with_retry
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
@@ -18,6 +18,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
@@ -89,19 +90,24 @@ def _rewrite_iceberg_file(
             )
 
     idx_col = pa.array(range(len(batch)), type=pa.int64())
-    fp_keys = (
-        batch_keys.append_column("__row_idx__", idx_col)
-        .join(keys_ref, keys=upsert_cols, join_type="left anti")
+    fp_keys = batch_keys.append_column("__row_idx__", idx_col).join(
+        keys_ref, keys=upsert_cols, join_type="left anti"
     )
 
     if len(fp_keys) == 0:
         # Every row in this file is being upserted — delete the whole file, no FP file needed.
-        logger.debug("[rewrite] %s: all %d rows matched -> whole-file delete", file_path.split("/")[-1], len(batch))
+        logger.debug(
+            "[rewrite] %s: all %d rows matched -> whole-file delete",
+            file_path.split("/")[-1],
+            len(batch),
+        )
         return (file_scan_task.file, [])
 
     if len(fp_keys) == len(batch):
         # No rows in this file match any upsert key — leave it alone entirely.
-        logger.debug("[rewrite] %s: 0 rows matched -> untouched", file_path.split("/")[-1])
+        logger.debug(
+            "[rewrite] %s: 0 rows matched -> untouched", file_path.split("/")[-1]
+        )
         return (None, [])
 
     fp_rows = batch.take(fp_keys["__row_idx__"])
@@ -314,7 +320,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         callers must anti-join to identify and preserve those rows.
         """
         import pyarrow.compute as pc
-        from pyiceberg.expressions import AlwaysTrue, And, GreaterThanOrEqual, LessThanOrEqual
+        from pyiceberg.expressions import (
+            AlwaysTrue,
+            And,
+            GreaterThanOrEqual,
+            LessThanOrEqual,
+        )
 
         expr = None
         for col_name in upsert_cols:
@@ -354,8 +365,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         OOM on wide-schema tables.
         """
         import time
-
-        import pyarrow as pa
 
         # Dedup keys to minimise per-task anti-join hash table size.
         keys_table = keys_table.group_by(upsert_cols).aggregate([])
@@ -399,7 +408,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         pending = list(refs)
         _LOG_INTERVAL = max(1, len(refs) // 10)  # log ~10 times total
         while pending:
-            done, pending = ray.wait(pending, num_returns=min(_LOG_INTERVAL, len(pending)))
+            done, pending = ray.wait(
+                pending, num_returns=min(_LOG_INTERVAL, len(pending))
+            )
             results.extend(ray.get(done))
             logger.debug(
                 "[scan-merge] rewrite progress: %d/%d file(s) done (%.1fs elapsed)",
