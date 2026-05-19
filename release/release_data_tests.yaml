@@ -598,6 +598,19 @@
       --num-scalar-cols 100
       --num-array-cols 200
 
+- name: map_batches_deser_perf
+  # Tracks task:deserialize_arguments cost for actor-pool map_batches with a
+  # wide pyarrow Table block argument. Guards against regressions like the
+  # ~360 ms p50 deser seen by a customer on an older Ray, which is ~43 ms
+  # p50 on current master.
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+
+  run:
+    timeout: 600
+    script: python map_batches_deser_perf_benchmark.py
+
 
 ########################
 # Sort and shuffle tests
