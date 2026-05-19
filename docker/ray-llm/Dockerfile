@@ -35,6 +35,15 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
+# Force-reinstall nixl-cu13 so its nixl_ep/nixl_ep_cpp.so (linked against
+# libcudart.so.13) is the one on disk. nixl-cu12 and nixl-cu13 both ship a
+# top-level nixl_ep/ package with identically named binaries; if any prior
+# layer left the cu12 binary in site-packages, vLLM's `import nixl_ep` would
+# fail with `libcudart.so.12: cannot open shared object file` on cu130.
+uv pip install --system --no-cache-dir --no-deps --reinstall \
+    --no-verify-hashes \
+    nixl-cu13==1.1.0
+
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
