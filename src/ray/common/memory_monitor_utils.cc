@@ -433,14 +433,14 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
   return resolved_memory_threshold_bytes;
 }
 
-int64_t MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+StatusSetOr<int64_t, StatusT::NotFound> MemoryMonitorUtils::GetProcessUsedMemoryBytes(
     const ProcessesMemorySnapshot &snapshot, pid_t pid) {
   const ProcessesMemorySnapshot::const_iterator it = snapshot.find(pid);
   if (it == snapshot.end()) {
-    RAY_LOG_EVERY_MS(INFO, 60000) << "Can't find memory usage in process memory snapshot "
-                                     "for PID, reporting zero. PID: "
-                                  << pid;
-    return 0;
+    return StatusT::NotFound(
+        absl::StrFormat("Can't find memory usage in process memory snapshot for PID: %d. "
+                        "The process may have already been killed or died.",
+                        pid));
   }
   return it->second;
 }

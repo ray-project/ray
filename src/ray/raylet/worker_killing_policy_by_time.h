@@ -27,9 +27,15 @@ namespace raylet {
 
 /**
  * @brief Policy that selects workers to kill based on:
- * 1. Retriable tasks first (to maximize retry opportunities)
- * 2. Among tasks with the same retriability, most recent task first (newest granted
+ *
+ * 1. Workers that once had a granted lease but no longer have a granted lease first.
+ *    Note that workers that have never been granted a lease (i.e. cold start idle
+ * workers) are only considered for killing if their memory footprint exceeds the idle
+ * worker killing memory threshold.
+ * 2. Retriable tasks next (to maximize retry opportunities)
+ * 3. Among tasks with the same retriability, most recent task first (newest granted
  *    lease time)
+ * 4. If granted lease times are equal, tiebreak by largest memory footprint.
  * The policy will select enough workers to kill to put the system back
  * under the memory usage threshold - kill_buffer_bytes.
  */
