@@ -28,14 +28,17 @@ class DistributionTracker:
 
     def add_sample(self, value: float) -> None:
         self._count += 1
+
         delta = value - self._mean
         self._mean += delta / self._count
         delta2 = value - self._mean
         self._m2 += delta * delta2
+
         if value < self._min:
             self._min = value
         if value > self._max:
             self._max = value
+
         if self._sketch is not None:
             self._sketch.update(value)
 
