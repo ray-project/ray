@@ -3337,7 +3337,11 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "determining worker to oom kill based on owner group size or only "
       "selecting a single worker to kill at a time, set the environment "
       "variable `RAY_worker_killing_policy_by_group` to true before "
-      "starting Ray.",
+      "starting Ray. If the idle workers have a non-trivial memory footprint "
+      "at the time of OOM (check via the top 10 memory users debug log), "
+      "consider setting the environment variable "
+      "`RAY_idle_worker_killing_memory_threshold_bytes` to a lower value "
+      "to consider idle workers with lower memory footprint for killing.",
       not_retriable_recommendation_ss.str());
 }
 

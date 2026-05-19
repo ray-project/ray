@@ -57,9 +57,9 @@ TEST_F(MemoryMonitorFactoryTest,
 
   ASSERT_EQ(monitors.size(), 2u) << "Expected exactly two monitors";
   EXPECT_NE(dynamic_cast<EventMemoryMonitor *>(monitors[0].get()), nullptr)
-      << "Expected the second monitor to be an EventMemoryMonitor";
+      << "Expected the first monitor to be an EventMemoryMonitor";
   EXPECT_NE(dynamic_cast<ThresholdMemoryMonitor *>(monitors[1].get()), nullptr)
-      << "Expected the first monitor to be a ThresholdMemoryMonitor";
+      << "Expected the second monitor to be a ThresholdMemoryMonitor";
 }
 
 }  // namespace ray

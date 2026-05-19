@@ -672,7 +672,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 // to be considered as a candidate for killing.
 RAY_CONFIG(int64_t,
            idle_worker_killing_memory_threshold_bytes,
-           256 * 1024 * 1024)  // 256MiB
+           1024 * 1024 * 1024)  // 1GB
 
 /// The soft limit of the number of workers to keep around.
 /// We apply this limit to the idle workers instead of total workers,
