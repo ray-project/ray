@@ -192,6 +192,12 @@ class EnvRunnerGroup:
             init_id=1,
         )
 
+        # Total number of remote EnvRunner responses dropped due to a
+        # `timeout_seconds`-bounded `foreach_env_runner` call (typically
+        # `sample_timeout_s` during synchronous sampling). This counter is
+        # cumulative over the lifetime of the group.
+        self._num_env_runners_dropped_lifetime: int = 0
+
         if _setup:
             try:
                 self._setup(
@@ -367,6 +373,20 @@ class EnvRunnerGroup:
     def num_remote_worker_restarts(self) -> int:
         """Total number of times managed remote workers have been restarted."""
         return self._worker_manager.total_num_restarts()
+
+    def num_env_runners_dropped_lifetime(self) -> int:
+        """Cumulative count of remote EnvRunner responses dropped due to a
+        ``timeout_seconds``-bounded :py:meth:`foreach_env_runner` call.
+
+        This is incremented when a synchronous sampling iteration (or any
+        other timeout-bounded ``foreach_env_runner`` call) dispatches to N
+        healthy remote EnvRunners but receives fewer than N replies before
+        the timeout fires. The most common cause is ``sample_timeout_s``
+        elapsing while one or more EnvRunners are still rolling out an
+        episode; this counter lets users detect when wall-clock sampling
+        budget is being wasted on stalling workers without any visible error.
+        """
+        return self._num_env_runners_dropped_lifetime
 
     def sync_env_runner_states(
         self,
@@ -873,6 +893,21 @@ class EnvRunnerGroup:
         if not self._worker_manager.actor_ids():
             return local_result
 
+        # When a timeout was specified, snapshot how many actors the call is
+        # about to be dispatched to. Any shortfall in the returned results
+        # below is counted as a drop on the EnvRunnerGroup (see
+        # ``num_env_runners_dropped_lifetime``).
+        num_dispatched: Optional[int] = None
+        if timeout_seconds is not None:
+            if healthy_only:
+                candidate_ids = self._worker_manager.healthy_actor_ids()
+            else:
+                candidate_ids = self._worker_manager.actor_ids()
+            if remote_worker_ids is not None:
+                requested = set(remote_worker_ids)
+                candidate_ids = [i for i in candidate_ids if i in requested]
+            num_dispatched = len(candidate_ids)
+
         remote_results = self._worker_manager.foreach_actor(
             func,
             kwargs=kwargs,
@@ -889,6 +924,11 @@ class EnvRunnerGroup:
 
         # With application errors handled, return good results.
         remote_results = [r.get() for r in remote_results.ignore_errors()]
+
+        if num_dispatched is not None:
+            dropped = num_dispatched - len(remote_results)
+            if dropped > 0:
+                self._num_env_runners_dropped_lifetime += dropped
 
         return local_result + remote_results
 
