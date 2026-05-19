@@ -136,9 +136,7 @@ _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
 # Opt-in env var to allow reading Parquet files that contain
 # ray.data.arrow_pickled_object columns. Disabled by default because
 # pickle.load on attacker-controlled data enables arbitrary code execution.
-RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = (
-    "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
-)
+AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
 
 class _ParquetFragment:
@@ -1137,7 +1135,7 @@ def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
             f"columns requires unpickling, which can execute arbitrary code "
             f"and is unsafe with untrusted files.\n\n"
             f"If you trust the source of this data, set the environment "
-            f"variable {RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
+            f"variable {AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
             f"reading these columns. In a Ray cluster, this variable must "
             f"be set on all worker nodes (e.g. via 'runtime_env')."
         )
@@ -1164,7 +1162,7 @@ def read_fragments(
     # Ensure that we're reading at least one dataset fragment.
     assert len(fragments) > 0
 
-    allow_pickle = env_bool(RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False)
+    allow_pickle = env_bool(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False)
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     for fragment in fragments:
