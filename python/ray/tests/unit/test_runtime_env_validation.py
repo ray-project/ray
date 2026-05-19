@@ -586,7 +586,9 @@ class TestGetPipHash:
         req_path = str(requirements_file)
 
         with open(req_path, "w") as f:
-            f.write("# This is a comment\nnumpy==1.21.0\n\n# Another comment\npandas==1.3.0\n")
+            f.write(
+                "# This is a comment\nnumpy==1.21.0\n\n# Another comment\npandas==1.3.0\n"
+            )
 
         pip_dict = {"packages": [f"-r {req_path}"]}
         hash1 = _get_pip_hash(pip_dict)
@@ -620,13 +622,13 @@ class TestGetPipHash:
 
         pip_dict = {
             "packages": [f"-r {req_path}"],
-            "pip_install_options": ["--no-cache-dir"]
+            "pip_install_options": ["--no-cache-dir"],
         }
         hash1 = _get_pip_hash(pip_dict)
 
         pip_dict2 = {
             "packages": [f"-r {req_path}"],
-            "pip_install_options": ["--disable-pip-version-check"]
+            "pip_install_options": ["--disable-pip-version-check"],
         }
         hash2 = _get_pip_hash(pip_dict2)
 

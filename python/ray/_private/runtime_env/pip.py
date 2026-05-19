@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 from asyncio import create_task, get_running_loop
@@ -16,6 +17,13 @@ from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
+
+# Matches unresolved environment variable placeholders such as
+# ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR} or $VAR. Such placeholders are
+# expanded by the runtime env agent only after the driver-side hash is
+# computed, so any path containing one is not a real path on the driver
+# and must not be opened during hash computation.
+_ENV_VAR_PATTERN = re.compile(r"\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _parse_requirements_file(file_path: str) -> List[str]:
@@ -35,7 +43,9 @@ def _get_pip_hash(pip_dict: Dict) -> str:
     # Using a list as a stack for iterative processing to handle nested requirements.
     # Each item is a tuple (package_spec, parent_dir), where parent_dir is the directory
     # of the file that contained this package spec (None for top-level packages)
-    packages_to_process = [(pkg, None) for pkg in reversed(pip_dict_copy.get("packages", []))]
+    packages_to_process = [
+        (pkg, None) for pkg in reversed(pip_dict_copy.get("packages", []))
+    ]
     expanded_packages = []
     # Track visited files using absolute paths to prevent circular references
     visited_files = set()
@@ -47,7 +57,7 @@ def _get_pip_hash(pip_dict: Dict) -> str:
         if pkg.startswith("-r"):
             file_path = pkg[2:].lstrip()
         elif pkg.startswith("--requirement"):
-            file_path = pkg[len("--requirement"):].lstrip()
+            file_path = pkg[len("--requirement") :].lstrip()
             if file_path.startswith("="):
                 file_path = file_path[1:].lstrip()
         else:
@@ -55,6 +65,16 @@ def _get_pip_hash(pip_dict: Dict) -> str:
             continue
 
         if file_path is not None:
+            # If the path contains an unresolved environment variable
+            # placeholder (e.g. ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}),
+            # we cannot open it on the driver. Keep the original spec
+            # string in the hash input so the URI still reflects the user
+            # input, and let the runtime env agent expand and read the
+            # file on the worker side.
+            if _ENV_VAR_PATTERN.search(file_path):
+                expanded_packages.append(pkg)
+                continue
+
             if parent_dir and not os.path.isabs(file_path):
                 file_path = os.path.join(parent_dir, file_path)
 
