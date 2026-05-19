@@ -27,10 +27,8 @@ class DLPredictor(Predictor):
         """Converts a NumPy ndarray batch to the tensor type for the DL framework.
 
         Args:
-            numpy_array: The numpy array to convert to a tensor.
-            dtype: The tensor dtype to use when creating the DL tensor.
-            ndarray: A (dict of) NumPy ndarray(s) that we wish to convert to a (dict of)
-                tensor(s).
+            numpy_arrays: A (dict of) NumPy ndarray(s) that we wish to convert to a
+                (dict of) tensor(s).
             dtype: A (dict of) tensor dtype(s) to use when creating the DL tensor; if
                 None, the dtype will be inferred from the NumPy ndarray data.
 

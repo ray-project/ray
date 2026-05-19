@@ -775,5 +775,42 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
     ray.get(test.remote())
 
 
+def test_inspect_func_serialization_prints_qualname():
+    """Regression test for https://github.com/ray-project/ray/issues/48759.
+
+    The qualified function name should appear in traversal output when
+    inspecting a closure that captures a non-serializable object.
+    Uses a two-level nested function to showcase the context printed
+    at each closure boundary.
+    """
+    import io
+    import threading
+
+    from ray.util.check_serialize import inspect_serializability
+
+    def make_task():
+        lock = threading.Lock()
+
+        def inner():
+            return lock
+
+        def middle():
+            return inner()
+
+        return middle
+
+    out = io.StringIO()
+    serializable, _ = inspect_serializability(make_task(), print_file=out)
+    output = out.getvalue()
+
+    assert not serializable
+    assert (
+        "make_task.<locals>.middle':" in output
+    ), f"Expected middle closure qualname in output, got:\n{output}"
+    assert (
+        "make_task.<locals>.inner':" in output
+    ), f"Expected inner closure qualname in output, got:\n{output}"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
