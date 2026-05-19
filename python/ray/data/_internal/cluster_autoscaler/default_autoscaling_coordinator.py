@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 import ray.exceptions
@@ -14,15 +14,91 @@ from .base_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from ray._common.utils import env_bool
+from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+_ALLOCATED_RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
+_ALLOCATED_RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
     "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
 )
+
+
+def _normalize_allocated_resource_bundle_for_log(
+    bundle: ResourceDict,
+) -> Tuple[Tuple[str, float], ...]:
+    """Filter out zero-valued resources, and custom resource keys, and round memory values to the nearest 0.1 GiB.
+
+    Args:
+        bundle: The resource bundle to normalize.
+
+    Returns:
+        A tuple of normalized resource bundles.
+    """
+    normalized_bundle = []
+    for key in _ALLOCATED_RESOURCE_LOG_KEYS:
+        value = bundle.get(key, 0)
+        if value == 0:
+            continue
+        if key in _ALLOCATED_RESOURCE_LOG_MEMORY_KEYS:
+            value = int(round(value / GiB, 1) * GiB)  # round memory values to bytes.
+        normalized_bundle.append((key, value))
+    return tuple(normalized_bundle)
+
+
+def _format_resource_value_for_log(key: str, value: float) -> str:
+    """format numerical resource values to a human-readable string.
+    Args:
+        key: The resource key.
+        value: The resource value.
+
+    Returns:
+        A human-readable string.
+    """
+    if key in _ALLOCATED_RESOURCE_LOG_MEMORY_KEYS:
+        return memory_string(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _format_allocated_resource_bundle_for_log(
+    bundle: Tuple[Tuple[str, float], ...],
+) -> str:
+    """format a resource bundle to a human-readable json string.
+    Args:
+        bundle: The resource bundle.
+
+    Returns:
+        A human-readable string.
+    """
+    resources = [
+        f"{key}: {_format_resource_value_for_log(key, value)}" for key, value in bundle
+    ]
+    return "{" + ", ".join(resources) + "}"
+
+
+def _format_allocated_resources_for_log(resources: List[ResourceDict]) -> str:
+    bundle_counts: Dict[Tuple[Tuple[str, float], ...], int] = {}
+    for resource in resources:
+        bundle = _normalize_allocated_resource_bundle_for_log(resource)
+        if not bundle:
+            continue
+        bundle_counts[bundle] = bundle_counts.get(bundle, 0) + 1
+
+    return (
+        "["
+        + ", ".join(
+            f"{count} x {_format_allocated_resource_bundle_for_log(bundle)}"
+            for bundle, count in bundle_counts.items()
+        )
+        + "]"
+    )
 
 
 @dataclass
@@ -386,7 +462,10 @@ class _AutoscalingCoordinatorActor:
         if logger.isEnabledFor(logging.DEBUG):
             msg = "Allocated resources:\n"
             for requester_id, ongoing_req in self._ongoing_reqs.items():
-                msg += f"Requester {requester_id}: {ongoing_req.allocated_resources}\n"
+                allocated_resources = _format_allocated_resources_for_log(
+                    ongoing_req.allocated_resources
+                )
+                msg += f"Requester {requester_id}: {allocated_resources}\n"
             logger.debug(msg)
 
 

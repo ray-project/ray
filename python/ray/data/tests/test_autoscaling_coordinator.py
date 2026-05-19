@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -10,6 +11,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     _AutoscalingCoordinatorActor,
     get_or_create_autoscaling_coordinator,
 )
+from ray.data._internal.util import GiB
 from ray.tests.conftest import wait_for_condition
 
 CLUSTER_NODES_WITH_HEAD = [
@@ -210,6 +212,85 @@ def test_double_allocation_with_multiple_request_remaining():
     # Both requesters should get their specific requests + fair share of remaining
     assert res1 == req1 + [expected_remaining_per_requester]
     assert res2 == req2 + [expected_remaining_per_requester]
+
+
+def test_allocated_resources_debug_log_filters_and_aggregates(propagate_logs, caplog):
+    cluster_nodes = [
+        {
+            "Resources": {
+                "CPU": 8,
+                "GPU": 0,
+                "memory": 32 * GiB,
+                "object_store_memory": int(8.96 * GiB),
+                "anyscale/cpu_only:true": 1.0,
+                "anyscale/region:us-west-2": 1.0,
+                "node:10.0.193.159": 1.0,
+            },
+            "Alive": True,
+            "NodeID": "n1",
+        },
+        {
+            "Resources": {
+                "CPU": 8,
+                "GPU": 0,
+                "memory": 32 * GiB,
+                "object_store_memory": int(9.04 * GiB),
+                "anyscale/cpu_only:true": 1.0,
+                "anyscale/region:us-west-2": 1.0,
+                "node:10.0.241.173": 1.0,
+            },
+            "Alive": True,
+            "NodeID": "n2",
+        },
+        {
+            "Resources": {
+                "CPU": 0,
+                "GPU": 0,
+                "memory": 0,
+                "object_store_memory": 0,
+                "anyscale/cpu_only:true": 1.0,
+                "node:10.0.252.14": 1.0,
+            },
+            "Alive": True,
+            "NodeID": "n3",
+        },
+    ]
+    coordinator = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: cluster_nodes,
+    )
+
+    logger_name = (
+        "ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator"
+    )
+    with caplog.at_level(logging.DEBUG, logger=logger_name):
+        coordinator.request_resources(
+            requester_id="requester1",
+            resources=[],
+            expire_after_s=100,
+            request_remaining=True,
+        )
+
+    allocated = coordinator.get_allocated_resources("requester1")
+    assert any("anyscale/cpu_only:true" in bundle for bundle in allocated)
+    assert any("node:10.0.193.159" in bundle for bundle in allocated)
+
+    allocated_resource_logs = [
+        record.message
+        for record in caplog.records
+        if record.message.startswith("Allocated resources:")
+    ]
+    assert allocated_resource_logs == [
+        "Allocated resources:\n"
+        "Requester requester1: "
+        "[2 x {CPU: 8, memory: 32.0GiB, object_store_memory: 9.0GiB}]\n"
+    ]
+
+    log_message = allocated_resource_logs[0]
+    assert "anyscale/" not in log_message
+    assert "node:" not in log_message
+    assert "GPU" not in log_message
 
 
 @pytest.fixture
