@@ -2798,9 +2798,7 @@ def test_write_parquet_partitioning(choice, tmp_path):
 
     parquet_kwargs, partitioning = kwargs[choice]
 
-    ds = ray.data.range(1000).add_column(
-        "grp", lambda x: x["id"] % 10, batch_format="numpy"
-    )
+    ds = ray.data.range(1000).add_column("grp", lambda x: x["id"] % 10)
 
     ds.write_parquet(
         tmp_path,

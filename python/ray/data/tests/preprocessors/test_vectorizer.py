@@ -41,7 +41,7 @@ def test_count_vectorizer():
             "A": processed_col_a,
             "B": processed_col_b,
         }
-    ).astype(out_df.dtypes.to_dict())
+    )
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -67,7 +67,7 @@ def test_count_vectorizer():
             "A": processed_col_a,
             "B": processed_col_b,
         }
-    ).astype(out_df.dtypes.to_dict())
+    )
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -98,7 +98,7 @@ def test_count_vectorizer():
             "A_counts": processed_col_a,
             "B_counts": processed_col_b,
         }
-    ).astype(out_df.dtypes.to_dict())
+    )
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -119,9 +119,7 @@ def test_hashing_vectorizer():
     processed_col_a = [[0, 4, 2], [0, 5, 0]]
     processed_col_b = [[0, 0, 1], [3, 0, 0]]
 
-    expected_df = pd.DataFrame.from_dict(
-        {"A": processed_col_a, "B": processed_col_b}
-    ).astype(out_df.dtypes.to_dict())
+    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -151,7 +149,7 @@ def test_hashing_vectorizer():
             "A_hashed": processed_col_a,
             "B_hashed": processed_col_b,
         }
-    ).astype(out_df.dtypes.to_dict())
+    )
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
