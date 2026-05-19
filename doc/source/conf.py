@@ -966,7 +966,7 @@ def apply_ipython3_lexer(app, docname, source):
         return
 
     notebook = json.loads(source[0])
-    notebook.setdefault("metadata", {}).setdefault("language_info", {})[
-        "pygments_lexer"
-    ] = "ipython3"
-    source[0] = json.dumps(notebook)
+    lang_info = notebook.setdefault("metadata", {}).setdefault("language_info", {})
+    if lang_info.get("pygments_lexer") != "ipython3":
+        lang_info["pygments_lexer"] = "ipython3"
+        source[0] = json.dumps(notebook, ensure_ascii=False)
