@@ -84,34 +84,26 @@ def get_vllm_cli_args(llm_config):
     engine_kwargs.pop("tokenizer_pool_size", None)
     engine_kwargs.pop("tokenizer_pool_type", None)
 
-    # Appended explicitly below; skip in the generic loop to avoid duplicates.
-    APPENDED_BELOW = {"tensor_parallel_size", "max_model_len"}
-
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
     for key, value in engine_kwargs.items():
-        if key in APPENDED_BELOW or value is None:
-            continue
-        flag = "--" + key.replace("_", "-")
-        if isinstance(value, bool):
-            # vLLM's argparse treats `--flag` (no value) as True, so only emit
-            # the flag when the YAML value is True; omit entirely when False.
-            if value:
-                cli_args.append(flag)
-            continue
-        cli_args.append(flag)
-        if isinstance(value, dict):
-            cli_args.append(json.dumps(value))
-        else:
-            cli_args.append(str(value))
-
-    cli_args.extend(
-        ["--tensor-parallel-size", str(engine_kwargs["tensor_parallel_size"])]
-    )
-
-    if "max_model_len" in engine_kwargs:
-        cli_args.extend(["--max-model-len", str(engine_kwargs["max_model_len"])])
-
+        cli_args.extend(_engine_kwarg_to_cli(key, value))
     return cli_args
+
+
+def _engine_kwarg_to_cli(key, value):
+    """Translate one engine_kwargs entry to vllm CLI args.
+
+    vLLM uses argparse.BooleanOptionalAction for bool fields, so we emit
+    `--flag` only when True and rely on the engine default otherwise.
+    """
+    if value is None:
+        return []
+    flag = "--" + key.replace("_", "-")
+    if isinstance(value, bool):
+        return [flag] if value else []
+    if isinstance(value, dict):
+        return [flag, json.dumps(value)]
+    return [flag, str(value)]
 
 
 def get_ray_options(llm_config):
