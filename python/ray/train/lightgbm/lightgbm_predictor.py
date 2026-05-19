@@ -44,6 +44,8 @@ class LightGBMPredictor(Predictor):
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.
 
+        Returns:
+            A new ``LightGBMPredictor`` instance.
         """
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
