@@ -1267,7 +1267,7 @@ class AsyncioRouter:
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
-        # Internal opt-out for pick-only callers (e.g. LLM ingress router that
+        # Internal opt-out for pick-only callers (e.g. ingress router that
         # forwards traffic out-of-band via HAProxy). Skips the replica-side
         # reserve_slot RPC and the rejection-retry loop; the configured
         # RequestRouter still drives ordering.

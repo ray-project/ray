@@ -408,7 +408,9 @@ class ReplicaSelection:
     _deployment_id: Optional[DeploymentID]
     _request_metadata: RequestMetadata
     _method_name: str
-    _slot_token: Optional[str]  # None when created via the pick-only path
+    # Token to be used for replica reservation;
+    # Can be None when created via the pick-only path
+    _slot_token: Optional[str]
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
@@ -456,8 +458,8 @@ class ReplicaSelection:
         or None if this selection was created without a reservation.
         """
         if self._slot_token is None:
-            return None
+            return
         if self._dispatched and not force:
-            return None
+            return
 
         return await self._replica.release_slot(self._slot_token)
