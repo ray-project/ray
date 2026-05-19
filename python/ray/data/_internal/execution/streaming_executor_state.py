@@ -9,7 +9,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -122,7 +122,7 @@ class IdleDetector:
 
 
 class OutputBackpressureGuard:
-    """Liveness escape hatch for streaming output backpressure.
+    """Escape hatch for streaming output backpressure.
 
     When backpressure policies collectively allow 0 bytes of task output to be
     read for an operator, the pipeline can deadlock if downstream is also
@@ -142,7 +142,9 @@ class OutputBackpressureGuard:
     def should_unblock(self, op: PhysicalOperator) -> bool:
         """Return True if output backpressure should be relaxed for ``op``
         to preserve pipeline liveness."""
-        downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
+        downstream_eligible_ops = list(
+            self._resource_manager.get_downstream_eligible_ops(op)
+        )
 
         # If this operator is a terminal one (no downstream eligible ops):
         # - No external consumer (e.g., write pipelines where we control draining):
@@ -189,21 +191,6 @@ class OutputBackpressureGuard:
         # As a last resort we check whether operator has been idling (ie not
         # producing any outputs) for a while, and unblock in that case.
         return self._idle_detector.detect_idle(op)
-
-    def _get_downstream_eligible_ops(
-        self, op: PhysicalOperator
-    ) -> Iterable[PhysicalOperator]:
-        """Yield downstream eligible operators, skipping ineligible intermediates.
-
-        E.g.,
-          - "cur_map->downstream_map" yields [downstream_map].
-          - "cur_map->limit1->limit2->downstream_map" yields [downstream_map].
-        """
-        for next_op in op.output_dependencies:
-            if self._resource_manager.is_op_eligible(next_op):
-                yield next_op
-            else:
-                yield from self._get_downstream_eligible_ops(next_op)
 
     def _can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Whether ``op`` can submit a new task under current resource budgets.
@@ -594,6 +581,7 @@ def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
+    output_backpressure_guard: OutputBackpressureGuard,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -603,6 +591,9 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        output_backpressure_guard: Escape hatch for streaming output
+            backpressure. Bumps a fully-throttled output limit (0 bytes) to
+            1 byte when the guard signals a stall.
     Returns:
         The number of errored blocks.
     """
@@ -630,26 +621,20 @@ def process_completed_tasks(
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
-        # TODO: Should move after here, and based on max_bytes_to_read
-        # Should call _should_unblock_streaming_output_backpressure here
-        # - get downstream eligible ops (can we use get_eligible_operators??)
-        # - (v) topology
-        # - resource manager (need to pass in as args)
-        # - can_submit_new_task  -> need resource allocator
-        # - _idle_detector.detect_idle  -> need idle detector, which is
-        #   stateful and need to maintain state in somewhere
-        # - terminal_operator_from_topology  -> already module level
-
-        # current problem: to get can_submit_new_task, we need to be able to
-        # get _op_budgets -> this is resource allocater's responsibility
-
-
         assert (
             max_bytes_to_read is None or max_bytes_to_read >= 0
         ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
 
-        # If no policy provides a limit, there's no limit
-        op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
+        # Apply the escape hatch after aggregating across all policies so it
+        # fires regardless of which policy drove the limit to 0.
+        if max_bytes_to_read == 0 and output_backpressure_guard.should_unblock(op):
+            max_bytes_to_read = 1
+
+        # When the guard bumped the limit above 0, clear the policy attribution too
+        in_backpressure = max_bytes_to_read == 0
+        op.notify_in_task_output_backpressure(
+            in_backpressure, limiting_policy if in_backpressure else None
+        )
 
         if max_bytes_to_read is not None:
             remaining_output_budget[state] = max_bytes_to_read
