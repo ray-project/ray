@@ -207,6 +207,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': N, 'pN': N, 'pN': N, 'pN': N}",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -295,6 +296,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': None, 'pN': None, 'pN': None, 'pN': None}",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -741,6 +743,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': N, 'pN': N, 'pN': N, 'pN': N},\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -905,6 +908,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': N, 'pN': N, 'pN': N, 'pN': N},\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -1022,6 +1026,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': N, 'pN': N, 'pN': N, 'pN': N},\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
