@@ -774,6 +774,7 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
     # It should pass.
     ray.get(test.remote())
 
+
 def test_inspect_serializability_warning_message_is_actionable():
     """Regression test: WARNING message should include actionable guidance,
     not just say 'this may be an oversight'."""
