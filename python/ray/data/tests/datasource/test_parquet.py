@@ -3121,21 +3121,10 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
-def test_read_parquet_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
-    ext_type = ArrowPythonObjectType()
-    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
-    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
-    pq.write_table(table, str(tmp_path / "data.parquet"))
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
-
-
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, ray_start_regular_shared, monkeypatch
+    tmp_path, shutdown_only
 ):
-    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
 
     ext_type = ArrowPythonObjectType()
     storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
@@ -3144,8 +3133,22 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
 
     ds = ray.data.read_parquet(str(tmp_path))
     rows = ds.take_all()
+
     assert len(rows) == 1
     assert rows[0]["col"] == {"key": "value"}
+
+
+def test_read_parquet_rejects_pickle_object_columns(tmp_path, shutdown_only):
+    ray.init()
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
 
 
 if __name__ == "__main__":

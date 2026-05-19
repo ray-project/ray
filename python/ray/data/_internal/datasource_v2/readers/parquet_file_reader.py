@@ -11,7 +11,11 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
-from ray._common.utils import env_integer
+from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource.parquet_datasource import (
+    RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    _check_for_pickle_object_columns,
+)
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -230,6 +234,14 @@ class ParquetFileReader(FileReader):
 
         self._sampled_batch_size = batch_size
         return batch_size
+
+    @override
+    def read(self, input_split) -> "Iterator[pa.Table]":
+        allow_pickle = env_bool(RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False)
+        for table in super().read(input_split):
+            if not allow_pickle:
+                _check_for_pickle_object_columns(table)
+            yield table
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:
