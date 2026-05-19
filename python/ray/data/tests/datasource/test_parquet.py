@@ -3127,9 +3127,9 @@ def use_datasource_v2(request, restore_data_context):
 
 
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, ray_start_regular_shared, monkeypatch, use_datasource_v2
+    tmp_path, shutdown_only, use_datasource_v2
 ):
-    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
 
     ext_type = ArrowPythonObjectType()
     storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
@@ -3144,8 +3144,10 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
 
 
 def test_read_parquet_rejects_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, shutdown_only, use_datasource_v2
 ):
+    ray.init()
+
     marker = tmp_path / "exploit_marker"
 
     class Exploit:
