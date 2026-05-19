@@ -114,17 +114,14 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
 
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
-                                         const rpc::Address &owner_address,
-                                         bool foreign_owner_already_monitoring) {
+                                         const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
-  return AddBorrowedObjectInternal(
-      object_id, outer_id, owner_address, foreign_owner_already_monitoring);
+  return AddBorrowedObjectInternal(object_id, outer_id, owner_address);
 }
 
 bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
-                                                 const rpc::Address &owner_address,
-                                                 bool foreign_owner_already_monitoring) {
+                                                 const rpc::Address &owner_address) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
@@ -132,7 +129,6 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   it->second.owner_address_ = owner_address;
-  it->second.foreign_owner_already_monitoring |= foreign_owner_already_monitoring;
 
   if (!outer_id.IsNil()) {
     auto outer_it = object_id_refs_.find(outer_id);
@@ -1100,26 +1096,20 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     return true;
   }
 
-  if (for_ref_removed || !ref.foreign_owner_already_monitoring) {
-    // If this object_id has not been encountered yet, add it to borrowed_refs.
-    if (encountered_ids.insert(object_id).second) {
-      RAY_LOG(DEBUG).WithField(object_id)
-          << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
-          << ref.borrow().stored_in_objects.size();
+  // If this object_id has not been encountered yet, add it to borrowed_refs.
+  if (encountered_ids.insert(object_id).second) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
+        << ref.borrow().stored_in_objects.size();
 
-      auto *proto_ref = borrowed_refs->Add();
-      bool has_local_ref = ref.RefCount() > (deduct_local_ref ? 1 : 0);
-      ref.ToProto(proto_ref, object_id, has_local_ref);
+    auto *proto_ref = borrowed_refs->Add();
+    bool has_local_ref = ref.RefCount() > (deduct_local_ref ? 1 : 0);
+    ref.ToProto(proto_ref, object_id, has_local_ref);
 
-      // Clear the local list of borrowers that we have accumulated. The receiver
-      // of the returned borrowed_refs must merge this list into their own list
-      // until all active borrowers are merged into the owner.
-      //
-      // If a foreign owner process is waiting for this ref to be removed already,
-      // then don't clear its stored metadata. Clearing this will prevent the
-      // foreign owner from learning about the parent task borrowing this value.
-      ref.borrow_info.reset();
-    }
+    // Clear the local list of borrowers that we have accumulated. The receiver
+    // of the returned borrowed_refs must merge this list into their own list
+    // until all active borrowers are merged into the owner.
+    ref.borrow_info.reset();
   }
 
   // Attempt to pop children.
@@ -1191,10 +1181,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   for (const auto &contained_in_borrowed_id :
        borrower_it->second.nested().contained_in_borrowed_ids) {
     RAY_CHECK(borrower_ref.owner_address_);
-    AddBorrowedObjectInternal(object_id,
-                              contained_in_borrowed_id,
-                              *borrower_ref.owner_address_,
-                              /*foreign_owner_already_monitoring=*/false);
+    AddBorrowedObjectInternal(
+        object_id, contained_in_borrowed_id, *borrower_ref.owner_address_);
   }
 
   // If we own this ID, then wait for all new borrowers to reach a ref count

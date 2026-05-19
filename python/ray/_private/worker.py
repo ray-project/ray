@@ -806,7 +806,6 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
         _tensor_transport: Optional[str] = None,
     ):
@@ -820,7 +819,6 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
@@ -890,7 +888,6 @@ class Worker:
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
-            owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
             tensor_transport=tensor_transport,
@@ -3030,7 +3027,6 @@ def get(
 def put(
     value: R,
     *,
-    _owner: Optional["ray.actor.ActorHandle"] = None,
     _tensor_transport: Optional[str] = None,
 ) -> "ray.ObjectRef[R]":
     """Store an object in the object store.
@@ -3045,12 +3041,6 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner [Experimental]: The actor that should own this object. This
-            allows creating objects with lifetimes decoupled from that of the
-            creating process. The owner actor must be passed a reference to the
-            object prior to the object creator exiting, otherwise the reference
-            will still be lost. *Note that this argument is an experimental API
-            and should be avoided if possible.*
         _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
             Currently, this only supports one-sided tensor transports such as "nixl".
             When this is None (default), Ray will use the object store.
@@ -3061,26 +3051,10 @@ def put(
     worker = global_worker
     worker.check_connected()
 
-    if _owner is None:
-        serialize_owner_address = None
-    elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure GlobalState is connected
-        ray._private.state.state._connect_and_get_accessor()
-        serialize_owner_address = (
-            ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.get_actor_info(_owner._actor_id)
-            )
-        )
-        if not serialize_owner_address:
-            raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-    else:
-        raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
-
     with profiling.profile("ray.put"):
         try:
             object_ref = worker.put_object(
                 value,
-                owner_address=serialize_owner_address,
                 _tensor_transport=_tensor_transport,
             )
         except ObjectStoreFullError:
