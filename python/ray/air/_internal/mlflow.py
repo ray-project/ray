@@ -47,7 +47,7 @@ class _MLflowLoggerUtil:
         tracking_token: Optional[str] = None,
         artifact_location: Optional[str] = None,
         create_experiment_if_not_exists: bool = True,
-    ):
+    ) -> None:
         """
         Sets up MLflow.
 
@@ -80,8 +80,8 @@ class _MLflowLoggerUtil:
                 experiment with the provided name if it does not already
                 exist. Defaults to True.
 
-        Returns:
-            None. Raises ``ValueError`` if setup is not successful.
+        Raises:
+             ValueError: ``experiment_id`` and ``experiment_name`` are both ``None``.
         """
         if tracking_token:
             os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
