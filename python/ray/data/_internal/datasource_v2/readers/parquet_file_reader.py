@@ -195,6 +195,9 @@ class ParquetFileReader(FileReader):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._target_block_size = target_block_size
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
@@ -236,14 +239,6 @@ class ParquetFileReader(FileReader):
         return batch_size
 
     @override
-    def read(self, input_split) -> "Iterator[pa.Table]":
-        allow_pickle = env_bool(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False)
-        for table in super().read(input_split):
-            if not allow_pickle:
-                _check_for_pickle_object_columns(table)
-            yield table
-
-    @override
     def _on_batch_read(self, table: pa.Table) -> None:
         """Refine batch size estimate from actual in-memory data."""
         if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
@@ -253,6 +248,16 @@ class ParquetFileReader(FileReader):
 
     @override
     def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        for table in self._iter_fragment_tables_impl(fragment, scanner_kwargs):
+            if not self._allow_pickle_object_columns:
+                _check_for_pickle_object_columns(table)
+            yield table
+
+    def _iter_fragment_tables_impl(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,

@@ -3139,15 +3139,24 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
 
 
 def test_read_parquet_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
 
     ext_type = ArrowPythonObjectType()
-    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
     table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
     pq.write_table(table, str(tmp_path / "data.parquet"))
 
     ds = ray.data.read_parquet(str(tmp_path))
     with pytest.raises(Exception, match="arrow_pickled_object"):
         ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 if __name__ == "__main__":
