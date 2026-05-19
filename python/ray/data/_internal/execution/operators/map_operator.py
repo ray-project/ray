@@ -161,6 +161,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -170,6 +171,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
+        self._isolate_workers = isolate_workers
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
@@ -290,6 +292,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -325,6 +328,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 bundle before any tasks are submitted. Used for deferred initialization
                 that requires schema from actual data (e.g., schema evolution for
                 Iceberg writes).
+            isolate_workers: If ``True``, task-pool workers get their own
+                worker process pool, preventing side-effects from leaking across
+                operators.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -360,6 +366,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                isolate_workers=isolate_workers,
                 on_start=on_start,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):

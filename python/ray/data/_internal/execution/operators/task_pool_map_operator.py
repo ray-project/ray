@@ -43,6 +43,7 @@ class TaskPoolMapOperator(MapOperator):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -84,6 +85,7 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
+            isolate_workers=isolate_workers,
         )
 
         if max_concurrency is not None and max_concurrency <= 0:
@@ -100,6 +102,13 @@ class TaskPoolMapOperator(MapOperator):
             "num_returns": "streaming",
             "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
+
+        if self._isolate_workers:
+            runtime_env = ray_remote_static_args.get("runtime_env", {})
+            env_vars = runtime_env.get("env_vars", {})
+            env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
+            runtime_env["env_vars"] = env_vars
+            ray_remote_static_args["runtime_env"] = runtime_env
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
