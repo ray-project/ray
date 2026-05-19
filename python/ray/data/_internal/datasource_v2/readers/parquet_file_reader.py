@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -154,6 +154,7 @@ class ParquetFileReader(FileReader):
         include_paths: bool = False,
         include_row_hash: bool = False,
         schema: Optional[pa.Schema] = None,
+        parquet_format_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -176,6 +177,11 @@ class ParquetFileReader(FileReader):
             schema: Caller-supplied unified schema forwarded to the base
                 :class:`FileReader` for per-fragment inference override
                 and partition-column type casting.
+            parquet_format_kwargs: Extra kwargs spread into
+                :class:`pyarrow.dataset.ParquetFileFormat` (e.g.
+                ``coerce_int96_timestamp_unit``, ``pre_buffer``,
+                ``dictionary_columns``). Used to forward the deprecated
+                ``dataset_kwargs`` arg on the V2 path.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -192,9 +198,14 @@ class ParquetFileReader(FileReader):
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
+        self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
+
+    @override
+    def _make_format(self) -> pds.ParquetFileFormat:
+        return pds.ParquetFileFormat(**self._parquet_format_kwargs)
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
