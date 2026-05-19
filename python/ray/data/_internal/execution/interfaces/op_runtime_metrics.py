@@ -614,7 +614,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             if skip_internal_metrics and metric.internal_only:
                 continue
             value = getattr(self, metric.name)
-            if hasattr(value, "as_dict"):
+            if isinstance(value, DistributionTracker):
                 value = value.as_dict()
             result.append((metric.name, value))
 
