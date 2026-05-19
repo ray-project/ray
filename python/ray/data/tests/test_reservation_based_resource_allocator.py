@@ -119,19 +119,19 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        assert allocator.get_budget(o2) == ExecutionResources(3, 0, 113)
-        assert allocator.get_budget(o3) == ExecutionResources(5, 0, 207)
-        assert allocator.max_task_output_bytes_to_read(o2) == 138
-        assert allocator.max_task_output_bytes_to_read(o3) == 257
-        assert allocator.get_allocation(o2) == ExecutionResources(7, 0, 238)
-        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 237)
-        # Headroom = allocation - usage; can be negative when an op exceeds its grant.
+        assert allocator.get_budget(o2) == ExecutionResources(2, 0, 0)
+        assert allocator.get_budget(o3) == ExecutionResources(6, 0, 345)
+        assert allocator.max_task_output_bytes_to_read(o2) == 25
+        assert allocator.max_task_output_bytes_to_read(o3) == 395
+        assert allocator.get_allocation(o2) == ExecutionResources(8, 0, 375)
+        assert allocator.get_allocation(o3) == ExecutionResources(8, 0, 375)
+        # Headroom = allocation - usage; can be negative when an op exceeds its allocation.
         assert allocator.get_allocation(o2).subtract(
             op_usages[o2]
-        ) == ExecutionResources(1, 0, 238 - 500)
+        ) == ExecutionResources(8 - 6, 0, 375 - 500)
         assert allocator.get_allocation(o3).subtract(
             op_usages[o3]
-        ) == ExecutionResources(5, 0, 237 - 125)
+        ) == ExecutionResources(8 - 2, 0, 375 - 125)
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -143,15 +143,19 @@ class TestReservationOpResourceAllocator:
         assert allocator._reserved_for_op_outputs[o2] == 100
         assert allocator._reserved_for_op_outputs[o3] == 100
         assert allocator._total_shared == ExecutionResources(6, 0, 400)
-        assert allocator.get_budget(o2) == ExecutionResources(1.5, 0, 50)
-        assert allocator.get_budget(o3) == ExecutionResources(2.5, 0, 120)
-        assert allocator.max_task_output_bytes_to_read(o2) == 50
-        assert allocator.max_task_output_bytes_to_read(o3) == 145
-        assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
-        assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
+        assert allocator.get_budget(o2) == ExecutionResources(0, 0, 0)
+        assert allocator.get_budget(o3) == ExecutionResources(4, 0, 270)
+        assert allocator.max_task_output_bytes_to_read(o2) == 1
+        assert allocator.max_task_output_bytes_to_read(o3) == 295
+        assert allocator.get_allocation(o2) == ExecutionResources(6, 0, 300)
+        assert allocator.get_allocation(o3) == ExecutionResources(6, 0, 300)
 
     def test_allocation_headroom_can_be_negative(self, restore_data_context):
-        """allocation - usage can go negative on CPU when an op exceeds its grant."""
+        """allocation - usage can go negative when an op exceeds its grant.
+
+        allocation is fixed at reserved + equal share of total_shared, independent
+        of current usage. budget = max(allocation - usage, 0) is what reacts to usage.
+        """
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
@@ -191,16 +195,24 @@ class TestReservationOpResourceAllocator:
         op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
 
         allocator.update_budgets(limits=global_limits)
+        expected_alloc_cpu = 4
 
-        headroom2 = allocator.get_allocation(o2).subtract(op_usages[o2])
-        assert headroom2.cpu == pytest.approx(-2.5), headroom2
+        assert allocator.get_allocation(o2).cpu == pytest.approx(expected_alloc_cpu)
+        headroom = allocator.get_allocation(o2).subtract(op_usages[o2])
+        assert headroom.cpu == pytest.approx(-1)
 
-        # At moderate usage, o2 stays within its allocation.
-        op_usages[o2] = ExecutionResources(cpu=3, gpu=0, object_store_memory=0)
-        allocator.update_budgets(limits=global_limits)
-        assert allocator.get_allocation(o2).subtract(
-            op_usages[o2]
-        ).cpu == pytest.approx(0.5)
+        # Allocation does not change with usage; budget tracks usage.
+        for o2_cpu_usage in [0, 3, 5, 6]:
+            op_usages[o2] = ExecutionResources(
+                cpu=o2_cpu_usage, gpu=0, object_store_memory=0
+            )
+            allocator.update_budgets(limits=global_limits)
+            assert allocator.get_allocation(o2).cpu == pytest.approx(
+                expected_alloc_cpu
+            ), o2_cpu_usage
+            assert allocator.get_budget(o2).cpu == pytest.approx(
+                max(expected_alloc_cpu - o2_cpu_usage, 0)
+            ), o2_cpu_usage
 
     def test_reserve_min_resource_requirements(self, restore_data_context):
         """Test that we'll reserve at least min_resource_requirements
@@ -1096,7 +1108,7 @@ class TestReservationOpResourceAllocator:
         resource_manager._update_allocated_budgets()
 
         assert allocator.get_budget(o6) == ExecutionResources(
-            cpu=4, object_store_memory=350
+            cpu=4, object_store_memory=300
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
@@ -1123,7 +1135,7 @@ class TestReservationOpResourceAllocator:
             cpu=7.5, object_store_memory=850
         )
         assert allocator.get_budget(o6) == ExecutionResources(
-            cpu=5.5, object_store_memory=381
+            cpu=5.5, object_store_memory=338
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
