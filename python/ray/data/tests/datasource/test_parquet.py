@@ -45,6 +45,11 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def use_datasource_v2(request, restore_data_context):
+    restore_data_context.use_datasource_v2 = request.param
+
+
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     ray.data.range(1).write_parquet(tmp_path, compression="gzip")
 
@@ -3121,33 +3126,9 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
-@pytest.fixture(params=[False, True], ids=["v1", "v2"])
-def use_datasource_v2(request, restore_data_context):
-    restore_data_context.use_datasource_v2 = request.param
-
-
-def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only, use_datasource_v2
-):
-    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
-
-    ext_type = ArrowPythonObjectType()
-    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
-    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
-    pq.write_table(table, str(tmp_path / "data.parquet"))
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    rows = ds.take_all()
-
-    assert len(rows) == 1
-    assert rows[0]["col"] == {"key": "value"}
-
-
 def test_read_parquet_rejects_pickle_object_columns(
-    tmp_path, shutdown_only, use_datasource_v2
+    tmp_path, ray_start_regular_shared, use_datasource_v2
 ):
-    ray.init()
-
     marker = tmp_path / "exploit_marker"
 
     class Exploit:
@@ -3166,6 +3147,25 @@ def test_read_parquet_rejects_pickle_object_columns(
         ds.take_all()
 
     assert not marker.exists(), "pickle.load executed attacker code"
+
+
+def test_read_parquet_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["col"] == {"key": "value"}
 
 
 if __name__ == "__main__":
