@@ -42,6 +42,10 @@ class OngoingRequest:
     priority: int
     # Resources that are already allocated to the requester.
     allocated_resources: List[ResourceDict]
+    # Per-bundle label selectors, parallel to ``requested_resources``.
+    # Empty dicts mean no label constraint on that bundle. Required to have
+    # the same length as ``requested_resources``.
+    requested_label_selectors: List[Dict[str, str]]
 
     def __lt__(self, other):
         """Used to sort requests when allocating resources.
@@ -88,6 +92,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
+        label_selectors: Optional[List[Dict[str, str]]] = None,
     ) -> None:
         """Fire-and-forget: submit a resource request to the coordinator actor.
 
@@ -99,6 +104,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             expire_after_s=expire_after_s,
             request_remaining=request_remaining,
             priority=priority,
+            label_selectors=label_selectors,
         )
 
     def cancel_request(self) -> None:
@@ -151,6 +157,16 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         return self._cached_allocated_resources
 
 
+def _default_send_resources_request(
+    bundles: List[ResourceDict],
+    label_selectors: Optional[List[Dict[str, str]]] = None,
+) -> None:
+    """Default ``send_resources_request`` implementation for the actor."""
+    ray.autoscaler.sdk.request_resources(
+        bundles=bundles, bundle_label_selectors=label_selectors
+    )
+
+
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -164,9 +180,9 @@ class _AutoscalingCoordinatorActor:
     def __init__(
         self,
         get_current_time: Callable[[], float] = time.time,
-        send_resources_request: Callable[[List[ResourceDict]], None] = lambda bundles: (
-            ray.autoscaler.sdk.request_resources(bundles=bundles)
-        ),
+        send_resources_request: Callable[
+            [List[ResourceDict], Optional[List[Dict[str, str]]]], None
+        ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
     ):
         self._get_current_time = get_current_time
@@ -206,8 +222,21 @@ class _AutoscalingCoordinatorActor:
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
+        label_selectors: Optional[List[Dict[str, str]]] = None,
     ) -> None:
-        logger.debug("Received request from %s: %s.", requester_id, resources)
+        logger.debug(
+            "Received request from %s: %s (label_selectors=%s).",
+            requester_id,
+            resources,
+            label_selectors,
+        )
+        if label_selectors is None:
+            label_selectors = [{} for _ in resources]
+        elif len(label_selectors) != len(resources):
+            raise ValueError(
+                f"label_selectors length ({len(label_selectors)}) must match "
+                f"resources length ({len(resources)})."
+            )
         with self._lock:
             now = self._get_current_time()
             request_updated = False
@@ -220,14 +249,19 @@ class _AutoscalingCoordinatorActor:
                 if priority.value != old_req.priority:
                     raise ValueError("Cannot change priority of an ongoing request.")
 
-                request_updated = resources != old_req.requested_resources
+                request_updated = (
+                    resources != old_req.requested_resources
+                    or label_selectors != old_req.requested_label_selectors
+                )
                 old_req.requested_resources = resources
+                old_req.requested_label_selectors = label_selectors
                 old_req.expiration_time = now + expire_after_s
             else:
                 request_updated = True
                 self._ongoing_reqs[requester_id] = OngoingRequest(
                     first_request_time=now,
                     requested_resources=resources,
+                    requested_label_selectors=label_selectors,
                     request_remaining=request_remaining,
                     priority=priority.value,
                     expiration_time=now + expire_after_s,
@@ -262,10 +296,15 @@ class _AutoscalingCoordinatorActor:
     def _merge_and_send_requests(self):
         """Merge requests and send them to Ray Autoscaler."""
         self._purge_expired_requests()
-        merged_req = []
+        merged_req: List[ResourceDict] = []
+        merged_selectors: List[Dict[str, str]] = []
         for req in self._ongoing_reqs.values():
             merged_req.extend(req.requested_resources)
-        self._send_resources_request(merged_req)
+            merged_selectors.extend(req.requested_label_selectors)
+        if any(merged_selectors):
+            self._send_resources_request(merged_req, label_selectors=merged_selectors)
+        else:
+            self._send_resources_request(merged_req)
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester."""

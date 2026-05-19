@@ -96,7 +96,7 @@ class Predictor(abc.ABC):
 
         Args:
             checkpoint: Checkpoint to load predictor data from.
-            kwargs: Arguments specific to predictor implementations.
+            **kwargs: Arguments specific to predictor implementations.
 
         Returns:
             Predictor: Predictor object.
@@ -112,6 +112,9 @@ class Predictor(abc.ABC):
         Args:
             pandas_udf: A function that takes a pandas.DataFrame and other
                 optional kwargs and returns a pandas.DataFrame.
+
+        Returns:
+            A Predictor that runs ``pandas_udf`` on each batch.
         """
 
         class PandasUDFPredictor(Predictor):
@@ -178,7 +181,7 @@ class Predictor(abc.ABC):
 
         Args:
             data: A batch of input data of type ``DataBatchType``.
-            kwargs: Arguments specific to predictor implementations. These are passed
+            **kwargs: Arguments specific to predictor implementations. These are passed
                 directly to ``_predict_numpy`` or ``_predict_pandas``.
 
         Returns:
@@ -227,7 +230,7 @@ class Predictor(abc.ABC):
 
         Args:
             data: A pandas DataFrame to perform predictions on.
-            kwargs: Arguments specific to the predictor implementation.
+            **kwargs: Arguments specific to the predictor implementation.
 
         Returns:
             A pandas DataFrame containing the prediction result.
@@ -246,7 +249,7 @@ class Predictor(abc.ABC):
 
         Args:
             data: A Numpy ndarray or dictionary of ndarrays to perform predictions on.
-            kwargs: Arguments specific to the predictor implementation.
+            **kwargs: Arguments specific to the predictor implementation.
 
         Returns:
             A Numpy ndarray or dictionary of ndarray containing the prediction result.
