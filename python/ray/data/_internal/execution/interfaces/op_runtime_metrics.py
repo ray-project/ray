@@ -479,13 +479,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_args={"boundaries": histogram_bucket_rows},
     )
 
-    op_task_duration_stats: DistributionTracker = metric_field(
-        default_factory=DistributionTracker,
-        description="Distribution of task durations in seconds.",
-        metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Unsupported,
-    )
-
     # === Actor-related metrics ===
     num_alive_actors: int = metric_field(
         default=0,
@@ -582,7 +575,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
         self.block_size_bytes = RuntimeMetricsHistogram(histogram_buckets_bytes)
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
-        self.op_task_duration_stats = DistributionTracker()
+        self._op_task_duration_stats = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -896,6 +889,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.rows_outputs_of_finished_tasks / self.num_tasks_finished
 
     @metric_property(
+        description="Distribution of task durations in seconds.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def op_task_duration_stats(self) -> DistributionTracker:
+        return self._op_task_duration_stats
+
+    @metric_property(
         description="Average USS usage of tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
@@ -1156,7 +1157,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.task_worker_completion_time_s += task_exec_stats.task_wall_time_s
 
         # NOTE: This is used for Issue Detection
-        self.op_task_duration_stats.add_sample(task_wall_time_s)
+        self._op_task_duration_stats.add_sample(task_wall_time_s)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
