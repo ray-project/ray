@@ -2,9 +2,11 @@ from enum import Enum
 from typing import Callable, Dict, List, Tuple, Union
 
 import ray
-from ray._common.usage.usage_lib import record_extra_usage_tag
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.llm._internal.batch.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
 LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"
@@ -89,8 +91,6 @@ class _TelemetryAgent:
 
     def record(self, telemetry: BatchModelTelemetry) -> None:
         """Append and record telemetries."""
-        from ray._common.usage.usage_lib import TagKey
-
         self._tracking_telemetries.append(telemetry)
         telemetry_dict = self.generate_report()
         for key, value in telemetry_dict.items():
@@ -107,9 +107,6 @@ class TelemetryAgent:
                 LLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=LLM_BATCH_TELEMETRY_NAMESPACE
             )
         except ValueError:
-            from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
             self.remote_telemetry_agent = _TelemetryAgent.options(
                 # Ensure the actor is created on the head node.
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},

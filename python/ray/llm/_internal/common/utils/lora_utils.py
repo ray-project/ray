@@ -13,6 +13,8 @@ import time
 from functools import wraps
 from typing import Any, Callable, List, Optional, TypeVar, Union
 
+from filelock import FileLock
+
 from ray.llm._internal.common.constants import (
     CLOUD_OBJECT_EXISTS_EXPIRE_S,
     CLOUD_OBJECT_MISSING_EXPIRE_S,
@@ -113,8 +115,6 @@ def sync_files_with_lock(
     substrings_to_include: Optional[List[str]] = None,
 ) -> None:
     """Sync files from bucket_uri to local_path with file locking."""
-    from filelock import FileLock
-
     logger.info("Downloading %s to %s", bucket_uri, local_path)
 
     with FileLock(local_path + ".lock", timeout=timeout or -1):

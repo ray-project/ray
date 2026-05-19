@@ -5,14 +5,19 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
 import ray
 from ray import serve
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.usage.usage_lib import (
+    TagKey,
     get_hardware_usages_to_report,
     record_extra_usage_tag,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve.config import AutoscalingConfig
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -172,8 +177,6 @@ class TelemetryAgent:
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
         """Record telemetry model."""
-        from ray._common.usage.usage_lib import TagKey
-
         if model:
             self.models.append(model)
 
@@ -192,9 +195,6 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
             LLM_SERVE_TELEMETRY_ACTOR_NAME, namespace=LLM_SERVE_TELEMETRY_NAMESPACE
         )
     except ValueError:
-        from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
         telemetry_agent = TelemetryAgent.options(
             # Ensure the actor is created on the head node.
             resources={HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -251,8 +251,6 @@ class HardwareUsage:
         """Infer the GPU type from the hardware when the accelerator type on llm config is
         not specified.
         """
-        from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
-
         all_accelerator_types = [t.value for t in AcceleratorType]
         gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
         hardwares = self._get_hardware_fn(gcs_client)
@@ -288,8 +286,6 @@ def push_telemetry_report_for_all_models(
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            from ray.serve.config import AutoscalingConfig
-
             autoscaling_config = AutoscalingConfig(
                 **model.deployment_config["autoscaling_config"]
             )
