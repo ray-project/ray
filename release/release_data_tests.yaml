@@ -597,7 +597,7 @@
     #                   runner so each invocation gets its own folder.
     script: >
       PYSPY_ENABLED=1
-      PYSPY_S3_DEST=s3://ray-benchmark-data/release-test-profiles/worker_scaling_{{num_workers}}_{{worker_type}}/${ANYSCALE_JOB_ID:-local}/
+      PYSPY_S3_DEST=s3://ray-release-automation-results/release-test-profiles/worker_scaling_{{num_workers}}_{{worker_type}}/${ANYSCALE_JOB_ID:-local}/
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
