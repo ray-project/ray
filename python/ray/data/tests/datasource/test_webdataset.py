@@ -270,7 +270,7 @@ def test_webdataset_decoding(ray_start_2_cpus, tmp_path):
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(tmp_path, ray_start_2_cpus, min_rows_per_file):
     ray.data.from_items(
         [{"id": str(i)} for i in range(100)], override_num_blocks=20
     ).write_webdataset(tmp_path, min_rows_per_file=min_rows_per_file)

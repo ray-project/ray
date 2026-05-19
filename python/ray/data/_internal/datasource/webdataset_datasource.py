@@ -4,12 +4,12 @@
 import fnmatch
 import io
 import json
-import os
 import re
 import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+from ray._common.utils import env_bool
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -342,18 +342,16 @@ class WebDatasetDatasource(FileBasedDatasource):
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
 
-        self._allow_unsafe_deserialization = (
-            os.environ.get(
-                RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR, "0"
-            )
-            == "1"
-        )
         self.decoder = decoder
         self.fileselect = fileselect
         self.filerename = filerename
         self.suffixes = suffixes
         self.verbose_open = verbose_open
         self.expand_json = expand_json
+
+        self._allow_unsafe_deserialization = env_bool(
+            RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR, False
+        )
 
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
