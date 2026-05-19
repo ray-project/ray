@@ -121,18 +121,18 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
 
 
-def test_read_parquet_v2_override_num_blocks_sets_read_op_min_num_blocks(
-    tmp_path, restore_ctx
-):
+def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
     original = restore_ctx.read_op_min_num_blocks
-    try:
-        ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
-        assert restore_ctx.read_op_min_num_blocks == 7
-    finally:
-        restore_ctx.read_op_min_num_blocks = original
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
+
+    # The override should drive the ListFiles partitioner's bucket count
+    # for this read only — the global DataContext must not be mutated.
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert list_files_op.file_partitioner._num_buckets == 7
+    assert restore_ctx.read_op_min_num_blocks == original
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):

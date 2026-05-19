@@ -531,11 +531,15 @@ def _read_datasource_v2(
         if ctx.target_max_block_size is not None
         else sys.maxsize
     )
+    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
+    # (``-1`` when unset). Honoring it here per-read avoids mutating the
+    # process-global ``DataContext.read_op_min_num_blocks``.
+    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
     partitioner = RoundRobinPartitioner(
         in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
-        num_buckets=ctx.read_op_min_num_blocks,
+        num_buckets=num_buckets,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -1369,14 +1373,6 @@ def read_parquet(
                 "`filter=` on `read_parquet` is not supported. "
                 "Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
-
-        if override_num_blocks is not None:
-            # ``parallelism`` isn't plumbed through the bucketing path on
-            # this read; forward ``override_num_blocks`` via
-            # ``read_op_min_num_blocks``, which feeds the
-            # ``RoundRobinPartitioner`` ``num_buckets`` hint inside
-            # ``_read_datasource_v2``.
-            ctx.read_op_min_num_blocks = override_num_blocks
 
         from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
             ParquetDatasourceV2,
