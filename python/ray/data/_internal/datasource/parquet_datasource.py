@@ -26,6 +26,7 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -131,6 +132,13 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 _ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
 
 _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
+
+# Opt-in env var to allow reading Parquet files that contain
+# ray.data.arrow_pickled_object columns. Disabled by default because
+# pickle.load on attacker-controlled data enables arbitrary code execution.
+RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = (
+    "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
+)
 
 
 class _ParquetFragment:
@@ -1117,8 +1125,6 @@ class ParquetDatasource(Datasource):
 
 
 def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
     pickle_cols = [
         field.name
         for field in table.schema
@@ -1131,7 +1137,7 @@ def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
             f"columns requires unpickling, which can execute arbitrary code "
             f"and is unsafe with untrusted files.\n\n"
             f"If you trust the source of this data, set the environment "
-            f"variable RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1 to allow "
+            f"variable {RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
             f"reading these columns. In a Ray cluster, this variable must "
             f"be set on all worker nodes (e.g. via 'runtime_env')."
         )
@@ -1158,7 +1164,7 @@ def read_fragments(
     # Ensure that we're reading at least one dataset fragment.
     assert len(fragments) > 0
 
-    allow_pickle = env_bool("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", False)
+    allow_pickle = env_bool(RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False)
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     for fragment in fragments:
