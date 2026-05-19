@@ -86,11 +86,16 @@ def get_vllm_cli_args(llm_config):
 
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
     for key, value in engine_kwargs.items():
-        cli_args.append("--" + key.replace("_", "-"))
+        flag = "--" + key.replace("_", "-")
+        if isinstance(value, bool):
+            # vLLM's argparse treats `--flag` (no value) as True, so only emit
+            # the flag when the YAML value is True; omit entirely when False.
+            if value:
+                cli_args.append(flag)
+            continue
+        cli_args.append(flag)
         if isinstance(value, dict):
             cli_args.append(json.dumps(value))
-        elif isinstance(value, bool):
-            pass
         else:
             cli_args.append(str(value))
 
