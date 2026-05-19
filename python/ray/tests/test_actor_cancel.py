@@ -526,7 +526,7 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
 
             if expect_canceled:
                 wait_for_condition(lambda: ray.get_runtime_context().is_canceled())
-                self._canceled_task_indices.add(ray.get_runtime_context().task_id)
+                self._canceled_task_indices.add(task_index)
 
             return task_index
 
