@@ -64,7 +64,10 @@ def _resolve_store(
     fs, root = fsspec.core.url_to_fs(path)
     return fs, root.rstrip("/")
 
-def _strip_protocol(path: str) -> str:
+def _strip_protocol(path: str, filesystem) -> str:
+    if hasattr(filesystem, "_strip_protocol"):
+        return filesystem._strip_protocol(path)
+    
     parsed = urlsplit(path)
     if parsed.scheme:
         return path.removeprefix(f"{parsed.scheme}//")
@@ -281,7 +284,7 @@ class ZarrV2Datasource(Datasource):
             self.root = self._zarr_root_init(filesystem)
     
     def _zarr_root_init(self, filesystem) -> ZarrGroup:
-        mapper_path = _strip_protocol(self.paths[0])
+        mapper_path = _strip_protocol(self.paths[0], filesystem)
         mapper = filesystem.get_mapper(mapper_path)
 
         root = zarr.open_group(mapper, mode = "r")
