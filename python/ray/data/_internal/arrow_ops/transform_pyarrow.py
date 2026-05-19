@@ -164,7 +164,7 @@ def hash_partition(
     # of the result, then carve out partitions with zero-copy slices. The N
     # output partitions together form a permutation of `table`, so one big
     # take + N slices is equivalent to N independent takes and pays the take
-    # fixed cost once. 
+    # fixed cost once.
     sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
     counts = np.bincount(partitions_array, minlength=num_partitions)
     offsets = np.zeros(num_partitions + 1, dtype=np.int64)
