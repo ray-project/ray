@@ -812,12 +812,13 @@ def read_audio(
 
 
 @PublicAPI(stability="alpha")
-def read_zarrv2(
+def read_zarr(
     path: str,
     filesystem: Any | None = None,
     chunk_shape: List[int] | None = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
+    materialize: bool = False,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -935,6 +936,7 @@ def read_zarrv2(
         chunk_shape=chunk_shape, 
         array_paths=array_paths, 
         allow_full_metadata_scan=allow_full_metadata_scan,
+        materialize=materialize
     )
     return read_datasource(
         datasource,

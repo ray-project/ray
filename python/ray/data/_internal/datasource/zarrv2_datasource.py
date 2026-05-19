@@ -11,12 +11,13 @@ from math import prod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, TypedDict, cast
 from urllib.parse import urlsplit
-
+import zarr
+from zarr.hierarchy import Group as ZarrGroup
 import fsspec
 import fsspec.core
 from fsspec.spec import AbstractFileSystem
 import pandas as pd
-
+import numpy as np
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -63,54 +64,189 @@ def _resolve_store(
     fs, root = fsspec.core.url_to_fs(path)
     return fs, root.rstrip("/")
 
+def _strip_protocol(path: str) -> str:
+    parsed = urlsplit(path)
+    if parsed.scheme:
+        return path.removeprefix(f"{parsed.scheme}//")
+    return path
 
 def _create_read_fn(
     batch: list[ZarrChunkRow],
+    root: ZarrGroup | None = None
 ) -> Callable[[], Iterable[pd.DataFrame]]:
-    def read_fn() -> Iterable[pd.DataFrame]:
-        arrays = []
-        array_shapes = []
-        chunk_shapes = []
-        dtypes = []
-        full_chunk_slices = []
-        full_paddings = []
+    if root:
+        def read_fn() -> Iterable[pd.DataFrame]:
+            
+            def _read_with_retry(
+                self,
+                array: str,
+                chunk_slices: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+                max_retries: int = 5,
+                base_delay: float = 1.0,
+            ) -> np.ndarray:
+                import time
+                
+                slice_tuple = tuple(slice(start, stop) for start, stop in chunk_slices)
+                last_error = None
 
-        for row in batch:
-            chunk_slices = []
-            padding = []
-            chunk_shape = list(row["meta"]["chunks"])
-            for dim, (i, size, chunk) in enumerate(
-                zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])
-            ):
-                start = i * chunk
-                stop = min((i + 1) * chunk, size)
-                chunk_slices.append((start, stop))
+                for attempt in range(max_retries):
+                    try:
+                        if array == "":
+                            return root[slice_tuple]
 
-                if start + chunk > size:
-                    padding_slice = start + chunk - size
-                    chunk_shape[dim] = stop - start
-                else:
-                    padding_slice = 0
-                padding.append(padding_slice)
-            full_chunk_slices.append(chunk_slices)
-            arrays.append(row["array"])
-            array_shapes.append(row["meta"]["shape"])
-            chunk_shapes.append(tuple(chunk_shape))
-            dtypes.append(row["meta"]["dtype"])
-            full_paddings.append(padding)
+                        return root[array][slice_tuple]
 
-        yield pd.DataFrame(
-            {
-                "array": arrays,
-                "array_shape": array_shapes,
-                "chunk_shape": chunk_shapes,
-                "dtype": dtypes,
-                "chunk_slices": full_chunk_slices,
-                "padding": full_paddings,
-            }
-        )
+                    except Exception as e:
+                        last_error = e
+                        error_msg = str(e).lower()
 
-    return read_fn
+                        if any(
+                            keyword in error_msg
+                            for keyword in [
+                                "connection reset",
+                                "timeout",
+                                "connection refused",
+                                "network",
+                                "socket",
+                                "http error",
+                            ]
+                        ):
+                            delay = base_delay * (2**attempt)
+                            print(
+                                "Network error reading array=%s slices=%s, "
+                                "attempt %s/%s, retrying in %.1fs: %s",
+                                array,
+                                chunk_slices,
+                                attempt + 1,
+                                self.max_retries,
+                                delay,
+                                e,
+                            )
+                            time.sleep(delay)
+                        else:
+                            raise
+
+                raise RuntimeError(
+                    f"Failed to read array={array!r} slices={chunk_slices} "
+                    f"after {self.max_retries} attempts"
+                ) from last_error
+            
+            arrays = []
+            array_shapes = []
+            chunk_shapes = []
+            dtypes = []
+            full_chunk_slices = []
+            full_paddings = []
+            chunks = []
+
+            for row in batch:
+                chunk_slices = []
+                padding = []
+                chunk_shape = list(row["meta"]["chunks"])
+                for dim, (i, size, chunk) in enumerate(
+                    zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])
+                ):
+                    start = i * chunk
+                    stop = min((i + 1) * chunk, size)
+                    chunk_slices.append((start, stop))
+
+                    if start + chunk > size:
+                        padding_slice = start + chunk - size
+                        chunk_shape[dim] = stop - start
+                    else:
+                        padding_slice = 0
+                    padding.append(padding_slice)
+                
+                chunk = _read_with_retry(row['array'], list(chunk_slices))
+                
+                dtype = np.dtype(row['meta']["dtype"])
+                chunk = chunk.astype(dtype, copy=False)
+                
+                if np.issubdtype(chunk.dtype, np.floating):
+                    chunk = np.nan_to_num(
+                        chunk,
+                        nan=0,
+                        posinf=0,
+                        neginf=0,
+                        copy=False,
+                    )
+                
+                pad_width = [(0, int(pad_amount)) for pad_amount in list(padding)]
+                if any(pad_amount > 0 for pad_amount in list(padding)):
+                    chunk = np.pad(
+                        chunk,
+                        pad_width=pad_width,
+                        mode="constant",
+                        constant_values=0,
+                    )
+                
+                full_chunk_slices.append(chunk_slices)
+                arrays.append(row["array"])
+                array_shapes.append(row["meta"]["shape"])
+                chunk_shapes.append(tuple(chunk_shape))
+                dtypes.append(row["meta"]["dtype"])
+                full_paddings.append(padding)
+                chunks.append(chunk)
+
+            yield pd.DataFrame(
+                {
+                    "array": arrays,
+                    "array_shape": array_shapes,
+                    "chunk_shape": chunk_shapes,
+                    "dtype": dtypes,
+                    "chunk_slices": full_chunk_slices,
+                    "padding": full_paddings,
+                    "chunk": chunks
+                }
+            )
+            
+        
+        return read_fn
+    else:
+        def read_fn() -> Iterable[pd.DataFrame]:
+            arrays = []
+            array_shapes = []
+            chunk_shapes = []
+            dtypes = []
+            full_chunk_slices = []
+            full_paddings = []
+
+            for row in batch:
+                chunk_slices = []
+                padding = []
+                chunk_shape = list(row["meta"]["chunks"])
+                for dim, (i, size, chunk) in enumerate(
+                    zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])
+                ):
+                    start = i * chunk
+                    stop = min((i + 1) * chunk, size)
+                    chunk_slices.append((start, stop))
+
+                    if start + chunk > size:
+                        padding_slice = start + chunk - size
+                        chunk_shape[dim] = stop - start
+                    else:
+                        padding_slice = 0
+                    padding.append(padding_slice)
+                full_chunk_slices.append(chunk_slices)
+                arrays.append(row["array"])
+                array_shapes.append(row["meta"]["shape"])
+                chunk_shapes.append(tuple(chunk_shape))
+                dtypes.append(row["meta"]["dtype"])
+                full_paddings.append(padding)
+
+            yield pd.DataFrame(
+                {
+                    "array": arrays,
+                    "array_shape": array_shapes,
+                    "chunk_shape": chunk_shapes,
+                    "dtype": dtypes,
+                    "chunk_slices": full_chunk_slices,
+                    "padding": full_paddings,
+                }
+            )
+
+        return read_fn
 
 
 class ZarrV2Datasource(Datasource):
@@ -122,10 +258,13 @@ class ZarrV2Datasource(Datasource):
         filesystem: AbstractFileSystem | None = None,
         chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
-        allow_full_metadata_scan: bool = False
+        allow_full_metadata_scan: bool = False,
+        materialize: bool = False,
     ) -> None:
         super().__init__()
         self.allow_full_metadata_scan = allow_full_metadata_scan
+        self.materialize = materialize
+        self.root = None
 
         if chunk_shape:
             for val in chunk_shape:
@@ -138,6 +277,16 @@ class ZarrV2Datasource(Datasource):
         )
         self._selected_arrays = self._load_array_metadata(array_paths, filesystem)
         self._grid_shape_dict = self._gen_grid_shape()
+        
+        if self.materialize:
+            self.root = self._zarr_root_init(filesystem)
+    
+    def _zarr_root_init(self, filesystem) -> ZarrGroup:
+        mapper_path = _strip_protocol(self.paths[0])
+        mapper = filesystem.get_mapper(mapper_path)
+
+        root = zarr.open_group(mapper, mode = "r")
+        return root
         
     def _load_array_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
         fs, store_path = _resolve_store(self.paths[0], filesystem)
@@ -250,51 +399,83 @@ class ZarrV2Datasource(Datasource):
         return grid_shape_dict
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        arrays = []
-        array_shapes = []
-        chunk_shapes = []
-        dtypes = []
-        full_chunk_slices = []
-        full_paddings = []
+        if self.materialize == False:
+            arrays = []
+            array_shapes = []
+            chunk_shapes = []
+            dtypes = []
+            full_chunk_slices = []
+            full_paddings = []
 
-        for array, data in self._grid_shape_dict.items():
-            meta = data["meta"]
-            for chunk_index in product(*(range(n) for n in data["grid_shape"])):
-                chunk_slices = []
-                padding = []
-                chunk_shape = list(meta["chunks"])
+            for array, data in self._grid_shape_dict.items():
+                meta = data["meta"]
+                for chunk_index in product(*(range(n) for n in data["grid_shape"])):
+                    chunk_slices = []
+                    padding = []
+                    chunk_shape = list(meta["chunks"])
 
-                for dim, (i, size, chunk) in enumerate(
-                    zip(chunk_index, meta["shape"], meta["chunks"])
-                ):
-                    start = i * chunk
-                    stop = min((i + 1) * chunk, size)
-                    chunk_slices.append((start, stop))
+                    for dim, (i, size, chunk) in enumerate(
+                        zip(chunk_index, meta["shape"], meta["chunks"])
+                    ):
+                        start = i * chunk
+                        stop = min((i + 1) * chunk, size)
+                        chunk_slices.append((start, stop))
 
-                    if start + chunk > size:
-                        padding_slice = start + chunk - size
-                        chunk_shape[dim] = stop - start
-                    else:
-                        padding_slice = 0
-                    padding.append(padding_slice)
+                        if start + chunk > size:
+                            padding_slice = start + chunk - size
+                            chunk_shape[dim] = stop - start
+                        else:
+                            padding_slice = 0
+                        padding.append(padding_slice)
 
-                arrays.append(array)
-                array_shapes.append(meta["shape"])
-                chunk_shapes.append(tuple(chunk_shape))
-                dtypes.append(meta["dtype"])
-                full_chunk_slices.append(chunk_slices)
-                full_paddings.append(padding)
+                    arrays.append(array)
+                    array_shapes.append(meta["shape"])
+                    chunk_shapes.append(tuple(chunk_shape))
+                    dtypes.append(meta["dtype"])
+                    full_chunk_slices.append(chunk_slices)
+                    full_paddings.append(padding)
 
-        return self._sizeof_batch(
-            {
-                "array": arrays,
-                "array_shape": array_shapes,
-                "chunk_shape": chunk_shapes,
-                "dtype": dtypes,
-                "chunk_slices": full_chunk_slices,
-                "padding": full_paddings,
-            }
-        )
+            return self._sizeof_batch(
+                {
+                    "array": arrays,
+                    "array_shape": array_shapes,
+                    "chunk_shape": chunk_shapes,
+                    "dtype": dtypes,
+                    "chunk_slices": full_chunk_slices,
+                    "padding": full_paddings,
+                }
+            )
+        else:
+            total_size_bytes = 0
+            
+            for array, data in self._grid_shape_dict.items():
+                meta = data['meta']
+                
+                shape = meta['shape']
+                dtype = meta['dtype']
+                
+                num_elements = prod(shape)
+                dtype_size_bytes = np.dtype(dtype).itemsize
+                
+                total_size_bytes += (num_elements * dtype_size_bytes)
+            
+            return total_size_bytes
+    
+    def _estimate_batch_mem_size(self, batch: List[ZarrChunkRow]) -> int:
+        batch_size_bytes = 0
+        
+        for zarr_chunk_row in batch:
+            meta = zarr_chunk_row["meta"]
+            
+            chunks = meta["chunks"]
+            dtype = meta['dtype']
+            
+            num_elements = prod(chunks)
+            dtype_size_bytes = np.dtype(dtype).itemsize
+            
+            batch_size_bytes += (num_elements * dtype_size_bytes)
+        
+        return batch_size_bytes
 
     def _sizeof_batch(self, obj, seen=None):
         if seen is None:
@@ -341,12 +522,18 @@ class ZarrV2Datasource(Datasource):
                 )
 
                 if len(batch) >= batch_size:
+                    batch_mem_size = None
+                    if self.materialize:
+                        batch_mem_size = self._estimate_batch_mem_size(batch)
+                    else:
+                        batch_mem_size = self._sizeof_batch(batch)
+                    
                     read_tasks.append(
                         ReadTask(
-                            _create_read_fn(batch),
+                            _create_read_fn(batch, self.root),
                             BlockMetadata(
                                 num_rows=len(batch),
-                                size_bytes=self._sizeof_batch(batch),
+                                size_bytes=batch_mem_size,
                                 input_files=(self.paths[0],),
                                 exec_stats=None,
                             ),
@@ -354,12 +541,18 @@ class ZarrV2Datasource(Datasource):
                     )
                     batch = []
         if batch:
+            batch_mem_size = None
+            if self.materialize:
+                batch_mem_size = self._estimate_batch_mem_size(batch)
+            else:
+                batch_mem_size = self._sizeof_batch(batch)
+            
             read_tasks.append(
                 ReadTask(
-                    _create_read_fn(batch),
+                    _create_read_fn(batch, self.root),
                     BlockMetadata(
                         num_rows=len(batch),
-                        size_bytes=self._sizeof_batch(batch),
+                        size_bytes=batch_mem_size,
                         input_files=(self.paths[0],),
                         exec_stats=None,
                     ),
