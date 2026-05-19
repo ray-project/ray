@@ -115,7 +115,7 @@ def test_wait_mixup(init):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ray_start_regular_shared",
+    "ray_start_regular",
     [
         {
             "object_store_memory": 100 * 1024 * 1024,
@@ -123,7 +123,7 @@ def test_wait_mixup(init):
     ],
     indirect=True,
 )
-async def test_garbage_collection(ray_start_regular_shared):
+async def test_garbage_collection(ray_start_regular):
     # This is a regression test for
     # https://github.com/ray-project/ray/issues/9134
 
