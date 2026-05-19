@@ -40,12 +40,12 @@ def _rewrite_iceberg_file(
     """Read one Iceberg file, anti-join against upsert keys, write false-positive rows.
 
     False positives are rows in the file that are not in the upsert batch. The
-    coarse range filter (see ``IcebergDatasink._build_coarse_range_filter``) would delete them, so we preserve them by writing them
-    as new data files before the delete.
+    coarse range filter would delete them (see ``IcebergDatasink._build_coarse_range_filter``),
+    so we preserve them by writing them as new data files before the delete.
 
     Returns (original DataFile to delete, list of new FP DataFiles).
     If the entire file is matched (no FPs), returns (file, []).
-    If the file has no matched rows at all, returns (None, []) — leave it untouched.
+    If the file has no matched rows at all, returns (None, []), leave it untouched.
     """
     import hashlib
     import time as _time
@@ -301,11 +301,34 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         upsert_cols = self._upsert_kwargs.get(_UPSERT_COLS_ID, [])
         if not upsert_cols:
             # Use table's identifier fields as fallback
+            identifier_cols = []
             schema = self._table_metadata.schema()
             for field_id in schema.identifier_field_ids:
                 col_name = schema.find_column_name(field_id)
                 if col_name:
-                    upsert_cols.append(col_name)
+                    identifier_cols.append(col_name)
+            return identifier_cols
+
+        case_sensitive = self._upsert_kwargs.get("case_sensitive", True)
+
+        # To support case insensitivity, we need to define a mapping of
+        # provided (possibly case-modified) names to their original names in the schema
+        if not case_sensitive:
+            schema = self._table_metadata.schema()
+            lower_to_original_mapping = {
+                col.name.lower(): col.name for col in schema.fields
+            }
+            resolved_upsert_cols = []
+            for upsert_col in upsert_cols:
+                resolved_col = lower_to_original_mapping.get(upsert_col.lower())
+                if resolved_col is None:
+                    raise ValueError(
+                        f"Upsert join column {upsert_col!r} does not match any column in "
+                        f"table schema (case-insensitive)."
+                    )
+                resolved_upsert_cols.append(resolved_col)
+            upsert_cols = resolved_upsert_cols
+
         return upsert_cols
 
     def _build_coarse_range_filter(
@@ -348,7 +371,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         data_files: List["DataFile"],
         keys_table: "pa.Table",
         upsert_cols: List[str],
-        delete_kwargs: Dict[str, Any],
     ) -> None:
         """Upsert commit using coarse range filter + per-file distributed anti-join.
 
@@ -363,6 +385,18 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         """
         import time
 
+        case_sensitive = self._upsert_kwargs.get("case_sensitive", True)
+        branch = self._upsert_kwargs.get("branch", "main")
+        unknown = set(self._upsert_kwargs) - {
+            _UPSERT_COLS_ID,
+            "case_sensitive",
+            "branch",
+        }
+        if unknown:
+            logger.warning(
+                "[scan-merge] ignoring unsupported upsert_kwargs: %s", sorted(unknown)
+            )
+
         # Dedup keys to minimise per-task anti-join hash table size.
         keys_table = keys_table.group_by(upsert_cols).aggregate([])
 
@@ -371,7 +405,10 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         # plan_files() reads only manifest metadata — no Parquet data on the driver.
         t0 = time.perf_counter()
-        file_scan_tasks = list(self._table.scan(row_filter=coarse_filter).plan_files())
+        scan = self._table.scan(row_filter=coarse_filter, case_sensitive=case_sensitive)
+        scan = scan.use_ref(branch)
+        file_scan_tasks = list(scan.plan_files())
+
         logger.info(
             "[scan-merge] planned %d candidate file(s) in %.2fs",
             len(file_scan_tasks),
@@ -379,8 +416,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         )
 
         if not file_scan_tasks:
-            # No existing files match the coarse filter — pure inserts only.
-            self._append_and_commit(txn, data_files)
+            # No existing files match the coarse filter, so it's a pure insert.
+            self._append_and_commit(txn, data_files, branch=branch)
             return
 
         # Put the deduped keys in the object store once; all tasks share one copy.
@@ -433,11 +470,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             n_untouched,
         )
 
-        # Single atomic commit: schema update (already staged in txn) + this overwrite.
+        # Single atomic commit: schema update (already staged in txn), and overwrite.
         # _OverwriteFiles handles both file-level deletes and appends in one snapshot.
         t0 = time.perf_counter()
         with txn.update_snapshot(
-            snapshot_properties=self._snapshot_properties
+            snapshot_properties=self._snapshot_properties, branch=branch
         ).overwrite() as snap:
             for old_file, fp_files in results:
                 if old_file is not None:
@@ -454,15 +491,22 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         logger.info("[scan-merge] committed in %.2fs", time.perf_counter() - t0)
 
     def _append_and_commit(
-        self, txn: "Table.transaction", data_files: List["DataFile"]
+        self,
+        txn: "Table.transaction",
+        data_files: List["DataFile"],
+        branch: str = "main",
     ) -> None:
         """Append data files to a transaction and commit.
 
         Args:
             txn: PyIceberg transaction object
             data_files: List of DataFile objects to append
+            branch: Iceberg branch to commit the snapshot to. Defaults to "main"
+                to match pyiceberg's default
         """
-        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
+        with txn._append_snapshot_producer(
+            self._snapshot_properties, branch=branch
+        ) as append_files:
             for data_file in data_files:
                 append_files.append_data_file(data_file)
 
@@ -514,11 +558,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
             # Only delete if we have non-NULL keys
             if len(keys_table) > 0:
-                delete_kwargs = self._upsert_kwargs.copy()
-                delete_kwargs.pop(_UPSERT_COLS_ID, None)
-                self._commit_upsert_scan_merge(
-                    txn, data_files, keys_table, upsert_cols, delete_kwargs
-                )
+                self._commit_upsert_scan_merge(txn, data_files, keys_table, upsert_cols)
                 return
         else:
             logger.info("[upsert commit] No upsert keys — skipping delete phase")
@@ -529,7 +569,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             len(data_files),
         )
         t0 = time.perf_counter()
-        self._append_and_commit(txn, data_files)
+        branch = self._upsert_kwargs.get("branch", "main")
+        self._append_and_commit(txn, data_files, branch=branch)
         logger.info(
             "[upsert commit] Append+commit done in %.2fs",
             time.perf_counter() - t0,
