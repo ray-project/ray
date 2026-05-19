@@ -160,10 +160,7 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
-        topology_strategy: Per-level topology-aware placement. A list of dicts,
-            where each dict represents a level within the topology that maps a label key to a placement strategy. (e.g.
-            ``[{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}]``).
-            Mutually exclusive with `strategy`.
+        topology_strategy: Per-level topology-aware placement. A list of dicts, where each dict represents a level within the topology. Each level maps a label key to a placement strategy. (e.g. ``[{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}]``). Mutually exclusive with `strategy`.
 
     Raises:
         ValueError: if bundle type is not a list.
@@ -190,11 +187,15 @@ def placement_group(
     if bundle_label_selector is None:
         bundle_label_selector = []
 
-    # Derive effective strategy from topology_strategy if defined with
-    # ray.io/node-id
+    # Derive effective strategy from topology_strategy if defined with ray.io/node-id
     if topology_strategy is not None:
         level = topology_strategy[0]
-        effective_strategy = level[NODE_ID_LABEL_KEY]
+
+        if NODE_ID_LABEL_KEY in level:
+            effective_strategy = level[NODE_ID_LABEL_KEY]
+        else:
+            effective_strategy = "PACK"
+
         stripped_level = {k: v for k, v in level.items() if k != NODE_ID_LABEL_KEY}
         topology_strategy_for_core = [stripped_level] if stripped_level else []
     else:
@@ -427,17 +428,11 @@ def _validate_topology_strategy(topology_strategy: List[Dict[str, str]]) -> None
             "`topology_strategy[0]` must be a dict, " f"got {type(level).__name__}."
         )
 
-    if not (1 <= len(level) <= 2):
+    if not (0 <= len(level) <= 2):
         raise ValueError(
-            "`topology_strategy[0]` must contain 1 or 2 entries: "
+            "`topology_strategy[0]` must contain 0, 1, or 2 entries: "
             f"`{NODE_ID_LABEL_KEY}` plus an optional topology label. "
             f"Got {len(level)} entries."
-        )
-
-    if NODE_ID_LABEL_KEY not in level:
-        raise ValueError(
-            f"`topology_strategy[0]` must include `{NODE_ID_LABEL_KEY}` to "
-            "specify the node-level packing strategy."
         )
 
     for key, value in level.items():
