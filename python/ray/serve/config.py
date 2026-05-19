@@ -735,7 +735,7 @@ class ProxyLocation(str, Enum):
         if isinstance(location, cls):
             return location
         if isinstance(location, str):
-            if location == "NoServer":
+            if location in {"Disabled", "NoServer"}:
                 return cls.Disabled
             return cls(location)
         raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(location)}.")
@@ -770,7 +770,7 @@ class HTTPOptions(BaseModel):
           assumes the head node is the node you executed serve.start
           on. This is the default.
         - "EveryNode": start one HTTP server per node.
-        - "Disabled" (or legacy "NoServer"): disable HTTP server.
+        - "Disabled": disable HTTP server.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
       internal Serve HTTP proxy actor.

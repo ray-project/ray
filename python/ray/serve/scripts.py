@@ -172,13 +172,6 @@ def cli():
     help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
-    "--http-location",
-    default="HeadOnly",
-    required=False,
-    type=click.Choice(["NoServer", "HeadOnly", "EveryNode"]),
-    help="DEPRECATED: Use `--proxy-location` instead.",
-)
-@click.option(
     "--proxy-location",
     default=ProxyLocation.EveryNode,
     required=False,
@@ -204,19 +197,10 @@ def start(
     address,
     http_host,
     http_port,
-    http_location,
     proxy_location,
     grpc_port,
     grpc_servicer_functions,
 ):
-    if http_location != "HeadOnly":
-        cli_logger.warning(
-            "The `--http-location` flag to `serve start` is deprecated, "
-            "use `--proxy-location` instead."
-        )
-
-        proxy_location = ProxyLocation._normalize(http_location)
-
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
