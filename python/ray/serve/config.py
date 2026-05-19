@@ -1,3 +1,4 @@
+import hashlib
 import inspect
 import json
 import logging
@@ -423,9 +424,12 @@ class AggregationFunction(str, Enum):
 
 
 # Process-global cache of deserialized autoscaling policy callables, keyed by
-# the policy's importable path (e.g. "ray.serve.autoscaling_policy:default_autoscaling_policy").
-# See AutoscalingPolicy.get_policy for the rationale.
-_GLOBAL_POLICY_CACHE: Dict[str, Callable] = {}
+# a hash of the serialized policy bytes. The bytes-hash key (rather than the
+# importable path) lets the cache invalidate automatically when a user
+# redeploys with updated policy code on the same import path, while still
+# deduplicating across the many ``AutoscalingPolicy`` instances Pydantic
+# rebuilds for the same policy.
+_GLOBAL_POLICY_CACHE: Dict[bytes, Callable] = {}
 
 
 @PublicAPI(stability="stable")
@@ -532,18 +536,22 @@ class AutoscalingPolicy(BaseModel):
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes.
 
-        Cached process-globally by ``policy_function`` path: every
-        ``cloudpickle.loads`` rebuilds a fresh module namespace (because
-        ``serialize_policy`` uses ``register_pickle_by_value``) whose function
-        objects cycle through ``function.__globals__``; resolving once per path
-        avoids that per-call accumulator. See
-        https://github.com/ray-project/ray/issues/58815.
+        Cached process-globally, keyed by a hash of the serialized bytes.
+        Every ``cloudpickle.loads`` rebuilds a fresh module namespace
+        (because ``serialize_policy`` uses ``register_pickle_by_value``)
+        whose function objects cycle through ``function.__globals__``;
+        deduplicating by content lets fresh instances of the same policy
+        reuse one callable while still picking up a redeploy on the same
+        import path that ships new code (different bytes → cache miss).
+        See https://github.com/ray-project/ray/issues/58815.
         """
         if self._cached_policy is not None:
             return self._cached_policy
 
         cache_key = (
-            self.policy_function if isinstance(self.policy_function, str) else None
+            hashlib.sha256(self._serialized_policy_def).digest()
+            if self._serialized_policy_def
+            else None
         )
         if cache_key is not None:
             cached = _GLOBAL_POLICY_CACHE.get(cache_key)

@@ -1559,22 +1559,11 @@ def test_default_autoscaling_policy_import_path():
 
 
 def test_autoscaling_policy_caches_deserialized_callable_globally(monkeypatch):
-    """Fresh ``AutoscalingPolicy`` instances share one deserialized callable;
-    ``cloudpickle.loads`` runs once per ``policy_function`` path.
-    See https://github.com/ray-project/ray/issues/58815.
+    """Fresh ``AutoscalingPolicy`` instances share one deserialized callable
+    when the policy is the same; a different policy on a different import
+    path bypasses the cache.
     """
     monkeypatch.setattr(config_module, "_GLOBAL_POLICY_CACHE", {})
-
-    p1 = AutoscalingPolicy()
-    p2 = AutoscalingPolicy()
-    assert p1.get_policy() is p2.get_policy()
-    assert (
-        config_module._GLOBAL_POLICY_CACHE[DEFAULT_AUTOSCALING_POLICY_NAME]
-        is p1.get_policy()
-    )
-
-    # Per-instance cache populated from the global cache on the very first
-    # call — ``cloudpickle.loads`` runs at most once per path.
     loads_calls = []
     real_loads = config_module.cloudpickle.loads
 
@@ -1583,8 +1572,22 @@ def test_autoscaling_policy_caches_deserialized_callable_globally(monkeypatch):
         return real_loads(data)
 
     monkeypatch.setattr(config_module.cloudpickle, "loads", _counting_loads)
-    assert AutoscalingPolicy().get_policy() is p1.get_policy()
-    assert loads_calls == []
+
+    # Two instances of the default policy → one deserialization, one cache entry.
+    p1 = AutoscalingPolicy()
+    p2 = AutoscalingPolicy()
+    assert p1.get_policy() is p2.get_policy()
+    assert len(loads_calls) == 1
+    assert len(config_module._GLOBAL_POLICY_CACHE) == 1
+
+    # A different policy doesn't hit the cache and deserializes fresh.
+    p3 = AutoscalingPolicy(
+        policy_function="ray.serve.tests.unit.test_config:fake_policy"
+    )
+    assert p3.get_policy() is not p1.get_policy()
+    assert p3.get_policy()() == fake_policy_return_value
+    assert len(loads_calls) == 2
+    assert len(config_module._GLOBAL_POLICY_CACHE) == 2
 
 
 class TestGetControllerImpl:
