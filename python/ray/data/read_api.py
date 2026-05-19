@@ -1320,8 +1320,10 @@ def read_parquet(
             # V1 spread ``dataset_kwargs`` into ``pq.ParquetDataset(...)``;
             # V2 reads via ``pds.dataset`` per worker, so route the same
             # options through ``pds.ParquetFileFormat`` in
-            # ``ParquetFileReader``. ``partitioning`` is set by Ray and
-            # ``filters`` has a first-class equivalent.
+            # ``ParquetFileReader``. ``partitioning`` is set by Ray. Row
+            # predicates belong in Ray (``Dataset.filter``): PyArrow's
+            # ``pq.ParquetDataset`` uses ``filters``; ``pds.Scanner`` uses
+            # ``filter`` — neither is accepted via ``dataset_kwargs``.
             warnings.warn(
                 "`dataset_kwargs` on `read_parquet` is deprecated. Pass "
                 "PyArrow Parquet options as top-level keyword arguments "
@@ -1336,11 +1338,12 @@ def read_parquet(
                     "'dataset_kwargs'. Use the top-level 'partitioning' "
                     "parameter instead."
                 )
-            if "filters" in parquet_format_kwargs:
+            if "filters" in parquet_format_kwargs or "filter" in parquet_format_kwargs:
                 raise ValueError(
-                    "The 'filters' parameter isn't supported in "
-                    "'dataset_kwargs'. Use `.filter(expr=...)` on the "
-                    "returned dataset instead."
+                    "Row filtering via 'filters' (pyarrow.parquet.ParquetDataset) "
+                    "or 'filter' (pyarrow.dataset.Scanner) isn't supported in "
+                    "'dataset_kwargs'. Use `.filter(expr=...)` on the returned "
+                    "dataset instead."
                 )
             # ``pq.ParquetDataset(read_dictionary=[...])`` maps to
             # ``pds.ParquetFileFormat(dictionary_columns=[...])``.
