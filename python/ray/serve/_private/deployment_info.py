@@ -16,6 +16,9 @@ from ray.serve.generated.serve_pb2 import (
 # metadata table for the lifetime of the controller. Under fast autoscaling
 # cycles this is one of the per-cycle accumulators behind issue
 # https://github.com/ray-project/ray/issues/58815.
+#
+# Grows monotonically, bounded by the set of unique `(app, deployment)` pairs
+# ever deployed in this controller process.
 _DYNAMIC_ACTOR_CLASS_CACHE: Dict[str, Any] = {}
 
 
