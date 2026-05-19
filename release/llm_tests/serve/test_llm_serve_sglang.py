@@ -3,7 +3,6 @@ import sys
 import httpx
 import pytest
 from openai import OpenAI
-
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.engines.sglang import SGLangServer
@@ -446,7 +445,8 @@ def test_sglang_custom_placement_group_default_strategy():
 
 def _get_llm_handle(model_id: str = RAY_MODEL_ID):
     """Return a Ray Serve handle to the LLMServer deployment for model_id."""
-    deployment_name = model_id.replace("/", "--").replace(".", "_")
+    cleaned_id = model_id.replace("/", "--").replace(".", "_")
+    deployment_name = f"{SGLangServer.__name__}:{cleaned_id}"
     return serve.get_deployment_handle(deployment_name, SERVE_DEFAULT_APP_NAME)
 
 
@@ -555,23 +555,6 @@ async def test_sglang_reset_prefix_cache(sglang_client):
         temperature=0.0,
     )
     assert resp.choices[0].text.strip()
-
-
-@pytest.mark.asyncio
-async def test_sglang_collective_rpc(sglang_client):
-    """Verify collective_rpc infrastructure reaches TP workers without error.
-
-    Uses 'get_weights_by_name' — the standard RLHF weight-inspection method
-    available on SGLang TP workers. Passing an empty list of weight names is
-    a lightweight no-op that exercises the RPC path without loading tensors.
-    """
-    handle = _get_llm_handle()
-
-    # collective_rpc returns None on SGLangServer; we verify it completes cleanly.
-    result = await handle.collective_rpc.remote(
-        method="get_weights_by_name", kwargs={"names": []}
-    )
-    assert result is None
 
 
 # ---------------------------------------------------------------------------

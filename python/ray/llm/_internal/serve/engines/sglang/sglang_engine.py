@@ -688,7 +688,11 @@ class SGLangServer:
 
         assert self.engine is not None, "server is not initialized"
         config = SGLangPauseConfig(**kwargs)
-        await self.engine.pause_generation(mode=config.mode)
+        from sglang.srt.managers.io_struct import PauseGenerationReqInput
+
+        await self.engine.tokenizer_manager.pause_generation(
+            PauseGenerationReqInput(mode=config.mode)
+        )
         self._is_paused = True
 
     async def resume(self, **kwargs: Any) -> None:
@@ -698,7 +702,11 @@ class SGLangServer:
             **kwargs: Reserved for future options.
         """
         assert self.engine is not None, "server is not initialized"
-        await self.engine.continue_generation()
+        from sglang.srt.managers.io_struct import ContinueGenerationReqInput
+
+        await self.engine.tokenizer_manager.continue_generation(
+            ContinueGenerationReqInput()
+        )
         self._is_paused = False
 
     async def is_paused(self) -> bool:
@@ -719,8 +727,13 @@ class SGLangServer:
 
         assert self.engine is not None, "server is not initialized"
         config = SGLangSleepConfig(**kwargs)
-        await self.engine.release_memory_occupation(tags=config.tags)
-        # tags=None means "everything"; otherwise track only the requested tags.
+
+        # release_memory_occupation() calls loop.run_until_complete() internally, which fails
+        # inside an async context. Await the underlying coroutine directly.
+        from sglang.srt.entrypoints.engine import ReleaseMemoryOccupationReqInput
+
+        obj = ReleaseMemoryOccupationReqInput(tags=config.tags)
+        await self.engine.tokenizer_manager.release_memory_occupation(obj, None)
         self._sleeping_tags |= set(config.tags) if config.tags else set(_SLEEP_TAGS)
 
     async def wakeup(self, **kwargs: Any) -> None:
@@ -733,9 +746,13 @@ class SGLangServer:
 
         assert self.engine is not None, "server is not initialized"
         config = SGLangWakeupConfig(**kwargs)
-        await self.engine.resume_memory_occupation(tags=config.tags)
-        # tags=None wakes everything; otherwise only clear the woken tags so
-        # is_sleeping() still reports True while other components stay offloaded.
+        # resume_memory_occupation() release_memory_occupation() calls loop.run_until_complete() internally, which fails
+        # inside an async context. Await the underlying coroutine directly.
+        from sglang.srt.entrypoints.engine import ResumeMemoryOccupationReqInput
+
+        obj = ResumeMemoryOccupationReqInput(tags=config.tags)
+        await self.engine.tokenizer_manager.resume_memory_occupation(obj, None)
+
         if config.tags is None:
             self._sleeping_tags.clear()
         else:
@@ -751,29 +768,6 @@ class SGLangServer:
 
     async def reset_prefix_cache(self, timeout: Optional[float] = None) -> None:
         assert self.engine is not None, "server is not initialized"
-        # SGLang flush_cache does not accept a timeout argument
-        await self.engine.flush_cache()
-
-    async def collective_rpc(
-        self,
-        method: str,
-        timeout: Optional[float] = None,
-        args: tuple = (),
-        kwargs: Optional[dict] = None,
-    ) -> None:
-        """Execute a collective RPC call on all SGLang workers.
-
-        This is used for RLHF workflows where a trainer needs to execute methods on all TP/PP workers (e.g., for weight synchronization).
-
-        Args:
-            method: Name of the worker method to execute.
-            timeout: not supported by SGLang
-            args: not supported by SGLang
-            kwargs: Keyword arguments to pass to worker method.
-        """
-
-        assert self.engine is not None, "server is not initialized"
-        return await self.engine.collective_rpc(
-            method=method,
-            kwargs=kwargs or {},
-        )
+        # flush_cache() calls loop.run_until_complete() internally, which fails
+        # inside an async context. Await the underlying coroutine directly.
+        await self.engine.tokenizer_manager.flush_cache()
