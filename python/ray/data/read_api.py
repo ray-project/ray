@@ -74,9 +74,10 @@ from ray.data._internal.logical.operators import (
     FromItems,
     FromNumpy,
     FromPandas,
+    ListFiles,
     Read,
+    ReadFiles,
 )
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -131,11 +132,10 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
-
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+INT32_MAX = 2**31 - 1
 
 
 @DeveloperAPI
@@ -156,15 +156,10 @@ def from_blocks(blocks: List[Block]):
     meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
 
     from_blocks_op = FromBlocks(block_refs, meta_with_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(from_blocks_op, context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -253,15 +248,10 @@ def from_items(
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(from_items_op, execution_plan._context)
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(from_items_op, context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -387,6 +377,213 @@ def range_tensor(
     )
 
 
+def _resolve_read_remote_args(
+    datasource: Datasource,
+    ray_remote_args: Optional[Dict[str, Any]],
+    num_cpus: Optional[float],
+    num_gpus: Optional[float],
+    memory: Optional[float],
+    ctx: DataContext,
+) -> Dict[str, Any]:
+    """Common ``ray_remote_args`` setup shared between ``read_datasource`` and
+    ``_read_datasource_v2``.
+
+    Local-scheme reads (``local://...``) must run on the driver so tasks can
+    see the driver's filesystem. We use the ``ray.io/node-id`` label selector
+    rather than ``NodeAffinitySchedulingStrategy(soft=False)`` — matches the
+    Ray-wide migration in PR #54940. ``supports_distributed_reads`` is
+    captured on the datasource against the original (pre-resolution) paths,
+    so the check survives the scheme-stripping done by
+    ``_resolve_paths_and_filesystem``.
+
+    Callers handle datasource-specific guards (Ray Client rejection,
+    ``_validate_head_node_resources_for_local_scheduling``) themselves since
+    they sit in different positions in the V1 and V2 flows.
+    """
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    if not datasource.supports_distributed_reads:
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+    return merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
+
+@wrap_auto_init
+def _read_datasource_v2(
+    datasource,
+    *,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    block_udf: Optional[Callable[[Any], Any]] = None,
+) -> Dataset:
+    """Internal entry point for ``DataSourceV2`` reads.
+
+    Wires a ``ListFiles → ReadFiles`` logical chain:
+
+    - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
+      optional global shuffle (``FileShuffleConfig``), and size-balanced
+      bucketing (``RoundRobinPartitioner``). Its physical planner
+      parallelizes listing across path shards and emits manifest blocks.
+    - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
+      via ``scanner.create_reader().read(manifest)``.
+
+    Schema inference happens once on the driver by sampling the first
+    file — no caching layer needed.
+    """
+    import time
+
+    from ray.data._internal.datasource_v2.listing.listing_utils import (
+        _build_pruners,
+        sample_files,
+    )
+    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    ctx = DataContext.get_current()
+
+    if not datasource.supports_distributed_reads:
+        import ray.util.client
+
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the "
+                "Ray cluster can't access your local files. To fix this issue, "
+                "store files in cloud storage or a distributed filesystem like "
+                "NFS."
+            )
+
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
+        num_cpus,
+        num_gpus,
+        memory,
+        ctx,
+    )
+
+    pruners = _build_pruners(datasource.file_extensions, partition_filter)
+
+    indexer = datasource._get_file_indexer()
+
+    # Sample a few files for schema inference. Listed again (cheaply) during
+    # execution inside the ListFiles op — no caching layer needed.
+    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+    if len(sample) == 0:
+        raise ValueError(
+            f"no files found under {datasource.paths!r}. Check the path and any "
+            "configured `partition_filter` or `file_extensions` filters."
+        )
+    schema = datasource.infer_schema(sample)
+    # NOTE: ``block_udf``'s schema effect (e.g. a
+    # ``tensor_column_schema``-derived cast) is probed lazily in
+    # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
+    # on the scanner so ``FileReader`` hands pyarrow the raw on-disk
+    # types; the UDF runs post-read to produce the transformed types.
+    # Resolve any path-discovered partitioning field names from the sample
+    # and pass the result through to the scanner. Keeping the discovery
+    # here (rather than mutating ``datasource._partitioning`` inside
+    # ``infer_schema``) leaves the datasource instance immutable across
+    # reads.
+    resolved_partitioning = datasource.resolve_partitioning(sample)
+    scanner = datasource.create_scanner(
+        schema=schema,
+        filesystem=datasource.filesystem,
+        partitioning=resolved_partitioning,
+    )
+
+    # Size-balanced bucketing for the listing output. The partitioner is
+    # captured in a pickled closure and runs inside worker tasks, so its
+    # estimator must be I/O-free and pickle-safe — use the datasource's
+    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
+    # encoding-ratio multiplier). ``num_buckets`` is a hint;
+    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
+    # first, so the actual bucket count scales with total data size.
+    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
+    # back to sentinel bounds so the partitioner just rolls every file
+    # into a single bucket.
+    import sys
+
+    min_bucket_size = ctx.target_min_block_size or 0
+    max_bucket_size = (
+        ctx.target_max_block_size
+        if ctx.target_max_block_size is not None
+        else sys.maxsize
+    )
+    partitioner = RoundRobinPartitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        min_bucket_size=min_bucket_size,
+        max_bucket_size=max_bucket_size,
+        num_buckets=ctx.read_op_min_num_blocks,
+    )
+
+    # NOTE: We're using shuffle config factory to fix the seed at the planning
+    #       time, rather than at the composition time (for backward-compatibility)
+    shuffle = getattr(datasource, "shuffle", None)
+
+    def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
+        return (
+            FileShuffleConfig(seed=time.time_ns() % INT32_MAX)
+            if shuffle == "files"
+            else shuffle
+        )
+
+    list_files_op = ListFiles(
+        paths=list(datasource.paths),
+        file_indexer=indexer,
+        filesystem=datasource.filesystem,
+        source_paths=list(datasource.paths),
+        file_partitioner=partitioner,
+        file_extensions=datasource.file_extensions,
+        partition_filter=partition_filter,
+        shuffle_config_factory=_shuffle_config_factory,
+    )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
+    read_op = ReadFiles(
+        datasource_name=datasource.name,
+        scanner=scanner,
+        schema=schema,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        compute=compute_strategy,
+        block_udf=block_udf,
+        input_dependencies=[list_files_op],
+    )
+
+    stats = DatasetStats(metadata={"ReadFiles": []}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(read_op, context)
+
+    return Dataset(
+        logical_plan=logical_plan,
+        context=context,
+        in_stats=stats,
+    )
+
+
 @PublicAPI
 @wrap_auto_init
 def read_datasource(
@@ -457,28 +654,13 @@ def read_datasource(
 
     ctx = DataContext.get_current()
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-
-    if not datasource.supports_distributed_reads:
-        label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
-        ray_remote_args["label_selector"] = label_selector
-        ray_remote_args.pop("scheduling_strategy", None)
-
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and "label_selector" not in ray_remote_args
-    ):
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-
-    ray_remote_args = merge_resources_to_ray_remote_args(
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ctx,
     )
 
     if not datasource.supports_distributed_reads:
@@ -529,15 +711,9 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
     )
-    execution_plan = ExecutionPlan(
-        stats,
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(read_op, execution_plan._context)
-    return Dataset(
-        plan=execution_plan,
-        logical_plan=logical_plan,
-    )
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(read_op, context)
+    return Dataset(logical_plan, context, stats)
 
 
 @PublicAPI(stability="alpha")
@@ -1016,14 +1192,16 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col, lit
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                columns=["sepal.length", "variety"],
-                filter=pa.dataset.field("sepal.length") > 5.0,
+            # Create a Dataset by reading a Parquet file, with column selection and
+            # row filtering pushed down to the file scan.
+            ds = (
+                ray.data.read_parquet(
+                    "s3://anonymous@ray-example-data/iris.parquet",
+                )
+                .filter(expr=col("sepal.length") > lit(5.0))
+                .select_columns(["sepal.length", "variety"])
             )
 
             ds.show(2)
@@ -1116,6 +1294,73 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        # ``tensor_column_schema`` is folded into ``_block_udf`` by
+        # ``_resolve_parquet_args`` above; passing that transform through
+        # ``ReadFiles.block_udf`` covers both features.
+        if dataset_kwargs:
+            raise NotImplementedError(
+                "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
+            )
+        if columns is not None:
+            # TODO(datasource-v2): remove `columns=` from `read_parquet` once
+            # the projection-pushdown rule dispatches to `ReadFiles`. Callers
+            # should use `ray.data.read_parquet(path).select_columns([...])`.
+            #
+            # Caveat for the ``include_paths=True`` migration: V1
+            # ``columns=[...]`` implicitly retained the synthetic ``"path"``
+            # column (see ``ParquetDatasource.read_fragments`` /
+            # ``get_current_projection``), but ``select_columns([...])`` is
+            # literal and will drop ``"path"`` unless it's listed explicitly.
+            # Callers passing both must add ``"path"`` to their projection
+            # when migrating; the message below flags that case.
+            hint = (
+                " Note: when combined with `include_paths=True`, V1 implicitly"
+                " retained the `path` column — add `'path'` to your"
+                " `select_columns([...])` list to preserve it."
+                if include_paths
+                else ""
+            )
+            raise NotImplementedError(
+                "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).select_columns([...])` "
+                "instead." + hint
+            )
+        if "filter" in arrow_parquet_args:
+            raise NotImplementedError(
+                "`filter=` on `read_parquet` is not supported on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
+            )
+
+        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+            ParquetDatasourceV2,
+        )
+
+        datasource_v2 = ParquetDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            include_paths=include_paths,
+            include_row_hash=include_row_hash,
+            shuffle=shuffle,
+            arrow_parquet_args=arrow_parquet_args,
+            schema=schema,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+            block_udf=_block_udf,
+        )
+
     datasource = ParquetDatasource(
         paths,
         columns=columns,
@@ -1989,20 +2234,10 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
-
-    .. tip::
-        Using the ``tfx-bsl`` library is more performant when reading large
-        datasets (for example, in production use cases). To use this
-        implementation, you must first install ``tfx-bsl``:
-
-        1. `pip install tfx_bsl --no-dependencies`
-        2. Pass tfx_read_options to read_tfrecords, for example:
-           `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -2070,33 +2305,12 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        tfx_read_options: Specifies read options when reading TFRecord files with TFX.
-            When no options are provided, the default version without tfx-bsl will
-            be used to read the tfrecords.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
-    import platform
-
-    tfx_read = False
-
-    if tfx_read_options and platform.processor() != "arm":
-        try:
-            import tfx_bsl  # noqa: F401
-
-            tfx_read = True
-        except ModuleNotFoundError:
-            # override the tfx_read_options given that tfx-bsl is not installed
-            tfx_read_options = None
-            logger.warning(
-                "Please install tfx-bsl package with"
-                " `pip install tfx_bsl --no-dependencies`."
-                " This can help speed up the reading of large TFRecord files."
-            )
-
     datasource = TFRecordDatasource(
         paths,
         tf_schema=tf_schema,
@@ -2108,9 +2322,8 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        tfx_read_options=tfx_read_options,
     )
-    ds = read_datasource(
+    return read_datasource(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
@@ -2120,20 +2333,6 @@ def read_tfrecords(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-
-    if (
-        tfx_read_options
-        and tfx_read_options.auto_infer_schema
-        and tfx_read
-        and not tf_schema
-    ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
-            _infer_schema_and_transform,
-        )
-
-        return _infer_schema_and_transform(ds)
-
-    return ds
 
 
 @PublicAPI(stability="alpha")
@@ -3221,34 +3420,20 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
-        execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
-            DataContext.get_current().copy(),
-        )
-        logical_plan = LogicalPlan(
-            FromPandas(dfs, metadata_schema), execution_plan._context
-        )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
+        ctx = DataContext.get_current().copy()
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata_schema), ctx)
+        return MaterializedDataset(logical_plan, ctx, stats)
 
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(
-        FromPandas(blocks, metadata_schema), execution_plan._context
-    )
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
+    ctx = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata_schema), ctx)
+    return MaterializedDataset(logical_plan, ctx, stats)
 
 
 @PublicAPI
@@ -3364,19 +3549,10 @@ def from_numpy_refs(
     blocks, metadata_schema = map(list, zip(*res))
     metadata_schema = ray.get(metadata_schema)
 
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-
-    logical_plan = LogicalPlan(
-        FromNumpy(blocks, metadata_schema), execution_plan._context
-    )
-
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata_schema), context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI
@@ -3519,18 +3695,10 @@ def from_arrow_refs(
 
     get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
     metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
-    execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None),
-        DataContext.get_current().copy(),
-    )
-    logical_plan = LogicalPlan(
-        FromArrow(tables, metadata_schema), execution_plan._context
-    )
-
-    return MaterializedDataset(
-        execution_plan,
-        logical_plan,
-    )
+    stats = DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None)
+    context = DataContext.get_current().copy()
+    logical_plan = LogicalPlan(FromArrow(tables, metadata_schema), context)
+    return MaterializedDataset(logical_plan, context, stats)
 
 
 @PublicAPI(stability="alpha")

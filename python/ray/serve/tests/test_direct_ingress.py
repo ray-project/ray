@@ -2509,6 +2509,7 @@ def test_get_serve_instance_details_json_serializable(
                     "route_prefix": "/",
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
+                    "ingress_request_router_targets": [],
                 },
                 {
                     "targets": [
@@ -2524,6 +2525,7 @@ def test_get_serve_instance_details_json_serializable(
                     "route_prefix": "/",
                     "protocol": "gRPC",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
+                    "ingress_request_router_targets": [],
                 },
             ],
         }

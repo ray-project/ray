@@ -1,0 +1,183 @@
+-- HAProxy Lua action that picks a backend replica via the ingress request
+-- router. Templated at config-reload time; placeholders are filled in by
+-- _write_ingress_request_router_lua in haproxy.py.
+--
+-- Bodies exceeding tune.bufsize are truncated; we forward what we have with
+-- X-Body-Truncated since prefix-routing only needs the head of the body.
+-- See RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY in constants.py.
+
+local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
+local FORWARD_BODY = ${FORWARD_BODY}
+-- Name of the client header that carries the session id Serve should
+-- pin on. Filled from SERVE_SESSION_ID (set via the env var
+-- RAY_SERVE_SESSION_ID_HEADER_KEY) in lowercase form. Forwarded on the
+-- same name to /internal/route so session-aware routers (e.g.
+-- ConsistentHashRouter) can use it.
+local SESSION_HEADER = "${SESSION_HEADER}"
+
+-- Per-app state. The frontend sets txn.ingress_request_router_app to the
+-- backend name whose path prefix matched, and we look up that app's
+-- router pool and replica map here. Each app routes through its own
+-- router; replica IDs are scoped to the app to avoid cross-app pinning.
+local ROUTERS = ${ROUTERS}
+local REPLICA_TARGETS = ${REPLICA_TARGETS}
+
+local function call_router(router, body, truncated_length, session_id)
+    local sock = core.tcp()
+    sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
+
+    if not sock:connect(router.host, router.port) then
+        return nil
+    end
+
+    local truncation_header = ""
+    if truncated_length then
+        truncation_header = "X-Body-Truncated: "
+            .. #body .. "/" .. truncated_length .. "\r\n"
+    end
+
+    local session_header = ""
+    if session_id and session_id ~= "" then
+        session_header = SESSION_HEADER .. ": " .. session_id .. "\r\n"
+    end
+
+    -- Connection: close so sock:receive("*a") terminates on EOF.
+    local req = "POST /internal/route HTTP/1.0\r\n"
+        .. "Host: " .. router.host_header .. "\r\n"
+        .. "Connection: close\r\n"
+        .. "Content-Type: application/json\r\n"
+        .. "Content-Length: " .. #body .. "\r\n"
+        .. truncation_header
+        .. session_header
+        .. "\r\n"
+        .. body
+
+    if not sock:send(req) then
+        sock:close()
+        return nil
+    end
+
+    local response = sock:receive("*a")
+    sock:close()
+    return response
+end
+
+local function is_http_200(response)
+    return response:match("^HTTP/[%d%.]+ 200") ~= nil
+end
+
+local function http_response_body(response)
+    local _, separator_end = response:find("\r\n\r\n", 1, true)
+    if not separator_end then
+        return ""
+    end
+    return response:sub(separator_end + 1)
+end
+
+-- Router contract: response MUST be a flat JSON object with `replica_id` as a
+-- plain string actor name (no escaped quotes, no nested objects). The regex
+-- relies on this; broaden the parser if the contract grows.
+local function extract_replica_id(json_body)
+    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
+end
+
+-- Returns the original Content-Length when `body` is shorter than the
+-- advertised length (truncated by tune.bufsize), or nil otherwise.
+local function truncated_full_length(txn, body)
+    local cl = tonumber(txn.sf:hdr("content-length"))
+    if cl and #body < cl then
+        return cl
+    end
+end
+
+-- Failure semantics: every path that reaches a router decision but cannot pin
+-- a replica must arm txn.ingress_request_router_failed so the frontend's 503
+-- rule fires instead of letting the request silently fall through to the
+-- primary backend. The product invariant is: requests to a router-bearing app
+-- are served via the router or fail; there is no quiet alternative path.
+-- Two silent returns are correct: (1) the request didn't target a
+-- router-bearing app (no txn var set, no app entry in our maps), and
+-- (2) the controller hasn't pushed router/replica state for this app yet.
+-- Failure-mode bucketing belongs in observability (response header label,
+-- metric label), not in the data plane.
+core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
+    local app = txn:get_var("txn.ingress_request_router_app")
+    if not app then
+        return
+    end
+    local router = ROUTERS[app]
+    local replica_map = REPLICA_TARGETS[app]
+    if not router or not replica_map then
+        return
+    end
+
+    -- FORWARD_BODY=false: don't read or forward the body; call the router
+    -- with body="" so a Content-Length: 0 POST still goes through routing
+    -- (any policy that needs the body must opt in via FORWARD_BODY=true).
+    -- Empty body in FORWARD_BODY=true mode is treated the same -- a
+    -- legitimate input the router can accept or reject on its own terms;
+    -- we don't synthesize a sentinel for it here.
+    local body = ""
+    local truncated = nil
+    if FORWARD_BODY then
+        body = txn.sf:req_body() or ""
+        if body ~= "" then
+            truncated = truncated_full_length(txn, body)
+            if truncated then
+                core.log(core.warning,
+                    "ingress_request_router: forwarding truncated body to router ("
+                        .. #body .. "/" .. truncated .. " bytes)")
+            end
+        end
+    end
+
+    -- Look up the configured session-id header from the client request.
+    -- req_get_headers() returns a table keyed by lowercase header name
+    -- with array values (header can appear multiple times); take the
+    -- first occurrence. Missing header -> nil -> call_router skips the
+    -- forwarded header line entirely.
+    --
+    -- Also probe the `-`/`_` variant so an intermediate proxy that rewrites
+    -- the separator doesn't silently drop session affinity, matching the
+    -- Python-side `_matches_session_id_header` behavior in http_util.py.
+    local session_id = nil
+    if SESSION_HEADER ~= "" then
+        local hdrs = txn.http:req_get_headers()
+        local entry = hdrs and hdrs[SESSION_HEADER]
+        if hdrs and not entry then
+            local alt = SESSION_HEADER:gsub("-", "_")
+            if alt == SESSION_HEADER then
+                alt = SESSION_HEADER:gsub("_", "-")
+            end
+            entry = hdrs[alt]
+        end
+        if entry then
+            session_id = entry[0]
+        end
+    end
+
+    local response = call_router(router, body, truncated, session_id)
+    if not response then
+        txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
+        return
+    end
+    if not is_http_200(response) then
+        txn:set_var("txn.ingress_request_router_failed", "router_non_200")
+        return
+    end
+
+    local replica_id = extract_replica_id(http_response_body(response))
+    if not replica_id then
+        txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
+        return
+    end
+
+    local server_name = replica_map[replica_id]
+    if not server_name then
+        txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
+        return
+    end
+
+    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.via_ingress_request_router", true)
+end, 0)

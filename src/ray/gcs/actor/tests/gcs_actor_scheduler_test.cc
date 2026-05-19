@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -108,7 +108,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         ClusterID::Nil(),
         /*ray_event_recorder=*/fake_ray_event_recorder_,
         /*session_name=*/"",
-        observability_publisher_.get());
+        observability_publisher_.get(),
+        clock_);
     gcs_actor_table_ = std::make_shared<FakeGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
@@ -145,7 +146,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         },
         *raylet_client_pool_,
         *worker_client_pool_,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        clock_);
   }
 
   void TearDown() override { io_context_->Stop(); }
