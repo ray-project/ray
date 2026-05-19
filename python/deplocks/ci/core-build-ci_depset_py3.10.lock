@@ -1772,7 +1772,6 @@ googleapis-common-protos==1.74.0 \
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 gradio==5.50.0 ; sys_platform != 'win32' \
     --hash=sha256:d06770d57cdda9b703ef9cf767ac93a890a0e12d82679a310eef74203a3673f4
     # via
@@ -3783,33 +3782,24 @@ opentelemetry-api==1.39.0 \
     #   mlflow-skinny
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-    #   torchft-nightly
 opentelemetry-exporter-otlp-proto-common==1.39.0 \
     --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
     --hash=sha256:a135fceed1a6d767f75be65bd2845da344dd8b9258eeed6bc48509d02b184409
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-grpc==1.39.0 \
     --hash=sha256:758641278050de9bb895738f35ff8840e4a47685b7e6ef4a201fe83196ba7a05 \
     --hash=sha256:7e7bb3f436006836c0e0a42ac619097746ad5553ad7128a5bd4d3e727f37fc06
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-opentelemetry-exporter-otlp-proto-http==1.39.0 \
-    --hash=sha256:28d78fc0eb82d5a71ae552263d5012fa3ebad18dfd189bf8d8095ba0e65ee1ed \
-    --hash=sha256:5789cb1375a8b82653328c0ce13a054d285f774099faf9d068032a49de4c7862
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   torchft-nightly
 opentelemetry-exporter-prometheus==0.60b0 \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
@@ -3846,7 +3836,6 @@ opentelemetry-proto==1.39.0 \
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   ray
 opentelemetry-sdk==1.39.0 \
     --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
@@ -3857,10 +3846,8 @@ opentelemetry-sdk==1.39.0 \
     #   mlflow-skinny
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   ray
-    #   torchft-nightly
 opentelemetry-semantic-conventions==0.60b0 \
     --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
     --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
@@ -5631,7 +5618,6 @@ requests==2.33.1 \
     #   moto
     #   msal
     #   msrest
-    #   opentelemetry-exporter-otlp-proto-http
     #   ray
     #   requests-oauthlib
     #   requests-toolbelt
@@ -6615,7 +6601,6 @@ torch==2.9.0+cpu \
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   accelerate
     #   tensordict
-    #   torchft-nightly
     #   torchmetrics
     #   torchtext
     #   torchvision
@@ -6642,15 +6627,6 @@ torch-sparse==0.6.18+pt29cpu \
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torch-spline-conv==1.2.2+pt29cpu \
     --hash=sha256:d450dae7a383a08fa6ba57a800589becaa79a330fd81700f3255c13d29708283
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-torchft-nightly==2026.5.15 \
-    --hash=sha256:1925998386082eaac2afdf5d755310705bff4196ffca4a939f0152410681e99c \
-    --hash=sha256:4610eb739ec043684a199709e15f94926162aecf9c2cbfc513c4728e41d12778 \
-    --hash=sha256:582df58a50799f81cf68f8f62e1714cc8c69c31778f59209ec9abb6f142fbfdf \
-    --hash=sha256:7e5cef10d5ff6f6347d056eb172f8f3448a984d12e5950f1ce13e22f12303cb6 \
-    --hash=sha256:8e461fe3fd08393795a2a18a65dcd407462aed783d8d824d2c11b4860b04f351
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
@@ -6780,7 +6756,6 @@ typing-extensions==4.15.0 \
     #   myst-nb
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   optree
