@@ -72,16 +72,16 @@ class _MLflowLoggerUtil:
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
                 ``create_experiment_if_not_exists`` is set to True.
+            tracking_token: Tracking token used to authenticate with MLflow.
             artifact_location: The location to store run artifacts.
                 If not provided, MLFlow picks an appropriate default.
                 Ignored if experiment already exists.
-            tracking_token: Tracking token used to authenticate with MLflow.
             create_experiment_if_not_exists: Whether to create an
                 experiment with the provided name if it does not already
                 exist. Defaults to True.
 
         Returns:
-            Whether setup is successful.
+            None. Raises ``ValueError`` if setup is not successful.
         """
         if tracking_token:
             os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
@@ -191,6 +191,7 @@ class _MLflowLoggerUtil:
         """Starts a new run and possibly sets it as the active run.
 
         Args:
+            run_name: Name of the new MLflow run to create.
             tags: Tags to set for the new run.
             set_active: Whether to set the new run as the active run.
                 If an active run already exists, then that run is returned.
@@ -263,7 +264,7 @@ class _MLflowLoggerUtil:
 
         Args:
             params_to_log: Dictionary of parameters to log.
-            run_id (Optional[str]): The ID of the run to log to.
+            run_id: The ID of the run to log to.
         """
         params_to_log = flatten_dict(params_to_log)
 
@@ -276,7 +277,9 @@ class _MLflowLoggerUtil:
             for key, value in params_to_log.items():
                 self._mlflow.log_param(key=key, value=value)
 
-    def log_metrics(self, step, metrics_to_log: Dict, run_id: Optional[str] = None):
+    def log_metrics(
+        self, step: int, metrics_to_log: Dict, run_id: Optional[str] = None
+    ):
         """Logs the provided metrics to the run specified by run_id.
 
 
@@ -285,8 +288,9 @@ class _MLflowLoggerUtil:
         the active run.
 
         Args:
+            step: Step at which the metrics are logged.
             metrics_to_log: Dictionary of metrics to log.
-            run_id (Optional[str]): The ID of the run to log to.
+            run_id: The ID of the run to log to.
         """
         metrics_to_log = flatten_dict(metrics_to_log)
         metrics_to_log = self._parse_dict(metrics_to_log)
@@ -309,7 +313,7 @@ class _MLflowLoggerUtil:
 
         Args:
             dir: Path to directory containing the files to save.
-            run_id (Optional[str]): The ID of the run to log to.
+            run_id: The ID of the run to log to.
         """
         if run_id and self._run_exists(run_id):
             client = self._get_client()
@@ -317,15 +321,15 @@ class _MLflowLoggerUtil:
         else:
             self._mlflow.log_artifacts(local_dir=dir)
 
-    def end_run(self, status: Optional[str] = None, run_id=None):
+    def end_run(self, status: Optional[str] = None, run_id: Optional[str] = None):
         """Terminates the run specified by run_id.
 
         If no ``run_id`` is passed in, then terminates the
         active run if one exists.
 
         Args:
-            status (Optional[str]): The status to set when terminating the run.
-            run_id (Optional[str]): The ID of the run to terminate.
+            status: The status to set when terminating the run.
+            run_id: The ID of the run to terminate.
 
         """
         if (
