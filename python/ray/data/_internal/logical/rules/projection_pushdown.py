@@ -354,9 +354,11 @@ class ProjectionPushdown(Rule):
             # Physical operator fusion later merges the kept ``Project``
             # into the same ``MapOperator`` as the read, so the
             # runtime cost is the same either way.
-            is_pure_prune = not any(
-                isinstance(e, AliasExpr) for e in current_project.exprs
-            ) and all(_is_col_expr(e) for e in _filter_out_star(current_project.exprs))
+            has_renames = any(isinstance(e, AliasExpr) for e in current_project.exprs)
+            all_col_refs = all(
+                _is_col_expr(e) for e in _filter_out_star(current_project.exprs)
+            )
+            is_pure_prune = not has_renames and all_col_refs
             if is_pure_prune:
                 return projected_input_op
 

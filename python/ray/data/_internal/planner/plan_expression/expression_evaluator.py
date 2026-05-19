@@ -747,11 +747,11 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         TASK_BITS = 30
         if end_idx > (1 << ROW_BITS):
             raise ValueError(
-                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1<<ROW_BITS)-1}"
+                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1 << ROW_BITS) - 1}"
             )
         if ctx.task_idx >= (1 << TASK_BITS):
             raise ValueError(
-                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1<<TASK_BITS)-1}"
+                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1 << TASK_BITS) - 1}"
             )
 
         partition_mask = ctx.task_idx << ROW_BITS
@@ -856,6 +856,8 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         rename_exprs_by_source: Dict[str, Expr] = {}
         extra_exprs: List[Expr] = []
         for expr in projection_exprs[1:]:
+            # e.g. ``col(source)._rename(new_name)`` — bucket by ``source`` for column order.
+            # ``rename_exprs_by_source``: input column name -> that rename ``AliasExpr``.
             if (
                 isinstance(expr, AliasExpr)
                 and expr._is_rename
