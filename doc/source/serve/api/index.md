@@ -94,6 +94,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
+   serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
@@ -171,6 +172,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
 
 

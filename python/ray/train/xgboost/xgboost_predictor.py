@@ -46,6 +46,8 @@ class XGBoostPredictor(Predictor):
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.
 
+        Returns:
+            A new ``XGBoostPredictor`` instance.
         """
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()

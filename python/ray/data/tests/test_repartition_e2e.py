@@ -422,18 +422,22 @@ def test_streaming_repartition_with_partial_last_block(
     """Test repartition with target_num_rows_per_block where last block has fewer rows.
     This test verifies:
     1. N-1 blocks have exactly target_num_rows_per_block rows
-    2. Only the last block can have fewer rows (remainder)
+    2. Exactly one block has fewer rows, and it can appear anywhere
+       in the output, StreamingRepartition does not guarantee ordering.
     """
     # Configure shuffle strategy
     ctx = DataContext.get_current()
     ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 101
+    target_num_rows_per_block = 20
 
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
-    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
+    ds = ds.repartition(
+        target_num_rows_per_block=target_num_rows_per_block, strict=True
+    )
 
     ds = ds.materialize()
 
@@ -444,14 +448,16 @@ def test_streaming_repartition_with_partial_last_block(
 
     assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
 
-    # Verify that all blocks have 20 rows except one block with 10 rows
-    # The block with 10 rows should be the last one
+    # Verify that all blocks have 20 rows except one block with 1 row
+    # The smaller block may appear anywhere in the output order
+    remainder_blocks = [c for c in block_row_counts if c != target_num_rows_per_block]
     assert (
-        block_row_counts[-1] == 1
-    ), f"Expected last block to have 1 row, got {block_row_counts[-1]}"
-    assert all(
-        count == 20 for count in block_row_counts[:-1]
-    ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+        len(remainder_blocks) == 1
+    ), f"Expected exactly one remainder block, got {block_row_counts}"
+    assert remainder_blocks[0] == num_rows % target_num_rows_per_block, (
+        f"Expected remainder block to have {num_rows % target_num_rows_per_block} rows, "
+        f"got {remainder_blocks[0]}. Block counts: {block_row_counts}"
+    )
 
 
 def test_streaming_repartition_non_strict_mode(

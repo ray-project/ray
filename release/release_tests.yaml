@@ -531,6 +531,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_memory_usage_threshold=0.5
@@ -560,6 +561,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -615,10 +617,13 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -635,6 +640,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -668,6 +674,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -700,6 +707,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -734,6 +742,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -772,6 +781,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -800,6 +810,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -829,6 +840,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
@@ -1373,6 +1385,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_small.yaml
 
   run:
@@ -1402,6 +1415,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -1455,6 +1469,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1483,6 +1498,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1514,6 +1530,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
@@ -1525,6 +1543,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
@@ -1562,6 +1581,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # specifically testing haproxy here because with serve
@@ -1595,6 +1615,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
@@ -1606,6 +1628,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1623,6 +1646,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_throughput_optimized_microbenchmarks
@@ -1634,6 +1659,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
@@ -1656,6 +1682,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_router_benchmark
@@ -1667,6 +1695,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1682,6 +1711,11 @@
   variations:
     # Low-latency / high-throughput workload
     - __suffix__: aws.standard
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+            - RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
       run:
         timeout: 7200
         long_running: false
@@ -1691,6 +1725,7 @@
           --simulated-latency-cap-s 0.1
           --max-ongoing-requests-child 5
           --max-ongoing-requests-parent 5
+          --max-users-per-task 24
           --router-type pow2
     # Supply-constrained workload
     - __suffix__: aws.supply_constraint
@@ -1715,6 +1750,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
@@ -1739,6 +1775,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
@@ -5151,7 +5189,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
-  frequency: weekly
+  frequency: manual # was weekly
   python: "3.11"
   group: ray-examples
   team: data

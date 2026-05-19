@@ -92,6 +92,9 @@ from ray.serve._private.constants import (
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    USER_HEALTH_CHECK_PROBE_INTERVAL_S,
+    USER_HEALTH_CHECK_PROBE_MAX_FAIL,
+    USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
 )
 from ray.serve._private.default_impl import (
     create_replica_impl,
@@ -1182,13 +1185,41 @@ class Replica:
         self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
 
         self._num_queued_requests = 0
+        self._reserved_slots: Set[str] = set()
 
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
     def get_num_ongoing_requests(self) -> int:
-        return self._metrics_manager.get_num_ongoing_requests()
+        return self._metrics_manager.get_num_ongoing_requests() + len(
+            self._reserved_slots
+        )
+
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve replica capacity for a future dispatch call."""
+        if request_metadata.is_direct_ingress:
+            raise RuntimeError(
+                "Slot reservation is not supported for direct-ingress requests."
+            )
+
+        if not self._can_accept_request(request_metadata):
+            return False, self.get_num_ongoing_requests()
+
+        await self._semaphore.acquire()
+        self._reserved_slots.add(slot_token)
+        return True, self.get_num_ongoing_requests()
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release replica capacity reserved by choose_replica()."""
+        if slot_token not in self._reserved_slots:
+            return False, self.get_num_ongoing_requests()
+
+        self._reserved_slots.remove(slot_token)
+        self._semaphore.release()
+        return True, self.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -1745,6 +1776,9 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._user_callable_wrapper.start_user_loop_watchdog(
+                        self._event_loop
+                    )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
                             self._user_callable_wrapper._callable.docs_path
@@ -1865,12 +1899,25 @@ class Replica:
 
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
-        async with self._semaphore:
+        reserved_slot_token = request_metadata._reserved_slot_token
+        if reserved_slot_token:
+            if reserved_slot_token not in self._reserved_slots:
+                raise RuntimeError(
+                    "Request tried to consume an unknown reserved slot "
+                    f"{reserved_slot_token}."
+                )
+            self._reserved_slots.remove(reserved_slot_token)
+        else:
+            await self._semaphore.acquire()
+
+        try:
             try:
                 self._metrics_manager.inc_num_ongoing_requests(request_metadata)
                 yield
             finally:
                 self._metrics_manager.dec_num_ongoing_requests(request_metadata)
+        finally:
+            self._semaphore.release()
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
@@ -1883,7 +1930,7 @@ class Replica:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            num_ongoing_requests = self.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
@@ -1898,6 +1945,7 @@ class Replica:
 
     async def shutdown(self):
         try:
+            self._user_callable_wrapper.stop_user_loop_watchdog()
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
@@ -1945,8 +1993,11 @@ class Replica:
 
     async def check_health(self):
         try:
-            # If there's no user-defined health check, nothing runs on the user code event
-            # loop and no future is returned.
+            # Runs the user-defined check_health on the user code loop if defined.
+            # Otherwise, if the background watchdog has detected the user loop is
+            # unresponsive, raises immediately. If the watchdog is disabled
+            # (MAX_FAIL=0) or the fail counter hasn't reached the threshold yet,
+            # returns None.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -2759,6 +2810,16 @@ class ReplicaActor:
         """
         return self._replica_impl.get_num_ongoing_requests()
 
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve capacity for a future choose_replica/dispatch request."""
+        return await self._replica_impl.reserve_slot(request_metadata, slot_token)
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release capacity reserved by choose_replica()."""
+        return self._replica_impl.release_slot(slot_token)
+
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
 
@@ -2998,6 +3059,9 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._user_health_check: Optional[Callable] = None
+        self._user_loop_probe_consecutive_fail_count: int = 0
+        self._user_loop_probe_task: Optional[asyncio.Task] = None
         self._deployment_config = deployment_config
         self._ray_actor_options = ray_actor_options or {}
         self._user_code_threadpool: Optional[
@@ -3046,6 +3110,72 @@ class UserCallableWrapper:
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
+
+    def _user_loop_watchdog_enabled(self) -> bool:
+        """Whether we run the optional background user-loop probe (and may fast-fail HC)."""
+        return (
+            self._run_user_code_in_separate_thread
+            and self._user_health_check is None
+            and USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0
+        )
+
+    def start_user_loop_watchdog(self, main_loop: asyncio.AbstractEventLoop) -> None:
+        """Periodically probe the user code loop from the replica main loop (opt-in).
+
+        With user code on a separate thread, a wedged asyncio loop can queue health
+        probes indefinitely. If ``RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL`` > 0,
+        repeated timeouts fail ``check_health`` without waiting for the controller
+        RPC timeout. Applies even when ``RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1``: async
+        work on that loop stays observable regardless of sync thread-pool idle/busy mix.
+        """
+        if not self._user_loop_watchdog_enabled():
+            return
+        if self._user_loop_probe_task is not None:
+            return
+        self._user_loop_probe_task = main_loop.create_task(self._user_loop_probe_loop())
+
+    def stop_user_loop_watchdog(self) -> None:
+        if self._user_loop_probe_task is not None:
+            self._user_loop_probe_task.cancel()
+            self._user_loop_probe_task = None
+        # Reset so a subsequent start_user_loop_watchdog() doesn't begin with a stale
+        # fail count that would immediately trip call_user_health_check().
+        self._user_loop_probe_consecutive_fail_count = 0
+
+    async def _user_loop_probe_loop(self) -> None:
+        while True:
+            await asyncio.sleep(USER_HEALTH_CHECK_PROBE_INTERVAL_S)
+
+            fut = asyncio.run_coroutine_threadsafe(
+                asyncio.sleep(0), self._user_code_event_loop
+            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.wrap_future(fut),
+                    timeout=USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe timed out "
+                    f"(failed {self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL} before health check fails). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+            except Exception as e:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe failed: "
+                    f"{e} ({self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL}). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+
+            self._user_loop_probe_consecutive_fail_count = 0
 
     def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
         num_cpus = self._ray_actor_options.get("num_cpus")
@@ -3345,11 +3475,21 @@ class UserCallableWrapper:
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
-        # To avoid this issue for basic cases without a user-defined health check, skip
-        # interacting with the user callable entirely.
+        # When there is no user-defined health check, health is determined by the
+        # optional watchdog fail counter.
+        if (
+            self._user_loop_watchdog_enabled()
+            and self._user_loop_probe_consecutive_fail_count
+            >= USER_HEALTH_CHECK_PROBE_MAX_FAIL
+        ):
+            raise RuntimeError(
+                "User event loop unresponsive: probe failed "
+                f"{self._user_loop_probe_consecutive_fail_count} consecutive times "
+                f"(limit {USER_HEALTH_CHECK_PROBE_MAX_FAIL})."
+            )
+
         if self._user_health_check is not None:
             return self._call_user_health_check()
-
         return None
 
     @property

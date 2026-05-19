@@ -216,6 +216,21 @@ class PredicatePushdown(Rule):
             if result_op is input_op:
                 return filter_op
 
+            # If apply_predicate wrapped a residual in a Filter above the pushed-down
+            # op, that residual is in the original column namespace (we rewrote the
+            # whole predicate into it above). The pushed-down op still applies
+            # ``column_renames`` to its output blocks, so the Filter sees renamed
+            # columns at runtime — rebind the residual back to the renamed namespace.
+            if rename_map and isinstance(result_op, Filter):
+                inverse_rename_map = {new: old for old, new in rename_map.items()}
+                rebound = cls._substitute_predicate_columns(
+                    result_op.predicate_expr, inverse_rename_map
+                )
+                result_op = Filter(
+                    predicate_expr=rebound,
+                    input_dependencies=result_op.input_dependencies,
+                )
+
             # Otherwise, return the result without the filter (predicate was pushed down)
             return result_op
 

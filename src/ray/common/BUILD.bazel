@@ -100,6 +100,7 @@ ray_cc_library(
         "//src/ray/common/tests:__pkg__",
     ],
     deps = [
+        ":memory_monitor_utils",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:logging",
         "@com_google_googletest//:gtest",

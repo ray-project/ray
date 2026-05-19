@@ -28,6 +28,8 @@ HAPROXY_CONFIG_TEMPLATE = """global
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
+    {%- endif %}
+    {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
@@ -97,7 +99,9 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    {%- endif %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     # Fail loudly when the Lua dispatch did not pick a replica. Must appear
     # before the use_backend rules below so the request never falls back to
@@ -163,13 +167,28 @@ backend {{ backend.name or 'unknown' }}
 {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
+    # Keep the pinned data-plane path on the same connection policy as the
+    # primary backend. For streamed responses, forcing server-close can leave
+    # HAProxy holding unread server-side FINs under a burst while worker
+    # threads are still routing other requests.
     http-reuse always
-    # use-server falls through to LB if the pinned server is DOWN.
+    # use-server falls through to LB if the pinned server is DOWN. Combined
+    # with `retry-on` below (when configured), this lets HAProxy redispatch
+    # a slow-first-byte request to a different replica instead of head-of-
+    # line-blocking on the original pick.
     option redispatch
+    {%- if config.ingress_retry_on %}
+    retry-on {{ config.ingress_retry_on }}
+    {%- endif %}
+    {%- if config.ingress_retries is not none %}
+    retries {{ config.ingress_retries }}
+    {%- endif %}
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
+    {%- if config.ingress_timeout_server_s is not none %}
+    timeout server {{ config.ingress_timeout_server_s }}s
+    {%- elif backend.timeout_server_s is not none %}
     timeout server {{ backend.timeout_server_s }}s
     {%- endif %}
     {%- if backend.timeout_http_keep_alive_s is not none %}
