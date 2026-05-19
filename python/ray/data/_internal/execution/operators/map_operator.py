@@ -761,7 +761,7 @@ def _map_task(
                         exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s,
-                            max_uss_bytes=profiler.estimate_max_uss() or 0,
+                            max_uss_bytes=profiler.estimate_max_uss(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,

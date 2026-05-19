@@ -1151,7 +1151,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_sample(task_wall_time_s)
 
-        if task_exec_stats is not None and task_exec_stats.max_uss_bytes > 0:
+        if task_exec_stats is not None and task_exec_stats.max_uss_bytes is not None:
             self.max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
 
         task_output_backpressure_s = (
