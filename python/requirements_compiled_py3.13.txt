@@ -713,7 +713,7 @@ gpytorch==1.15.2
     # via botorch
 gradio==5.50.0 ; platform_system != "Windows"
     # via -r python/requirements/py313/test-requirements.txt
-gradio-client==2.0.0
+gradio-client==1.4.0
     # via gradio
 graphemeu==0.7.2
     # via alive-progress
