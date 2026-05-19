@@ -1,4 +1,4 @@
-"""Preemption signal data types and helpers.
+"""Preemption signal data types.
 
 This module is the source of truth for the PreemptionInfo struct that flows
 from Ray Core's drain signal -> Ray Train controller -> worker actor ->
@@ -7,7 +7,7 @@ TrainContext -> user UDF via ``ray.train.preemption_status()``.
 
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 from ray.util.annotations import PublicAPI
 
@@ -30,16 +30,25 @@ class PreemptionInfo:
             Includes ranks sharing a failure domain (e.g., the entire TPU slice)
             even if their own host has not yet entered drain.
         preempted_node_ids: Corresponding Ray node IDs (hex strings).
-        this_worker_preempted: Convenience: whether the calling worker is in
-            ``preempted_ranks``. Filled in per-worker by the controller before
-            the ``mark_preempt`` RPC is sent.
+
+    Example:
+
+        .. code-block:: python
+
+            info = ray.train.preemption_status()
+            if info is not None:
+                rank = ray.train.get_context().get_world_rank()
+                if rank in info.preempted_ranks:
+                    cleanup_local()
+                else:
+                    save_jit_checkpoint(state)
+                return
     """
 
     deadline: float
     reason: str
     preempted_ranks: List[int] = field(default_factory=list)
     preempted_node_ids: List[str] = field(default_factory=list)
-    this_worker_preempted: bool = False
 
     @property
     def seconds_remaining(self) -> float:
@@ -48,15 +57,3 @@ class PreemptionInfo:
         if self.deadline == float("inf"):
             return float("inf")
         return max(0.0, self.deadline - time.time())
-
-
-def make_preemption_info_for_worker(
-    base: PreemptionInfo, worker_rank: int
-) -> PreemptionInfo:
-    """Return a copy of ``base`` with ``this_worker_preempted`` set for the
-    given rank. Used by PreemptionCallback when fanning out mark_preempt RPCs."""
-    from dataclasses import replace
-
-    return replace(
-        base, this_worker_preempted=(worker_rank in base.preempted_ranks)
-    )

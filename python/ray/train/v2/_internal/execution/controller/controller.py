@@ -356,15 +356,30 @@ class TrainController:
         """Construct the PreemptionCallback for this controller, if enabled.
 
         Returns the callback (a WorkerGroupCallback) or None to disable.
-        Enable/disable can be controlled via env var
-        ``RAY_TRAIN_PREEMPTION_HANDLING_ENABLED`` (default: "1"). The callback
-        needs this controller's actor handle so it can route the signal back
-        via ``notify_preempting``; we capture it lazily here because we're
-        running inside the actor.
+
+        Disabled cases:
+          * Env override ``RAY_TRAIN_PREEMPTION_HANDLING_ENABLED=0``.
+          * TorchFT mode (``manages_replica_groups=True``). TorchFT already
+            handles peer loss via per-step quorum: survivors keep stepping
+            with a smaller replica set (or wait at a barrier if the user
+            configured ``min_replica_size`` higher). Driving a
+            PreemptingState transition on top of this would interfere with
+            TorchFT's existing graceful-degrade path and slow down the
+            common case. Re-enable via a dedicated TorchFT-aware preemption
+            flow in a follow-up.
+          * Local mode / not running inside a Ray actor.
         """
         if not ray_constants.env_bool("RAY_TRAIN_PREEMPTION_HANDLING_ENABLED", True):
             return None
-        from ray.train.v2._internal.execution.preemption_callback import (
+        if self._manages_replica_groups:
+            logger.info(
+                "PreemptionCallback not enabled: TorchFT mode "
+                "(manages_replica_groups=True). TorchFT handles preemption "
+                "via its own per-step quorum."
+            )
+            return None
+
+        from ray.train.v2._internal.callbacks.preemption_callback import (
             PreemptionCallback,
         )
 
@@ -381,14 +396,9 @@ class TrainController:
         poll_interval_s = float(
             os.getenv("RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S", "5")
         )
-        failure_domain = os.getenv(
-            "RAY_TRAIN_PREEMPTION_FAILURE_DOMAIN", "node"
-        )
         return PreemptionCallback(
             controller_actor=controller_actor,
-            manages_replica_groups=self._manages_replica_groups,
             poll_interval_s=poll_interval_s,
-            failure_domain=failure_domain,
         )
 
     def notify_preempting(self, info: PreemptionInfo) -> None:
@@ -415,12 +425,17 @@ class TrainController:
         """Return True iff the controller should transition out of
         ``PreemptingState``.
 
-        Per the design doc, two completion criteria:
-          - Non-TorchFT (or TorchFT + all replica groups preempted): wait for
-            every worker to exit (cleanly or via error) OR for the deadline
-            to expire.
-          - TorchFT + partial preemption: wait only for workers in preempted
-            replica groups. Healthy replica groups keep stepping.
+        Two completion criteria:
+          - All preempted-rank workers have exited (cleanly or via error)
+            AND all survivors have also exited (status.finished). Survivors
+            get the full deadline window to complete their JIT-checkpoint
+            work before the worker group is torn down.
+          - The preemption deadline has expired (safety net regardless of
+            worker state).
+
+        Note: this method is never called in TorchFT mode because
+        ``_build_preemption_callback`` does not register the
+        PreemptionCallback when ``manages_replica_groups=True``.
         """
         if info.seconds_remaining <= 0:
             return True
@@ -435,16 +450,12 @@ class TrainController:
             or (not status.worker_statuses[rank].running)
             for rank in preempted_ranks
         )
-
         if not preempted_workers_done:
             return False
 
-        if self._manages_replica_groups:
-            # TorchFT: don't wait for survivor RGs; let them keep training.
-            return True
-        else:
-            # Non-TorchFT: wait for everyone, including survivors writing JIT ckpts.
-            return status.finished
+        # Wait for survivors too (including the time they spend writing JIT
+        # checkpoints). Deadline expiry above is the safety net.
+        return status.finished
 
     def _build_preemption_error(self, info: PreemptionInfo) -> PreemptionError:
         """Synthesize a PreemptionError from the current poll status when
@@ -851,16 +862,19 @@ class TrainController:
             # _build_preemption_error().
             await self._poll_workers()
 
-            info = controller_state.preemption_info
+            # Always evaluate against the latest PreemptionInfo. The callback
+            # may have observed additional drains (e.g., a second host in the
+            # same TPU slice entering drain a few seconds after the first)
+            # and updated _latest_preemption_info via notify_preempting. The
+            # latest info contains the union of preempted_ranks and the
+            # earliest deadline; both are required for correct wait logic.
+            info = self._latest_preemption_info or controller_state.preemption_info
+
             if not self._should_leave_preempting(info):
-                # Stay in PreemptingState; refresh deadline in case the
-                # PreemptionCallback updated it since last tick.
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=PreemptingState(
-                        preemption_info=self._latest_preemption_info or info
-                    ),
+                    next_state=PreemptingState(preemption_info=info),
                 )
 
             # Leave: build PreemptionError and route through failure policy.

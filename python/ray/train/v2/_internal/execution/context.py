@@ -145,7 +145,16 @@ class TrainContext:
     # UDF thread via ``preemption_status()``. ``_preempt_event`` is a one-way
     # latch: once set, stays set. The ``_preempt_info`` content may be refined
     # (e.g., more nodes drain on the same TPU slice) via subsequent RPCs.
-    _preempt_lock: threading.Lock = field(default_factory=threading.Lock)
+    #
+    # No explicit lock is needed:
+    #   * Single-attribute assignment is atomic under the Python GIL — readers
+    #     see either the old or new ``_preempt_info`` reference, never a torn
+    #     value.
+    #   * ``PreemptionInfo`` is a frozen dataclass so the shared instance can
+    #     never be mutated in place.
+    #   * Writers always update ``_preempt_info`` before setting the event, so
+    #     a reader that sees the event set is guaranteed to see an info value
+    #     (not None).
     _preempt_event: threading.Event = field(default_factory=threading.Event)
     _preempt_info: Optional["PreemptionInfo"] = None
     _preempt_acknowledged_at: Optional[float] = None
@@ -166,16 +175,14 @@ class TrainContext:
         """
         if not self._preempt_event.is_set():
             return None
-        with self._preempt_lock:
-            if self._preempt_acknowledged_at is None:
-                self._preempt_acknowledged_at = time.time()
-            return self._preempt_info
+        if self._preempt_acknowledged_at is None:
+            self._preempt_acknowledged_at = time.time()
+        return self._preempt_info
 
     def _set_preemption_info(self, info: "PreemptionInfo") -> None:
         """Internal: called from the actor main thread via mark_preempt RPC."""
-        with self._preempt_lock:
-            self._preempt_info = info
-        self._preempt_event.set()
+        self._preempt_info = info        # atomic under GIL
+        self._preempt_event.set()        # signal readers
 
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name

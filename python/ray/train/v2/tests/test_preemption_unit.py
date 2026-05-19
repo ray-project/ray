@@ -21,10 +21,7 @@ from ray.train.v2._internal.execution.failure_handling.default import (
 from ray.train.v2._internal.execution.failure_handling.failure_policy import (
     FailureDecision,
 )
-from ray.train.v2._internal.execution.preemption import (
-    PreemptionInfo,
-    make_preemption_info_for_worker,
-)
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.worker_group.poll import (
     WorkerGroupPollStatus,
     WorkerStatus,
@@ -61,19 +58,6 @@ def test_preemption_info_seconds_remaining_inf_when_no_deadline():
 def test_preemption_info_clamps_to_zero():
     info = PreemptionInfo(deadline=time.time() - 100, reason="drain")
     assert info.seconds_remaining == 0.0
-
-
-def test_make_preemption_info_for_worker_sets_flag_correctly():
-    base = PreemptionInfo(
-        deadline=time.time() + 25,
-        reason="drain",
-        preempted_ranks=[2, 3],
-        preempted_node_ids=["node-a", "node-b"],
-    )
-    assert make_preemption_info_for_worker(base, 2).this_worker_preempted
-    assert make_preemption_info_for_worker(base, 3).this_worker_preempted
-    assert not make_preemption_info_for_worker(base, 0).this_worker_preempted
-    assert not make_preemption_info_for_worker(base, 1).this_worker_preempted
 
 
 # ─── PreemptingState ────────────────────────────────────────────────────────
@@ -145,7 +129,7 @@ def test_worker_group_error_budget_independent_from_preemption():
 # ─── _should_leave_preempting / _build_preemption_error ─────────────────────
 
 
-def _fake_controller(manages_replica_groups: bool, worker_statuses):
+def _fake_controller(worker_statuses):
     """Build a stub controller exposing just the methods we test."""
     from ray.train.v2._internal.execution.controller.controller import (
         TrainController,
@@ -153,7 +137,6 @@ def _fake_controller(manages_replica_groups: bool, worker_statuses):
 
     # Bind methods to a stub via __get__ so we don't instantiate the actor.
     stub = MagicMock()
-    stub._manages_replica_groups = manages_replica_groups
     stub._worker_group = MagicMock()
     stub._worker_group.get_latest_poll_status.return_value = (
         WorkerGroupPollStatus(worker_statuses=worker_statuses)
@@ -181,7 +164,7 @@ def test_should_leave_preempting_path_A_all_clean_exits():
         2: WorkerStatus(running=False, return_value="ok"),  # preempted, clean
         3: WorkerStatus(running=False, return_value="ok"),
     }
-    ctrl = _fake_controller(manages_replica_groups=False, worker_statuses=statuses)
+    ctrl = _fake_controller(worker_statuses=statuses)
     assert ctrl._should_leave_preempting(info) is True
 
 
@@ -199,7 +182,7 @@ def test_should_leave_preempting_waits_for_survivor():
         2: WorkerStatus(running=False, return_value="ok"),
         3: WorkerStatus(running=False, return_value="ok"),
     }
-    ctrl = _fake_controller(manages_replica_groups=False, worker_statuses=statuses)
+    ctrl = _fake_controller(worker_statuses=statuses)
     assert ctrl._should_leave_preempting(info) is False
 
 
@@ -217,25 +200,7 @@ def test_should_leave_preempting_deadline_expired():
         2: WorkerStatus(running=True),  # still running, but deadline passed
         3: WorkerStatus(running=True),
     }
-    ctrl = _fake_controller(manages_replica_groups=False, worker_statuses=statuses)
-    assert ctrl._should_leave_preempting(info) is True
-
-
-def test_should_leave_preempting_torchft_does_not_wait_for_survivors():
-    """A-torchft: leave as soon as preempted RG ranks have exited."""
-    info = PreemptionInfo(
-        deadline=time.time() + 25,
-        reason="drain",
-        preempted_ranks=[2, 3],
-        preempted_node_ids=["node-b"],
-    )
-    statuses = {
-        0: WorkerStatus(running=True),  # survivor RG keeps stepping
-        1: WorkerStatus(running=True),
-        2: WorkerStatus(running=False, return_value="ok"),  # affected RG exited
-        3: WorkerStatus(running=False, return_value="ok"),
-    }
-    ctrl = _fake_controller(manages_replica_groups=True, worker_statuses=statuses)
+    ctrl = _fake_controller(worker_statuses=statuses)
     assert ctrl._should_leave_preempting(info) is True
 
 
@@ -254,7 +219,7 @@ def test_build_preemption_error_synthesizes_on_clean_exits():
         2: WorkerStatus(running=False, return_value="ok"),  # clean exit
         3: WorkerStatus(running=False, return_value="ok"),
     }
-    ctrl = _fake_controller(manages_replica_groups=False, worker_statuses=statuses)
+    ctrl = _fake_controller(worker_statuses=statuses)
     err = ctrl._build_preemption_error(info)
 
     assert isinstance(err, PreemptionError)
@@ -284,7 +249,7 @@ def test_build_preemption_error_preserves_existing_errors():
         1: WorkerStatus(running=False, error=underlying),
         2: WorkerStatus(running=False, error=underlying),  # actually preempted
     }
-    ctrl = _fake_controller(manages_replica_groups=False, worker_statuses=statuses)
+    ctrl = _fake_controller(worker_statuses=statuses)
     err = ctrl._build_preemption_error(info)
     assert err.deadline_exceeded is True
     assert statuses[2].error is underlying  # not clobbered
@@ -302,7 +267,8 @@ def _fake_worker(rank, node_id, slice_resource=None):
 
 
 def test_failure_domain_node_mapping():
-    from ray.train.v2._internal.execution.preemption_callback import (
+    """Baseline: each node maps to the ranks physically on it."""
+    from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionCallback,
     )
 
@@ -314,85 +280,75 @@ def test_failure_domain_node_mapping():
     ]
     wg = MagicMock()
     wg.get_workers.return_value = workers
-    cb = PreemptionCallback(
-        controller_actor=None, drain_source=lambda: {}, failure_domain="node"
-    )
+    cb = PreemptionCallback(controller_actor=None)
     mapping = cb._build_failure_domain_map(wg)
-    # node-a: ranks 0, 1; node-b: ranks 2, 3
     assert mapping["node-a"] == [0, 1]
     assert mapping["node-b"] == [2, 3]
 
 
-def test_failure_domain_tpu_slice_mapping():
-    from ray.train.v2._internal.execution.preemption_callback import (
-        PreemptionCallback,
-    )
+def test_failure_domain_tpu_slice_autodetect(monkeypatch):
+    """Auto-detect: when nodes carry a TPU slice label, all ranks sharing
+    that label form one failure domain. Stubbed via _lookup_tpu_slice_labels
+    so the test doesn't need a real Ray cluster."""
+    from ray.train.v2._internal.callbacks import preemption_callback as pc
 
     workers = [
-        _fake_worker(0, "node-a", slice_resource="TPU-v6e-8-head-slice-0"),
-        _fake_worker(1, "node-b", slice_resource="TPU-v6e-8-head-slice-0"),
-        _fake_worker(2, "node-c", slice_resource="TPU-v6e-8-head-slice-1"),
-        _fake_worker(3, "node-d", slice_resource="TPU-v6e-8-head-slice-1"),
+        _fake_worker(0, "node-a"),
+        _fake_worker(1, "node-b"),
+        _fake_worker(2, "node-c"),
+        _fake_worker(3, "node-d"),
     ]
     wg = MagicMock()
     wg.get_workers.return_value = workers
-    cb = PreemptionCallback(
-        controller_actor=None, drain_source=lambda: {}, failure_domain="tpu_slice"
+
+    # nodes a,b -> slice-0; nodes c,d -> slice-1
+    monkeypatch.setattr(
+        pc.PreemptionCallback,
+        "_lookup_tpu_slice_labels",
+        staticmethod(lambda nids: {
+            "node-a": "slice-0",
+            "node-b": "slice-0",
+            "node-c": "slice-1",
+            "node-d": "slice-1",
+        }),
     )
+
+    cb = pc.PreemptionCallback(controller_actor=None)
     mapping = cb._build_failure_domain_map(wg)
-    # Each host maps to ALL ranks in its slice.
+
+    # Every node maps to ALL ranks in its slice.
     assert mapping["node-a"] == [0, 1]
     assert mapping["node-b"] == [0, 1]
     assert mapping["node-c"] == [2, 3]
     assert mapping["node-d"] == [2, 3]
 
 
-def test_on_drain_change_torchft_signals_only_affected():
-    """Rule 3: TorchFT mode -> only preempted ranks get mark_preempt."""
-    from ray.train.v2._internal.execution.preemption_callback import (
+def test_failure_domain_no_tpu_labels_falls_back_to_node():
+    """No TPU slice labels (GPU/CPU cluster) → per-node domain."""
+    from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionCallback,
     )
 
     workers = [
-        _fake_worker(i, f"node-{i}") for i in range(4)
+        _fake_worker(0, "node-a"),
+        _fake_worker(1, "node-a"),
+        _fake_worker(2, "node-b"),
     ]
-    for w in workers:
-        w.actor.mark_preempt.remote = MagicMock()
-
     wg = MagicMock()
     wg.get_workers.return_value = workers
-
-    fake_controller = MagicMock()
-
-    cb = PreemptionCallback(
-        controller_actor=fake_controller,
-        manages_replica_groups=True,
-        drain_source=lambda: {},
-        failure_domain="node",
-    )
-    # Manually wire wg + domain map (simulating after_worker_group_start).
-    cb._wg = wg
-    cb._node_to_domain_ranks = cb._build_failure_domain_map(wg)
-
-    deadline_ms = int((time.time() + 25) * 1000)
-    cb._on_drain_change({"node-2": deadline_ms})  # rank 2 drained
-
-    # Controller was notified
-    fake_controller.notify_preempting.remote.assert_called_once()
-
-    # Only rank 2 was signaled
-    assert workers[0].actor.mark_preempt.remote.call_count == 0
-    assert workers[1].actor.mark_preempt.remote.call_count == 0
-    assert workers[2].actor.mark_preempt.remote.call_count == 1
-    assert workers[3].actor.mark_preempt.remote.call_count == 0
+    cb = PreemptionCallback(controller_actor=None)
+    mapping = cb._build_failure_domain_map(wg)
+    # _lookup_tpu_slice_labels returns {} when ray isn't initialized.
+    assert mapping["node-a"] == [0, 1]
+    assert mapping["node-b"] == [2]
 
 
 def test_resolve_deadline_uses_earliest_when_reported():
-    from ray.train.v2._internal.execution.preemption_callback import (
-        PreemptionCallback,
+    from ray.train.v2._internal.callbacks.preemption_callback import (
+        PreemptionWatcher,
     )
     # Earliest (min) wins.
-    d = PreemptionCallback._resolve_deadline([2000, 1000, 3000])
+    d = PreemptionWatcher._resolve_deadline([2000, 1000, 3000])
     assert d == 1.0  # 1000ms = 1.0s since epoch (just verify it's converted)
 
 
@@ -401,11 +357,11 @@ def test_resolve_deadline_default_60s_when_no_deadlines(monkeypatch):
     bounded default (NOT inf) so a UDF that acks-but-forgets-to-exit
     can't hang the controller forever."""
     monkeypatch.delenv("RAY_TRAIN_PREEMPTION_DEFAULT_DEADLINE_S", raising=False)
-    from ray.train.v2._internal.execution.preemption_callback import (
-        PreemptionCallback,
+    from ray.train.v2._internal.callbacks.preemption_callback import (
+        PreemptionWatcher,
     )
     before = time.time()
-    d = PreemptionCallback._resolve_deadline([])
+    d = PreemptionWatcher._resolve_deadline([])
     after = time.time()
     # Default is 60s from now.
     assert before + 59 <= d <= after + 61, f"deadline={d}"
@@ -413,11 +369,11 @@ def test_resolve_deadline_default_60s_when_no_deadlines(monkeypatch):
 
 def test_resolve_deadline_user_override(monkeypatch):
     monkeypatch.setenv("RAY_TRAIN_PREEMPTION_DEFAULT_DEADLINE_S", "5")
-    from ray.train.v2._internal.execution.preemption_callback import (
-        PreemptionCallback,
+    from ray.train.v2._internal.callbacks.preemption_callback import (
+        PreemptionWatcher,
     )
     before = time.time()
-    d = PreemptionCallback._resolve_deadline([])
+    d = PreemptionWatcher._resolve_deadline([])
     after = time.time()
     assert before + 4 <= d <= after + 6, f"deadline={d}"
 
@@ -425,29 +381,29 @@ def test_resolve_deadline_user_override(monkeypatch):
 def test_resolve_deadline_inf_opt_in(monkeypatch):
     """Explicit opt-in to unbounded wait."""
     monkeypatch.setenv("RAY_TRAIN_PREEMPTION_DEFAULT_DEADLINE_S", "inf")
-    from ray.train.v2._internal.execution.preemption_callback import (
-        PreemptionCallback,
+    from ray.train.v2._internal.callbacks.preemption_callback import (
+        PreemptionWatcher,
     )
-    assert PreemptionCallback._resolve_deadline([]) == float("inf")
+    assert PreemptionWatcher._resolve_deadline([]) == float("inf")
 
     monkeypatch.setenv("RAY_TRAIN_PREEMPTION_DEFAULT_DEADLINE_S", "none")
-    assert PreemptionCallback._resolve_deadline([]) == float("inf")
+    assert PreemptionWatcher._resolve_deadline([]) == float("inf")
 
 
 def test_resolve_deadline_invalid_value_falls_back(monkeypatch):
     monkeypatch.setenv("RAY_TRAIN_PREEMPTION_DEFAULT_DEADLINE_S", "garbage")
-    from ray.train.v2._internal.execution.preemption_callback import (
-        PreemptionCallback,
+    from ray.train.v2._internal.callbacks.preemption_callback import (
+        PreemptionWatcher,
     )
     before = time.time()
-    d = PreemptionCallback._resolve_deadline([])
+    d = PreemptionWatcher._resolve_deadline([])
     after = time.time()
     # Falls back to 60s default after warning.
     assert before + 59 <= d <= after + 61, f"deadline={d}"
 
 
 def test_parse_fake_node_map():
-    from ray.train.v2._internal.execution.preemption_callback import (
+    from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionCallback,
     )
 
@@ -471,9 +427,12 @@ def test_parse_fake_node_map():
 
 def test_fake_node_map_enables_survivor_path(monkeypatch):
     """With RAY_TRAIN_PREEMPTION_FAKE_NODE_MAP, a single-node local cluster
-    can simulate multi-node so that some ranks are survivors."""
-    from ray.train.v2._internal.execution.preemption_callback import (
+    can simulate multi-node so that some ranks are survivors. The fan-out
+    sends the SAME info to every worker (no per-worker copies); user code
+    in the UDF checks ``rank in info.preempted_ranks``."""
+    from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionCallback,
+        PreemptionWatcher,
     )
 
     monkeypatch.setenv(
@@ -482,72 +441,74 @@ def test_fake_node_map_enables_survivor_path(monkeypatch):
 
     # All four workers physically on the same node; fake map splits them.
     workers = [_fake_worker(i, "same-real-node") for i in range(4)]
+    worker_actors_by_rank = {}
     for w in workers:
         w.actor.mark_preempt.remote = MagicMock()
+        worker_actors_by_rank[w.distributed_context.world_rank] = w.actor
     wg = MagicMock()
     wg.get_workers.return_value = workers
     fake_controller = MagicMock()
 
-    cb = PreemptionCallback(
+    # The callback owns the failure-domain map build (one-time at WG start).
+    cb = PreemptionCallback(controller_actor=fake_controller)
+    domain_map = cb._build_failure_domain_map(wg)
+    assert sorted(domain_map["nodeA"]) == [0, 2]
+    assert sorted(domain_map["nodeB"]) == [1, 3]
+
+    # The watcher owns the drain-change logic; instantiate as a plain class.
+    watcher = PreemptionWatcher(
         controller_actor=fake_controller,
-        manages_replica_groups=False,
+        worker_actors_by_rank=worker_actors_by_rank,
+        node_to_domain_ranks=domain_map,
         drain_source=lambda: {},
-        failure_domain="node",
     )
-    cb._wg = wg
-    cb._node_to_domain_ranks = cb._build_failure_domain_map(wg)
-
-    # The mapping should use the FAKE node IDs.
-    assert sorted(cb._node_to_domain_ranks["nodeA"]) == [0, 2]
-    assert sorted(cb._node_to_domain_ranks["nodeB"]) == [1, 3]
-
     # Drain only nodeB → ranks 1 and 3 preempted; ranks 0 and 2 are survivors.
-    cb._on_drain_change({"nodeB": int((time.time() + 25) * 1000)})
+    watcher._on_drain_change({"nodeB": int((time.time() + 25) * 1000)})
 
+    # Every worker received the same info object.
     calls = [w.actor.mark_preempt.remote.call_args[0][0] for w in workers]
-    assert calls[0].this_worker_preempted is False  # survivor
-    assert calls[1].this_worker_preempted is True   # preempted
-    assert calls[2].this_worker_preempted is False  # survivor
-    assert calls[3].this_worker_preempted is True   # preempted
-    assert calls[0].preempted_ranks == [1, 3]
+    assert all(c.preempted_ranks == [1, 3] for c in calls)
+    # User-side branching uses ``rank in info.preempted_ranks``.
+    assert 0 not in calls[0].preempted_ranks   # rank 0 -> survivor
+    assert 1 in calls[1].preempted_ranks       # rank 1 -> preempted
+    assert 2 not in calls[2].preempted_ranks   # rank 2 -> survivor
+    assert 3 in calls[3].preempted_ranks       # rank 3 -> preempted
 
 
-def test_on_drain_change_non_torchft_signals_everyone():
-    """Non-TorchFT mode -> ALL workers get mark_preempt (with per-worker
-    this_worker_preempted)."""
-    from ray.train.v2._internal.execution.preemption_callback import (
+def test_on_drain_change_signals_every_worker():
+    """Fan-out goes to all workers; they branch in the UDF on
+    ``rank in preempted_ranks``."""
+    from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionCallback,
+        PreemptionWatcher,
     )
 
     workers = [_fake_worker(i, f"node-{i}") for i in range(4)]
+    worker_actors_by_rank = {}
     for w in workers:
         w.actor.mark_preempt.remote = MagicMock()
+        worker_actors_by_rank[w.distributed_context.world_rank] = w.actor
 
     wg = MagicMock()
     wg.get_workers.return_value = workers
     fake_controller = MagicMock()
 
-    cb = PreemptionCallback(
+    cb = PreemptionCallback(controller_actor=fake_controller)
+    domain_map = cb._build_failure_domain_map(wg)
+
+    watcher = PreemptionWatcher(
         controller_actor=fake_controller,
-        manages_replica_groups=False,
+        worker_actors_by_rank=worker_actors_by_rank,
+        node_to_domain_ranks=domain_map,
         drain_source=lambda: {},
-        failure_domain="node",
     )
-    cb._wg = wg
-    cb._node_to_domain_ranks = cb._build_failure_domain_map(wg)
+    watcher._on_drain_change({"node-2": int((time.time() + 25) * 1000)})
 
-    cb._on_drain_change({"node-2": int((time.time() + 25) * 1000)})
-
-    # All four workers signaled.
+    # All four workers signaled with the SAME info.
     for w in workers:
         assert w.actor.mark_preempt.remote.call_count == 1
-
-    # Only rank 2's info has this_worker_preempted=True.
     calls = [w.actor.mark_preempt.remote.call_args[0][0] for w in workers]
-    assert not calls[0].this_worker_preempted
-    assert not calls[1].this_worker_preempted
-    assert calls[2].this_worker_preempted is True
-    assert not calls[3].this_worker_preempted
+    assert all(c.preempted_ranks == [2] for c in calls)
 
 
 if __name__ == "__main__":
