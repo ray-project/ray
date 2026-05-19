@@ -771,7 +771,6 @@ def _map_task(
                 # Reset trackers
                 yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
-                profiler.reset()
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
