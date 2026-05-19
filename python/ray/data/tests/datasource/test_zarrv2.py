@@ -172,7 +172,7 @@ def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store
     assert truncated_nested_chunk["padding"] == [1]
 
 
-def test_read_zarrv2_builds_datasource_and_delegates_to_read_datasource():
+def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
     datasource = object()
     dataset = object()
 
@@ -184,7 +184,7 @@ def test_read_zarrv2_builds_datasource_and_delegates_to_read_datasource():
             "ray.data.read_api.read_datasource",
             return_value=dataset,
         ) as mock_read_datasource:
-            result = read_api.read_zarrv2(
+            result = read_api.read_zarr(
                 "/tmp/sample.zarr",
                 chunk_shape=[4, 2],
                 array_paths=["nested"],

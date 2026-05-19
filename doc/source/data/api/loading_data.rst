@@ -343,14 +343,14 @@ Video
 
    read_videos
 
-Zarr v2
+Zarr
 ^^^^^^^
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   read_zarrv2
+   read_zarr
 
 WebDataset
 ^^^^^^^^^^
