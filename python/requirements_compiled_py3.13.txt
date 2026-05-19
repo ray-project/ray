@@ -708,7 +708,6 @@ googleapis-common-protos==1.74.0
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   tensorflow-metadata
 gpytorch==1.15.2
     # via botorch
@@ -1396,22 +1395,16 @@ opentelemetry-api==1.39.0
     #   mlflow-skinny
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-    #   torchft-nightly
 opentelemetry-exporter-otlp-proto-common==1.39.0
-    # via
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
+    # via opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-exporter-otlp-proto-grpc==1.39.0
     # via -r python/requirements/py313/test-requirements.txt
-opentelemetry-exporter-otlp-proto-http==1.39.0
-    # via torchft-nightly
 opentelemetry-exporter-prometheus==0.60b0
     # via
     #   -r python/requirements.txt
@@ -1432,7 +1425,6 @@ opentelemetry-proto==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk==1.39.0
     # via
     #   -r python/requirements.txt
@@ -1440,9 +1432,7 @@ opentelemetry-sdk==1.39.0
     #   mlflow-skinny
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
-    #   torchft-nightly
 opentelemetry-semantic-conventions==0.60b0
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -2028,7 +2018,6 @@ requests==2.33.1
     #   msal
     #   msrest
     #   openlineage-python
-    #   opentelemetry-exporter-otlp-proto-http
     #   pyiceberg
     #   ray
     #   requests-oauthlib
@@ -2401,7 +2390,6 @@ torch==2.9.0
     #   tensordict
     #   timm
     #   torch-optimizer
-    #   torchft-nightly
     #   torchmetrics
     #   torchtext
     #   torchvision
@@ -2416,8 +2404,6 @@ torch-scatter==2.1.2
 torch-sparse==0.6.18
     # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torch-spline-conv==1.2.2
-    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
-torchft-nightly==2026.5.15
     # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via
@@ -2542,7 +2528,6 @@ typing-extensions==4.15.0
     #   nevergrad
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   optree
