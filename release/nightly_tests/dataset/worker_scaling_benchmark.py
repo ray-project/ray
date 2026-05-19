@@ -10,6 +10,11 @@ map output block carrying a wide mixed-type schema:
 Stresses the per-block schema propagation path (``ray.get(meta_ref)`` +
 schema deserialization in ``on_data_ready``), which dominates large-schema
 production workloads.
+
+Set ``PYSPY_ENABLED=1`` in the environment to record a py-spy speedscope
+profile of the driver process (the StreamingExecutor's scheduler thread).
+The profile is written to ``--profile-output-dir`` (default
+``/tmp/worker_scaling_profile``).
 """
 
 import argparse
@@ -17,6 +22,7 @@ import pickle
 from typing import Dict, List
 
 import numpy as np
+import pyspy_profiler
 import ray
 from benchmark import (
     Benchmark,
@@ -24,6 +30,8 @@ from benchmark import (
     benchmark_py_modules,
     collect_dataset_stats,
 )
+
+DEFAULT_PROFILE_OUTDIR: str = "/tmp/worker_scaling_profile"
 
 BLOCKS_PER_WORKER: int = 10
 # Cap output block size to avoid OOM under wide schemas.
@@ -73,6 +81,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Seed used to pre-roll template values once per UDF instance.",
+    )
+    parser.add_argument(
+        "--profile-output-dir",
+        type=str,
+        default=DEFAULT_PROFILE_OUTDIR,
+        help=(
+            "Directory to write the py-spy profile into when PYSPY_ENABLED=1. "
+            f"Default: {DEFAULT_PROFILE_OUTDIR}."
+        ),
     )
     args = parser.parse_args()
     if args.num_scalar_cols + args.num_array_cols <= 0:
@@ -143,7 +160,7 @@ def main(args: argparse.Namespace):
         num_rows = num_blocks * rows_per_block
         ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
-        map_kwargs = {"num_cpus": 0.5}
+        map_kwargs = {"num_cpus": 1}
         if args.worker_type == "actors":
             map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=args.num_workers)
             udf = RealisticSchemaUDF
@@ -183,4 +200,8 @@ def main(args: argparse.Namespace):
 if __name__ == "__main__":
     ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
-    main(args)
+    pyspy_profiler.start(args.profile_output_dir)
+    try:
+        main(args)
+    finally:
+        pyspy_profiler.stop()
