@@ -3127,8 +3127,10 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
 
 
 def test_read_parquet_rejects_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, shutdown_only, use_datasource_v2
 ):
+    ray.init()
+
     marker = tmp_path / "exploit_marker"
 
     class Exploit:

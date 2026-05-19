@@ -636,6 +636,9 @@ class ParquetDatasource(Datasource):
         instance = cls.__new__(cls)
         Datasource.__init__(instance)
         _check_pyarrow_version()
+        instance._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         instance._init_state(**kwargs)
         return instance
 
