@@ -14,7 +14,7 @@ from ray.data._internal.util import iterate_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
-RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
+ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
     "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
 )
 
@@ -227,7 +227,7 @@ def _default_decoder(
                     f"Refusing to load .{extension} member {key!r} from "
                     f"WebDataset with weights_only=False (arbitrary code "
                     f"execution risk). Provide a custom decoder or set "
-                    f"RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION=1 "
+                    f"{ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR}=1 "
                     f"for trusted sources."
                 )
             import torch
@@ -239,7 +239,7 @@ def _default_decoder(
                     f"Refusing to unpickle WebDataset member {key!r} "
                     f"(arbitrary code execution risk). Provide a custom "
                     f"decoder or set "
-                    f"RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION=1 "
+                    f"{ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR}=1 "
                     f"for trusted sources."
                 )
             import pickle
@@ -350,7 +350,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         self.expand_json = expand_json
 
         self._allow_unsafe_deserialization = env_bool(
-            RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR, False
+            ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR, False
         )
 
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
