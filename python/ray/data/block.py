@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import sys
 import time
@@ -312,6 +313,17 @@ class BlockMetadata(BlockStats):
         )
 
 
+@functools.lru_cache(maxsize=128)
+def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
+    # Hot path on the StreamingExecutor scheduling thread: every completed task
+    # ships a `BlockMetadataWithSchema` whose `schema` is serialized Arrow IPC
+    # bytes. For wide schemas (hundreds of columns, especially with extension
+    # types like ArrowTensorType) `pa.ipc.read_schema` can dominate scheduler
+    # CPU. The same schema bytes recur across tasks of the same operator, so a
+    # small LRU collapses thousands of identical re-parses into one.
+    return pa.ipc.read_schema(pa.BufferReader(schema_bytes))
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
@@ -367,9 +379,13 @@ class BlockMetadataWithSchema(BlockMetadata):
         return state
 
     def __setstate__(self, state: Dict[str, Any]):
-        schema_val: bytes | Schema | None = state["schema"]
+        schema_val: bytes | bytearray | Schema | None = state["schema"]
         if isinstance(schema_val, (bytes, bytearray)):
-            state["schema"] = pa.ipc.read_schema(pa.BufferReader(schema_val))
+            # `bytearray` itself is unhashable so it can't key the LRU cache —
+            # coerce to `bytes` first.
+            if isinstance(schema_val, bytearray):
+                schema_val = bytes(schema_val)
+            state["schema"] = _read_arrow_schema_cached(schema_val)
         self.__dict__.update(state)
 
 

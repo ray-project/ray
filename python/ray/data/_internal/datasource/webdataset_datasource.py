@@ -9,9 +9,15 @@ import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+from ray._common.utils import env_bool
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+
+ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
+    "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
+)
+
 
 if TYPE_CHECKING:
     import pyarrow
@@ -172,7 +178,11 @@ def _group_by_keys(
         yield current_sample
 
 
-def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] = True):
+def _default_decoder(
+    sample: Dict[str, Any],
+    format: Optional[Union[bool, str]] = True,
+    allow_unsafe: bool = False,
+):
     """A default decoder for webdataset.
 
     This handles common file extensions: .txt, .cls, .cls2,
@@ -182,6 +192,7 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
 
     Args:
         sample: sample, modified in place
+        allow_unsafe: if True, allow pickle/torch deserialization
     """
     sample = dict(sample)
     for key, value in sample.items():
@@ -211,13 +222,26 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
 
             sample[key] = msgpack.unpackb(value, raw=False)
         elif extension in ["pt", "pth"]:
+            if not allow_unsafe:
+                raise ValueError(
+                    f"Refusing to load .{extension} member {key!r} from "
+                    f"WebDataset with weights_only=False (arbitrary code "
+                    f"execution risk). Provide a custom decoder or set "
+                    f"{ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR}=1 "
+                    f"for trusted sources."
+                )
             import torch
 
-            # PyTorch 2.6 changed torch.load default weights_only=True, which
-            # breaks loading general Python objects previously serialized for
-            # WebDataset .pt payloads.
             sample[key] = torch.load(io.BytesIO(value), weights_only=False)
         elif extension in ["pickle", "pkl"]:
+            if not allow_unsafe:
+                raise ValueError(
+                    f"Refusing to unpickle WebDataset member {key!r} "
+                    f"(arbitrary code execution risk). Provide a custom "
+                    f"decoder or set "
+                    f"{ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR}=1 "
+                    f"for trusted sources."
+                )
             import pickle
 
             sample[key] = pickle.loads(value)
@@ -325,6 +349,10 @@ class WebDatasetDatasource(FileBasedDatasource):
         self.verbose_open = verbose_open
         self.expand_json = expand_json
 
+        self._allow_unsafe_deserialization = env_bool(
+            ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR, False
+        )
+
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
 
@@ -362,9 +390,12 @@ class WebDatasetDatasource(FileBasedDatasource):
         )
 
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
+        default_decoder = partial(
+            _default_decoder, allow_unsafe=self._allow_unsafe_deserialization
+        )
         for sample in samples:
             if self.decoder is not None:
-                sample = _apply_list(self.decoder, sample, default=_default_decoder)
+                sample = _apply_list(self.decoder, sample, default=default_decoder)
             if self.expand_json:
                 if isinstance(sample["json"], bytes):
                     parsed_json = json.loads(sample["json"].decode("utf-8"))

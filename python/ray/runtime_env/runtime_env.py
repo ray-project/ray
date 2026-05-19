@@ -232,10 +232,12 @@ class RuntimeEnv(dict):
 
     Args:
         py_modules: List of local paths or remote URIs (either in the GCS or external
-            storage), each of which is a zip file that Ray unpacks and
-            inserts into the PYTHONPATH of the workers.
-        working_dir: Local path or remote URI (either in the GCS or external storage) of a zip
-            file that Ray unpacks in the directory of each task/actor.
+            storage), each of which is an archive that Ray unpacks and
+            inserts into the PYTHONPATH of the workers. Supported formats for
+            remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, and ``.tgz``.
+        working_dir: Local path or remote URI (either in the GCS or external storage) of an
+            archive that Ray unpacks in the directory of each task/actor.
+            Supported formats for remote URIs: ``.zip``, ``.tar.gz``, and ``.tgz``.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
