@@ -133,18 +133,20 @@ def construct_train_func(
     discard_returns: bool = False,
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
+
     Args:
         train_func: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        config (Optional[Dict]): Configurations to pass into
-            ``train_func``. If None then an empty Dict will be created.
+        config: Configurations to pass into ``train_func``. If None then an empty
+            Dict will be created.
         train_func_context: Context manager for user's `train_func`, which executes
             backend-specific logic before and after the training function.
-        fn_arg_name (Optional[str]): The name of training function to use for error
-            messages.
+        fn_arg_name: The name of training function to use for error messages.
         discard_returns: Whether to discard any returns from train_func or not.
+
     Returns:
         A valid training function.
+
     Raises:
         ValueError: if the input ``train_func`` is invalid.
     """
