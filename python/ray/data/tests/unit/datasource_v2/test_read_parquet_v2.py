@@ -131,6 +131,7 @@ def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restor
     # The override should drive the ListFiles partitioner's bucket count
     # for this read only — the global DataContext must not be mutated.
     list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
     assert list_files_op.file_partitioner._num_buckets == 7
     assert restore_ctx.read_op_min_num_blocks == original
 
@@ -187,8 +188,9 @@ def test_read_parquet_v2_dataset_kwargs_threads_through_to_scanner(
     # ``read_dictionary`` is renamed to ``dictionary_columns`` to match
     # ``pds.ParquetFileFormat``; ``coerce_int96_timestamp_unit`` passes
     # through unchanged.
-    scanner = ds._logical_plan.dag.scanner
-    assert scanner.parquet_format_kwargs == {
+    read_files_op = ds._logical_plan.dag
+    assert isinstance(read_files_op, ReadFiles)
+    assert read_files_op.scanner.parquet_format_kwargs == {
         "coerce_int96_timestamp_unit": "ms",
         "dictionary_columns": ["a"],
     }
