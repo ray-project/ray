@@ -116,6 +116,10 @@ class TaskPoolMapOperator(MapOperator):
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
     @property
+    def isolate_workers(self) -> bool:
+        return self._isolate_workers
+
+    @property
     @override
     def _input_queues(self) -> List["BaseBundleQueue"]:
         return [self._block_ref_bundler]
