@@ -548,13 +548,13 @@ class ResourceManager:
 
 
 def _proportional_share(pool: float, op_usage: float, total_usage: float) -> float:
-    """Return op's proportional share of pool; 0 when not applicable.
+    """Return op's proportional share of an over-subscribed ``pool``.
 
-    Returns 0 in the following two cases:
-    - Not over-subscribed: total_usage <= pool (the loop gives each op an equal split).
-    - Nothing to divide: total_usage == 0 (avoids division by zero).
+    Caller must verify the pool is over-subscribed before calling.
+    When ``total_usage > pool``, splits the pool in proportion to each op's usage:
+    ``pool * op_usage / total_usage``.
     """
-    if pool is None or total_usage == 0 or total_usage <= pool:
+    if total_usage == 0:
         return 0.0
     return pool * op_usage / total_usage
 
@@ -946,7 +946,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         adjusted_usage = self._resource_manager.get_op_usage(op).copy(
             object_store_memory=self._get_adjusted_object_store_usage(op)
         )
-        return allocation.subtract(adjusted_usage.min(self._op_reserved[op]))
+        return allocation.subtract(adjusted_usage).max(ExecutionResources.zero())
 
     def get_output_budget(self, op: PhysicalOperator) -> Optional[int]:
         return self._output_budgets.get(op)
@@ -988,33 +988,28 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._total_shared,
         ) = self._update_reservation(limits)
 
-        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
         op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             self._op_allocations = op_allocations
             return
 
-        # For each op, compute how much its usage goes beyond the reserved quota
-        # (its demand on the shared pool), then derive how much shared remains.
+        # Compute op_reserved_remaining (used by the borrow heuristic below)
+        # and op_excess / total_excess (used by the over-subscription override).
+        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
         op_excess: Dict[PhysicalOperator, ExecutionResources] = {}
         total_excess = ExecutionResources.zero()
         for op in eligible_ops:
             op_usage = self._resource_manager.get_op_usage(op).copy(
                 object_store_memory=self._get_adjusted_object_store_usage(op)
             )
-            op_reserved = self._op_reserved[op]
-            op_reserved_remaining[op] = op_reserved.subtract(op_usage).max(
-                ExecutionResources.zero()
+            op_reserved_remaining[op] = (
+                self._op_reserved[op].subtract(op_usage).max(ExecutionResources.zero())
             )
-            op_excess[op] = op_usage.subtract(op_reserved).max(
+            op_excess[op] = op_usage.subtract(self._op_reserved[op]).max(
                 ExecutionResources.zero()
             )
             total_excess = total_excess.add(op_excess[op])
-
-        remaining_shared = self._total_shared.subtract(total_excess).max(
-            ExecutionResources.zero()
-        )
 
         op_max_resources = {
             op: op.min_max_resource_requirements()[1] for op in eligible_ops
@@ -1022,38 +1017,42 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # Allocate the remaining shared resources to each operator.
         op_shared_alloc: Dict[PhysicalOperator, ExecutionResources] = {}
+        remaining_shared = self._total_shared.copy()
         for i, op in enumerate(reversed(eligible_ops)):
             # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
-            max_resource_usage = op_max_resources[op]
 
             # But if the op's budget is less than `min_scheduling_resources`,
             # it will be useless. So we'll let the downstream operator
             # borrow some resources from the upstream operator, if remaining_shared
             # is still enough.
-            shortfall = (
+            to_borrow = (
                 op.min_scheduling_resources()
                 .subtract(op_reserved_remaining[op].add(op_shared))
                 .max(ExecutionResources.zero())
             )
-            if not shortfall.is_zero() and op_shared.add(shortfall).satisfies_limit(
+            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(
                 remaining_shared
             ):
-                op_shared = op_shared.add(shortfall)
+                op_shared = op_shared.add(to_borrow)
 
             # Cap op_shared so that total allocation doesn't exceed max_resource_usage.
-            # Uses _op_reserved (not total reserved including output reservation) so
-            # the cap is measured against the task-execution portion of the budget.
             # This ensures excess resources stay in remaining_shared for other operators.
+            _, max_resource_usage = op.min_max_resource_requirements()
             if max_resource_usage != ExecutionResources.inf():
                 op_shared = op_shared.min(
-                    max_resource_usage.subtract(
-                        self._op_reserved[op].add(op_excess[op])
-                    ).max(ExecutionResources.zero())
+                    max_resource_usage.subtract(self._op_reserved[op]).max(
+                        ExecutionResources.zero()
+                    )
                 )
 
             remaining_shared = remaining_shared.subtract(op_shared)
-            assert remaining_shared.is_non_negative(), (remaining_shared, op, op_shared)
+            assert remaining_shared.is_non_negative(), (
+                remaining_shared,
+                op,
+                op_shared,
+                to_borrow,
+            )
             op_shared_alloc[op] = op_shared
 
         # Give any remaining shared resources to the most downstream uncapped op.
@@ -1064,39 +1063,49 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     op_shared_alloc[op] = op_shared_alloc[op].add(remaining_shared)
                     break
 
-        # When a dimension is oversubscribed (e.g. after a cluster shrink),
-        # remaining_shared is zero for that dimension and the loop above allocates
-        # nothing. Add each op's proportional share so it still gets a non-zero
-        # allocation reflecting its relative demand.
-        # (_proportional_share returns 0 for non-oversubscribed dimensions,
-        # so this add is a no-op in the normal case.)
+        # If some dimension is over-subscribed (total_excess > total_shared),
+        # replace the equal-split grant with a demand-weighted proportional split.
+        shared = self._total_shared
+        excess = total_excess
         for op in eligible_ops:
-            op_shared = op_shared_alloc[op].add(
-                ExecutionResources(
-                    cpu=_proportional_share(
-                        self._total_shared.cpu,
-                        op_excess[op].cpu,
-                        total_excess.cpu,
-                    ),
-                    gpu=_proportional_share(
-                        self._total_shared.gpu,
-                        op_excess[op].gpu,
-                        total_excess.gpu,
-                    ),
-                    object_store_memory=_proportional_share(
-                        self._total_shared.object_store_memory,
-                        op_excess[op].object_store_memory,
-                        total_excess.object_store_memory,
-                    ),
-                    memory=_proportional_share(
-                        self._total_shared.memory,
-                        op_excess[op].memory,
-                        total_excess.memory,
-                    ),
-                )
+            plan = op_shared_alloc[op]
+            op_exc = op_excess[op]
+            op_shared = ExecutionResources(
+                cpu=(
+                    _proportional_share(shared.cpu, op_exc.cpu, excess.cpu)
+                    if shared.cpu is not None
+                    and excess.cpu is not None
+                    and excess.cpu > shared.cpu
+                    else plan.cpu
+                ),
+                gpu=(
+                    _proportional_share(shared.gpu, op_exc.gpu, excess.gpu)
+                    if shared.gpu is not None
+                    and excess.gpu is not None
+                    and excess.gpu > shared.gpu
+                    else plan.gpu
+                ),
+                object_store_memory=(
+                    _proportional_share(
+                        shared.object_store_memory,
+                        op_exc.object_store_memory,
+                        excess.object_store_memory,
+                    )
+                    if shared.object_store_memory is not None
+                    and excess.object_store_memory is not None
+                    and excess.object_store_memory > shared.object_store_memory
+                    else plan.object_store_memory
+                ),
+                memory=(
+                    _proportional_share(shared.memory, op_exc.memory, excess.memory)
+                    if shared.memory is not None
+                    and excess.memory is not None
+                    and excess.memory > shared.memory
+                    else plan.memory
+                ),
             )
-            # Cap the proportional contribution for capped ops.
-            max_resource_usage = op_max_resources[op]
+            # Re-cap after the proportional override.
+            _, max_resource_usage = op.min_max_resource_requirements()
             if max_resource_usage != ExecutionResources.inf():
                 op_shared = op_shared.min(
                     max_resource_usage.subtract(self._op_reserved[op]).max(
