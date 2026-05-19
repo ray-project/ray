@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
+    METADATA_GET_TIMEOUT_S,
     DataOpTask,
     MetadataOpTask,
     OpTask,
@@ -498,6 +499,37 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
+        # Prefetch metadata refs across all ready DataOpTasks in one batched
+        # ray.get to amortize per-call overhead. Each task's `peek_pending_pair`
+        # surfaces the next (block_ref, meta_ref) pair from its streaming
+        # generator non-blockingly; we then issue ONE ray.get on the union of
+        # meta_refs and hand the resulting bytes back to each task via
+        # `on_data_ready(..., prefetched_meta_bytes=...)`. Tasks whose meta_ref
+        # isn't surfaced here (e.g. metadata still in transit) fall through to
+        # the per-ref ray.get inside `on_data_ready`. This is the second-order
+        # optimization beyond the schema cache: collapsing N×~1ms per-call
+        # ray.get overhead per scheduler iteration into one batched call.
+        prefetched_meta_bytes: Dict[ray.ObjectRef, bytes] = {}
+        meta_refs_to_prefetch: List[ray.ObjectRef] = []
+        for ready_tasks in ready_tasks_by_op.values():
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    pair = task.peek_pending_pair()
+                    if pair is not None:
+                        meta_refs_to_prefetch.append(pair[1])
+        if meta_refs_to_prefetch:
+            try:
+                bytes_list = ray.get(
+                    meta_refs_to_prefetch, timeout=METADATA_GET_TIMEOUT_S
+                )
+                prefetched_meta_bytes = dict(zip(meta_refs_to_prefetch, bytes_list))
+            except ray.exceptions.GetTimeoutError:
+                # One or more refs weren't ready in time. Tasks whose meta_ref
+                # isn't in `prefetched_meta_bytes` will fall back to the per-ref
+                # ray.get path inside `on_data_ready` (which has its own
+                # timeout-handling and retry-next-iteration semantics).
+                pass
+
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
@@ -505,7 +537,8 @@ def process_completed_tasks(
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
+                            remaining_output_budget.get(state, None),
+                            prefetched_meta_bytes=prefetched_meta_bytes,
                         )
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0

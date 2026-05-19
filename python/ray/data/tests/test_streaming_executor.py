@@ -7,7 +7,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from typing import List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -1381,6 +1381,75 @@ class TestDataOpTask:
         streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
+
+    def test_peek_and_prefetched_meta_bytes(self, ray_start_regular_shared):
+        """`peek_pending_pair` surfaces the next (block_ref, meta_ref) pair
+        without consuming metadata via `ray.get`. `on_data_ready` then
+        consumes the corresponding pre-fetched bytes from the dict instead
+        of issuing its own `ray.get`.
+        """
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+
+        outputs: List = []
+        data_op_task = DataOpTask(
+            0, streaming_gen, output_ready_callback=outputs.append
+        )
+
+        # Wait until the streaming generator surfaces something to peek at.
+        ray.wait([streaming_gen], fetch_local=False)
+
+        pair = data_op_task.peek_pending_pair()
+        assert pair is not None, "peek should surface a (block, meta) pair"
+        block_ref, meta_ref = pair
+        assert not block_ref.is_nil()
+        assert not meta_ref.is_nil()
+
+        # Pre-fetch the metadata bytes ourselves (simulating the batched
+        # ray.get done by `process_completed_tasks`).
+        meta_bytes = ray.get(meta_ref)
+        prefetched = {meta_ref: meta_bytes}
+
+        # Drive the task to completion using the pre-fetched dict.
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(
+                None, prefetched_meta_bytes=prefetched
+            )
+
+        # The meta_ref we prefetched should have been consumed (popped) by
+        # on_data_ready.
+        assert meta_ref not in prefetched
+        # And a RefBundle was emitted, confirming the deserialization path
+        # using prefetched bytes succeeded.
+        assert len(outputs) == 1
+
+    def test_prefetched_meta_bytes_fallback_when_missing(
+        self, ray_start_regular_shared
+    ):
+        """If a meta_ref isn't in the pre-fetched dict (e.g. it wasn't yet
+        surfaced when the batched ray.get ran), `on_data_ready` must fall
+        back to a per-ref `ray.get` and still complete correctly.
+        """
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+
+        outputs: List = []
+        data_op_task = DataOpTask(
+            0, streaming_gen, output_ready_callback=outputs.append
+        )
+
+        # Pass an empty prefetched dict; on_data_ready must fall back to
+        # the per-ref ray.get path for the meta_ref it ends up pulling
+        # from the generator.
+        prefetched: Dict[ray.ObjectRef, bytes] = {}
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(
+                None, prefetched_meta_bytes=prefetched
+            )
+
+        assert len(outputs) == 1
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]

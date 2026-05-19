@@ -170,12 +170,63 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
+    def peek_pending_pair(
+        self,
+    ) -> Optional[Tuple[ray.ObjectRef, ray.ObjectRef]]:
+        """Try to surface the next (block_ref, meta_ref) pair from the
+        streaming generator non-blockingly. Updates ``_pending_block_ref`` /
+        ``_pending_meta_ref`` so a subsequent ``on_data_ready`` call sees
+        them already set, and returns the pair (or ``None`` if no complete
+        pair is immediately ready). Does NOT call ``ray.get`` on the
+        metadata.
+
+        Intended caller: ``process_completed_tasks``, which prefetches the
+        metadata bytes for *all* ready tasks in one batched ``ray.get``
+        before invoking ``on_data_ready`` on each. ``StopIteration``
+        (task done / task error) and the meta-wait timeout are deliberately
+        not handled here — they fall through to the next ``on_data_ready``
+        invocation, which has the full handling logic.
+        """
+        if self._has_finished:
+            return None
+
+        if self._pending_block_ref.is_nil():
+            try:
+                ref = self._streaming_gen._next_sync(timeout_s=0)
+            except StopIteration:
+                return None
+            if ref.is_nil():
+                return None
+            self._pending_block_ref = ref
+            self._block_ready_callback(ref)
+
+        if self._pending_meta_ref.is_nil():
+            try:
+                ref = self._streaming_gen._next_sync(timeout_s=0)
+            except StopIteration:
+                return None
+            if ref.is_nil():
+                return None
+            self._pending_meta_ref = ref
+            self._metadata_ready_callback(ref)
+
+        return self._pending_block_ref, self._pending_meta_ref
+
+    def on_data_ready(
+        self,
+        max_bytes_to_read: Optional[int],
+        prefetched_meta_bytes: Optional[Dict[ray.ObjectRef, bytes]] = None,
+    ) -> int:
         """Callback when data is ready to be read from the streaming generator.
 
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
+            prefetched_meta_bytes: Optional dict mapping metadata ``ObjectRef``
+                to its already-fetched bytes. If a ref is present in this
+                dict it is consumed (popped) from the dict and used in lieu
+                of a per-ref ``ray.get``. Allows the caller to amortize
+                ``ray.get`` overhead by batching across tasks.
         Returns: The number of blocks read.
         """
         bytes_read = 0
@@ -247,26 +298,38 @@ class DataOpTask(OpTask):
 
                 self._metadata_ready_callback(self._pending_meta_ref)
 
-            try:
-                # The timeout for `ray.get` includes the time required to ship the
-                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
-                # will timeout and possible cancel the download. To avoid this issue,
-                # we set the timeout to a small non-zero value.
-                meta_with_schema_bytes: bytes = ray.get(
-                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
+            # If the metadata bytes were pre-fetched in batch by the caller
+            # (see `process_completed_tasks`), use them directly and skip the
+            # per-ref ray.get round trip. Otherwise fall back to a per-ref
+            # ray.get with the standard timeout.
+            meta_with_schema_bytes: Optional[bytes] = None
+            if prefetched_meta_bytes is not None:
+                meta_with_schema_bytes = prefetched_meta_bytes.pop(
+                    self._pending_meta_ref, None
                 )
-            except ray.exceptions.GetTimeoutError:
-                # We have a reference to the block and its metadata, but the metadata
-                # object isn't available. This can happen if the node dies.
-                logger.warning(
-                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
-                    f"operator '{self._operator_name}' "
-                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
-                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
-                    f"Will retry next iteration. "
-                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
-                )
-                break
+
+            if meta_with_schema_bytes is None:
+                try:
+                    # The timeout for `ray.get` includes the time required to ship the
+                    # block metadata to this node. So, if we set the timeout to 0, `ray.get`
+                    # will timeout and possible cancel the download. To avoid this issue,
+                    # we set the timeout to a small non-zero value.
+                    meta_with_schema_bytes = ray.get(
+                        self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
+                    )
+                except ray.exceptions.GetTimeoutError:
+                    # We have a reference to the block and its metadata, but the
+                    # metadata object isn't available. This can happen if the node
+                    # dies.
+                    logger.warning(
+                        f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                        f"operator '{self._operator_name}' "
+                        f"(metadata_ref={self._pending_meta_ref.hex()}). "
+                        f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
+                        f"Will retry next iteration. "
+                        f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
+                    )
+                    break
 
             meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
                 meta_with_schema_bytes
