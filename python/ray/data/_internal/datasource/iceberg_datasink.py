@@ -14,6 +14,7 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
+from ray.data._internal.datasource.parquet_datasource import PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
-    from pyiceberg.table import FileScanTask, Table
+    from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
     from pyiceberg.table.update.schema import UpdateSchema
 
@@ -403,11 +404,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         coarse_filter = self._build_coarse_range_filter(keys_table, upsert_cols)
         logger.debug("[scan-merge] coarse_filter=%s", coarse_filter)
 
-        # plan_files() reads only manifest metadata — no Parquet data on the driver.
+        # plan_files() reads only manifest metadata, no Parquet data on the driver.
         t0 = time.perf_counter()
-        scan = self._table.scan(row_filter=coarse_filter, case_sensitive=case_sensitive)
+        scan: "DataScan" = self._table.scan(
+            row_filter=coarse_filter, case_sensitive=case_sensitive
+        )
         scan = scan.use_ref(branch)
-        file_scan_tasks = list(scan.plan_files())
+        file_scan_tasks: List["FileScanTask"] = list(scan.plan_files())
 
         logger.info(
             "[scan-merge] planned %d candidate file(s) in %.2fs",
@@ -423,15 +426,10 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # Put the deduped keys in the object store once; all tasks share one copy.
         keys_ref = ray.put(keys_table)
 
-        # Parquet decompression factor: compressed Parquet typically expands
-        # ~8-10x in memory once decoded. Conservative default keeps Ray's
-        # scheduler from stacking too many rewrite tasks on one node.
-        _PARQUET_EXPANSION = 8
-
         t0 = time.perf_counter()
         refs = [
             _rewrite_iceberg_file.options(
-                memory=int(task.file.file_size_in_bytes * _PARQUET_EXPANSION)
+                memory=int(task.file.file_size_in_bytes * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT)
             ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
             for task in file_scan_tasks
         ]
