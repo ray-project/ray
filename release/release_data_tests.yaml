@@ -591,7 +591,13 @@
 
   run:
     timeout: 1800
+    # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded.
+    # PYSPY_S3_DEST   → profile + log are uploaded under this prefix at the
+    #                   end of the run. ANYSCALE_JOB_ID is set by the job
+    #                   runner so each invocation gets its own folder.
     script: >
+      PYSPY_ENABLED=1
+      PYSPY_S3_DEST=s3://xgui-scheduling-loop-test/release-test/worker_scaling_{{num_workers}}_{{worker_type}}/${ANYSCALE_JOB_ID:-local}/
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
