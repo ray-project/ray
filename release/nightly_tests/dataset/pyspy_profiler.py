@@ -5,6 +5,10 @@ Enabled by setting the ``PYSPY_ENABLED=1`` environment variable. When enabled,
 driver, which also runs the StreamingExecutor scheduler thread) and ``stop()``
 writes it to ``pyspy_driver.speedscope.json`` in the chosen output directory.
 
+If ``PYSPY_S3_DEST`` is also set (e.g. ``s3://my-bucket/run-abc/``), the
+profile and its log are uploaded there after ``stop()`` finishes. When unset,
+artifacts stay local.
+
 Worker-node profiling is intentionally not included — the goal of this helper
 is to make the scheduler-thread profile reproducible in the public release
 tests; richer profiling lives in downstream tooling.
@@ -22,6 +26,8 @@ PYSPY_RATE = int(os.environ.get("PYSPY_RATE", "100"))
 
 _proc: Optional[subprocess.Popen] = None
 _log_file = None
+_output_path: Optional[str] = None
+_log_path: Optional[str] = None
 
 
 def is_enabled() -> bool:
@@ -63,7 +69,7 @@ def start(outdir: str) -> None:
         outdir: Directory to write ``pyspy_driver.speedscope.json`` and
             ``pyspy_driver.log`` into. Created if missing.
     """
-    global _proc, _log_file
+    global _proc, _log_file, _output_path, _log_path
 
     if not is_enabled():
         return
@@ -76,6 +82,8 @@ def start(outdir: str) -> None:
     pid = os.getpid()
     output_path = os.path.join(outdir, "pyspy_driver.speedscope.json")
     log_path = os.path.join(outdir, "pyspy_driver.log")
+    _output_path = output_path
+    _log_path = log_path
 
     cmd = [
         "py-spy",
@@ -105,9 +113,48 @@ def start(outdir: str) -> None:
     print(f"py-spy profiling started on driver (pid {pid}) -> {output_path}")
 
 
+def _upload_to_s3(local_paths) -> None:
+    """Upload each path under PYSPY_S3_DEST. No-op if the env var is unset.
+
+    PYSPY_S3_DEST should be an ``s3://bucket/prefix/`` URL. Each local file is
+    uploaded to ``<prefix>/<basename>``. Failures are logged and swallowed so
+    a transient upload error doesn't fail the benchmark run.
+    """
+    dest = os.environ.get("PYSPY_S3_DEST")
+    if not dest:
+        return
+    if not dest.startswith("s3://"):
+        print(f"PYSPY_S3_DEST is not an s3:// URL: {dest!r}; skipping upload")
+        return
+
+    try:
+        import boto3
+    except ImportError:
+        print("boto3 not installed; skipping PYSPY_S3_DEST upload")
+        return
+
+    # Parse `s3://bucket/optional/prefix/` -> (bucket, prefix)
+    without_scheme = dest[len("s3://") :]
+    bucket, _, prefix = without_scheme.partition("/")
+    prefix = prefix.rstrip("/")
+
+    s3 = boto3.client("s3")
+    for path in local_paths:
+        if not path or not os.path.exists(path):
+            continue
+        key = f"{prefix}/{os.path.basename(path)}" if prefix else os.path.basename(path)
+        try:
+            print(f"Uploading {path} -> s3://{bucket}/{key}")
+            s3.upload_file(path, bucket, key)
+        except Exception as e:  # noqa: BLE001 — best-effort upload
+            print(f"Failed to upload {path}: {e}")
+
+
 def stop(timeout: float = 15.0) -> None:
-    """SIGINT py-spy and wait for it to flush its output (no-op if not started)."""
-    global _proc, _log_file
+    """SIGINT py-spy, wait for it to flush its output, and (if configured)
+    upload artifacts to ``PYSPY_S3_DEST``. No-op if py-spy was never started.
+    """
+    global _proc, _log_file, _output_path, _log_path
 
     if _proc is None:
         return
@@ -136,3 +183,9 @@ def stop(timeout: float = 15.0) -> None:
             _log_file.close()
             _log_file = None
         _proc = None
+
+    # Best-effort upload — must happen after the log file is closed so its
+    # contents are fully flushed before we read it from disk.
+    _upload_to_s3([_output_path, _log_path])
+    _output_path = None
+    _log_path = None
