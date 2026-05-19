@@ -50,10 +50,10 @@ Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_pa
             storage_path="s3://bucket-name/sub-path/",
             # GCS example:
             # storage_path="gs://bucket-name/sub-path/",
-            # Azure Blob Storage example (use a custom ``storage_filesystem``
-            # via ``adlfs`` / ``pyarrow.fs.PyFileSystem``, see "Custom
-            # storage" below):
-            # storage_path="container@account/sub-path/",
+            # Azure Blob Storage example (requires a custom
+            # ``storage_filesystem`` via ``adlfs`` /
+            # ``pyarrow.fs.PyFileSystem``, see "Custom storage" below):
+            # storage_path="abfs://container@account.dfs.core.windows.net/sub-path/",
             name="experiment_name",
         )
     )
