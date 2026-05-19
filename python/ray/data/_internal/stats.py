@@ -40,7 +40,7 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     get_dataset_metadata_exporter,
 )
-from ray.data._internal.util import capfirst
+from ray.data._internal.util import MiB, capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
@@ -1138,6 +1138,18 @@ class DatasetStats:
             )
             for name, stats in self.metadata.items()
         ]
+
+        uss_tracker = self.extra_metrics.get("max_uss_bytes")
+        if isinstance(uss_tracker, dict) and uss_tracker.get("num_samples", 0) > 0:
+            memory_stats = StatsSummary(
+                min=round(uss_tracker["min"] / MiB, 2),
+                max=round(uss_tracker["max"] / MiB, 2),
+                mean=round(uss_tracker["mean"] / MiB, 2),
+                sum=round(uss_tracker["mean"] * uss_tracker["num_samples"] / MiB, 2),
+                count=uss_tracker["num_samples"],
+            )
+            for s in op_stats:
+                s.memory = memory_stats
 
         for i, op_stat in enumerate(op_stats):
             # For sub-operators: inherit input based on the order in the current list

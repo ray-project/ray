@@ -18,7 +18,9 @@ from ray.data.context import DataContext
 
 
 def test_average_max_uss_per_task():
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
     assert metrics.average_max_uss_per_task is None
 
     input_bundle = RefBundle([], owns_blocks=False, schema=None)
