@@ -35,6 +35,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.controller_health_metrics_tracker import ControllerHealthMetrics
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
@@ -1626,6 +1627,11 @@ class ServeInstanceDetails(BaseModel):
             "List of target groups, each containing target info for a given route and "
             "protocol."
         ),
+    )
+
+    controller_health_metrics: ControllerHealthMetrics = Field(
+        default_factory=ControllerHealthMetrics,
+        description="Health metrics for the Ray Serve controller.",
     )
 
     @staticmethod

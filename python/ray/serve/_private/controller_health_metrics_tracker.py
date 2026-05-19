@@ -54,6 +54,7 @@ class ControllerHealthMetrics(BaseModel):
     timestamp: float = 0.0  # When these metrics were collected
     controller_start_time: float = 0.0  # When the controller started
     uptime_s: float = 0.0  # Controller uptime in seconds
+    last_control_loop_time: float = 0.0  # Time of last control loop execution
 
     # Control loop metrics
     num_control_loops: int = 0  # Total number of control loops executed
@@ -121,6 +122,7 @@ class ControllerHealthMetricsTracker:
     # Latest values (used in collect_metrics)
     last_sleep_duration_s: float = 0.0
     num_control_loops: int = 0
+    last_control_loop_time: float = 0.0
 
     def record_loop_duration(self, duration: float):
         self.loop_durations.append(duration)
@@ -201,6 +203,7 @@ class ControllerHealthMetricsTracker:
             timestamp=now,
             controller_start_time=self.controller_start_time,
             uptime_s=uptime,
+            last_control_loop_time=self.last_control_loop_time,
             num_control_loops=self.num_control_loops,
             loop_duration_s=loop_duration_stats,
             loops_per_second=loops_per_second,
