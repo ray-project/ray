@@ -224,7 +224,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
         logger.info(
             "Direct streaming enabled for PD: "
-            "PDDecodeServer=ingress, LLMRouter=ingress_request_router"
+            f"{decode_cls.__name__}=ingress, LLMRouter=ingress_request_router"
         )
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(server=decode_deployment)
