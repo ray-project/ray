@@ -4,6 +4,7 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, get_localhost_ip
 from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
     _explicitly_enable_client_mode,
@@ -139,8 +140,11 @@ class _ClientContext:
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
             connection_retries: number of connection attempts to make
+            namespace: The namespace to connect to.
             ignore_version: whether to ignore Python or Ray version mismatches.
                 This should only be used for debugging purposes.
+            _credentials: Optional gRPC channel credentials for secure connection.
+            ray_init_kwargs: Optional additional keyword arguments for ray.init().
 
         Returns:
             Dictionary of connection info, e.g., {"num_clients": 1}.
@@ -284,10 +288,10 @@ class _ClientContext:
         import ray.util.client.server.server as ray_client_server
 
         server_handle, address_info = ray_client_server.init_and_serve(
-            "127.0.0.1", 50051, *args, **kwargs
+            get_localhost_ip(), 50051, *args, **kwargs
         )
         self._server = server_handle.grpc_server
-        self.connect("127.0.0.1:50051")
+        self.connect(build_address(get_localhost_ip(), 50051))
         self._connected_with_init = True
         return address_info
 

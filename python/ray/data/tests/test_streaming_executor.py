@@ -1,4 +1,6 @@
+import logging
 import os
+import pickle
 import random
 import threading
 import time
@@ -9,10 +11,12 @@ from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -53,7 +57,13 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators import MapRows, Read, Write
+from ray.data._internal.logical.operators import (
+    ListFiles,
+    MapRows,
+    Read,
+    ReadFiles,
+    Write,
+)
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
@@ -784,6 +794,74 @@ class OpBufferQueueTest(unittest.TestCase):
         assert q.memory_usage == 0
 
 
+class GetOutputBlockingTest(unittest.TestCase):
+    def test_num_waiting_consumers_tracking(self):
+        """num_waiting_consumers is incremented/decremented by get_output_blocking."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        state = topo[o2]
+
+        assert state.num_waiting_consumers == 0
+
+        # Consumer blocks — counter should be 1.
+        t = threading.Thread(target=state.get_output_blocking, args=(None,))
+        t.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock by adding a bundle — counter should go back to 0.
+        bundle = make_ref_bundles([[0]])[0]
+        state.output_queue.append(bundle)
+        t.join()
+        assert state.num_waiting_consumers == 0
+
+        # Counter is decremented after StopIteration.
+        def get_until_stop():
+            with pytest.raises(StopIteration):
+                state.get_output_blocking(None)
+
+        t2 = threading.Thread(target=get_until_stop)
+        t2.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        state.mark_finished()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+    def test_num_waiting_consumers_concurrent(self):
+        """num_waiting_consumers reflects multiple blocked consumers.
+        For example, this happens for multiple streaming_split iterators."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        state = topo[o2]
+
+        def blocking_consumer():
+            try:
+                state.get_output_blocking(None)
+            except StopIteration:
+                pass
+
+        t1 = threading.Thread(target=blocking_consumer)
+        t2 = threading.Thread(target=blocking_consumer)
+        t1.start()
+        t2.start()
+
+        wait_for_condition(lambda: state.num_waiting_consumers == 2)
+
+        # Unblock one consumer.
+        state.output_queue.append(make_ref_bundles([[0]])[0])
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock the other consumer.
+        state.mark_finished()
+        wait_for_condition(lambda: state.num_waiting_consumers == 0)
+
+        t1.join()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+
 def test_exception_concise_stacktrace():
     driver_script = """
 import ray
@@ -993,6 +1071,7 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
+    pq.write_table(pa.table({"value": [1]}), input_path / "data.parquet")
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
@@ -1009,25 +1088,48 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     # Test inspecting the metadata of each operator.
     # E.g., the original input and output paths and the UDF.
     assert _executor is not None
-    assert len(_executor._topology) == 2
     physical_ops = list(_executor._topology.keys())
     assert isinstance(physical_ops[0], InputDataBuffer)
-    assert isinstance(physical_ops[1], MapOperator)
-    logical_ops = physical_ops[1]._logical_operators
+    if ctx.use_datasource_v2:
+        # V2 splits read into a ``ListFiles`` source op and a fused
+        # ``ReadFiles->Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
+        assert isinstance(physical_ops[1], MapOperator)
+        assert isinstance(physical_ops[2], MapOperator)
+        list_files_logical_ops = physical_ops[1]._logical_operators
+        assert len(list_files_logical_ops) == 1
+        assert isinstance(list_files_logical_ops[0], ListFiles)
 
-    assert len(logical_ops) == 3
-    assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0].datasource
-    assert isinstance(datasource, ParquetDatasource)
-    assert datasource._source_paths == input_path
+        read_logical_ops = physical_ops[2]._logical_operators
+        assert len(read_logical_ops) == 3
+        assert isinstance(read_logical_ops[0], ReadFiles)
+        assert read_logical_ops[0].datasource_name == "ParquetV2"
 
-    assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1].fn == udf
+        assert isinstance(read_logical_ops[1], MapRows)
+        assert read_logical_ops[1].fn == udf
 
-    assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2].datasink_or_legacy_datasource
-    assert isinstance(datasink, ParquetDatasink)
-    assert datasink.unresolved_path == output_path
+        assert isinstance(read_logical_ops[2], Write)
+        datasink = read_logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
+    else:
+        assert len(_executor._topology) == 2
+        assert isinstance(physical_ops[1], MapOperator)
+        logical_ops = physical_ops[1]._logical_operators
+
+        assert len(logical_ops) == 3
+        assert isinstance(logical_ops[0], Read)
+        datasource = logical_ops[0].datasource
+        assert isinstance(datasource, ParquetDatasource)
+        assert datasource._source_paths == input_path
+
+        assert isinstance(logical_ops[1], MapRows)
+        assert logical_ops[1].fn == udf
+
+        assert isinstance(logical_ops[2], Write)
+        datasink = logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
 
 
 def test_create_topology_metadata():
@@ -1183,8 +1285,10 @@ def create_stub_streaming_gen(
                     task_wall_time_s=_time.perf_counter() - task_start_s,
                 )
             )
-            yield BlockMetadataWithSchema.from_metadata(
-                block_metadata, schema=block_accessor.schema()
+            yield pickle.dumps(
+                BlockMetadataWithSchema.from_metadata(
+                    block_metadata, schema=block_accessor.schema()
+                )
             )
 
     generator_backpressure_num_objects = (
@@ -1429,6 +1533,27 @@ class TestDataOpTask:
         # Total backpressure = 2.5s + 1.5s = 4.0s
         bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
         assert bp_time == pytest.approx(4.0)
+
+
+def test_streaming_executor_logs_relevant_env_vars(
+    monkeypatch, caplog, propagate_logs, ray_start_regular_shared
+):
+    monkeypatch.setenv("RAY_DATA_TEST_FOO", "bar")
+    monkeypatch.setenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.3")
+
+    ctx = DataContext.get_current()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    dag = InputDataBuffer(ctx, inputs)
+
+    executor = StreamingExecutor(ctx)
+    with caplog.at_level(
+        logging.DEBUG,
+        logger="ray.data._internal.execution.streaming_executor",
+    ):
+        executor.execute(dag)
+
+    assert "RAY_DATA_TEST_FOO=bar" in caplog.text
+    assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
 
 
 if __name__ == "__main__":

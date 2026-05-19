@@ -16,6 +16,7 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -25,6 +26,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    ControllerOptions,
     DeploymentActorConfig,
     DeploymentMode,
     GangPlacementStrategy,
@@ -1244,6 +1246,31 @@ def test_with_proto():
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
+def test_rolling_update_percentage_proto_roundtrip():
+    """Ensure `rolling_update_percentage` survives to_proto/from_proto.
+
+    Because the proto field is declared `optional double`, an explicit value
+    must round-trip losslessly, and an absent field (simulating an older
+    controller during a rolling upgrade) must fall back to the Python-level
+    default instead of a proto3 zero default.
+    """
+    # Explicit non-default value survives the round-trip.
+    config = DeploymentConfig(rolling_update_percentage=0.5)
+    roundtripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert roundtripped.rolling_update_percentage == 0.5
+
+    # Simulate an older controller that didn't carry this field: start from a
+    # valid proto (so the other non-optional fields satisfy Pydantic's
+    # validators on deserialization) and clear just `rolling_update_percentage`.
+    # Clearing the optional field makes HasField() return False, mimicking a
+    # proto serialized before this field existed.
+    proto = DeploymentConfig().to_proto()
+    proto.ClearField("rolling_update_percentage")
+    assert not proto.HasField("rolling_update_percentage")
+    deserialized = DeploymentConfig.from_proto(proto)
+    assert deserialized.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
+
+
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
 def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
@@ -1314,6 +1341,107 @@ def test_grpc_options():
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
         _ = grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
+
+
+class TestControllerOptions:
+    """Validator + parsing coverage for ControllerOptions.
+
+    The runtime validator is intentionally strict: v0 only accepts
+    ``runtime_env.env_vars``. Other ``runtime_env`` keys (pip, working_dir, ...)
+    would mutate the long-lived detached controller actor's dependencies and
+    are rejected with a message pointing at deployment-level runtime_env.
+    """
+
+    def test_default_is_empty(self):
+        opts = ControllerOptions()
+        assert opts.runtime_env is None
+
+    def test_accepts_dict_from_model_validate(self):
+        opts = ControllerOptions.model_validate(
+            {"runtime_env": {"env_vars": {"X": "y"}}}
+        )
+        assert opts.runtime_env == {"env_vars": {"X": "y"}}
+
+    def test_accepts_env_vars_with_str_str(self):
+        opts = ControllerOptions(
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                    "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                }
+            }
+        )
+        assert opts.runtime_env["env_vars"]["RAY_SERVE_HAPROXY_TCP_NODELAY"] == "1"
+
+    def test_accepts_empty_env_vars(self):
+        opts = ControllerOptions(runtime_env={"env_vars": {}})
+        assert opts.runtime_env == {"env_vars": {}}
+
+    def test_accepts_explicit_none(self):
+        opts = ControllerOptions(runtime_env=None)
+        assert opts.runtime_env is None
+
+    @pytest.mark.parametrize(
+        "disallowed_key, value",
+        [
+            ("pip", ["numpy"]),
+            ("working_dir", "/tmp"),
+            ("py_modules", []),
+            ("conda", "env.yaml"),
+            ("container", {}),
+            # A future runtime_env key we'd want to land via an explicit
+            # API broadening, not by silently accepting it.
+            ("nsight", "default"),
+        ],
+    )
+    def test_rejects_non_env_vars_runtime_env_keys(self, disallowed_key, value):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={disallowed_key: value})
+        msg = str(exc.value)
+        assert "only supports ['env_vars']" in msg
+        assert disallowed_key in msg
+
+    def test_rejects_runtime_env_not_a_dict(self):
+        with pytest.raises(ValidationError):
+            ControllerOptions(runtime_env="env_vars=FOO")
+
+    def test_rejects_env_vars_not_a_dict(self):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": ["FOO=bar"]})
+        assert "env_vars must be a dict" in str(exc.value)
+
+    def test_rejects_env_vars_explicit_none(self):
+        # Explicit ``env_vars: null`` (e.g., from YAML) is distinct from the
+        # key being absent; reject it so a bad config fails locally instead of
+        # surfacing later from the Ray runtime_env layer.
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": None})
+        assert "env_vars must be a dict" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        [1, 3.14, True, None, ["1"], {"nested": "value"}],
+    )
+    def test_rejects_non_str_env_var_values(self, bad_value):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": {"X": bad_value}})
+        assert "must be str" in str(exc.value)
+
+    @pytest.mark.parametrize("bad_key", ["", 1, None])
+    def test_rejects_bad_env_var_keys(self, bad_key):
+        with pytest.raises(ValidationError):
+            ControllerOptions(runtime_env={"env_vars": {bad_key: "v"}})
+
+    def test_rejects_extra_top_level_fields(self):
+        # extra="forbid" guards against typos and against silently accepting
+        # future fields without a validator update.
+        with pytest.raises(ValidationError):
+            ControllerOptions(runtimeenv={"env_vars": {}})  # missing underscore
+
+    def test_rejects_mixed_allowed_and_disallowed_runtime_env_keys(self):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": {"X": "y"}, "pip": ["numpy"]})
+        assert "pip" in str(exc.value)
 
 
 def test_proxy_location_to_deployment_mode():
@@ -1426,6 +1554,50 @@ def test_default_autoscaling_policy_import_path():
     policy = import_attr(DEFAULT_AUTOSCALING_POLICY_NAME)
 
     assert policy == default_autoscaling_policy
+
+
+class TestGetControllerImpl:
+    """White-box checks that ``get_controller_impl`` wires ``ControllerOptions``
+    into the controller actor class's default options.
+
+    These cover the path without starting a Ray cluster -- the live
+    end-to-end env-propagation test lives in
+    ``tests/test_standalone.py::test_serve_start_controller_options``.
+    """
+
+    def _default_options(self, controller_options=None):
+        from ray.serve._private.default_impl import get_controller_impl
+
+        return get_controller_impl(
+            controller_options=controller_options
+        )._default_options
+
+    def test_no_runtime_env_key_when_options_is_none(self):
+        opts = self._default_options(controller_options=None)
+        # Hardcoded fields stay; no runtime_env unless explicitly requested.
+        assert opts["name"] == "SERVE_CONTROLLER_ACTOR"
+        assert opts["namespace"] == "serve"
+        assert "runtime_env" not in opts
+
+    def test_no_runtime_env_key_when_runtime_env_is_none(self):
+        opts = self._default_options(ControllerOptions(runtime_env=None))
+        assert "runtime_env" not in opts
+
+    def test_env_vars_passthrough(self):
+        opts = self._default_options(
+            ControllerOptions(
+                runtime_env={
+                    "env_vars": {
+                        "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                        "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                    }
+                }
+            )
+        )
+        assert opts["runtime_env"]["env_vars"] == {
+            "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+            "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+        }
 
 
 class TestProtoToDict:

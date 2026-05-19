@@ -154,6 +154,24 @@ class ScalingConfig(ScalingConfigV1):
             else self.num_workers[1]
         )
 
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
+
+        - ``None`` -> ``None`` (no constraint; downstream consumers — the
+          placement-group path and the autoscaling coordinator — both
+          accept ``None`` and treat it as "no label requirement").
+        - ``Dict`` -> the same dict replicated for each worker
+        - ``List`` -> the first ``num_workers`` entries (validated to be
+          ``max_workers`` long in ``__post_init__``)
+        """
+        if isinstance(self.label_selector, list):
+            return [s.copy() for s in self.label_selector[:num_workers]]
+        if isinstance(self.label_selector, dict):
+            return [self.label_selector.copy() for _ in range(num_workers)]
+        return None
+
     @property
     def total_resources(self):
         """Map of total resources required for training.
@@ -343,6 +361,35 @@ class FailureConfig(FailureConfigV1):
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
 
+@PublicAPI(stability="alpha")
+@dataclass
+class LoggingConfig:
+    """Configuration for Ray Train's logging behavior.
+
+    Args:
+        log_level: The log level for Ray Train's internal ``ray.train`` logs
+            on console output and application-level log files. Accepts standard
+            Python logging level names. Defaults to ``"INFO"``.
+            System-level log files always capture all levels (DEBUG and above),
+            and the ``ray`` logger (set by ``ray.init()``) and root logger
+            are unaffected.
+    """
+
+    log_level: str = "INFO"
+
+    def __post_init__(self):
+        valid_levels = set(logging._nameToLevel)
+        if (
+            not isinstance(self.log_level, str)
+            or self.log_level.upper() not in valid_levels
+        ):
+            raise ValueError(
+                f"Invalid log_level: {self.log_level!r}. "
+                f"Must be one of: {', '.join(repr(x) for x in sorted(valid_levels))}."
+            )
+        self.log_level = self.log_level.upper()
+
+
 @dataclass
 @PublicAPI(stability="stable")
 class RunConfig:
@@ -365,6 +412,8 @@ class RunConfig:
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
             for all Ray Train worker actors.
+        logging_config: Configuration for Ray Train's logging behavior.
+            See :class:`LoggingConfig` for details.
     """
 
     name: Optional[str] = None
@@ -374,6 +423,7 @@ class RunConfig:
     checkpoint_config: Optional[CheckpointConfig] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
+    logging_config: Optional[LoggingConfig] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
@@ -392,6 +442,9 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        if not self.logging_config:
+            self.logging_config = LoggingConfig()
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()

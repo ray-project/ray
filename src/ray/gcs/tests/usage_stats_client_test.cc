@@ -20,7 +20,7 @@
 #include <string>
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/gcs/gcs_kv_manager.h"
 
 using namespace ray;  // NOLINT
@@ -50,7 +50,7 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
                    ASSERT_EQ(value.value(), "value1");
                  },
                  io_context_->GetIoService()});
-  // Make sure the value is overriden for the same key.
+  // Make sure the value is overridden for the same key.
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST2, "value2");
   fake_kv_->Get("usage_stats",
                 "extra_usage_tag__test2",

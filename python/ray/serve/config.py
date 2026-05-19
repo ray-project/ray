@@ -20,6 +20,7 @@ from pydantic import (
 )
 
 from ray import cloudpickle
+from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.actor import ActorClass
 
@@ -46,7 +47,7 @@ from ray.util.annotations import Deprecated, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies.
 
@@ -421,7 +422,7 @@ class AggregationFunction(str, Enum):
     MIN = "min"
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
@@ -618,7 +619,7 @@ class AutoscalingConfig(BaseModel):
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
     policy: AutoscalingPolicy = Field(
         default_factory=AutoscalingPolicy,
-        description="The autoscaling policy for the deployment. This option is experimental.",
+        description="The autoscaling policy for the deployment.",
     )
 
     @model_validator(mode="after")
@@ -779,8 +780,8 @@ class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
-      "127.0.0.1". To expose Serve publicly, you probably want to set
-      this to "0.0.0.0".
+      localhost. To expose Serve publicly, you probably want to set
+      this to "0.0.0.0" for IPv4 or "::" for IPv6.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
       (for example, "/prefix"). All deployment routes are prefixed
@@ -809,7 +810,7 @@ class HTTPOptions(BaseModel):
       internal Serve HTTP proxy actor.
     """
 
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
@@ -862,7 +863,7 @@ class HTTPOptions(BaseModel):
         return v
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptions(BaseModel):
     """gRPC options for the proxies. Supported fields:
 
@@ -911,6 +912,83 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+_ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS = frozenset({"env_vars"})
+
+
+@PublicAPI(stability="alpha")
+class ControllerOptions(BaseModel):
+    """Options for the Serve controller actor.
+
+    Symmetric with ``HTTPOptions`` and ``gRPCOptions``: pass to
+    ``serve.start(controller_options=...)`` / ``serve.run`` from Python, or
+    as a top-level ``controller_options:`` block in ``serve run foo.yaml``.
+
+    v0 scope is intentionally narrow: only ``runtime_env`` is exposed, and
+    inside ``runtime_env`` only ``env_vars`` is accepted. Other
+    ``runtime_env`` fields (``pip``, ``working_dir``, ``py_modules``,
+    ``container``, ...) would mutate Serve's own dependencies on a
+    detached, long-lived actor and are intentionally rejected by the
+    validator. Per-replica runtime environments belong on the deployment
+    (``serve.deployment(runtime_env=...)``) instead.
+
+    Like ``HTTPOptions``, these options only take effect when the
+    controller is first created. If a Serve controller is already running
+    in the cluster, ``serve.start`` warns and ignores the new options.
+    """
+
+    runtime_env: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Runtime environment for the controller actor. Only the "
+            "``env_vars`` key is supported; other keys are rejected."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("runtime_env")
+    @classmethod
+    def _validate_runtime_env(
+        cls, v: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        # All errors raised as ValueError so pydantic aggregates them into a
+        # single ValidationError. TypeError from a field_validator escapes
+        # unwrapped in pydantic v2.
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise ValueError(f"runtime_env must be a dict, got {type(v).__name__}.")
+
+        disallowed = sorted(set(v) - _ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS)
+        if disallowed:
+            raise ValueError(
+                "ControllerOptions.runtime_env only supports "
+                f"{sorted(_ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS)} in this version; "
+                f"got disallowed keys {disallowed}. Per-replica runtime_env "
+                "belongs on the deployment "
+                "(``serve.deployment(runtime_env=...)``), not on the "
+                "controller actor."
+            )
+
+        if "env_vars" not in v:
+            return v
+        env_vars = v["env_vars"]
+        if not isinstance(env_vars, dict):
+            raise ValueError(
+                "runtime_env.env_vars must be a dict[str, str], got "
+                f"{type(env_vars).__name__}."
+            )
+        for k, val in env_vars.items():
+            if not isinstance(k, str) or not k:
+                raise ValueError(f"env_vars key must be a non-empty str, got {k!r}.")
+            if not isinstance(val, str):
+                raise ValueError(
+                    f"env_vars[{k!r}] must be str (got {type(val).__name__}); "
+                    "coerce explicitly."
+                )
+        return v
 
 
 @PublicAPI(stability="alpha")

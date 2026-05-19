@@ -41,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
     HTTPOptions,
@@ -77,6 +78,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -97,17 +99,24 @@ def start(
         http_options: HTTP config options for the proxies. These can be passed as an
           unstructured dictionary or the structured `HTTPOptions` class. See
           `HTTPOptions` for supported options.
-        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
+        grpc_options: gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
+          Currently scoped to a strictly-validated ``runtime_env.env_vars``
+          (other ``runtime_env`` keys are rejected). See
+          ``ray.serve.config.ControllerOptions``. Only applied on first
+          controller creation -- ignored if a Serve controller is already
+          running in this Ray cluster.
     """
     http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        controller_options=controller_options,
         **kwargs,
     )
 
@@ -306,7 +315,7 @@ def get_deployment_actor(actor_name: str):
 
 
 @PublicAPI(stability="stable")
-def ingress(app: Union[ASGIApp, Callable]) -> Callable:
+def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     """Wrap a deployment class with an ASGI application for HTTP request parsing.
     There are a few different ways to use this functionality.
 
@@ -382,6 +391,9 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
         app: the FastAPI app to wrap this class with.
             Can be any ASGI-compatible callable.
             You can also pass in a builder function that returns an ASGI app.
+            Pass nothing to defer the app to replica init time; in that mode
+            the class must define ``__serve_build_asgi_app__``, which is
+            invoked after the user constructor and must return an ASGI app.
     """
 
     def decorator(cls: Optional[Type[Any]] = None) -> Callable:
@@ -401,16 +413,24 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                 "Classes passed to @serve.ingress may not have __call__ method."
             )
 
+        if app is None and not hasattr(cls, "__serve_build_asgi_app__"):
+            raise ValueError(
+                "serve.ingress() called without an app argument requires "
+                f"{cls.__name__} to define `__serve_build_asgi_app__`."
+            )
+
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         if isinstance(app, (FastAPI, APIRouter)):
             make_fastapi_class_based_view(app, cls)
 
-        frozen_app_or_func: Union[ASGIApp, Callable] = None
+        # Late-bound (`app is None`): the class's `__serve_build_asgi_app__`
+        # produces the real app at replica init time.
+        frozen_app_or_func: Optional[Union[ASGIApp, Callable]] = None
 
         if inspect.isfunction(app):
             frozen_app_or_func = app
-        else:
+        elif app is not None:
             # Free the state of the app so subsequent modification won't affect
             # this ingress deployment. We don't use copy.copy here to avoid
             # recursion issue.
@@ -480,6 +500,7 @@ def deployment(
     deployment_actors: Default[
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
+    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -528,7 +549,7 @@ def deployment(
             deployment. The user_config must be fully JSON-serializable.
         max_ongoing_requests: Maximum number of requests that are sent to a
             replica of this deployment without receiving a response. Defaults to 5.
-        max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
+        max_queued_requests: Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
@@ -558,6 +579,10 @@ def deployment(
             Each actor is shared across all replicas of this deployment. Use
             `serve.get_deployment_actor(actor_name)` from within a replica to get
             the actor handle. See `DeploymentActorConfig` for options.
+        rolling_update_percentage: The fraction of replicas to update at a
+            time during a rolling update. Must be in ``(0.0, 1.0]``.
+            Defaults to ``0.2`` (20%).
+
     Returns:
         `Deployment`
     """
@@ -644,6 +669,7 @@ def deployment(
         max_constructor_retry_count=max_constructor_retry_count,
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
+        rolling_update_percentage=rolling_update_percentage,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -710,6 +736,7 @@ def _run_many(
     wait_for_ingress_deployment_creation: bool = True,
     wait_for_applications_running: bool = True,
     _local_testing_mode: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> List[DeploymentHandle]:
     """Run many applications and return the handles to their ingress deployments.
 
@@ -770,6 +797,7 @@ def _run_many(
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
             global_logging_config=None,
+            controller_options=controller_options,
         )
 
         # Record after Ray has been started.
@@ -797,6 +825,7 @@ def _run(
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
     external_scaler_enabled: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -815,6 +844,7 @@ def _run(
         ],
         wait_for_applications_running=_blocking,
         _local_testing_mode=_local_testing_mode,
+        controller_options=controller_options,
     )[0]
 
 
@@ -825,6 +855,7 @@ def run_many(
     wait_for_ingress_deployment_creation: bool = True,
     wait_for_applications_running: bool = True,
     _local_testing_mode: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> List[DeploymentHandle]:
     """Run many applications and return the handles to their ingress deployments.
 
@@ -841,6 +872,13 @@ def run_many(
             `wait_for_ingress_deployment_creation=True`,
             because the ingress deployments must be created
             before the applications can be running.
+        _local_testing_mode: Internal flag enabling in-process local testing
+            mode. Not part of the public API.
+        controller_options: [EXPERIMENTAL] Options for the Serve controller
+            actor (e.g. ``runtime_env.env_vars`` for HAProxy / controller-side
+            tunables). See ``ray.serve.config.ControllerOptions``. Only applied
+            on first controller creation -- ignored if a Serve controller is
+            already running in this Ray cluster.
 
     Returns:
         List[DeploymentHandle]: A list of handles that can be used
@@ -851,6 +889,7 @@ def run_many(
         wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
         wait_for_applications_running=wait_for_applications_running,
         _local_testing_mode=_local_testing_mode,
+        controller_options=controller_options,
     )
 
     if blocking:
@@ -868,6 +907,7 @@ def run(
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
     external_scaler_enabled: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -893,6 +933,11 @@ def run(
             be applied to all deployments which doesn't have logging config.
         external_scaler_enabled: Whether external autoscaling is enabled for
             this application.
+        controller_options: [EXPERIMENTAL] Options for the Serve controller
+            actor (e.g. ``runtime_env.env_vars`` for HAProxy / controller-side
+            tunables). See ``ray.serve.config.ControllerOptions``. Only applied
+            on first controller creation -- ignored if a Serve controller is
+            already running in this Ray cluster.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -904,6 +949,7 @@ def run(
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
         external_scaler_enabled=external_scaler_enabled,
+        controller_options=controller_options,
     )
 
     if blocking:

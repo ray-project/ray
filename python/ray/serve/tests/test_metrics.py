@@ -869,7 +869,8 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         lambda: len(
             get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
         )
-        == 2
+        == 2,
+        timeout=40,
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
     expected_output = {("f", "app1"), ("g", "app2")}
@@ -1501,6 +1502,129 @@ def test_replica_utilization_metric(metrics_start_shutdown):
     finally:
         stop_sending.set()
         sender.join(timeout=10)
+
+
+def test_max_processing_latency_metric(metrics_start_shutdown):
+    """Test that the max processing latency metric is correctly reported per route.
+
+    This test verifies that:
+    1. The serve_deployment_max_processing_latency_ms metric is emitted
+    2. Separate max values are tracked per route tag
+    3. Each route's max reflects its actual maximum latency
+    4. A fast route has a lower max than a slow route
+
+    Uses a FastAPI app with two routes having different sleep durations
+    to produce distinct per-route max latencies.
+    """
+
+    app = FastAPI()
+
+    @serve.deployment(name="MaxLatencyTest", max_ongoing_requests=2)
+    @serve.ingress(app)
+    class MultiRouteDeployment:
+        @app.get("/fast")
+        def fast(self):
+            time.sleep(0.1)
+            return {"route": "fast"}
+
+        @app.get("/slow")
+        def slow(self):
+            time.sleep(0.8)
+            return {"route": "slow"}
+
+    app_name = "max_latency_app"
+    serve.run(MultiRouteDeployment.bind(), name=app_name, route_prefix="/api")
+
+    stop_sending = threading.Event()
+
+    def _send_requests_forever(route: str):
+        while not stop_sending.is_set():
+            try:
+                httpx.get(f"http://localhost:8000/api{route}", timeout=5)
+            except Exception:
+                pass
+
+    fast_sender = threading.Thread(
+        target=_send_requests_forever, args=("/fast",), daemon=True
+    )
+    slow_sender = threading.Thread(
+        target=_send_requests_forever, args=("/slow",), daemon=True
+    )
+    fast_sender.start()
+    slow_sender.start()
+
+    try:
+        report_interval_s = float(
+            os.environ.get(
+                "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S", "10"
+            )
+        )
+        time.sleep(report_interval_s + 2)
+
+        timeseries = PrometheusTimeseries()
+
+        def check_both_routes_reported():
+            metrics = get_metric_dictionaries(
+                "ray_serve_deployment_max_processing_latency_ms",
+                timeseries=timeseries,
+                wait=False,
+            )
+            if not metrics:
+                return False
+
+            routes_found = set()
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "MaxLatencyTest"
+                    and metric.get("application") == app_name
+                ):
+                    route = metric.get("route", "")
+                    routes_found.add(route)
+
+            return "/api/fast" in routes_found and "/api/slow" in routes_found
+
+        wait_for_condition(check_both_routes_reported, timeout=30)
+
+        def check_per_route_values():
+            fast_value = get_metric_float(
+                "ray_serve_deployment_max_processing_latency_ms",
+                timeseries=timeseries,
+                expected_tags={
+                    "deployment": "MaxLatencyTest",
+                    "application": app_name,
+                    "route": "/api/fast",
+                },
+            )
+            slow_value = get_metric_float(
+                "ray_serve_deployment_max_processing_latency_ms",
+                timeseries=timeseries,
+                expected_tags={
+                    "deployment": "MaxLatencyTest",
+                    "application": app_name,
+                    "route": "/api/slow",
+                },
+            )
+
+            assert fast_value >= 0, f"Fast max latency should be >= 0, got {fast_value}"
+            assert slow_value >= 0, f"Slow max latency should be >= 0, got {slow_value}"
+
+            # /fast sleeps 100ms, /slow sleeps 800ms.
+            assert (
+                fast_value >= 80
+            ), f"Fast route max should be >= 80ms with 100ms sleep, got {fast_value}"
+            assert (
+                slow_value >= 600
+            ), f"Slow route max should be >= 600ms with 800ms sleep, got {slow_value}"
+            assert (
+                slow_value > fast_value
+            ), f"Slow route ({slow_value}ms) should exceed fast route ({fast_value}ms)"
+            return True
+
+        wait_for_condition(check_per_route_values, timeout=30)
+    finally:
+        stop_sending.set()
+        fast_sender.join(timeout=10)
+        slow_sender.join(timeout=10)
 
 
 def test_objref_resolution_latency_metric(metrics_start_shutdown):

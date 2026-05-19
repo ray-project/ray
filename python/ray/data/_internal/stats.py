@@ -45,7 +45,6 @@ from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -873,17 +872,16 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
 
     # so it fate-shares with the driver.
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
 
     return _StatsActor.options(
         name=STATS_ACTOR_NAME,
         namespace=STATS_ACTOR_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
+        label_selector=label_selector,
     ).remote()
 
 
@@ -1155,11 +1153,16 @@ class DatasetStats:
                 # Single operator scenario: input rows = total output from all parent nodes
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
-        streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.get()
-            if self.streaming_exec_schedule_s
-            else 0
-        )
+        # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
+        # ``runtime_metrics()`` can still divide by total_wall_time and
+        # produce a meaningful percentage. Per-iteration avg/max are
+        # exposed separately. ``StreamingExecutor._generate_stats``
+        # always assigns a ``Timer`` (never ``None``), so this call site
+        # needs no guard.
+        schedule_timer = self.streaming_exec_schedule_s
+        streaming_exec_schedule_s = schedule_timer.get()
+        streaming_exec_schedule_avg_s = schedule_timer.avg()
+        streaming_exec_schedule_max_s = schedule_timer.max()
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1173,6 +1176,8 @@ class DatasetStats:
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
+            streaming_exec_schedule_avg_s,
+            streaming_exec_schedule_max_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1208,6 +1213,8 @@ class DatasetStatsSummary:
     global_bytes_restored: int
     dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
+    streaming_exec_schedule_avg_s: float
+    streaming_exec_schedule_max_s: float
 
     def to_string(
         self,

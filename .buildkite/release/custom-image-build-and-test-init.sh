@@ -20,6 +20,12 @@ fi
 export RAYCI_BUILD_ID="${BUILD_ID}"
 echo "RAYCI_BUILD_ID: ${RAYCI_BUILD_ID}"
 
+if [[ "${AUTOMATIC:-0}" == "1" && -n "${RAYCI_SELECT:-}" ]]; then
+  echo "Skipping custom image build and test init because RAYCI_SELECT is set"
+  echo "RAYCI_SELECT: ${RAYCI_SELECT}"
+  exit 0
+fi
+
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
 
@@ -39,7 +45,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install "${UV_PYTHON_VERSION}"
 UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
-
 
 echo "--- Generate custom build steps"
 
@@ -64,17 +69,5 @@ BUILD_WORKSPACE_DIRECTORY="${PWD}" bazel-bin/release/custom_image_build_and_test
   "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
   --test-jobs-output-file .buildkite/release/release_tests.json \
-  --rayci-select-output-file /tmp/rayci_select.txt
-
-# release_tests_*.json are chunked to stay under Buildkite's per-upload job
-# limit; upload each chunk in order so inter-step dependencies resolve.
-i=0
-while [[ -f ".buildkite/release/release_tests_${i}.json" ]]; do
-    echo "Uploading .buildkite/release/release_tests_${i}.json"
-    buildkite-agent pipeline upload ".buildkite/release/release_tests_${i}.json"
-    i=$((i + 1))
-done
-if [[ $i -eq 0 ]]; then
-    echo "No release test chunks found at .buildkite/release/release_tests_*.json" >&2
-    exit 1
-fi
+  --rayci-select-output-file /tmp/rayci_select.txt \
+  --upload-to-buildkite
