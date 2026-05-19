@@ -371,6 +371,8 @@ class ResourceManager:
             usage_str = "n/a"
         else:
             usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
+            if self._op_running_usages[op].memory:
+                usage_str += f", {self._op_running_usages[op].memory_str()} memory"
             if self._op_running_usages[op].gpu:
                 usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
             usage_str += f", {self._op_running_usages[op].object_store_memory_str()} object store"
@@ -388,12 +390,14 @@ class ResourceManager:
                 allocation = self._op_resource_allocator.get_allocation(op)
                 if allocation:
                     usage_str += f", alloc=(cpu={allocation.cpu:.1f}"
+                    usage_str += f",mem={allocation.memory_str()}"
                     usage_str += f",gpu={allocation.gpu:.1f}"
                     usage_str += f",obj_store={allocation.object_store_memory_str()})"
 
                 budget = self._op_resource_allocator.get_budget(op)
                 if budget:
                     usage_str += f", budget=(cpu={budget.cpu:.1f}"
+                    usage_str += f",mem={budget.memory_str()}"
                     usage_str += f",gpu={budget.gpu:.1f}"
                     usage_str += f",obj_store={budget.object_store_memory_str()}"
 

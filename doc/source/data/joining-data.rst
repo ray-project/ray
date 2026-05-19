@@ -54,15 +54,6 @@ Ray Data provides the following levers to allow tuning the performance of joins 
     -   Note that, `num_partitions * partition_size_hint` should ideally be approximating actual dataset size, ie `partition_size_hint` could be estimated as dataset size divided by `num_partitions` (assuming relatively evenly sized partitions)
     -   However, in cases when dataset partitioning is expected to be heavily skewed `partition_size_hint` should approximate largest partition to prevent Out-of-Memory (OOM) errors
 
-.. note:: Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all
-    Ray Data workloads, but especially so for ones utilizing joins.
-
-To configure Object Store to be 50%, add to your image:
-
-.. testcode::
-
-    RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
-
 .. _joins_configuring_num_partitions:
 
 Configuring number of partitions
