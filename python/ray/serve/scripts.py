@@ -31,7 +31,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.config import (
-    DeploymentMode,
     ProxyLocation,
     gRPCOptions,
 )
@@ -174,9 +173,9 @@ def cli():
 )
 @click.option(
     "--http-location",
-    default=DeploymentMode.HeadOnly,
+    default="HeadOnly",
     required=False,
-    type=click.Choice(list(DeploymentMode)),
+    type=click.Choice(["NoServer", "HeadOnly", "EveryNode"]),
     help="DEPRECATED: Use `--proxy-location` instead.",
 )
 @click.option(
@@ -210,13 +209,13 @@ def start(
     grpc_port,
     grpc_servicer_functions,
 ):
-    if http_location != DeploymentMode.HeadOnly:
+    if http_location != "HeadOnly":
         cli_logger.warning(
             "The `--http-location` flag to `serve start` is deprecated, "
             "use `--proxy-location` instead."
         )
 
-        proxy_location = http_location
+        proxy_location = ProxyLocation._normalize(http_location)
 
     ray.init(
         address=address,
@@ -544,9 +543,7 @@ def run(
     # Merge http_options, grpc_options, and controller_options with the ones on
     # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        http_options["location"] = ProxyLocation._to_deployment_mode(
-            config.proxy_location
-        ).value
+        http_options["location"] = config.proxy_location.value
         config_http_options = config.http_options.model_dump()
         http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
