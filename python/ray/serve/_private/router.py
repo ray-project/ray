@@ -1298,7 +1298,7 @@ class AsyncioRouter:
                     candidate_replicas=self.request_router._replicas_list,
                     pending_request=pr,
                 )
-                replica = next((rank[0] for rank in ranks if rank), None)
+                replica = next((r for rank in ranks for r in rank), None)
                 if replica is None:
                     raise RuntimeError(
                         f"no replicas available for {self.deployment_id}"
