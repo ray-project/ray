@@ -11,7 +11,11 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
-from ray._common.utils import env_integer
+from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource.parquet_datasource import (
+    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    _check_for_pickle_object_columns,
+)
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -191,6 +195,9 @@ class ParquetFileReader(FileReader):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._target_block_size = target_block_size
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
@@ -241,6 +248,18 @@ class ParquetFileReader(FileReader):
 
     @override
     def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        for table in self._iter_fragment_tables_without_pickle_check(
+            fragment, scanner_kwargs
+        ):
+            if not self._allow_pickle_object_columns:
+                _check_for_pickle_object_columns(table)
+            yield table
+
+    def _iter_fragment_tables_without_pickle_check(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,
