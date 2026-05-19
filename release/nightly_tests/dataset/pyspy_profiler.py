@@ -112,6 +112,17 @@ def start(outdir: str) -> None:
 
     print(f"py-spy profiling started on driver (pid {pid}) -> {output_path}")
 
+    # Announce the eventual S3 destination up front so users tailing the
+    # driver log don't have to wait until stop() to know where to look.
+    dest = os.environ.get("PYSPY_S3_DEST")
+    if dest:
+        s3_key = (
+            f"{dest.rstrip('/')}/{os.path.basename(output_path)}"
+            if dest.startswith("s3://")
+            else dest
+        )
+        print(f"py-spy artifacts will be uploaded to: {s3_key}")
+
 
 def _upload_to_s3(local_paths) -> None:
     """Upload each path under PYSPY_S3_DEST. No-op if the env var is unset.
