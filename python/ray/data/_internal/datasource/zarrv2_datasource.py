@@ -197,35 +197,6 @@ def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
     return out
 
 
-def _chunk_geometry(
-    chunk_index: tuple[int, ...],
-    shape: tuple[int, ...],
-    chunks: tuple[int, ...],
-) -> tuple[list[tuple[int, int]], list[int], tuple[int, ...]]:
-    """Compute per-dimension slice bounds, trailing padding, and actual shape
-    for one chunk of an array.
-
-    ``chunks`` is the array's chunk shape; the chunk at the trailing edge of an
-    axis may be smaller than ``chunks[dim]`` if the array's ``shape[dim]`` is
-    not divisible. The returned ``chunk_shape`` reflects that truncation, and
-    ``padding`` records how many trailing zeros would be needed to pad each
-    truncated chunk back to ``chunks``.
-    """
-    chunk_slices: list[tuple[int, int]] = []
-    padding: list[int] = []
-    chunk_shape = list(chunks)
-    for dim, (i, size, c) in enumerate(zip(chunk_index, shape, chunks)):
-        start = i * c
-        stop = min((i + 1) * c, size)
-        chunk_slices.append((start, stop))
-        if start + c > size:
-            padding.append(start + c - size)
-            chunk_shape[dim] = stop - start
-        else:
-            padding.append(0)
-    return chunk_slices, padding, tuple(chunk_shape)
-
-
 def _to_fsspec(
     filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None,
 ) -> AbstractFileSystem | None:
