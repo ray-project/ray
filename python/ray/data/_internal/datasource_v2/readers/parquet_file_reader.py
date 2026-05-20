@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -266,20 +266,24 @@ class ParquetFileReader(FileReader):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[pds.Fragment]:
+    ) -> List[Tuple[pds.Fragment, int]]:
         """Fan file fragments into chunk-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is. This matches ``ParquetFileChunker``'s
-          behavior for files at or below ``target_chunk_size`` and the
-          default ``WholeFileChunker`` for non-chunking callers.
+          fragment is yielded as-is with a row offset of 0. This matches
+          ``ParquetFileChunker``'s behavior for files at or below
+          ``target_chunk_size`` and the default ``WholeFileChunker`` for
+          non-chunking callers.
         - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
           we slice the fragment via
           :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
           which returns one sub-fragment per row group in the chunk's
-          row-group range.
+          row-group range, paired with the cumulative pre-filter row
+          offset of that row group within the file. The downstream
+          ``_compute_row_hashes`` call uses this offset so row hashes
+          remain unique across sub-fragments that share ``fragment.path``.
 
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
@@ -290,11 +294,11 @@ class ParquetFileReader(FileReader):
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-        fragments: List[pds.Fragment] = []
+        fragments: List[Tuple[pds.Fragment, int]] = []
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
             fragment = path_to_fragment[path]
             if chunk_metadata is None:
-                fragments.append(fragment)
+                fragments.append((fragment, 0))
             else:
                 fragments.extend(
                     _fragments_from_chunk_metadata(fragment, chunk_metadata)

@@ -192,8 +192,11 @@ class ParquetFileChunker(FileChunker):
 
         num_chunks = math.ceil(file_size / self._target_chunk_size)
         for i in range(num_chunks):
+            chunk_start = self._target_chunk_size * i
+            chunk_end = min(self._target_chunk_size * (i + 1), file_size)
+            chunk_size = chunk_end - chunk_start
             yield create_chunk_metadata(
                 ParquetFileChunkMetadata,
                 chunk_idx=i,
                 total_num_chunks=num_chunks,
-            ), self._target_chunk_size
+            ), chunk_size

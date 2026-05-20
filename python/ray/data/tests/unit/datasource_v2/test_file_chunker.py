@@ -89,13 +89,21 @@ class TestParquetFileChunker:
         ],
     )
     def test_large_files_produce_chunks(self, file_size, expected_num_chunks):
-        chunker = ParquetFileChunker(target_chunk_size=256 * 1024 * 1024)
+        target_chunk_size = 256 * 1024 * 1024
+        chunker = ParquetFileChunker(target_chunk_size=target_chunk_size)
         chunks = list(chunker.generate_chunk_metadatas("data.parquet", file_size))
         assert len(chunks) == expected_num_chunks
-        for i, (md, _) in enumerate(chunks):
+        total_size = 0
+        for i, (md, chunk_size) in enumerate(chunks):
             assert isinstance(md, dict)
             assert md["chunk_idx"] == i
             assert md["total_num_chunks"] == expected_num_chunks
+            if i < expected_num_chunks - 1:
+                assert chunk_size == target_chunk_size
+            else:
+                assert chunk_size == file_size - target_chunk_size * i
+            total_size += chunk_size
+        assert total_size == file_size
 
     def test_default_target_chunk_size_from_context(self, restore_data_context):
         from ray.data.context import DataContext

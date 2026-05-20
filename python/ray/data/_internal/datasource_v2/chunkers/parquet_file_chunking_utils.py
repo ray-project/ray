@@ -77,16 +77,22 @@ def _calculate_row_group_range(
 def _fragments_from_chunk_metadata(
     fragment: pds.ParquetFileFragment,
     chunk_metadata: ParquetFileChunkMetadata,
-) -> List[pds.ParquetFileFragment]:
+) -> List[Tuple[pds.ParquetFileFragment, int]]:
     """Slice ``fragment`` into per-row-group sub-fragments per chunk metadata.
 
-    Returns one ``ParquetFileFragment`` per row group covered by the chunk.
+    Returns one ``(ParquetFileFragment, file_row_offset)`` pair per row group
+    covered by the chunk, where ``file_row_offset`` is the sum of ``num_rows``
+    across all row groups that precede the sub-fragment in the underlying
+    file. Callers seed per-fragment hashing offsets with this value so
+    sub-fragments of the same file don't collide on ``(path, 0, n)``.
+
     Returns an empty list when the chunk index falls beyond the file's actual
     row-group count (the planner over-estimated; we silently drop the slice).
     """
     chunk_idx = chunk_metadata["chunk_idx"]
     total_num_chunks = chunk_metadata["total_num_chunks"]
-    total_row_groups = fragment.metadata.num_row_groups
+    metadata = fragment.metadata
+    total_row_groups = metadata.num_row_groups
 
     row_group_range = _calculate_row_group_range(
         chunk_idx, total_num_chunks, total_row_groups
@@ -97,7 +103,11 @@ def _fragments_from_chunk_metadata(
 
     start, end = row_group_range
 
-    return [
-        fragment.subset(row_group_ids=[row_group_index])
-        for row_group_index in range(start, end)
-    ]
+    file_row_offset = sum(metadata.row_group(i).num_rows for i in range(start))
+    sub_fragments: List[Tuple[pds.ParquetFileFragment, int]] = []
+    for row_group_index in range(start, end):
+        sub_fragments.append(
+            (fragment.subset(row_group_ids=[row_group_index]), file_row_offset)
+        )
+        file_row_offset += metadata.row_group(row_group_index).num_rows
+    return sub_fragments

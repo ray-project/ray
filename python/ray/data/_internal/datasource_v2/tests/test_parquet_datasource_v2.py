@@ -301,8 +301,12 @@ def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
     assert len(sub_fragments) == 25
-    for sub in sub_fragments:
+    # chunk_idx=1, 25 rows/chunk * 10 rows/row_group = starting offset 250.
+    expected_offset = 250
+    for sub, offset in sub_fragments:
         assert len(sub.row_groups) == 1
+        assert offset == expected_offset
+        expected_offset += sub.metadata.row_group(sub.row_groups[0].id).num_rows
 
 
 def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
@@ -358,6 +362,40 @@ def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
     chunked_rows = pa.concat_tables(chunked_tables).column("id").to_pylist()
 
     assert sorted(chunked_rows) == sorted(whole_rows) == list(range(expected_rows))
+
+
+def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
+    """Row hashes must remain unique across chunked sub-fragments of the
+    same file.
+
+    Regression: ``_read_fragments_sequential`` previously reseeded
+    ``offset=0`` for every fragment. Since chunked sub-fragments share
+    ``fragment.path``, ``_compute_row_hashes(path, 0, n)`` collided across
+    row groups of the same file.
+    """
+    file_path = str(tmp_path / "data.parquet")
+    expected_rows = 200
+    _write_multi_row_group_parquet(file_path, num_rows=expected_rows, row_group_size=20)
+    file_size = os.path.getsize(file_path)
+
+    chunker = ParquetFileChunker(target_chunk_size=1024)
+    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
+    assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
+
+    paths = [file_path] * len(chunks)
+    chunk_metadatas = [md for md, _ in chunks]
+    chunk_sizes = [sz for _, sz in chunks]
+    chunked_manifest = FileManifest.construct_manifest(
+        paths, chunk_sizes, chunk_metadatas
+    )
+
+    reader = ParquetFileReader(include_row_hash=True)
+    chunked_tables = list(reader.read(chunked_manifest))
+    hashes = pa.concat_tables(chunked_tables).column("row_hash").to_pylist()
+    assert len(hashes) == expected_rows
+    assert (
+        len(set(hashes)) == expected_rows
+    ), "row_hash must be unique across chunked sub-fragments of one file"
 
 
 def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
