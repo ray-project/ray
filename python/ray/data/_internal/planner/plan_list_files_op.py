@@ -28,11 +28,17 @@ from ray.data._internal.datasource_v2.listing.listing_utils import (
     partition_files,
     shuffle_files,
 )
+from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
+    enrich_manifest_block_metadata_for_map_task,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS,
+    MapOperator,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
@@ -120,6 +126,16 @@ def plan_list_files_op(
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,
+        # Attach a generic per-block postprocess hook that stamps each
+        # emitted FileManifest block's metadata with a ``task_memory_bytes``
+        # hint. The downstream ``ReadFiles`` ``TaskPoolMapOperator``'s
+        # always-on merge consumes the hint to raise its Ray ``memory``
+        # reservation.
+        map_task_kwargs={
+            MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS: (
+                enrich_manifest_block_metadata_for_map_task
+            ),
+        },
     )
     map_op.throttling_disabled = lambda: True
     return map_op
