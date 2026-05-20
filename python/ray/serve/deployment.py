@@ -1,4 +1,3 @@
-import logging
 import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -9,7 +8,6 @@ from ray.serve._private.config import (
     RequestRouterConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import (
@@ -19,9 +17,6 @@ from ray.serve.config import (
 )
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
-
-logger = logging.getLogger(SERVE_LOGGER_NAME)
-
 
 @PublicAPI(stability="stable")
 class Application:
@@ -171,13 +166,6 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def route_prefix(self):
-        raise ValueError(
-            "`route_prefix` can no longer be specified at the deployment level. "
-            "Pass it to `serve.run` or in the application config instead."
-        )
-
-    @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._replica_config.ray_actor_options
@@ -189,14 +177,6 @@ class Deployment:
     @property
     def init_kwargs(self) -> Tuple[Any]:
         return self._replica_config.init_kwargs
-
-    @property
-    def url(self) -> Optional[str]:
-        logger.warning(
-            "DeprecationWarning: `Deployment.url` is deprecated "
-            "and will be removed in the future."
-        )
-        return None
 
     @property
     def logging_config(self) -> Dict:
@@ -225,7 +205,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -265,10 +244,10 @@ class Deployment:
 
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
-        if route_prefix is not DEFAULT.VALUE:
+        if not _internal and version is not DEFAULT.VALUE:
             raise ValueError(
-                "`route_prefix` can no longer be specified at the deployment level. "
-                "Pass it to `serve.run` or in the application config instead."
+                "`version` in `Deployment.options()` has been removed. "
+                "Serve manages deployment versions internally."
             )
 
         # Modify max_ongoing_requests and autoscaling_config if
@@ -316,14 +295,7 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `version` in `Deployment.options()` has been "
-                "deprecated. Explicitly specifying version will raise an error in the "
-                "future!"
-            )
-
-        elif num_replicas not in [DEFAULT.VALUE, None, "auto"]:
+        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:

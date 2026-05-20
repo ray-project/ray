@@ -1456,7 +1456,6 @@ class TestGangScaling:
 
         @serve.deployment(
             name="D",
-            version="v1",
             num_replicas=initial_num_replicas,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
@@ -1907,7 +1906,6 @@ class TestGangMigration:
 
         @serve.deployment(
             name="D",
-            version="v1",
             num_replicas=4,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),

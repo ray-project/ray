@@ -281,7 +281,6 @@ Content-Type: application/json
             "status": "HEALTHY"
         }
     },
-    "deploy_mode": "MULTI_APP",
     "applications": {
         "app1": {
             "name": "app1",
