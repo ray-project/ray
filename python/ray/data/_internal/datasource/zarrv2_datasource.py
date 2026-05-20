@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterable
 from itertools import product
 from math import prod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional, TypedDict, cast
+from typing import TYPE_CHECKING, Any, List, Optional, TypedDict
 from urllib.parse import urlsplit
 
 import fsspec
@@ -68,7 +68,25 @@ class ZarrGridData(TypedDict):
     grid_shape: tuple[int, ...]
 
 
-def _zarr_array_meta_from_json(raw_meta: dict[str, Any]) -> ZarrArrayMeta:
+def _zarr_array_meta_from_json(raw_meta: Any, array_path: str) -> ZarrArrayMeta:
+    """Validate and parse a ``.zarray`` JSON object into a :class:`ZarrArrayMeta`.
+
+    Raises ``ValueError`` if ``raw_meta`` is not a JSON object or is missing
+    any of :data:`REQUIRED_ZARRAY_KEYS`. ``array_path`` is included in the
+    error message so callers don't have to thread context themselves.
+    """
+    if not isinstance(raw_meta, dict):
+        raise ValueError(
+            f"Invalid .zarray metadata for array path {array_path!r}: "
+            f"expected a JSON object, got {type(raw_meta).__name__}."
+        )
+    missing = [key for key in REQUIRED_ZARRAY_KEYS if key not in raw_meta]
+    if missing:
+        raise ValueError(
+            f"Invalid .zarray metadata for array path {array_path!r}: "
+            f"missing required key(s) {missing}. "
+            f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}."
+        )
     return {
         "shape": tuple(int(x) for x in raw_meta["shape"]),
         "chunks": tuple(int(x) for x in raw_meta["chunks"]),
@@ -103,6 +121,108 @@ def _descriptor_row_size_bytes(array_name: str, meta: ZarrArrayMeta) -> int:
         + _PYLIST_BASE
         + ndim * _INT_IN_SEQ
     )
+
+
+def _load_metadata_from_zmetadata_file(
+    fs, z_meta_path: str
+) -> dict[str, ZarrArrayMeta]:
+    """Load all arrays listed in a consolidated ``.zmetadata`` file."""
+    with fs.open(z_meta_path, "rb") as f:
+        consolidated = json.load(f)
+    if "metadata" not in consolidated:
+        raise ValueError(
+            f"Missing 'metadata' key in consolidated metadata at {z_meta_path}."
+        )
+    out: dict[str, ZarrArrayMeta] = {}
+    for key, value in consolidated["metadata"].items():
+        if not key.endswith(".zarray"):
+            continue
+        array_path = "" if key == ".zarray" else key[: -len("/.zarray")]
+        out[array_path] = _zarr_array_meta_from_json(value, array_path)
+    return out
+
+
+def _load_metadata_from_array_paths(
+    fs, store_path: str, array_paths: Iterable[str]
+) -> dict[str, ZarrArrayMeta]:
+    """Load ``.zarray`` files for the user's explicit array paths.
+
+    Normalizes each path: trims slashes and treats ``"."`` as the root array
+    (the canonical key ``""``). Raises ``ValueError`` if a requested path has
+    no ``.zarray`` file at the expected location.
+    """
+    store_root = store_path.rstrip("/")
+    out: dict[str, ZarrArrayMeta] = {}
+    for raw in array_paths:
+        normalized = raw.strip("/")
+        if normalized == ".":
+            normalized = ""
+        zarray_path = (
+            f"{store_root}/{normalized}/.zarray"
+            if normalized
+            else f"{store_root}/.zarray"
+        )
+        try:
+            with fs.open(zarray_path, "r") as f:
+                raw_meta = json.load(f)
+        except FileNotFoundError as e:
+            raise ValueError(
+                f"Array path {raw!r} not found: no .zarray file at {zarray_path}"
+            ) from e
+        out[normalized] = _zarr_array_meta_from_json(raw_meta, normalized)
+    return out
+
+
+def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
+    """Recursively walk ``store_path`` for ``.zarray`` files."""
+    store_root = store_path.rstrip("/")
+    store_prefix = store_root + "/"
+    out: dict[str, ZarrArrayMeta] = {}
+    for dirpath, _, filenames in fs.walk(store_path):
+        if ".zarray" not in filenames:
+            continue
+        array_path = (
+            ""
+            if dirpath.rstrip("/") == store_root
+            else dirpath.removeprefix(store_prefix)
+        )
+        zarray_path = f"{dirpath.rstrip('/')}/.zarray"
+        try:
+            with fs.open(zarray_path, "r") as f:
+                raw = json.load(f)
+        except FileNotFoundError:
+            continue
+        out[array_path] = _zarr_array_meta_from_json(raw, array_path)
+    return out
+
+
+def _chunk_geometry(
+    chunk_index: tuple[int, ...],
+    shape: tuple[int, ...],
+    chunks: tuple[int, ...],
+) -> tuple[list[tuple[int, int]], list[int], tuple[int, ...]]:
+    """Compute per-dimension slice bounds, trailing padding, and actual shape
+    for one chunk of an array.
+
+    ``chunks`` is the array's chunk shape; the chunk at the trailing edge of an
+    axis may be smaller than ``chunks[dim]`` if the array's ``shape[dim]`` is
+    not divisible. The returned ``chunk_shape`` reflects that truncation, and
+    ``padding`` records how many trailing zeros would be needed to pad each
+    truncated chunk back to ``chunks``.
+    """
+    chunk_slices: list[tuple[int, int]] = []
+    padding: list[int] = []
+    chunk_shape = list(chunks)
+    for dim, (i, size, c) in enumerate(zip(chunk_index, shape, chunks)):
+        start = i * c
+        stop = min((i + 1) * c, size)
+        chunk_slices.append((start, stop))
+        if start + c > size:
+            padding.append(start + c - size)
+            chunk_shape[dim] = stop - start
+        else:
+            padding.append(0)
+    return chunk_slices, padding, tuple(chunk_shape)
 
 
 def _resolve_store(
@@ -211,51 +331,33 @@ def _create_read_fn(
             chunks = []
 
             for row in batch:
-                chunk_slices = []
-                padding = []
-                chunk_shape = list(row["meta"]["chunks"])
-                for dim, (i, size, chunk) in enumerate(
-                    zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])
-                ):
-                    start = i * chunk
-                    stop = min((i + 1) * chunk, size)
-                    chunk_slices.append((start, stop))
+                chunk_slices, padding, chunk_shape = _chunk_geometry(
+                    row["chunk_index"],
+                    row["meta"]["shape"],
+                    row["meta"]["chunks"],
+                )
 
-                    if start + chunk > size:
-                        padding_slice = start + chunk - size
-                        chunk_shape[dim] = stop - start
-                    else:
-                        padding_slice = 0
-                    padding.append(padding_slice)
-
-                chunk = _read_with_retry(row["array"], list(chunk_slices))
+                chunk = _read_with_retry(row["array"], chunk_slices)
 
                 dtype = np.dtype(row["meta"]["dtype"])
                 chunk = chunk.astype(dtype, copy=False)
 
                 if np.issubdtype(chunk.dtype, np.floating):
-                    chunk = np.nan_to_num(
-                        chunk,
-                        nan=0,
-                        posinf=0,
-                        neginf=0,
-                        copy=False,
-                    )
+                    chunk = np.nan_to_num(chunk, nan=0, posinf=0, neginf=0, copy=False)
 
-                pad_width = [(0, int(pad_amount)) for pad_amount in list(padding)]
-                if any(pad_amount > 0 for pad_amount in list(padding)):
+                if any(p > 0 for p in padding):
                     chunk = np.pad(
                         chunk,
-                        pad_width=pad_width,
+                        pad_width=[(0, int(p)) for p in padding],
                         mode="constant",
                         constant_values=0,
                     )
 
-                full_chunk_slices.append(chunk_slices)
                 arrays.append(row["array"])
                 array_shapes.append(row["meta"]["shape"])
-                chunk_shapes.append(tuple(chunk_shape))
+                chunk_shapes.append(chunk_shape)
                 dtypes.append(row["meta"]["dtype"])
+                full_chunk_slices.append(chunk_slices)
                 full_paddings.append(padding)
                 chunks.append(chunk)
 
@@ -283,27 +385,16 @@ def _create_read_fn(
             full_paddings = []
 
             for row in batch:
-                chunk_slices = []
-                padding = []
-                chunk_shape = list(row["meta"]["chunks"])
-                for dim, (i, size, chunk) in enumerate(
-                    zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])
-                ):
-                    start = i * chunk
-                    stop = min((i + 1) * chunk, size)
-                    chunk_slices.append((start, stop))
-
-                    if start + chunk > size:
-                        padding_slice = start + chunk - size
-                        chunk_shape[dim] = stop - start
-                    else:
-                        padding_slice = 0
-                    padding.append(padding_slice)
-                full_chunk_slices.append(chunk_slices)
+                chunk_slices, padding, chunk_shape = _chunk_geometry(
+                    row["chunk_index"],
+                    row["meta"]["shape"],
+                    row["meta"]["chunks"],
+                )
                 arrays.append(row["array"])
                 array_shapes.append(row["meta"]["shape"])
-                chunk_shapes.append(tuple(chunk_shape))
+                chunk_shapes.append(chunk_shape)
                 dtypes.append(row["meta"]["dtype"])
+                full_chunk_slices.append(chunk_slices)
                 full_paddings.append(padding)
 
             yield pd.DataFrame(
@@ -347,7 +438,7 @@ class ZarrV2Datasource(Datasource):
         self.chunk_shape: tuple[int, ...] | None = (
             tuple(chunk_shape) if chunk_shape is not None else None
         )
-        self._selected_arrays = self._load_array_metadata(array_paths, filesystem)
+        self._selected_arrays = self._load_metadata(array_paths, filesystem)
         self._grid_shape_dict = self._gen_grid_shape()
 
         if self.materialize:
@@ -368,145 +459,58 @@ class ZarrV2Datasource(Datasource):
         root = zarr.open(mapper, mode="r")
         return root
 
-    def _load_array_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
-        """Load validated ``.zarray`` metadata for the arrays selected by the user.
+    def _load_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
+        """Discover and load ``.zarray`` metadata for the selected arrays.
 
-        Metadata discovery prefers explicit ``array_paths`` first, then
-        consolidated ``.zmetadata``, and finally an optional full-store scan when
-        ``allow_full_metadata_scan`` is enabled. Every discovered ``.zarray``
-        entry must contain the required shape, chunk, and dtype fields.
+        Discovery prefers consolidated ``.zmetadata`` when it exists. If the
+        store has no ``.zmetadata``, the datasource falls back to reading each
+        requested array's ``.zarray`` directly (when ``array_paths`` is given)
+        or to a recursive scan (when ``allow_full_metadata_scan`` is set).
+        If ``array_paths`` is given, the discovered set is filtered down to it;
+        any requested paths that aren't present in the store raise a
+        ``ValueError`` listing what is available.
         """
         fs, store_path = _resolve_store(self.paths[0], filesystem)
-        array_metadata: dict[str, ZarrArrayMeta] = {}
 
-        # 1) if the user provided array paths
-        if array_paths:
-            logger.debug("array_paths provided; collecting .zarray file metadata")
-
-            for array in array_paths:
-                normalized_array = array.strip("/")
-
-                if normalized_array != "":
-                    full_path = f"{store_path.rstrip('/')}/{normalized_array}/.zarray"
-                else:
-                    full_path = f"{store_path.rstrip('/')}/.zarray"
-
-                try:
-                    with fs.open(full_path, "r") as f:
-                        data = json.load(f)
-                    raw_meta = cast(dict[str, Any], data)
-
-                    missing_keys = [
-                        key for key in REQUIRED_ZARRAY_KEYS if key not in raw_meta
-                    ]
-
-                    if missing_keys:
-                        raise ValueError(
-                            f"Invalid .zarray metadata for array path '{array}'. "
-                            f"Missing required key(s): {missing_keys}. "
-                            f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}. "
-                            f".zarray path: {full_path}"
-                        )
-
-                    meta: ZarrArrayMeta = _zarr_array_meta_from_json(raw_meta)
-                    array_metadata[normalized_array] = meta
-                except FileNotFoundError as e:
-                    raise ValueError(
-                        f"{array} is not a valid array path in the Zarr store. "
-                        f"Could not find .zarray file at: {full_path}"
-                    ) from e
-
+        z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
+        if fs.exists(z_meta_path):
+            logger.debug("Loading .zmetadata file")
+            all_arrays = _load_metadata_from_zmetadata_file(fs, z_meta_path)
+        elif array_paths:
+            logger.debug("No .zmetadata; reading requested .zarray files directly")
+            all_arrays = _load_metadata_from_array_paths(fs, store_path, array_paths)
+        elif self.allow_full_metadata_scan:
+            logger.info(
+                "No array_paths provided and no .zmetadata found; "
+                "executing full scan of Zarr store metadata"
+            )
+            all_arrays = _load_metadata_full_scan(fs, store_path)
         else:
-            z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
+            raise ValueError(
+                "No array_paths were provided and this Zarr store does not "
+                "contain .zmetadata. Pass array_paths=[...] or set "
+                "allow_full_metadata_scan=True."
+            )
 
-            # 2) if the user did not provide array paths, but .zmetadata exists
-            if fs.exists(z_meta_path):
-                logger.debug("No array_paths provided; loading .zmetadata file")
-                with fs.open(z_meta_path, "rb") as f:
-                    consolidated = json.load(f)
-                if "metadata" not in consolidated:
-                    raise ValueError(
-                        f"Missing 'metadata' key in consolidated metadata at "
-                        f"{z_meta_path}."
-                    )
-                metadata = consolidated["metadata"]
+        if array_paths:
+            # Normalize user-supplied paths for the filter step: strip slashes
+            # and treat "." as the root ("").
+            requested: set[str] = set()
+            for p in array_paths:
+                normalized = p.strip("/")
+                if normalized == ".":
+                    normalized = ""
+                requested.add(normalized)
 
-                for key, value in metadata.items():
-                    if not key.endswith(".zarray"):
-                        continue
+            missing = sorted(requested - all_arrays.keys())
+            if missing:
+                raise ValueError(
+                    f"Array(s) not found: {', '.join(repr(m) for m in missing)}. "
+                    f"Available: {', '.join(repr(a) for a in sorted(all_arrays))}"
+                )
+            all_arrays = {k: v for k, v in all_arrays.items() if k in requested}
 
-                    raw_meta = cast(dict[str, Any], value)
-
-                    missing_keys = [
-                        key for key in REQUIRED_ZARRAY_KEYS if key not in raw_meta
-                    ]
-
-                    if missing_keys:
-                        raise ValueError(
-                            f"Invalid .zarray metadata for array path '{array}'. "
-                            f"Missing required key(s): {missing_keys}. "
-                            f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}. "
-                            f".zarray path: {full_path}"
-                        )
-
-                    meta: ZarrArrayMeta = _zarr_array_meta_from_json(raw_meta)
-
-                    if key == ".zarray":
-                        array_metadata[""] = meta
-                    else:
-                        array_metadata[key[: -len("/.zarray")]] = meta
-
-            # 3) if the user did not provide array paths, and .zmetadata does not exist
-            else:
-                # since this scan can be potentially very time consuming, it will only run if the user explicitly allowed for it
-                if self.allow_full_metadata_scan:
-                    logger.info(
-                        "No array_paths provided and no .zmetadata found; "
-                        "executing full scan of Zarr store metadata"
-                    )
-                    for dirpath, _, filenames in fs.walk(store_path):
-                        for filename in filenames:
-                            if filename == ".zarray":
-
-                                if dirpath.rstrip("/") == store_path.rstrip("/"):
-                                    array = ""
-                                else:
-                                    array = dirpath.removeprefix(
-                                        store_path.rstrip("/") + "/"
-                                    )
-                                array_path = f"{dirpath.rstrip('/')}/.zarray"
-
-                                try:
-                                    with fs.open(array_path, "r") as f:
-                                        data = json.load(f)
-                                        raw_meta = cast(dict[str, Any], data)
-
-                                        missing_keys = [
-                                            key
-                                            for key in REQUIRED_ZARRAY_KEYS
-                                            if key not in raw_meta
-                                        ]
-
-                                        if missing_keys:
-                                            raise ValueError(
-                                                f"Invalid .zarray metadata for array path '{array}'. "
-                                                f"Missing required key(s): {missing_keys}. "
-                                                f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}. "
-                                                f".zarray path: {full_path}"
-                                            )
-
-                                        meta: ZarrArrayMeta = (
-                                            _zarr_array_meta_from_json(raw_meta)
-                                        )
-                                        array_metadata[array.strip("/")] = meta
-                                except FileNotFoundError:
-                                    continue
-                else:
-                    raise ValueError(
-                        "No array_paths were provided and this Zarr store does not contain .zmetadata. "
-                        "Pass array_paths=[...] or set allow_full_metadata_scan=True."
-                    )
-        return array_metadata
+        return all_arrays
 
     def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
         """Compute per-array chunk grid shapes from array metadata.

@@ -63,7 +63,7 @@ def test_zarrv2_datasource_normalizes_requested_array_paths(zarrv2_store):
 def test_zarrv2_datasource_rejects_missing_array_paths(zarrv2_store):
     with pytest.raises(
         ValueError,
-        match=r"Array\(s\) not found: missing\. Available: \., nested",
+        match=r"Array\(s\) not found: 'missing'\. Available: '', 'nested'",
     ):
         zarrv2_datasource.ZarrV2Datasource(
             str(zarrv2_store),
