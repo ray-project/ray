@@ -932,10 +932,8 @@ ipython3_lexer_patterns = [
     # to the python3 lexer and chokes on !pip / %magic cells.
     "_collections/**/*.ipynb",
     "ray-overview/examples/**/content/**.ipynb",
-    "ray-core/examples/**/content/**.ipynb",
     "serve/tutorials/**/content/**.ipynb",
     "data/examples/**/content/**.ipynb",
-    "train/examples/**/content/**.ipynb",
     "tune/examples/**/content/**.ipynb",
 ]
 ipython3_lexer_exclude_patterns = []
