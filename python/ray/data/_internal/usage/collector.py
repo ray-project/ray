@@ -20,7 +20,6 @@ from ray.data._internal.logical.operators import AbstractUDFMap, Read, Write
 from ray.data._internal.logical.util import _op_name_white_list
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,7 @@ _lock = threading.Lock()
 
 
 def record_workload(
-    executor: "StreamingExecutor",
+    execution_id: str,
     logical_plan: "LogicalPlan",
 ) -> None:
     """Record the planning-time workload entry for an execution.
@@ -50,7 +49,6 @@ def record_workload(
     if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
         return
     try:
-        execution_id = _execution_id_for(executor)
         entry = {
             "id": execution_id,
             "started_at": time.time(),
@@ -72,7 +70,7 @@ def record_workload(
 
 
 def record_execution_result(
-    executor: "StreamingExecutor",
+    execution_id: str,
     error: Optional[BaseException],
 ) -> None:
     """Fill in performance, error for a previously recorded execution and flush.
@@ -82,7 +80,6 @@ def record_execution_result(
     if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
         return
     try:
-        execution_id = _execution_id_for(executor)
         spilled_now = _cluster_spilled_bytes()
         with _lock:
             entry = _executions.get(execution_id)
@@ -97,28 +94,8 @@ def record_execution_result(
         logger.debug("Failed to record execution result usage", exc_info=True)
 
 
-def _execution_id_for(executor: "StreamingExecutor") -> str:
-    """Compose a per-execution id from the executor.
-
-    Reuses Ray Data's existing per-execution identity: the dataset UUID plus
-    the run index from ``ExecutionPlan``. The full ``executor._dataset_id``
-    embeds the user-supplied dataset name, which we strip to avoid leaking
-    identifying info.
-    """
-    # Format from ExecutionPlan.get_dataset_id: "{name}_{uuid}_{run_index}".
-    parts = executor._dataset_id.rsplit("_", 2)
-    if len(parts) == 3:
-        return f"{parts[1]}_{parts[2]}"
-    return executor._dataset_id
-
-
 def _serialize_locked() -> str:
-    """Serialize current state to JSON. Caller must hold ``_lock``.
-
-    The actual GCS write (``record_extra_usage_tag``) is done outside the
-    lock by the caller — it's a synchronous gRPC and there's no reason to
-    serialize concurrent flushes on it.
-    """
+    """Serialize current state to JSON. Caller must hold ``_lock``."""
     return json.dumps({"executions": list(_executions.values())})
 
 
@@ -193,7 +170,7 @@ def _collect_pipeline_perf(
     spilled_at_start: Optional[int],
     spilled_now: Optional[int],
 ) -> dict:
-    """Pipeline-level perf metrics (OSS scope).
+    """Pipeline-level perf metrics
 
     ``bytes_spilled`` is a cluster-wide delta sourced from Ray core's
     ``store_stats.spilled_bytes_total`` (same path ``plan.py:259-265`` uses

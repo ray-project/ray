@@ -6,6 +6,7 @@ before execution starts, and also records performance and error info after execu
 """
 
 import logging
+import uuid
 from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
@@ -26,25 +27,25 @@ class UsageCallback(ExecutionCallback):
 
     def __init__(self, logical_plan: "LogicalPlan"):
         self._logical_plan = logical_plan
+        # Globally unique per-execution id, used for deduplicating executions for usage collection
+        self._execution_id = uuid.uuid4().hex
 
     def before_execution_starts(self, executor: "StreamingExecutor") -> None:
         try:
-            record_workload(executor, self._logical_plan)
+            record_workload(self._execution_id, self._logical_plan)
         except Exception:
             logger.debug("Usage record_workload failed", exc_info=True)
 
     def after_execution_succeeds(self, executor: "StreamingExecutor") -> None:
-        self._finish(executor, error=None)
+        self._finish(error=None)
 
     def after_execution_fails(
         self, executor: "StreamingExecutor", error: Exception
     ) -> None:
-        self._finish(executor, error=error)
+        self._finish(error=error)
 
-    def _finish(
-        self, executor: "StreamingExecutor", error: Optional[BaseException]
-    ) -> None:
+    def _finish(self, error: Optional[BaseException]) -> None:
         try:
-            record_execution_result(executor, error)
+            record_execution_result(self._execution_id, error)
         except Exception:
             logger.debug("Usage record_execution_result failed", exc_info=True)
