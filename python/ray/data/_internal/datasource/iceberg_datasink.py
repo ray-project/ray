@@ -381,6 +381,36 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
     ) -> None:
         """Upsert commit using coarse range filter + per-file distributed anti-join.
 
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 1: Build coarse filter (driver)                      │
+        │    keys_table ──► min/max per col ──► coarse_filter         │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 2: Plan candidate files (driver)                     │
+        │    table.scan(coarse_filter).plan_files()                   │
+        │        ──► file_scan_tasks                                  │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 3: Rewrite (one _rewrite_iceberg_file task per file) │
+        │    read file ─► anti-join keys ─► write preserved rows      │
+        │    returns (old_file, preserved_files)                      │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 4: Atomic overwrite (driver)                         │
+        │    delete  old_file         (each rewritten candidate)      │
+        │    append  preserved_files  (preserved rows kept)           │
+        │    append  data_files       (new upsert payload)            │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                            commit_transaction
+
         1. Build an O(1) coarse range filter using min-max covering upsert key values (for each column).
         2. plan_files() on the driver to find candidate files that could be updated
         3. Dispatch one Ray task per candidate file. Each task reads its file,
