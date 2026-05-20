@@ -848,6 +848,14 @@ RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
+
+# How long to hold a recently-released replica port before it can be
+# reassigned to another replica. Closes the race window between the OS
+# releasing the port and downstream proxies (HAProxy, ProxyActor's route
+# table) propagating the slot removal — during which a new replica
+# grabbing the port would be reachable via the *previous* replica's slot,
+# producing route-prefix mismatch failures. Set to 0 to disable.
+RAY_SERVE_PORT_QUARANTINE_S = float(os.environ.get("RAY_SERVE_PORT_QUARANTINE_S", "10"))
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.

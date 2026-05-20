@@ -36,6 +36,13 @@ def setup_port_constants(monkeypatch, port_range_constants):
         "ray.serve._private.node_port_manager.RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT",
         port_range_constants["RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT"],
     )
+    # Disable port quarantine by default in tests so existing tests that
+    # depend on immediate port reuse continue to work. Quarantine-specific
+    # tests opt in by re-monkeypatching this constant.
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        0.0,
+    )
     yield
 
 
@@ -191,6 +198,79 @@ def test_check_replica_port_allocated():
 
     # Clean up
     manager.release_port("replica-1", port, RequestProtocol.HTTP)
+
+
+def test_quarantine_holds_released_port(monkeypatch, port_range_constants):
+    """A released port is held in quarantine and not immediately reusable."""
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        60.0,
+    )
+    manager = NodePortManager.get_node_manager("node-quarantine-1")
+
+    # Allocate one port, release it, observe that release doesn't put
+    # it back at the head of the pool (it's in quarantine instead).
+    first = manager.allocate_port("replica-q1", RequestProtocol.HTTP)
+    manager.release_port("replica-q1", first, RequestProtocol.HTTP)
+
+    # Next allocation must NOT return the released port (it's in quarantine).
+    next_port = manager.allocate_port("replica-q2", RequestProtocol.HTTP)
+    assert next_port != first
+
+    # And the released port is not in the available pool.
+    assert first not in manager._http_allocator._available_ports
+    assert first in manager._http_allocator._quarantined_ports
+
+
+def test_quarantine_expiry_returns_port_to_pool(monkeypatch, port_range_constants):
+    """Once a quarantined port's timer expires, it becomes available again."""
+    import time
+
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        0.05,  # 50ms — short enough for a unit test
+    )
+    manager = NodePortManager.get_node_manager("node-quarantine-2")
+
+    first = manager.allocate_port("replica-q1", RequestProtocol.HTTP)
+    manager.release_port("replica-q1", first, RequestProtocol.HTTP)
+    assert first in manager._http_allocator._quarantined_ports
+
+    # Wait for quarantine to expire, then verify the port comes back.
+    time.sleep(0.1)
+    # Drain explicitly so we don't depend on allocate-side drain.
+    manager._http_allocator._drain_expired_quarantine()
+    assert first not in manager._http_allocator._quarantined_ports
+    assert first in manager._http_allocator._available_ports
+
+
+def test_quarantine_skipped_for_block_port(monkeypatch, port_range_constants):
+    """When release_port is called with block_port=True, quarantine is skipped."""
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        60.0,
+    )
+    manager = NodePortManager.get_node_manager("node-quarantine-3")
+    port = manager.allocate_port("replica-q", RequestProtocol.HTTP)
+    manager.release_port("replica-q", port, RequestProtocol.HTTP, block_port=True)
+
+    # The port is blocked, not quarantined.
+    assert port in manager._http_allocator._blocked_ports
+    assert port not in manager._http_allocator._quarantined_ports
+
+
+def test_quarantine_disabled_when_zero(monkeypatch, port_range_constants):
+    """Setting quarantine to 0 preserves the original immediate-reuse behavior."""
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        0.0,
+    )
+    manager = NodePortManager.get_node_manager("node-quarantine-4")
+    port = manager.allocate_port("replica-q1", RequestProtocol.HTTP)
+    manager.release_port("replica-q1", port, RequestProtocol.HTTP)
+    # Released port should be immediately reusable.
+    next_port = manager.allocate_port("replica-q2", RequestProtocol.HTTP)
+    assert next_port == port
 
 
 if __name__ == "__main__":
