@@ -5,7 +5,12 @@ import pyarrow as pa
 import pytest
 
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data.block import BlockAccessor, BlockColumnAccessor
+from ray.data.block import (
+    BlockAccessor,
+    BlockColumnAccessor,
+    BlockMetadata,
+    BlockMetadataWithSchema,
+)
 
 
 def test_find_partitions_single_column_ascending():
@@ -156,6 +161,41 @@ def test_find_partitions_duplicates():
     assert partitions[1].to_pydict() == {"value": []}  # [1,2)
     assert partitions[2].to_pydict() == {"value": [2, 2, 2, 2, 2]}  # [2,3)
     assert partitions[3].to_pydict() == {"value": []}  # >=3
+
+
+def test_block_metadata_task_memory_bytes_defaults_to_none():
+    """``task_memory_bytes`` is optional and defaults to ``None``."""
+    meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    assert meta.task_memory_bytes is None
+
+
+def test_block_metadata_task_memory_bytes_round_trips_through_with_schema():
+    """``BlockMetadataWithSchema`` round-trip preserves ``task_memory_bytes``.
+
+    Streaming hand-offs peel the schema off via the ``metadata`` property; if
+    ``task_memory_bytes`` were dropped there, downstream consumers (e.g. the
+    ``TaskPoolMapOperator`` per-task memory merge) would silently lose the hint.
+    """
+    schema = pa.schema([("a", pa.int64())])
+    meta = BlockMetadata(
+        num_rows=500,
+        size_bytes=2000,
+        task_memory_bytes=750_000_000,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+
+    wrapped = BlockMetadataWithSchema.from_metadata(meta, schema=schema)
+    assert wrapped.task_memory_bytes == 750_000_000
+
+    # ``metadata`` property must not drop the field.
+    round_tripped = wrapped.metadata
+    assert round_tripped.task_memory_bytes == 750_000_000
 
 
 if __name__ == "__main__":
