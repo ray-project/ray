@@ -3042,6 +3042,7 @@ def put(
 
     Args:
         value: The Python object to be stored.
+        _owner: This experimental argument has been removed in Ray 2.56.
         _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
             Currently, this only supports one-sided tensor transports such as "nixl".
             When this is None (default), Ray will use the object store.
@@ -3051,7 +3052,7 @@ def put(
     """
     if _owner is not None:
         raise ValueError(
-            "The experimental _owner argument to ray.put has been removed in "
+            "The experimental `_owner` argument to `ray.put` has been removed in "
             "Ray 2.56."
         )
 
