@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sys
 from collections.abc import Callable, Iterable
@@ -21,6 +22,8 @@ from fsspec.spec import AbstractFileSystem
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from zarr import Array as ZarrArray
@@ -136,7 +139,7 @@ def _create_read_fn(
                             ]
                         ):
                             delay = base_delay * (2**attempt)
-                            print(
+                            logger.warning(
                                 "Network error reading array=%s slices=%s, "
                                 "attempt %s/%s, retrying in %.1fs: %s",
                                 array,
@@ -334,7 +337,7 @@ class ZarrV2Datasource(Datasource):
 
         # 1) if the user provided array paths
         if array_paths:
-            print("array_paths provided. Collecting .zarray file metadata")
+            logger.debug("array_paths provided; collecting .zarray file metadata")
 
             for array in array_paths:
                 normalized_array = array.strip("/")
@@ -374,7 +377,7 @@ class ZarrV2Datasource(Datasource):
 
             # 2) if the user did not provide array paths, but .zmetadata exists
             if fs.exists(z_meta_path):
-                print("No array_paths provided. Loading .zmetadata file")
+                logger.debug("No array_paths provided; loading .zmetadata file")
                 with fs.open(z_meta_path, "rb") as f:
                     consolidated = json.load(f)
                 metadata = consolidated["metadata"]
@@ -408,8 +411,9 @@ class ZarrV2Datasource(Datasource):
             else:
                 # since this scan can be potentially very time consuming, it will only run if the user explicitly allowed for it
                 if self.allow_full_metadata_scan:
-                    print(
-                        "No array_paths provided & no .zmetadata found. Executing full scan of zarr store metadata"
+                    logger.info(
+                        "No array_paths provided and no .zmetadata found; "
+                        "executing full scan of Zarr store metadata"
                     )
                     for dirpath, _, filenames in fs.walk(store_path):
                         for filename in filenames:
