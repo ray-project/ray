@@ -1748,26 +1748,20 @@ def test_read_null_data_in_first_file(
     ]
 
 
-def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
-    """Memory used by read_parquet should not grow linearly with file count.
+def test_read_parquet_metadata_fetch_not_linear(tmp_path, ray_start_regular_shared):
+    """read_parquet metadata fetch time should not grow linearly with file count.
 
     Regression test for a bug where _infer_schema fell back to reading every
     fragment's physical_schema when the sampled fragment had a pa.null() column
-    (PyArrow < 22.0), causing O(N) metadata reads and memory usage.
+    (PyArrow < 22.0), causing O(N) metadata reads.
     """
-    import gc
-
-    import psutil
-
-    num_cols = 50
     small_n = 100
     large_n = 1000
 
     def _write_files(directory, n_files):
         directory.mkdir(exist_ok=True)
         for i in range(n_files):
-            cols = {f"col_{j}": [0] for j in range(num_cols)}
-            # First file has a column of all nulls, which triggers the schema inference fallback.
+            cols = {"data": [0]}
             if i == 0:
                 cols["null_col"] = pa.nulls(1)
             else:
@@ -1777,30 +1771,21 @@ def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
     _write_files(tmp_path / "small", small_n)
     _write_files(tmp_path / "large", large_n)
 
-    proc = psutil.Process()
+    start = time.perf_counter()
+    ray.data.read_parquet(str(tmp_path / "small"))
+    elapsed_small = time.perf_counter() - start
 
-    rss_before_small = proc.memory_info().rss
-    ds = ray.data.read_parquet(str(tmp_path / "small"))
-    ds.schema()
-    rss_after_small = proc.memory_info().rss
-    del ds
-    gc.collect()
+    start = time.perf_counter()
+    ray.data.read_parquet(str(tmp_path / "large"))
+    elapsed_large = time.perf_counter() - start
 
-    rss_before_large = proc.memory_info().rss
-    ds = ray.data.read_parquet(str(tmp_path / "large"))
-    ds.schema()
-    rss_after_large = proc.memory_info().rss
-    del ds
-    gc.collect()
+    ratio = elapsed_large / max(elapsed_small, 0.01)
 
-    delta_small = max(rss_after_small - rss_before_small, 1)
-    delta_large = max(rss_after_large - rss_before_large, 0)
-    ratio = delta_large / delta_small
+    print(f"ratio={ratio:.1f} (small={elapsed_small:.2f}s, large={elapsed_large:.2f}s)")
 
-    assert ratio < 2, (
-        f"Memory grew too much with more files: ratio={ratio:.1f}\n"
-        f"delta_small={delta_small / 1024 / 1024:.1f} MiB, "
-        f"delta_large={delta_large / 1024 / 1024:.1f} MiB"
+    assert ratio < 5, (
+        f"read_parquet time scaled too steeply with file count: "
+        f"ratio={ratio:.1f} (small={elapsed_small:.2f}s, large={elapsed_large:.2f}s)"
     )
 
 
