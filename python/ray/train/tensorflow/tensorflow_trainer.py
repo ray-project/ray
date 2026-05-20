@@ -78,9 +78,6 @@ class TensorflowTrainer(DataParallelTrainer):
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    To save a model to use for the ``TensorflowPredictor``, you must save it under the
-    "model" kwarg in ``Checkpoint`` passed to ``train.report()``.
-
     Example:
 
     .. testcode::
