@@ -547,18 +547,6 @@ class ResourceManager:
         )
 
 
-def _proportional_share(pool: float, op_usage: float, total_usage: float) -> float:
-    """Return op's proportional share of an over-subscribed ``pool``.
-
-    Caller must verify the pool is over-subscribed before calling.
-    When ``total_usage > pool``, splits the pool in proportion to each op's usage:
-    ``pool * op_usage / total_usage``.
-    """
-    if total_usage == 0:
-        return 0.0
-    return pool * op_usage / total_usage
-
-
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
         if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS) and not op.has_completed():
@@ -994,11 +982,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._op_allocations = op_allocations
             return
 
-        # Compute op_reserved_remaining (used by the borrow heuristic below)
-        # and op_excess / total_excess (used by the over-subscription override).
+        # Compute op_reserved_remaining used by the borrow heuristic below.
         op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
-        op_excess: Dict[PhysicalOperator, ExecutionResources] = {}
-        total_excess = ExecutionResources.zero()
         for op in eligible_ops:
             op_usage = self._resource_manager.get_op_usage(op).copy(
                 object_store_memory=self._get_adjusted_object_store_usage(op)
@@ -1006,10 +991,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_reserved_remaining[op] = (
                 self._op_reserved[op].subtract(op_usage).max(ExecutionResources.zero())
             )
-            op_excess[op] = op_usage.subtract(self._op_reserved[op]).max(
-                ExecutionResources.zero()
-            )
-            total_excess = total_excess.add(op_excess[op])
 
         op_max_resources = {
             op: op.min_max_resource_requirements()[1] for op in eligible_ops
@@ -1063,56 +1044,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     op_shared_alloc[op] = op_shared_alloc[op].add(remaining_shared)
                     break
 
-        # If some dimension is over-subscribed (total_excess > total_shared),
-        # replace the equal-split grant with a demand-weighted proportional split.
-        shared = self._total_shared
-        excess = total_excess
         for op in eligible_ops:
-            plan = op_shared_alloc[op]
-            op_exc = op_excess[op]
-            op_shared = ExecutionResources(
-                cpu=(
-                    _proportional_share(shared.cpu, op_exc.cpu, excess.cpu)
-                    if shared.cpu is not None
-                    and excess.cpu is not None
-                    and excess.cpu > shared.cpu
-                    else plan.cpu
-                ),
-                gpu=(
-                    _proportional_share(shared.gpu, op_exc.gpu, excess.gpu)
-                    if shared.gpu is not None
-                    and excess.gpu is not None
-                    and excess.gpu > shared.gpu
-                    else plan.gpu
-                ),
-                object_store_memory=(
-                    _proportional_share(
-                        shared.object_store_memory,
-                        op_exc.object_store_memory,
-                        excess.object_store_memory,
-                    )
-                    if shared.object_store_memory is not None
-                    and excess.object_store_memory is not None
-                    and excess.object_store_memory > shared.object_store_memory
-                    else plan.object_store_memory
-                ),
-                memory=(
-                    _proportional_share(shared.memory, op_exc.memory, excess.memory)
-                    if shared.memory is not None
-                    and excess.memory is not None
-                    and excess.memory > shared.memory
-                    else plan.memory
-                ),
-            )
-            # Re-cap after the proportional override.
-            _, max_resource_usage = op.min_max_resource_requirements()
-            if max_resource_usage != ExecutionResources.inf():
-                op_shared = op_shared.min(
-                    max_resource_usage.subtract(self._op_reserved[op]).max(
-                        ExecutionResources.zero()
-                    )
-                )
-            op_allocations[op] = self._op_reserved[op].add(op_shared)
+            op_allocations[op] = self._op_reserved[op].add(op_shared_alloc[op])
 
         # A materializing operator like `AllToAllOperator` waits for all its input
         # operator's outputs before processing data. This often forces the input
