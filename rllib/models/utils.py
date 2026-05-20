@@ -12,7 +12,7 @@ def get_activation_fn(
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name: One of "relu" (default), "tanh", "elu",
+        name: One of "relu" (default), "tanh", "elu", "gelu", "leaky_relu",
             "swish" (or "silu", which is the same), or "linear" (same as None).
         framework: One of "jax", "tf|tf2" or "torch".
 
@@ -41,16 +41,19 @@ def get_activation_fn(
         if fn is not None:
             return fn
 
-        if name_lower in ["swish", "silu"]:
-            return nn.SiLU
-        elif name_lower == "relu":
-            return nn.ReLU
-        elif name_lower == "tanh":
-            return nn.Tanh
-        elif name_lower == "elu":
-            return nn.ELU
-        elif name_lower == "softmax":
-            return nn.Softmax
+        torch_activation_aliases_to_class_names = {
+            "swish": "SiLU",
+            "silu": "SiLU",
+            "relu": "ReLU",
+            "tanh": "Tanh",
+            "elu": "ELU",
+            "gelu": "GELU",
+            "leaky_relu": "LeakyReLU",
+            "leakyrelu": "LeakyReLU",
+            "softmax": "Softmax",
+        }
+        if name_lower in torch_activation_aliases_to_class_names:
+            return getattr(nn, torch_activation_aliases_to_class_names[name_lower])
     elif framework == "jax":
         if name_lower in ["linear", None]:
             return None
