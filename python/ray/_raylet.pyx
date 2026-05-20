@@ -83,6 +83,7 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CStatusOr,
+    CActorTableData,
     CErrorTableData,
     CFallbackOption,
     CGcsClientOptions,
