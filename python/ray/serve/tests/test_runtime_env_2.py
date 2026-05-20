@@ -18,7 +18,7 @@ job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 
-@serve.deployment(version="1")
+@serve.deployment
 class Test:
     def __call__(self, *args):
         return open("hello").read()
@@ -41,7 +41,7 @@ job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 
-@serve.deployment(version="2")
+@serve.deployment
 class Test:
     def __call__(self, *args):
         return open("hello").read()

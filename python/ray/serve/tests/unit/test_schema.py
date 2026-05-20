@@ -373,6 +373,19 @@ class TestDeploymentSchema:
         deployment_schema["extra_field"] = None
         DeploymentSchema.model_validate(deployment_schema)
 
+    def test_max_concurrent_queries_removed_from_deployment_schema(self):
+        assert (
+            "max_concurrent_queries"
+            not in DeploymentSchema.model_json_schema()["properties"]
+        )
+
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["max_concurrent_queries"] = 32
+
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert not hasattr(schema, "max_concurrent_queries")
+        assert schema.max_ongoing_requests is DEFAULT.VALUE
+
     def test_user_config_nullable(self):
         deployment_options = {"name": "test", "user_config": None}
         DeploymentSchema.model_validate(deployment_options)
@@ -1452,6 +1465,19 @@ def test_serve_instance_details_is_json_serializable():
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_deploy_mode_removed_from_serve_instance_details_schema():
+    assert "deploy_mode" not in ServeInstanceDetails.model_json_schema()["properties"]
+    assert "deploy_mode" not in ServeInstanceDetails.get_empty_schema_dict()
+
+    with pytest.raises(ValidationError, match="deploy_mode"):
+        ServeInstanceDetails(
+            deploy_mode="MULTI_APP",
+            controller_info={},
+            proxies={},
+            applications={},
+        )
 
 
 def test_deployment_info_to_schema_includes_max_replicas_per_node():
