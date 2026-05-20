@@ -160,7 +160,11 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
-        topology_strategy: Per-level topology-aware placement. A list of dicts, where each dict represents a level within the topology. Each level maps a label key to a placement strategy. (e.g. ``[{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}]``). Mutually exclusive with `strategy`.
+        topology_strategy: Per-level topology-aware placement. A list of
+            dicts, where each dict represents a level within the topology.
+            Each level maps a label key to a placement strategy (e.g.
+            ``[{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}]``).
+            Mutually exclusive with `strategy`.
 
     Raises:
         ValueError: if bundle type is not a list.
