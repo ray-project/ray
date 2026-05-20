@@ -18,6 +18,7 @@ from ray.serve.config import (
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
+
 @PublicAPI(stability="stable")
 class Application:
     """One or more deployments bound with arguments that can be deployed together.

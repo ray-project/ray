@@ -197,7 +197,7 @@ class TestDeploymentOptions:
 
         assert not hasattr(f, "route_prefix")
         with pytest.raises(AttributeError):
-            f.route_prefix
+            _ = f.route_prefix
 
         with pytest.raises(TypeError, match="route_prefix"):
 
@@ -232,7 +232,7 @@ class TestDeploymentOptions:
 
         assert not hasattr(f, "url")
         with pytest.raises(AttributeError):
-            f.url
+            _ = f.url
 
     def test_placement_group_strategy_without_bundles(self):
         """Check that specifying strategy requires also specifying bundles."""
