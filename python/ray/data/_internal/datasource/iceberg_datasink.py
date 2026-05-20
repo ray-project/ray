@@ -47,6 +47,11 @@ def _rewrite_iceberg_file(
     coarse range filter would delete them (see ``IcebergDatasink._build_coarse_range_filter``),
     so we preserve them by writing them as new data files before the delete.
 
+    The file is read in streaming fashion via ``ArrowScan.to_record_batches()``
+    so the full file is never materialised at once. The anti-join is applied
+    per RecordBatch and preserved rows are accumulated, then concatenated and
+    written as a single output once the stream is exhausted.
+
     Returns (original DataFile to delete, list of new preserved DataFiles).
     If the entire file is matched (no preserved rows), returns (file, []).
     If the file has no matched rows at all, returns (None, []), leave it untouched.
@@ -63,58 +68,81 @@ def _rewrite_iceberg_file(
     file_size_mb = file_scan_task.file.file_size_in_bytes / 1e6
     t_start = _time.perf_counter()
 
-    batch = ArrowScan(
+    # Cast targets pulled from keys_ref once — applied per batch so PyArrow's join
+    # doesn't raise ArrowInvalid on utf8/large_utf8 or similar width mismatches.
+    key_cast = {f.name: f.type for f in keys_ref.schema if f.name in upsert_cols}
+
+    record_batches = ArrowScan(
         table_metadata=table_metadata,
         io=io,
         projected_schema=table_metadata.schema(),
         row_filter=AlwaysTrue(),
-    ).to_table(tasks=[file_scan_task])
+    ).to_record_batches(tasks=[file_scan_task])
+
+    preserved_batches: List["pa.Table"] = []
+    total_in_rows = 0
+    total_preserved_rows = 0
+    n_batches = 0
+
+    for rb in record_batches:
+        n_batches += 1
+        batch_table = pa.Table.from_batches([rb])
+        if len(batch_table) == 0:
+            continue
+        total_in_rows += len(batch_table)
+
+        batch_keys = batch_table.select(upsert_cols)
+        for col_name, target_type in key_cast.items():
+            if batch_keys.schema.field(col_name).type != target_type:
+                col_idx = batch_keys.schema.get_field_index(col_name)
+                batch_keys = batch_keys.set_column(
+                    col_idx, col_name, batch_keys[col_name].cast(target_type)
+                )
+
+        idx_col = pa.array(range(len(batch_table)), type=pa.int64())
+        preserved_keys = batch_keys.append_column("__row_idx__", idx_col).join(
+            keys_ref, keys=upsert_cols, join_type="left anti"
+        )
+
+        if len(preserved_keys) > 0:
+            preserved_batches.append(batch_table.take(preserved_keys["__row_idx__"]))
+            total_preserved_rows += len(preserved_keys)
 
     t_read = _time.perf_counter()
     logger.debug(
-        "[rewrite] read %d rows / %.1f MB (compressed) from %s in %.2fs",
-        len(batch),
+        "[rewrite] stream-read+join %d rows / %.1f MB (compressed) from %s "
+        "across %d batch(es) in %.2fs",
+        total_in_rows,
         file_size_mb,
         file_path.split("/")[-1],
+        n_batches,
         t_read - t_start,
     )
 
-    if len(batch) == 0:
+    if total_in_rows == 0:
         return (None, [])
 
-    # Cast batch key columns to match keys_ref types so PyArrow's join doesn't
-    # raise ArrowInvalid on utf8/large_utf8 or similar width mismatches.
-    key_cast = {f.name: f.type for f in keys_ref.schema if f.name in upsert_cols}
-    batch_keys = batch.select(upsert_cols)
-    for col_name, target_type in key_cast.items():
-        if batch_keys.schema.field(col_name).type != target_type:
-            col_idx = batch_keys.schema.get_field_index(col_name)
-            batch_keys = batch_keys.set_column(
-                col_idx, col_name, batch_keys[col_name].cast(target_type)
-            )
-
-    idx_col = pa.array(range(len(batch)), type=pa.int64())
-    preserved_keys = batch_keys.append_column("__row_idx__", idx_col).join(
-        keys_ref, keys=upsert_cols, join_type="left anti"
-    )
-
-    if len(preserved_keys) == 0:
+    if total_preserved_rows == 0:
         # Every row in this file is being upserted — delete the whole file, no preserved file needed.
         logger.debug(
             "[rewrite] %s: all %d rows matched -> whole-file delete",
             file_path.split("/")[-1],
-            len(batch),
+            total_in_rows,
         )
         return (file_scan_task.file, [])
 
-    if len(preserved_keys) == len(batch):
+    if total_preserved_rows == total_in_rows:
         # No rows in this file match any upsert key — leave it alone entirely.
         logger.debug(
             "[rewrite] %s: 0 rows matched -> untouched", file_path.split("/")[-1]
         )
         return (None, [])
 
-    preserved_rows = batch.take(preserved_keys["__row_idx__"])
+    # promote_options="permissive" mirrors pyiceberg's own to_table() concat
+    # (pyiceberg/io/pyarrow.py) to tolerate per-batch schema drift (e.g. utf8 vs large_utf8).
+    preserved_rows = pa.concat_tables(
+        preserved_batches, promote_options="permissive"
+    )
     # Derive a deterministic write_uuid from the source file path so that
     # task retries overwrite the same object rather than leaking orphan files.
     preserved_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
@@ -129,8 +157,8 @@ def _rewrite_iceberg_file(
     logger.debug(
         "[rewrite] %s: %d/%d rows preserved -> wrote %d preserved file(s) in %.2fs",
         file_path.split("/")[-1],
-        len(preserved_keys),
-        len(batch),
+        total_preserved_rows,
+        total_in_rows,
         len(preserved_files),
         _time.perf_counter() - t_read,
     )
@@ -469,7 +497,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 memory=int(
                     task.file.file_size_in_bytes
                     * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-                )
+                ),
+                num_cpus=1
             ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
             for task in file_scan_tasks
         ]
