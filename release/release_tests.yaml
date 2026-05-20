@@ -1642,7 +1642,6 @@
 
   variations:
     - __suffix__: aws
-   
     - __suffix__: gce
       env: gce
       frequency: manual
