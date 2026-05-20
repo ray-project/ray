@@ -131,9 +131,8 @@ def _hash_partition(
         # blocks depending on whether the block contains nulls.
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
-        ).to_numpy(copy=True)
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+        ).to_numpy()
+        partitions = hashes % num_partitions
 
     return partitions
 
@@ -492,11 +491,6 @@ def _backfill_missing_fields(
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
-
-    # If the column is not a struct type but the unified type expects a struct,
-    # replace with nulls of the target struct type.
-    if not pa.types.is_struct(column.type):
-        return pa.nulls(block_length, type=unified_struct_type)
 
     # Extract the current struct field names and their corresponding data
     current_fields = {
