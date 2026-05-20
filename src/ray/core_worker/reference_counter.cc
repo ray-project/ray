@@ -791,8 +791,13 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
-  // NOTE(swang): We have to publish failure to subscribers in case they
-  // subscribe after the ref is already deleted.
+  // Notify any subscribers whose borrowing was not tracked by the owner
+  // (e.g., actor sub-borrower or borrowing-up patterns) that the ref is
+  // unreachable. A no-op under normal operation: when borrower tracking is
+  // complete, there are no subscribers at erase time. Paired with the
+  // entry-missing path in PublishObjectLocationSnapshot for the opposite
+  // timing (subscriber arrives after the ref is already erased). See
+  // https://github.com/ray-project/ray/pull/63557 before removing.
   object_info_publisher_->PublishFailure(
       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
 
@@ -1745,16 +1750,19 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING).WithField(object_id)
-        << "Object locations requested for object, but ref already removed. This may be "
-           "a bug in the distributed "
-           "reference counting protocol.";
-    // First let subscribers handle this error.
+        << "Subscriber requested object location after the owner already released "
+           "the ref. This typically happens when user code creates a borrower that "
+           "escapes the owner's tracking (e.g., actor sub-borrower or borrowing-up "
+           "patterns); the subscriber will receive an unreachable signal. See "
+           "https://github.com/ray-project/ray/pull/63557.";
+    // Paired with the unconditional PublishFailure in EraseReference, which
+    // covers the opposite timing (subscriber already present when the ref is
+    // erased). Both are needed because PublishFailure is not sticky.
     rpc::PubMessage pub_message;
     pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
     pub_message.mutable_worker_object_locations_message()->set_ref_removed(true);
     object_info_publisher_->Publish(pub_message);
-    // Then, publish a failure to subscribers since this object is unreachable.
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
