@@ -843,18 +843,18 @@ def read_zarr(
     ``"dtype"``, ``"chunk_slices"``, ``"padding"``, and (when ``materialize=True``,
     the default) ``"chunk"``.
 
-    Metadata discovery follows three paths:
+    Metadata discovery follows these rules:
 
-    * If ``array_paths`` is provided, the datasource reads each requested array's
-    ``.zarray`` metadata file directly. In this case, the store doesn't need a
-    ``.zmetadata`` file.
-    * If ``array_paths`` is not provided and the store contains ``.zmetadata``, the
-    datasource reads the consolidated metadata and selects all arrays found in the
-    store.
-    * If ``array_paths`` is not provided and the store doesn't contain
-    ``.zmetadata``, the datasource raises an error by default. Set
-    ``allow_full_metadata_scan=True`` to recursively scan the store for
-    ``.zarray`` files. This can be slow or expensive for large remote stores.
+    * If the store contains ``.zmetadata``, the datasource reads it and treats
+      it as the canonical list of arrays. If ``array_paths`` is provided, the
+      discovered set is filtered down to those paths.
+    * Otherwise, if ``array_paths`` is provided, the datasource reads each
+      requested array's ``.zarray`` file directly. The store doesn't need a
+      ``.zmetadata`` in this case.
+    * Otherwise, if ``allow_full_metadata_scan=True``, the datasource
+      recursively scans the store for ``.zarray`` files. This can be slow or
+      expensive for large remote stores, so it's disabled by default.
+    * Otherwise, the datasource raises a :class:`ValueError`.
 
     Each array's ``.zarray`` metadata must include the keys ``"shape"``,
     ``"chunks"``, and ``"dtype"``. Reads fail if any discovered array metadata
@@ -918,7 +918,8 @@ def read_zarr(
             :class:`pyarrow.fs.FileSystem` (matching other Ray Data
             ``read_*`` APIs) or an :class:`fsspec.spec.AbstractFileSystem`.
             pyarrow filesystems are wrapped internally with
-            :class:`fsspec.implementations.arrow.ArrowFSWrapper`. Use this for
+            :class:`fsspec.implementations.arrow.ArrowFSWrapper`. This is because
+            Zarr's storage layer requires fsspec. Use this for
             private buckets, custom credentials, anonymous/public cloud
             access, or any storage backend configuration that shouldn't be
             inferred internally. Recommended for non-local Zarr stores; for
