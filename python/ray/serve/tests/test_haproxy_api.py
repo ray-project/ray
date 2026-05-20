@@ -659,6 +659,62 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
         assert "X-Serve-Reason" in cfg, cfg
 
 
+def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
+    """When the three RAY_SERVE_HAPROXY_INGRESS_* env-var-derived fields are
+    set on HAProxyConfig, the corresponding HAProxy directives are emitted
+    into the ``-via-ingress-request-router`` backend. When unset, none of
+    them appear (backward-compat)."""
+    backends = {
+        "llm": BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.1", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router", host="10.0.0.10", port=9000)
+            ],
+        ),
+    }
+
+    def render(cfg_overrides):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = HAProxyApi(
+                cfg=HAProxyConfig(
+                    socket_path=os.path.join(temp_dir, "admin.sock"),
+                    **cfg_overrides,
+                ),
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+                backend_configs=backends,
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                api.config_file_path,
+            ):
+                api._generate_config_file_internal()
+            with open(api.config_file_path) as f:
+                return f.read()
+
+    unset = render({})
+    # Match the actual HAProxy directive at line-start (4-space indent), not
+    # any occurrences of "retry-on" inside template comments.
+    assert "\n    retry-on " not in unset
+    assert "\n    retries " not in unset
+    assert "ingress-request-router" in unset  # backend still rendered
+
+    set_cfg = render(
+        {
+            "ingress_retry_on": "conn-failure empty-response response-timeout",
+            "ingress_retries": 4,
+            "ingress_timeout_server_s": 5,
+        }
+    )
+    assert "retry-on conn-failure empty-response response-timeout" in set_cfg
+    assert "\n    retries 4\n" in set_cfg
+    assert "\n    timeout server 5s\n" in set_cfg
+
+
 @pytest.mark.parametrize("forward_body", [True, False])
 def test_ingress_request_router_forward_body_gate_renders(
     haproxy_api_cleanup, monkeypatch, forward_body

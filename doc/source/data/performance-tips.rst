@@ -441,9 +441,6 @@ You can configure execution options with the global DataContext. The options are
         object_store_memory=10e9,
     )
 
-.. note::
-    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
-
 Reproducibility
 ---------------
 
