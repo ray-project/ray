@@ -11,6 +11,10 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
 
@@ -85,12 +89,56 @@ def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
     assert schema.types[schema.names.index("row_hash")] == pa.uint64()
 
 
-def test_read_parquet_v2_columns_raises(tmp_path, restore_ctx):
+def test_read_parquet_v2_columns_applies_select_columns(tmp_path, restore_ctx):
+    from ray.data._internal.logical.operators.map_operator import Project
+
     _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
 
     restore_ctx.use_datasource_v2 = True
-    with pytest.raises(NotImplementedError, match="`columns=` on `read_parquet`"):
-        ray.data.read_parquet(str(tmp_path), columns=["a"])
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(str(tmp_path), columns=["a"])
+
+    # ``columns=`` is applied via ``ds.select_columns([...])``, which
+    # wraps the ReadFiles op in a Project node.
+    dag = ds._logical_plan.dag
+    assert isinstance(dag, Project)
+    assert [expr.name for expr in dag.exprs] == ["a"]
+    assert isinstance(dag.input_dependencies[0], ReadFiles)
+
+
+def test_read_parquet_v2_columns_with_include_paths_preserves_path(
+    tmp_path, restore_ctx
+):
+    from ray.data._internal.logical.operators.map_operator import Project
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(str(tmp_path), columns=["a"], include_paths=True)
+
+    dag = ds._logical_plan.dag
+    assert isinstance(dag, Project)
+    # V1 ``columns=[...]`` retained ``"path"`` implicitly when
+    # ``include_paths=True``; the V2 path appends it to keep that
+    # behavior.
+    assert [expr.name for expr in dag.exprs] == ["a", "path"]
+
+
+def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    original = restore_ctx.read_op_min_num_blocks
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
+
+    # The override should drive the ListFiles partitioner's bucket count
+    # for this read only — the global DataContext must not be mutated.
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
+    assert list_files_op.file_partitioner._num_buckets == 7
+    assert restore_ctx.read_op_min_num_blocks == original
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
@@ -99,8 +147,59 @@ def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
-    with pytest.raises(NotImplementedError, match="`filter=` on `read_parquet`"):
+    with pytest.raises(ValueError, match="`filter=` on `read_parquet`"):
         ray.data.read_parquet(str(tmp_path), filter=pds.field("a") > 1)
+
+
+def test_read_parquet_v2_dataset_kwargs_rejects_partitioning(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`dataset_kwargs`"):
+        with pytest.raises(
+            ValueError, match="'partitioning' parameter isn't supported"
+        ):
+            ray.data.read_parquet(
+                str(tmp_path), dataset_kwargs={"partitioning": "hive"}
+            )
+
+
+def test_read_parquet_v2_dataset_kwargs_rejects_filters(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`dataset_kwargs`"):
+        with pytest.raises(ValueError, match="Row filtering via 'filters'"):
+            ray.data.read_parquet(
+                str(tmp_path), dataset_kwargs={"filters": [("a", ">", 0)]}
+            )
+
+
+def test_read_parquet_v2_dataset_kwargs_threads_through_to_scanner(
+    tmp_path, restore_ctx
+):
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`dataset_kwargs`"):
+        ds = ray.data.read_parquet(
+            str(tmp_path),
+            dataset_kwargs={
+                "coerce_int96_timestamp_unit": "ms",
+                "read_dictionary": ["a"],
+            },
+        )
+
+    # ``read_dictionary`` is renamed to ``dictionary_columns`` to match
+    # ``pds.ParquetFileFormat``; ``coerce_int96_timestamp_unit`` passes
+    # through unchanged.
+    read_files_op = ds._logical_plan.dag
+    assert isinstance(read_files_op, ReadFiles)
+    assert isinstance(read_files_op.scanner, ParquetScanner)
+    assert read_files_op.scanner.parquet_format_kwargs == {
+        "coerce_int96_timestamp_unit": "ms",
+        "dictionary_columns": ["a"],
+    }
 
 
 def test_read_parquet_v2_empty_dir_raises(tmp_path, restore_ctx):

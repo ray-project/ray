@@ -79,6 +79,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
+        parquet_format_kwargs: Optional[dict] = None,
         file_chunker: Optional[FileChunker] = None,
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
@@ -101,6 +102,10 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._include_row_hash = include_row_hash
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
+        # ``pds.ParquetFileFormat`` kwargs forwarded from the deprecated
+        # ``read_parquet(dataset_kwargs=...)`` arg. Spread into the format
+        # built by ``ParquetFileReader._make_format``.
+        self._parquet_format_kwargs = parquet_format_kwargs or {}
         # User-supplied schema override. When set, ``infer_schema`` returns
         # it verbatim (plus partition/path augmentation) rather than reading
         # footers, and the scanner pins it on the pyarrow dataset so files
@@ -300,4 +305,5 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
             target_block_size=DataContext.get_current().target_max_block_size,
+            parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )
