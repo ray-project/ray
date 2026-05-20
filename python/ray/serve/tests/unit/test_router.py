@@ -2000,6 +2000,38 @@ class TestChooseReplica:
 
         assert len(replica._requests_sent) == 1
 
+    async def test_choose_replica_no_reserve_skips_slot_reservation(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """``_reserve=False`` yields a selection with no slot token, bypasses
+        ``reserve_slot`` on the replica, and ``dispatch`` on that selection
+        raises since there's no reservation to consume."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router._replicas_list = [replica]
+
+        async def fake_choose_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = fake_choose_replicas
+
+        request_metadata = dummy_request_metadata()
+
+        async with router.choose_replica(request_metadata, _reserve=False) as selection:
+            assert selection._replica is replica
+            assert selection._slot_token is None
+            assert replica._reserved_slots == set()
+
+            with pytest.raises(RuntimeError, match="_reserve=False"):
+                await router.dispatch(selection, request_metadata)
+
+        assert replica._reserved_slots == set()
+        assert replica._slot_counter == 0
+
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
