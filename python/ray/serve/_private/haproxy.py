@@ -47,6 +47,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_RETRIES,
     RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
@@ -54,11 +55,11 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
     RAY_SERVE_HAPROXY_STATS_PORT,
-    RAY_SERVE_HAPROXY_SYSLOG_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_TUNE_BUFSIZE,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -540,7 +541,7 @@ class HAProxyConfig:
 
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
 
-    syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
+    log_target: str = RAY_SERVE_HAPROXY_LOG_TARGET
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
@@ -549,6 +550,8 @@ class HAProxyConfig:
     ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
 
     is_head: bool = False
+
+    bufsize: int = RAY_SERVE_HAPROXY_TUNE_BUFSIZE
 
     @property
     def frontend_host(self) -> str:
