@@ -111,16 +111,6 @@ TimeBasedWorkerKillingPolicy::Policy(
                         used_memory >= idle_worker_killing_memory_threshold_bytes_;
                });
 
-  // Sort by:
-  // 1. First, we prioritize killing workers without current granted lease. Note that
-  // workers that have never been granted a lease (i.e. cold start idle workers) are
-  // only considered for killing if their memory footprint exceeds the idle worker
-  // killing memory threshold. This is because they represent the base amount of
-  // memory that any worker will always have, and the worker pool will always
-  // maintain a pool of live workers.
-  // 2. From there, we prioritize killing workers with leases and are retriable.
-  // 3. Then, we tiebreak by the newest worker based on the newest granted lease time.
-  // 4. If granted lease times are equal, tiebreak by largest memory footprint.
   std::sort(
       sorted_workers.begin(),
       sorted_workers.end(),
@@ -132,28 +122,26 @@ TimeBasedWorkerKillingPolicy::Policy(
         if (right->GetGrantedLeaseId().IsNil() && !left->GetGrantedLeaseId().IsNil()) {
           return false;
         }
-        if (left->GetGrantedLeaseId().IsNil() && right->GetGrantedLeaseId().IsNil()) {
-          return false;
-        }
 
-        if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
-            !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-          return true;
-        }
-        if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
-            right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-          return false;
-        }
+        if (!left->GetGrantedLeaseId().IsNil() && !right->GetGrantedLeaseId().IsNil()) {
+          if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
+              !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+            return true;
+          }
+          if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
+              right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+            return false;
+          }
 
-        // Treat std::nullopt (no worker in the group has a granted lease
-        // time) as infinitely past, so cold idle workers are deprioritized.
-        absl::Time left_granted_lease_time =
-            left->GetLastGrantedLeaseTime().value_or(absl::InfinitePast());
-        absl::Time right_granted_lease_time =
-            right->GetLastGrantedLeaseTime().value_or(absl::InfinitePast());
-        if (left_granted_lease_time != right_granted_lease_time) {
-          return left_granted_lease_time > right_granted_lease_time;
+          absl::Time left_granted_lease_time = left->GetLastGrantedLeaseTime().value();
+          absl::Time right_granted_lease_time = right->GetLastGrantedLeaseTime().value();
+          if (left_granted_lease_time != right_granted_lease_time) {
+            return left_granted_lease_time > right_granted_lease_time;
+          }
         }
+        // At this point, both workers are either workers with lease and the same
+        // retriability and lease grant time, or workers without lease.
+        // In these cases, we tiebreak by the memory footprint.
 
         StatusSetOr<int64_t, StatusT::NotFound> left_memory_or =
             MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
@@ -161,14 +149,18 @@ TimeBasedWorkerKillingPolicy::Policy(
         StatusSetOr<int64_t, StatusT::NotFound> right_memory_or =
             MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
                                                           right->GetProcess().GetId());
-        if (!left_memory_or.has_value()) {
+        int64_t left_memory = 0;
+        if (left_memory_or.has_value()) {
+          left_memory = left_memory_or.value();
+        } else {
           RAY_LOG_EVERY_MS(WARNING, 60000) << left_memory_or.message();
         }
-        if (!right_memory_or.has_value()) {
+        int64_t right_memory = 0;
+        if (right_memory_or.has_value()) {
+          right_memory = right_memory_or.value();
+        } else {
           RAY_LOG_EVERY_MS(WARNING, 60000) << right_memory_or.message();
         }
-        int64_t left_memory = left_memory_or.has_value() ? left_memory_or.value() : 0;
-        int64_t right_memory = right_memory_or.has_value() ? right_memory_or.value() : 0;
         return left_memory > right_memory;
       });
 
