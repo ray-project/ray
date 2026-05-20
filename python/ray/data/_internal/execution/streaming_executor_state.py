@@ -99,9 +99,7 @@ class IdleDetector:
         return False
 
     @classmethod
-    def print_warning_if_idle_for_too_long(
-        cls, op: PhysicalOperator, idle_time: float
-    ):
+    def print_warning_if_idle_for_too_long(cls, op: PhysicalOperator, idle_time: float):
         """Print a warning if an operator is idle for too long."""
         if idle_time < cls.WARN_ON_IDLE_TIME_S or cls._warn_printed:
             return

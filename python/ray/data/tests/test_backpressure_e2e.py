@@ -7,10 +7,10 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
-from ray.data._internal.execution.util import memory_string
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask

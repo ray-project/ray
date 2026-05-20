@@ -491,7 +491,9 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
 
     # Call process_completed_tasks which tracks output policies
     process_completed_tasks(
-        topo, policies, max_errored_blocks=0,
+        topo,
+        policies,
+        max_errored_blocks=0,
         output_backpressure_guard=_make_disabled_guard(),
     )
 
@@ -501,7 +503,9 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
 
     # Now test with no output backpressure
     process_completed_tasks(
-        topo, [NonLimitingPolicy()], max_errored_blocks=0,
+        topo,
+        [NonLimitingPolicy()],
+        max_errored_blocks=0,
         output_backpressure_guard=_make_disabled_guard(),
     )
 
@@ -545,7 +549,9 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
             return 0 if op is o2 else None
 
     process_completed_tasks(
-        topo, [ZeroLimitPolicy()], max_errored_blocks=0,
+        topo,
+        [ZeroLimitPolicy()],
+        max_errored_blocks=0,
         output_backpressure_guard=guard,
     )
 
