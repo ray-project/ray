@@ -2582,6 +2582,13 @@ class Replica:
         # matches and downstream user code dispatches.
         route_prefix = self._route_prefix or ""
         if not route.startswith(route_prefix):
+            logger.warning(
+                f"Replica {self._replica_id.unique_id} for deployment "
+                f"{self._deployment_id} received request for path {route!r} "
+                f"but its route_prefix is {self._route_prefix!r}; returning 404. "
+                "This usually indicates a transient routing race (e.g. port "
+                "reuse or stale HAProxy slot during scale events)."
+            )
             for msg in convert_object_to_asgi_messages(
                 f"Path '{route}' not found. "
                 "Ping http://.../-/routes for available routes.",
