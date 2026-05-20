@@ -61,6 +61,7 @@ defaults
     # or 503 (replica returned "service unavailable" — usually a
     # transient routing race resolved by retrying to a peer slot).
     option redispatch
+    retries {{ config.retries }}
     retry-on conn-failure empty-response 503
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections

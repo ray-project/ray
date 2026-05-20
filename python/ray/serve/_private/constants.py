@@ -770,6 +770,15 @@ RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
 )
 
+# How long HAProxy holds a request in the backend queue when no UP slot is
+# immediately available (e.g. brief window after a reload before health
+# checks mark slots UP, all slots draining during scale-down, etc.). Without
+# this, HAProxy 503s such requests immediately; with it, the request waits
+# up to this many seconds for a slot to come back UP.
+RAY_SERVE_HAPROXY_TIMEOUT_QUEUE_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_QUEUE_S", "30")
+)
+
 # Number of consecutive failed server health checks that must occur
 # before haproxy marks the server as down.
 RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(
@@ -802,6 +811,13 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
     "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
 )
+
+# Maximum number of retry attempts HAProxy makes for a failed connect (with
+# `retry-on conn-failure empty-response 503`). Each retry can be redispatched
+# to a peer slot via `option redispatch`, so a higher count gives more chances
+# to find a healthy slot when several are briefly stale (e.g. mid scale event,
+# port unbound after replica stop, reload window). HAProxy's default is 3.
+RAY_SERVE_HAPROXY_RETRIES = int(os.environ.get("RAY_SERVE_HAPROXY_RETRIES", "250"))
 
 # Timeout shared by the ingress-request-router Lua call and the frontend
 # `wait-for-body` directive. Bounds head-of-line blocking on POSTs when a

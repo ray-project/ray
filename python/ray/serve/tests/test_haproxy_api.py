@@ -196,6 +196,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
             timeout_server_s=30,
             timeout_http_request_s=10,
             timeout_queue_s=1,
+            retries=7,
             stats_port=8080,
             stats_uri="/mystats",
             health_check_fall=3,
@@ -296,6 +297,7 @@ defaults
     # or 503 (replica returned "service unavailable" — usually a
     # transient routing race resolved by retrying to a peer slot).
     option redispatch
+    retries 7
     retry-on conn-failure empty-response 503
     option idle-close-on-response
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
