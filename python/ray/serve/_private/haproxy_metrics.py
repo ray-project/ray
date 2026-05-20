@@ -95,7 +95,7 @@ class HAProxyMetricsCollector:
                 "Only includes successful routing attempts."
             ),
             boundaries=self._LATENCY_BUCKETS_MS,
-            tag_keys=("application",),
+            tag_keys=("application", "outcome"),
         )
         self.replica_mismatches_counter = metrics.Counter(
             "serve_haproxy_ingress_router_server_mismatch",
@@ -189,40 +189,40 @@ class HAProxyMetricsCollector:
         # to "unknown" rather than dropping the observation, so misconfigured
         # frontends still show up in the data.
         app_tag = parsed.app or "unknown"
-
-        if parsed.failed:
-            self.failures_counter.inc(
-                tags={"application": app_tag, "reason": parsed.failed}
-            )
-            self.requests_counter.inc(tags={"application": app_tag})
-            return
-
-        if not parsed.via_router:
-            return
-
         tags = {"application": app_tag}
-        self.requests_counter.inc(tags=tags)
+
+        if parsed.via_router and not parsed.failed:
+            self.requests_counter.inc(tags=tags)
+
+            if parsed.body_truncated_full_length is not None:
+                self.truncated_bodies_counter.inc(tags=tags)
+
+            # Only count mismatch when we have both sides AND the request actually
+            # reached a server (actual_server is not None / "<NOSRV>"). If the
+            # router pinned a replica but the request was rejected upstream of
+            # server selection (e.g. queued and aborted), HAProxy logs "<NOSRV>"
+            # for %s — we treat that as "not a mismatch, not a match".
+            if (
+                parsed.intended_server
+                and parsed.actual_server
+                and parsed.actual_server != "<NOSRV>"
+                and parsed.intended_server != parsed.actual_server
+            ):
+                self.replica_mismatches_counter.inc(tags=tags)
+        elif parsed.failed:
+            self.requests_counter.inc(tags=tags)
+            self.failures_counter.inc(tags={**tags, "reason": parsed.failed})
+        else:
+            return
 
         if parsed.router_latency_us is not None:
             self.latency_histogram.observe(
-                parsed.router_latency_us / 1_000.0, tags=tags
+                parsed.router_latency_us / 1_000.0,
+                tags={
+                    **tags,
+                    "outcome": "failure" if parsed.failed else "success",
+                },
             )
-
-        if parsed.body_truncated_full_length is not None:
-            self.truncated_bodies_counter.inc(tags=tags)
-
-        # Only count mismatch when we have both sides AND the request actually
-        # reached a server (actual_server is not None / "<NOSRV>"). If the
-        # router pinned a replica but the request was rejected upstream of
-        # server selection (e.g. queued and aborted), HAProxy logs "<NOSRV>"
-        # for %s — we treat that as "not a mismatch, not a match".
-        if (
-            parsed.intended_server
-            and parsed.actual_server
-            and parsed.actual_server != "<NOSRV>"
-            and parsed.intended_server != parsed.actual_server
-        ):
-            self.replica_mismatches_counter.inc(tags=tags)
 
     async def bind_and_attach(
         self,

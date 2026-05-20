@@ -216,7 +216,11 @@ def _ok(
 def test_record_success_path_observes_latency(collector) -> None:
     collector.record(_ok(latency_us=2500))
     assert collector.latency_histogram.calls == [
-        ("observe", {"application": "llm"}, 2.5)  # us → ms conversion
+        (
+            "observe",
+            {"application": "llm", "outcome": "success"},
+            2.5,
+        )  # us → ms conversion
     ]
     assert collector.truncated_bodies_counter.calls == []
     assert collector.replica_mismatches_counter.calls == []
@@ -276,10 +280,48 @@ def test_record_failure_increments_failures_counter_with_reason(
     assert collector.failures_counter.calls == [
         ("inc", {"application": "llm", "reason": reason}, 1.0)
     ]
-    # Failed routes never set via_router; success-path metrics stay quiet.
+    # router_latency_us=None means the Lua timer wasn't set (e.g. metrics
+    # disabled in the rendered Lua, or earliest-stage failure). The
+    # histogram should stay quiet; failures with a real latency value are
+    # covered by the test below.
     assert collector.latency_histogram.calls == []
     assert collector.truncated_bodies_counter.calls == []
     assert collector.replica_mismatches_counter.calls == []
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "router_unreachable",
+        "router_non_200",
+        "unparseable_replica_id",
+        "unknown_replica_id",
+    ],
+)
+def test_record_failure_with_latency_observes_outcome_failure(
+    collector, reason
+) -> None:
+    """The Lua action now wraps the routing call with the timer, so failure
+    paths carry a real latency_us. record() must tag the observation with
+    `outcome="failure"` so success vs failure latency can be split in PromQL."""
+    parsed = ParsedMetrics(
+        app="llm",
+        intended_server=None,
+        actual_server="<NOSRV>",
+        router_latency_us=4200,
+        body_truncated_full_length=None,
+        via_router=False,
+        failed=reason,
+    )
+    collector.record(parsed)
+    assert collector.latency_histogram.calls == [
+        ("observe", {"application": "llm", "outcome": "failure"}, 4.2)
+    ]
+    # Failure path still bumps the failure + requests counters.
+    assert collector.failures_counter.calls == [
+        ("inc", {"application": "llm", "reason": reason}, 1.0)
+    ]
+    assert collector.requests_counter.calls == [("inc", {"application": "llm"}, 1.0)]
 
 
 def test_record_skips_when_not_via_router_and_not_failed(collector) -> None:
@@ -390,7 +432,7 @@ def test_datagram_handler_dispatches_to_record(collector) -> None:
         ("addr", 0),
     )
     assert collector.latency_histogram.calls == [
-        ("observe", {"application": "llm"}, 0.1)
+        ("observe", {"application": "llm", "outcome": "success"}, 0.1)
     ]
 
 
@@ -444,7 +486,7 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
             await asyncio.sleep(0.01)
 
         assert collector.latency_histogram.calls == [
-            ("observe", {"application": "llm"}, 0.5)
+            ("observe", {"application": "llm", "outcome": "success"}, 0.5)
         ]
     finally:
         collector.close()
