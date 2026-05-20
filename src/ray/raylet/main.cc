@@ -290,10 +290,10 @@ int main(int argc, char *argv[]) {
 
   // Initialize RayConfig from the config_list passed by the Python launcher.
   // This must happen before GcsClient is created (and before anything reads
-  // RayConfig) so that user-supplied _system_config values (e.g.
+  // RayConfig) so that startup-sensitive _system_config values (e.g.
   // gcs_rpc_server_reconnect_timeout_s) take effect from the very first
-  // connection attempt rather than being ignored until AsyncGetInternalConfig
-  // completes.
+  // connection attempt. The later AsyncGetInternalConfig callback still
+  // populates NodeManagerConfig and applies local object spilling overrides.
   {
     std::string config_list_decoded;
     RAY_CHECK(absl::Base64Unescape(config_list, &config_list_decoded))

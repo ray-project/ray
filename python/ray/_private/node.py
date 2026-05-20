@@ -1348,7 +1348,7 @@ class Node:
     def start_head_processes(self):
         """Start head processes on the node."""
         logger.debug(
-            f"Process STDOUT and STDERR is being redirected to {self._logs_dir}."
+            f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
         assert self._gcs_address is None
         assert self._gcs_client is None
@@ -1377,7 +1377,7 @@ class Node:
     def start_ray_processes(self):
         """Start all of the processes on the node."""
         logger.debug(
-            f"Process STDOUT and STDERR is being redirected to {self._logs_dir}."
+            f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
 
         if not self.head:
