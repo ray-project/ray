@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import sys
 from collections.abc import Callable, Iterable
 from itertools import product
 from math import prod
@@ -35,6 +34,22 @@ if TYPE_CHECKING:
 
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
+# CPython 64-bit object-size approximations, used to estimate the in-memory
+# size of a descriptor-mode output row without instantiating one. Values are
+# from `sys.getsizeof` on CPython 3.10+ and are stable enough for Ray Data's
+# block-sizing heuristics (they only need to be within an order of magnitude).
+_PYINT_BYTES = 28
+_PYSTR_BASE = 49  # plus one byte per character
+_PYTUPLE_BASE = 56  # plus 8 bytes per element
+_PYLIST_BASE = 56  # plus 8 bytes per element
+_PYPTR_BYTES = 8
+
+# Cost of one int held inside a tuple or list: the pointer slot in the
+# container + the int object itself.
+_INT_IN_SEQ = _PYPTR_BYTES + _PYINT_BYTES
+# Cost of one (int, int) tuple held inside a list.
+_PAIR_IN_LIST = _PYPTR_BYTES + _PYTUPLE_BASE + 2 * _INT_IN_SEQ
+
 
 class ZarrArrayMeta(TypedDict):
     shape: tuple[int, ...]
@@ -59,6 +74,35 @@ def _zarr_array_meta_from_json(raw_meta: dict[str, Any]) -> ZarrArrayMeta:
         "chunks": tuple(int(x) for x in raw_meta["chunks"]),
         "dtype": str(raw_meta["dtype"]),
     }
+
+
+def _descriptor_row_size_bytes(array_name: str, meta: ZarrArrayMeta) -> int:
+    """Estimate the in-memory bytes of one descriptor-mode output row.
+
+    A descriptor row has six cells: ``array`` (str), ``dtype`` (str),
+    ``array_shape`` and ``chunk_shape`` (each a tuple of ``ndim`` ints),
+    ``chunk_slices`` (a list of ``ndim`` ``(int, int)`` tuples), and
+    ``padding`` (a list of ``ndim`` ints). The estimate is derived from the
+    Python object sizes defined above; the dominant term scales linearly with
+    ``ndim``.
+    """
+    ndim = len(meta["shape"])
+    return (
+        # "array" cell
+        _PYSTR_BASE
+        + len(array_name)
+        # "dtype" cell
+        + _PYSTR_BASE
+        + len(meta["dtype"])
+        # "array_shape" and "chunk_shape" — two tuples of ndim ints
+        + 2 * (_PYTUPLE_BASE + ndim * _INT_IN_SEQ)
+        # "chunk_slices" — list of ndim (int, int) tuples
+        + _PYLIST_BASE
+        + ndim * _PAIR_IN_LIST
+        # "padding" — list of ndim ints
+        + _PYLIST_BASE
+        + ndim * _INT_IN_SEQ
+    )
 
 
 def _resolve_store(
@@ -486,105 +530,21 @@ class ZarrV2Datasource(Datasource):
             grid_shape_dict[array] = {"meta": meta, "grid_shape": grid_shape}
         return grid_shape_dict
 
+    def _row_size_bytes(self, array_name: str, meta: ZarrArrayMeta) -> int:
+        """Approximate in-memory size of a single output row from this datasource."""
+        if self.materialize:
+            return prod(meta["chunks"]) * np.dtype(meta["dtype"]).itemsize
+        return _descriptor_row_size_bytes(array_name, meta)
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        if not self.materialize:
-            arrays = []
-            array_shapes = []
-            chunk_shapes = []
-            dtypes = []
-            full_chunk_slices = []
-            full_paddings = []
-
-            for array, data in self._grid_shape_dict.items():
-                meta = data["meta"]
-                for chunk_index in product(*(range(n) for n in data["grid_shape"])):
-                    chunk_slices = []
-                    padding = []
-                    chunk_shape = list(meta["chunks"])
-
-                    for dim, (i, size, chunk) in enumerate(
-                        zip(chunk_index, meta["shape"], meta["chunks"])
-                    ):
-                        start = i * chunk
-                        stop = min((i + 1) * chunk, size)
-                        chunk_slices.append((start, stop))
-
-                        if start + chunk > size:
-                            padding_slice = start + chunk - size
-                            chunk_shape[dim] = stop - start
-                        else:
-                            padding_slice = 0
-                        padding.append(padding_slice)
-
-                    arrays.append(array)
-                    array_shapes.append(meta["shape"])
-                    chunk_shapes.append(tuple(chunk_shape))
-                    dtypes.append(meta["dtype"])
-                    full_chunk_slices.append(chunk_slices)
-                    full_paddings.append(padding)
-
-            return self._sizeof_batch(
-                {
-                    "array": arrays,
-                    "array_shape": array_shapes,
-                    "chunk_shape": chunk_shapes,
-                    "dtype": dtypes,
-                    "chunk_slices": full_chunk_slices,
-                    "padding": full_paddings,
-                }
-            )
-        else:
-            total_size_bytes = 0
-
-            for array, data in self._grid_shape_dict.items():
-                meta = data["meta"]
-
-                shape = meta["shape"]
-                dtype = meta["dtype"]
-
-                num_elements = prod(shape)
-                dtype_size_bytes = np.dtype(dtype).itemsize
-
-                total_size_bytes += num_elements * dtype_size_bytes
-
-            return total_size_bytes
+        total = 0
+        for array_name, data in self._grid_shape_dict.items():
+            num_chunks = prod(data["grid_shape"])
+            total += num_chunks * self._row_size_bytes(array_name, data["meta"])
+        return total
 
     def _estimate_batch_mem_size(self, batch: List[ZarrChunkRow]) -> int:
-        batch_size_bytes = 0
-
-        for zarr_chunk_row in batch:
-            meta = zarr_chunk_row["meta"]
-
-            chunks = meta["chunks"]
-            dtype = meta["dtype"]
-
-            num_elements = prod(chunks)
-            dtype_size_bytes = np.dtype(dtype).itemsize
-
-            batch_size_bytes += num_elements * dtype_size_bytes
-
-        return batch_size_bytes
-
-    def _sizeof_batch(self, obj, seen=None):
-        if seen is None:
-            seen = set()
-
-        obj_id = id(obj)
-        if obj_id in seen:
-            return 0
-        seen.add(obj_id)
-
-        size = sys.getsizeof(obj)
-
-        if isinstance(obj, dict):
-            size += sum(
-                self._sizeof_batch(k, seen) + self._sizeof_batch(v, seen)
-                for k, v in obj.items()
-            )
-        elif isinstance(obj, (list, tuple, set, frozenset)):
-            size += sum(self._sizeof_batch(x, seen) for x in obj)
-
-        return size
+        return sum(self._row_size_bytes(row["array"], row["meta"]) for row in batch)
 
     def get_read_tasks(
         self,
@@ -610,18 +570,12 @@ class ZarrV2Datasource(Datasource):
                 )
 
                 if len(batch) >= batch_size:
-                    batch_mem_size = None
-                    if self.materialize:
-                        batch_mem_size = self._estimate_batch_mem_size(batch)
-                    else:
-                        batch_mem_size = self._sizeof_batch(batch)
-
                     read_tasks.append(
                         ReadTask(
                             _create_read_fn(batch, self.root),
                             BlockMetadata(
                                 num_rows=len(batch),
-                                size_bytes=batch_mem_size,
+                                size_bytes=self._estimate_batch_mem_size(batch),
                                 input_files=(self.paths[0],),
                                 exec_stats=None,
                             ),
@@ -630,18 +584,12 @@ class ZarrV2Datasource(Datasource):
                     )
                     batch = []
         if batch:
-            batch_mem_size = None
-            if self.materialize:
-                batch_mem_size = self._estimate_batch_mem_size(batch)
-            else:
-                batch_mem_size = self._sizeof_batch(batch)
-
             read_tasks.append(
                 ReadTask(
                     _create_read_fn(batch, self.root),
                     BlockMetadata(
                         num_rows=len(batch),
-                        size_bytes=batch_mem_size,
+                        size_bytes=self._estimate_batch_mem_size(batch),
                         input_files=(self.paths[0],),
                         exec_stats=None,
                     ),

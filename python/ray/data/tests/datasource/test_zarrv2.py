@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -181,6 +182,55 @@ def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store
     assert truncated_nested_chunk["chunk_shape"] == (1,)
     assert truncated_nested_chunk["dtype"] == "|u1"
     assert truncated_nested_chunk["padding"] == [1]
+
+
+def _deep_sizeof(obj, seen=None):
+    """Recursive ``sys.getsizeof`` that follows containers."""
+    if seen is None:
+        seen = set()
+    if id(obj) in seen:
+        return 0
+    seen.add(id(obj))
+    size = sys.getsizeof(obj)
+    if isinstance(obj, dict):
+        size += sum(
+            _deep_sizeof(k, seen) + _deep_sizeof(v, seen) for k, v in obj.items()
+        )
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        size += sum(_deep_sizeof(x, seen) for x in obj)
+    return size
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4, 8, 16, 32])
+def test_descriptor_row_size_formula_matches_actual_within_factor_of_two(ndim):
+    # Use distinct ints outside CPython's small-int cache (-5..256) for every
+    # slot. Reusing the same int across slots would make ``_deep_sizeof`` dedup
+    # them and undercount; the formula assumes each int contributes its own
+    # object overhead (the realistic case for chunk slice bounds, which are
+    # always distinct in practice).
+    big = 10**9
+    meta = {
+        "shape": tuple(big + i for i in range(ndim)),
+        "chunks": tuple(big + 100 + i for i in range(ndim)),
+        "dtype": "<f8",
+    }
+    array_name = "some/array"
+    row_cells = [
+        array_name,
+        meta["dtype"],
+        meta["shape"],
+        meta["chunks"],
+        [(big + 2 * i, big + 2 * i + 1) for i in range(ndim)],  # chunk_slices
+        [big + 1000 + i for i in range(ndim)],  # padding
+    ]
+    actual = sum(_deep_sizeof(v) for v in row_cells)
+
+    estimate = zarrv2_datasource._descriptor_row_size_bytes(array_name, meta)
+
+    assert 0.5 * actual <= estimate <= 2.0 * actual, (
+        f"estimate={estimate}, actual={actual}, ratio={estimate / actual:.2f} "
+        f"(ndim={ndim})"
+    )
 
 
 def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
