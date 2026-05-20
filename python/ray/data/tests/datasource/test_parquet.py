@@ -1,5 +1,6 @@
 import os
 import pathlib
+import pickle
 import shutil
 import time
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
@@ -41,6 +43,53 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def use_datasource_v2(request, restore_data_context):
+    restore_data_context.use_datasource_v2 = request.param
+
+
+def test_read_parquet_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["col"] == {"key": "value"}
+
+
+def test_read_parquet_rejects_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
@@ -126,11 +175,11 @@ def test_include_paths_with_column_projection(
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
     pq.write_table(table, path)
 
-    # V2 ``select_columns`` is literal — ``"path"`` is dropped unless listed.
-    # V1 ``read_parquet(columns=[...], include_paths=True)`` retained ``"path"``
-    # automatically; the ``columns=`` deprecation message in ``read_api`` calls
-    # this out so callers know to thread ``"path"`` through their projection.
-    ds = ray.data.read_parquet(path, include_paths=True).select_columns(["id", "path"])
+    # Exercises the deprecated ``columns=`` arg: V1 retained ``"path"``
+    # implicitly under ``include_paths=True``, and read_api preserves that
+    # by appending it to the projection on the caller's behalf.
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(path, columns=["id"], include_paths=True)
 
     schema_names = ds.schema().names
     assert "id" in schema_names, f"'id' column not found in schema: {schema_names}"
@@ -220,9 +269,11 @@ def test_include_row_hash_with_column_projection(
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, include_row_hash=True).select_columns(
-        ["a", "row_hash"]
-    )
+    # Exercises the deprecated ``columns=`` arg: V1 retained ``"row_hash"``
+    # implicitly under ``include_row_hash=True``, and read_api preserves
+    # that by appending it to the projection on the caller's behalf.
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
     schema_names = ds.schema().names
     assert "a" in schema_names
     assert "b" not in schema_names
@@ -1695,6 +1746,62 @@ def test_read_null_data_in_first_file(
         {"data": "ham"},
         {"data": "spam"},
     ]
+
+
+def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
+    """Memory used by read_parquet should not grow linearly with file count.
+
+    Regression test for a bug where _infer_schema fell back to reading every
+    fragment's physical_schema when the sampled fragment had a pa.null() column
+    (PyArrow < 22.0), causing O(N) metadata reads and memory usage.
+    """
+    import gc
+
+    import psutil
+
+    num_cols = 50
+    small_n = 100
+    large_n = 1000
+
+    def _write_files(directory, n_files):
+        directory.mkdir(exist_ok=True)
+        for i in range(n_files):
+            cols = {f"col_{j}": [0] for j in range(num_cols)}
+            # First file has a column of all nulls, which triggers the schema inference fallback.
+            if i == 0:
+                cols["null_col"] = pa.nulls(1)
+            else:
+                cols["null_col"] = [1]
+            pq.write_table(pa.table(cols), directory / f"part_{i:05d}.parquet")
+
+    _write_files(tmp_path / "small", small_n)
+    _write_files(tmp_path / "large", large_n)
+
+    proc = psutil.Process()
+
+    rss_before_small = proc.memory_info().rss
+    ds = ray.data.read_parquet(str(tmp_path / "small"))
+    ds.schema()
+    rss_after_small = proc.memory_info().rss
+    del ds
+    gc.collect()
+
+    rss_before_large = proc.memory_info().rss
+    ds = ray.data.read_parquet(str(tmp_path / "large"))
+    ds.schema()
+    rss_after_large = proc.memory_info().rss
+    del ds
+    gc.collect()
+
+    delta_small = max(rss_after_small - rss_before_small, 1)
+    delta_large = max(rss_after_large - rss_before_large, 0)
+    ratio = delta_large / delta_small
+
+    assert ratio < 2, (
+        f"Memory grew too much with more files: ratio={ratio:.1f}\n"
+        f"delta_small={delta_small / 1024 / 1024:.1f} MiB, "
+        f"delta_large={delta_large / 1024 / 1024:.1f} MiB"
+    )
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):

@@ -220,17 +220,17 @@ def serve_start(
               with this path. Defaults to "".
             - middlewares(list): A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
-            - location(str, serve.config.DeploymentMode): The deployment
+            - location(str, serve.config.ProxyLocation): The deployment
               location of HTTP servers:
 
                 - "HeadOnly": start one HTTP server on the head node. Serve
                   assumes the head node is the node you executed serve.start
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
-                - "NoServer" or None: disable HTTP server.
+                - "Disabled" (or legacy "NoServer") or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        grpc_options: [Experimental] Configuration options for gRPC proxy.
+        grpc_options: Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
             - port(int): Port for gRPC server. Defaults to 9000.

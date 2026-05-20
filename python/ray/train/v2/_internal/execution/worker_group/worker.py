@@ -112,6 +112,11 @@ class Worker:
     def execute_async(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> ObjectRef:
         """Execute ``func`` on worker.
 
+        Args:
+            fn: The function to execute on the worker.
+            *fn_args: Positional arguments to forward to ``fn``.
+            **fn_kwargs: Keyword arguments to forward to ``fn``.
+
         Returns:
             (ObjectRef) An ObjectRef representing the output of func.
 

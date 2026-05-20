@@ -143,7 +143,7 @@ class TestDirectStreamingLLMRouter:
             "replica_id": "DeploymentName#replica",
         }
         router._pick_replica.assert_called_once_with(
-            request_body=body, body_truncated=True
+            handle=router._handle, request_body=body, body_truncated=True
         )
 
     @pytest.mark.asyncio
@@ -179,7 +179,7 @@ class TestDirectStreamingLLMRouter:
         handle.choose_replica = _choose_replica_returning(replica)
         router = _new_direct_router(handle)
 
-        host, port, replica_id = await router._pick_replica()
+        host, port, replica_id = await router._pick_replica(handle=handle)
 
         assert (host, port, replica_id) == ("10.0.0.1", 8123, "DeploymentName#r1")
 
@@ -203,7 +203,9 @@ class TestDirectStreamingLLMRouter:
         router = _new_direct_router(handle)
 
         body = b'{"messages": [{"role": "user", "content": "hi"}]}'
-        await router._pick_replica(request_body=body, body_truncated=True)
+        await router._pick_replica(
+            handle=handle, request_body=body, body_truncated=True
+        )
 
         assert captured_kwargs == {"request_body": body, "body_truncated": True}
 
@@ -217,7 +219,7 @@ class TestDirectStreamingLLMRouter:
         router = _new_direct_router(handle)
 
         with pytest.raises(RuntimeError, match="no backend HTTP endpoint"):
-            await router._pick_replica()
+            await router._pick_replica(handle=handle)
 
 
 class TestOpenAiIngress:
