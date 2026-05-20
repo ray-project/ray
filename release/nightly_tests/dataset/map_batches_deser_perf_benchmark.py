@@ -4,13 +4,7 @@ Synthesizes a wide pyarrow Table on the driver (no external data), pushes the
 batches through ``from_arrow().map_batches(actor, batch_format='pyarrow',
 zero_copy_batch=True)`` with an ``ActorPoolMapOperator``, then reads the Ray
 timeline to report p50/p90/max of ``task:deserialize_arguments`` across the
-MapWorker tasks.
-
-Designed to track regressions like the user-reported case where the actor
-task's per-block argument deserialization was ~360 ms p50 for a ~150 MB
-pyarrow Table block (vs ~14 ms for a bare ``ray.get`` of the same plasma
-object). Lands deliberately on the same code path: a wide-schema pyarrow
-Table flowing into an actor-pool ``map_batches`` task as a block argument.
+actor pool tasks.
 
 Reported metrics:
     deser_p50_ms, deser_p90_ms, deser_max_ms, deser_task_count
@@ -18,16 +12,14 @@ Reported metrics:
 """
 
 import argparse
-import json
-import os
-import tempfile
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import pyarrow as pa
 
 import ray
 from benchmark import Benchmark
+from ray._private.test_utils import wait_for_condition
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,9 +36,7 @@ def make_batch(rows: int, cols: int, values_per_cell: int, seed: int) -> pa.Tabl
     """Build a wide pyarrow Table with list<float32> columns.
 
     Bytes per row ≈ cols * values_per_cell * 4. With defaults
-    (400 * 128 * 4 = ~205 KB/row, 256 rows ⇒ ~52 MB/batch), each batch is in
-    the same order of magnitude as the user's ~150 MB block while being
-    cheap to synthesize.
+    (400 * 128 * 4 = ~205 KB/row, 256 rows ⇒ ~52 MB/batch).
     """
     rng = np.random.default_rng(seed)
     arrays: Dict[str, pa.Array] = {"id": pa.array(np.arange(rows, dtype=np.int64))}
@@ -65,7 +55,7 @@ def make_batch(rows: int, cols: int, values_per_cell: int, seed: int) -> pa.Tabl
 _UDF_CLASS_NAME = "MinimalActor"
 
 
-def collect_deser_stats(timeline_path: str) -> Dict[str, float]:
+def collect_deser_stats(events: List[Dict[str, Any]]) -> Dict[str, float]:
     """Extract task:deserialize_arguments durations (ms) for our MinimalActor.
 
     Two stable hooks make this robust:
@@ -84,8 +74,6 @@ def collect_deser_stats(timeline_path: str) -> Dict[str, float]:
     timeline) is wrong: StatsActor / AutoscalingCoordinator / ActorLocationTracker
     contribute many cheap deser events that distort p50.
     """
-    with open(timeline_path) as f:
-        events = json.load(f)
     udf_tids = {
         e["tid"]
         for e in events
@@ -105,7 +93,7 @@ def collect_deser_stats(timeline_path: str) -> Dict[str, float]:
     return {
         "n": n,
         "p50": durs_ms[n // 2],
-        "p90": durs_ms[int(n * 0.9)],
+        "p90": durs_ms[int((n - 1) * 0.9)],
         "max": durs_ms[-1],
     }
 
@@ -138,19 +126,22 @@ def run_deser_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
         zero_copy_batch=True,
     ).materialize()
 
-    events = ray.timeline()
-    stats = collect_deser_stats(events)
-    print(f"Deser stats (ms): {stats}")
+    # Task profile events are flushed to GCS on a periodic interval
+    # (``task_events_report_interval_ms``, default 1000 ms), so events from
+    # the last tasks may not be in the timeline immediately after
+    # ``materialize()`` returns. Retry until we have at least one
+    # ``task:deserialize_arguments`` event per expected map_batches task.
+    # If they never arrive, ``wait_for_condition`` raises and the test fails
+    # loudly — that is also our guard against the timeline event name or
+    # actor-class-name embedding changing under us.
+    stats: Dict[str, float] = {}
 
-    # Sanity check: each map_batches task does one task:deserialize_arguments,
-    # so we expect at least `num_batches` events. If we see fewer, the timeline
-    # event name has likely changed and the metric is silently wrong.
-    if stats["n"] < args.num_batches:
-        raise RuntimeError(
-            f"Expected >= {args.num_batches} task:deserialize_arguments events "
-            f"but found {stats['n']}. The timeline event name may have changed; "
-            f"see python/ray/_raylet.pyx for the current literal."
-        )
+    def _events_arrived() -> bool:
+        stats.update(collect_deser_stats(ray.timeline()))
+        return stats["n"] >= args.num_batches
+
+    wait_for_condition(_events_arrived, timeout=20)
+    print(f"Deser stats (ms): {stats}")
 
     return {
         "deser_p50_ms": stats["p50"],
