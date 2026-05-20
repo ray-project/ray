@@ -19,9 +19,7 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
-    log 127.0.0.1:{{ config.syslog_port }} local0 debug
+    log {{ config.log_target }} local0 debug
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
@@ -31,6 +29,8 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
     {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
+    {%- else %}
+    tune.bufsize {{ config.bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
@@ -51,6 +51,8 @@ defaults
     log global
     option httplog
     option abortonclose
+    option splice-request
+    option splice-response
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
@@ -74,6 +76,14 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if ingress_request_router_metrics_enabled and has_ingress_request_router %}
+    log global
+    # Per-request metrics for the ingress request router. Goes only to the
+    # rfc5424 target below; the inherited rfc3164 targets do not include the
+    # SD section, so their byte stream is unchanged.
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
