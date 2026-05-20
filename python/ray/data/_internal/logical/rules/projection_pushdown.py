@@ -342,7 +342,7 @@ class ProjectionPushdown(Rule):
             projection_map = (
                 None
                 if required_columns is None
-                else {col: col for col in required_columns}
+                else {name: name for name in required_columns}
             )
             projected_input_op = input_op.apply_projection(projection_map)
 
