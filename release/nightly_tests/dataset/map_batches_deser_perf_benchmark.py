@@ -62,29 +62,41 @@ def make_batch(rows: int, cols: int, values_per_cell: int, seed: int) -> pa.Tabl
     return pa.table(arrays)
 
 
-def collect_deser_stats(timeline_path: str) -> Dict[str, float]:
-    """Extract task:deserialize_arguments durations (ms) for MapWorker actors.
+_UDF_CLASS_NAME = "MinimalActor"
 
-    The cat string in the Ray timeline for an actor task looks like
-    ``task::MapWorker(MapBatches(<udf>)).__init__``. We collect tids from
-    ``__init__`` events whose cat contains 'MapWorker', then aggregate
-    durations of ``task:deserialize_arguments`` events on those tids.
+
+def collect_deser_stats(timeline_path: str) -> Dict[str, float]:
+    """Extract task:deserialize_arguments durations (ms) for our MinimalActor.
+
+    Two stable hooks make this robust:
+
+    1. ``"task:deserialize_arguments"`` is a Cython literal in
+       ``python/ray/_raylet.pyx:1804`` and is covered by
+       ``src/ray/core_worker/tests/task_event_buffer_test.cc``.
+    2. We scope to tids where the *UDF class name* (``MinimalActor``, defined
+       in this file) appears in the event cat. Ray Data's actor wrapper
+       embeds the UDF name in the cat as ``task::MapWorker(MapBatches(MinimalActor))...``
+       (see ``actor_pool_map_operator.py``). Since ``MinimalActor`` is a
+       symbol we own, this scoping survives Ray Data renaming its wrapper
+       class (which has happened before: ``_MapWorker`` -> ``MapWorker(...)``).
+
+    Unscoped matching (every ``task:deserialize_arguments`` event in the
+    timeline) is wrong: StatsActor / AutoscalingCoordinator / ActorLocationTracker
+    contribute many cheap deser events that distort p50.
     """
     with open(timeline_path) as f:
         events = json.load(f)
-    map_tids = {
+    udf_tids = {
         e["tid"]
         for e in events
-        if isinstance(e, dict)
-        and e.get("name") == "__init__"
-        and "MapWorker" in e.get("cat", "")
+        if isinstance(e, dict) and _UDF_CLASS_NAME in e.get("cat", "")
     }
     durs_ms = sorted(
         e["dur"] / 1000.0
         for e in events
         if isinstance(e, dict)
-        and e.get("tid") in map_tids
-        and e.get("name") == "task:deserialize_arguments"
+        and e.get("tid") in udf_tids
+        and e.get("cat") == "task:deserialize_arguments"
         and e.get("dur", 0) > 0
     )
     if not durs_ms:
@@ -130,6 +142,16 @@ def run_deser_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
     ray.timeline(filename=timeline_path)
     stats = collect_deser_stats(timeline_path)
     print(f"Deser stats (ms): {stats}")
+
+    # Sanity check: each map_batches task does one task:deserialize_arguments,
+    # so we expect at least `num_batches` events. If we see fewer, the timeline
+    # event name has likely changed and the metric is silently wrong.
+    if stats["n"] < args.num_batches:
+        raise RuntimeError(
+            f"Expected >= {args.num_batches} task:deserialize_arguments events "
+            f"but found {stats['n']}. The timeline event name may have changed; "
+            f"see python/ray/_raylet.pyx for the current literal."
+        )
 
     return {
         "deser_p50_ms": stats["p50"],
