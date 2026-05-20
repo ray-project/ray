@@ -41,9 +41,6 @@ class PlacementGroup:
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
-        This API returns an ObjectRef that becomes ready when the placement group
-        is created. It is compatible with ray.get, ray.wait, and await.
-
         Returns:
             An ``ObjectRef`` that resolves once the placement group has been
             created and all bundles are scheduled.

@@ -1,5 +1,5 @@
 import pathlib
-from typing import List
+from typing import List, Union
 
 from ray.util.annotations import DeveloperAPI
 
@@ -12,7 +12,7 @@ class Template:
         with open(pathlib.Path(__file__).parent / "templates" / file, "r") as f:
             self.template = f.read()
 
-    def render(self, **kwargs: str) -> str:
+    def render(self, **kwargs: Union[str, List]) -> str:
         """Render an HTML template with the given data.
 
         This is done by replacing instances of `{{ key }}` with `value`
