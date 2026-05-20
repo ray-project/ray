@@ -120,7 +120,10 @@ class TrainStateManager:
             run_settings=run_settings,
         )
         self._runs[run.id] = run
-        # Block so ExportTrainRun is recorded before any ExportTrainRunAttempt.
+        # Block so the initial run state isn't lost if the controller exits
+        # right after. Without this, the .remote() task could still be in the
+        # caller's outbound queue when the controller dies, leaving the state
+        # actor with no record of the run.
         self._create_or_update_train_run(run, block=True)
 
     def update_train_run_scheduling(
