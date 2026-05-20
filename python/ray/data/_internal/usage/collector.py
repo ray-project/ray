@@ -32,7 +32,6 @@ _MAX_EXECUTIONS_TO_TRACK = 100
 _executions: "OrderedDict[str, dict]" = OrderedDict()
 # Per-execution spillage recorded at start of execution to compute delta
 _spillage_dict: Dict[str, Optional[int]] = {}
-_env_cache: Optional[dict] = None
 _lock = threading.Lock()
 
 
@@ -100,12 +99,8 @@ def _serialize_locked() -> str:
 
 
 def _collect_env() -> dict:
-    """Process-wide environment info. Memoized after the first call."""
-    global _env_cache
-    if _env_cache is not None:
-        return _env_cache
-    _env_cache = {"pyarrow": _safe_version("pyarrow")}
-    return _env_cache
+    """Process-wide environment info."""
+    return {"pyarrow": _safe_version("pyarrow")}
 
 
 def _safe_version(pkg: str) -> Optional[str]:
@@ -217,8 +212,6 @@ def _cluster_spilled_bytes() -> Optional[int]:
 
 def _reset_for_testing() -> None:
     """Reset module state. Tests only."""
-    global _env_cache
     with _lock:
         _executions.clear()
         _spillage_dict.clear()
-        _env_cache = None
