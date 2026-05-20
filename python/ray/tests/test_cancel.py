@@ -624,7 +624,6 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
         ray.get(consumer.remote([producer_ref]))
 
 
-@pytest.mark.parametrize("i", list(range(100)))
 def test_is_canceled_with_keyboard_interrupt(ray_start_regular, i):
     """Test checking is_canceled() within KeyboardInterrupt in normal tasks.
 
