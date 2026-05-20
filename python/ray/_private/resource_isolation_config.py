@@ -165,6 +165,8 @@ class ResourceIsolationConfig:
             ValueError: If system_reserved_cpu is specified, but invalid or if the system
                 does not have enough available cpus.
 
+        Returns:
+            The cgroup v2 cpu.weight value derived from the reserved cpu cores.
         """
         available_system_cpus = utils.get_num_cpus(truncate=False)
 

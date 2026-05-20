@@ -470,10 +470,10 @@ def _store_package_in_gcs(
     Args:
         pkg_uri: The GCS key to store the data in.
         data: The serialized package's bytes to store in the GCS.
-        logger (Optional[logging.Logger]): The logger used by this function.
+        logger: The logger used by this function.
 
-    Return:
-        int: Size of data
+    Returns:
+        Size of the stored data, in bytes.
 
     Raises:
         RuntimeError: If the upload to the GCS fails.
@@ -573,7 +573,7 @@ def package_exists(pkg_uri: str) -> bool:
     Args:
         pkg_uri: The uri of the package
 
-    Return:
+    Returns:
         True for package existing and False for not.
     """
     protocol, pkg_name = parse_uri(pkg_uri)
@@ -659,10 +659,10 @@ def get_uri_for_directory(
     Args:
         directory: The directory.
         include_gitignore: Whether to respect .gitignore files.
-        excludes (list[str]): The dir or files that should be excluded.
+        excludes: The dir or files that should be excluded.
 
     Returns:
-        URI (str)
+        URI for the directory's contents.
 
     Raises:
         ValueError: If the directory doesn't exist.
@@ -824,10 +824,15 @@ def upload_package_if_needed(
         pkg_uri: URI of the package to upload.
         base_directory: Directory where package files are stored.
         module_path: The module to be uploaded, either a single .py file or a directory.
+        include_gitignore: Whether to respect .gitignore files. Default is True.
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
-        include_gitignore: Whether to respect .gitignore files. Default is True.
+        logger: Logger used to surface progress and warnings.
+
+    Returns:
+        True if the package was uploaded, False if it already existed in
+        storage.
 
     Raises:
         RuntimeError: If the upload fails.
@@ -1304,9 +1309,10 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
 
     Args:
         pkg_uri: URI to delete.
+        base_directory: Directory where the local copy of the package lives.
 
     Returns:
-        bool: True if the URI was successfully deleted, else False.
+        True if the URI was successfully deleted, else False.
     """
 
     deleted = False
