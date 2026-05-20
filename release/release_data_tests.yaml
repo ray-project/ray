@@ -912,6 +912,7 @@
       args: []
       frequency: []
       fail_on_dead_nodes: []
+      fail_on_spilling: []
     adjustments:
       - with:
           case: fixed_size
@@ -919,12 +920,14 @@
           args: --inference-concurrency 40 40
           frequency: weekly
           fail_on_dead_nodes: 0 # Allow node death during test
+          fail_on_spilling: 1
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 40
           frequency: weekly
           fail_on_dead_nodes: 1
+          fail_on_spilling: 1
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
@@ -933,6 +936,7 @@
           # fail.
           frequency: manual
           fail_on_dead_nodes: 0
+          fail_on_spilling: 0
 
   cluster:
     anyscale_sdk_2026: true
@@ -942,7 +946,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
-        - RAYTEST_FAIL_ON_SPILLING=1
+        - RAYTEST_FAIL_ON_SPILLING={{fail_on_spilling}}
       post_build_script: byod_install_pybase64.sh
 
   run:
