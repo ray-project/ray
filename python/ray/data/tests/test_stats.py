@@ -487,13 +487,6 @@ def canonicalize(
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
-    # Ray might not be able to estimate the peak heap memory usage on some platforms.
-    # In those cases, the memory estimate could be 0 or None.
-    canonicalized_stats = re.sub(
-        r"Peak heap memory usage \(MiB\): (N|Z) min, (N|Z) max, (N|Z) mean",
-        "Peak heap memory usage (MiB): H min, H max, H mean",
-        canonicalized_stats,
-    )
     canonicalized_stats = re.sub(
         r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
         r"\g<1> H",
@@ -828,7 +821,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"         block_execution_summary_str={EXECUTION_STRING}\n"
         "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "         memory=None,\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
@@ -994,7 +986,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"         block_execution_summary_str={EXECUTION_STRING}\n"
         "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "         memory=None,\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
@@ -1113,7 +1104,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"               block_execution_summary_str={EXECUTION_STRING}\n"
         "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "               memory=None,\n"
         "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
@@ -1411,8 +1401,7 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating operator-level stats:
     `DatasetStats.get_total_wall_time()`,
-    `DatasetStats.get_total_cpu_time()`,
-    `DatasetStats.get_max_heap_memory()`."""
+    `DatasetStats.get_total_cpu_time()`."""
     block_params, block_meta_list = op_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
@@ -1437,9 +1426,6 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     cpu_time_stats = op_stats.cpu_time
     assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.sum
 
-    peak_memory_stats = op_stats.memory
-    assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.max
-
 
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     ds = ray.data.range(5, override_num_blocks=5).map(column_udf("id", lambda x: x + 1))
@@ -1454,7 +1440,6 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     assert op.wall_time is not None
     assert op.cpu_time is not None
     assert op.udf_time is not None
-    assert op.memory is not None
     assert op.output_num_rows is not None
     assert op.output_size_bytes is not None
     assert op.node_count is not None

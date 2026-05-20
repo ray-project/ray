@@ -37,21 +37,6 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     assert shuffled_ds._logical_plan.initial_num_blocks() == 1
 
 
-def test_memory_usage(
-    ray_start_regular, restore_data_context, configure_shuffle_method
-):
-    parallelism = 2
-    ds = ray.data.range(int(1e8), override_num_blocks=parallelism)
-    ds = ds.random_shuffle().materialize()
-
-    stats = ds._get_stats_summary()
-    # TODO(swang): Sort on this dataset seems to produce significant skew, so
-    # one task uses much more memory than the other.
-    for op_stats in stats.operators_stats:
-        if op_stats.memory is not None:
-            assert op_stats.memory.max < 2000
-
-
 @pytest.mark.parametrize("under_threshold", [False, True])
 def test_sort_object_ref_warnings(
     ray_start_regular,
