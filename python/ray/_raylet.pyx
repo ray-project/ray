@@ -3280,30 +3280,29 @@ cdef class CoreWorker:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
 
-        object_refs = []
         for ref_or_generator in object_refs_or_generators:
-            if (not isinstance(ref_or_generator, ObjectRef)
-                    and not isinstance(ref_or_generator, ObjectRefGenerator)):
+            if isinstance(ref_or_generator, ObjectRef):
+                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
+            elif isinstance(ref_or_generator, ObjectRefGenerator):
+                # Push the next object id binary directly to avoid allocating
+                # a Python ObjectRef per generator per wait() call — ray.wait
+                # is called repeatedly by the data streaming executor.
+                wait_ids.push_back(
+                    CObjectID.FromBinary(
+                        ref_or_generator._get_next_object_id_binary()))
+            else:
                 raise TypeError(
                     "wait() expected a list of ray.ObjectRef "
                     "or ObjectRefGenerator, "
                     f"got list containing {type(ref_or_generator)}"
                 )
 
-            if isinstance(ref_or_generator, ObjectRefGenerator):
-                # Before calling wait,
-                # get the next reference from a generator.
-                object_refs.append(ref_or_generator._get_next_ref())
-            else:
-                object_refs.append(ref_or_generator)
-
-        wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results, fetch_local)
         check_status(op_status)
 
-        assert len(results) == len(object_refs)
+        assert len(results) == len(object_refs_or_generators)
 
         ready, not_ready = [], []
         for i, object_ref_or_generator in enumerate(object_refs_or_generators):
@@ -4810,6 +4809,24 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+    def peek_next_object_id_binary(self, ObjectRef generator_id):
+        """Return the binary form of the next object id in the stream.
+
+        Cheaper than peek_object_ref_stream when the caller only needs the id
+        (e.g. ray.wait collects ids into a c_vector[CObjectID] anyway), because
+        it skips building a Python ObjectRef and the rpc::ObjectReference proto.
+        """
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            CObjectID c_next_object_id
+
+        with nogil:
+            c_next_object_id = (
+                CCoreWorkerProcess.GetCoreWorker().PeekNextObjectIdFromStream(
+                    c_generator_id))
+
+        return c_next_object_id.Binary()
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

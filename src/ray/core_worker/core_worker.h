@@ -341,6 +341,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
+  /// Like PeekObjectRefStream, but returns only the ObjectID of the next index
+  /// without building the rpc::ObjectReference proto. Callers that only need
+  /// the id (e.g. for ray.wait, which collects ObjectIDs to pass to Wait) can
+  /// avoid the per-call proto serialization and owner_address copy.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return The ObjectID of the next index. It should not be nil.
+  ObjectID PeekNextObjectIdFromStream(const ObjectID &generator_id);
+
   /// Asynchronously delete the ObjectRefStream that was created upon the
   /// initial task submission. This method triggers a timer. On each interval,
   /// we check whether the generator ref and all dynamic return refs have been
