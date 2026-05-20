@@ -706,6 +706,211 @@ def test_operator_metrics():
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
 
 
+# ---------------------------------------------------------------------------
+# MapOperator: task_memory_bytes merge + metadata-postprocess hook
+# ---------------------------------------------------------------------------
+
+
+def _minimal_map_transformer():
+    """Minimal MapTransformer for constructing map operators in unit tests."""
+    from ray.data._internal.execution.operators.map_transformer import (
+        BlockMapTransformFn,
+        MapTransformer,
+    )
+
+    def _noop(blocks, ctx):
+        return blocks
+
+    return MapTransformer([BlockMapTransformFn(_noop, disable_block_shaping=True)])
+
+
+def _make_task_pool_map_op(*, map_task_kwargs=None, ray_remote_args=None):
+    """Construct a minimal ``TaskPoolMapOperator`` for unit tests."""
+    ctx = DataContext.get_current()
+    return TaskPoolMapOperator(
+        map_transformer=_minimal_map_transformer(),
+        input_op=InputDataBuffer(ctx, input_data=[]),
+        data_context=ctx,
+        name="test_map",
+        target_max_block_size_override=None,
+        min_rows_per_bundle=None,
+        ref_bundler=None,
+        max_concurrency=1,
+        supports_fusion=True,
+        map_task_kwargs=map_task_kwargs,
+        ray_remote_args=ray_remote_args,
+    )
+
+
+def _make_bundle(metadatas):
+    """Wrap one or more ``BlockMetadata`` in a ``RefBundle`` with dummy refs."""
+    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data.block import BlockMetadata  # noqa: F401  (used by caller)
+
+    blocks = []
+    for i, meta in enumerate(metadatas):
+        blocks.append((ray.ObjectRef(bytes([i + 1]) * 28), meta))
+    return RefBundle(blocks=blocks, schema=None, owns_blocks=False)
+
+
+def test_merge_task_memory_with_no_hint_is_noop():
+    """No block carries ``task_memory_bytes`` -> ``memory`` arg unchanged."""
+    from ray.data.block import BlockMetadata
+
+    meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    map_op = _make_task_pool_map_op()
+    remote_args = {"memory": 5_000}
+    map_op._merge_task_memory_into_ray_remote_args(_make_bundle([meta]), remote_args)
+    assert remote_args["memory"] == 5_000
+
+
+def test_merge_task_memory_raises_memory_to_hint():
+    """Single block with hint -> ``memory`` raised to the hint value."""
+    from ray.data.block import BlockMetadata
+
+    meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        task_memory_bytes=500_000_000,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    map_op = _make_task_pool_map_op()
+    remote_args = {"memory": 1_000}
+    map_op._merge_task_memory_into_ray_remote_args(_make_bundle([meta]), remote_args)
+    assert remote_args["memory"] == 500_000_000
+
+
+def test_merge_task_memory_zero_hint_does_not_clobber_user_memory():
+    """``task_memory_bytes == 0`` -> ``max(user, 0) == user``; do not zero."""
+    from ray.data.block import BlockMetadata
+
+    meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        task_memory_bytes=0,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    map_op = _make_task_pool_map_op()
+    remote_args = {"memory": 1_000}
+    map_op._merge_task_memory_into_ray_remote_args(_make_bundle([meta]), remote_args)
+    assert remote_args["memory"] == 1_000
+
+
+def test_merge_task_memory_respects_user_memory_when_larger():
+    """User-supplied ``memory`` wins when it is larger than the hint."""
+    from ray.data.block import BlockMetadata
+
+    gib = 1024 * 1024 * 1024
+    meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        task_memory_bytes=gib,  # 1 GiB
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    map_op = _make_task_pool_map_op()
+    remote_args = {"memory": 2 * gib}  # user reserves 2 GiB
+    map_op._merge_task_memory_into_ray_remote_args(_make_bundle([meta]), remote_args)
+    assert remote_args["memory"] == 2 * gib
+
+
+def test_merge_task_memory_uses_max_hint_across_blocks():
+    """Multiple blocks with hints -> ``memory`` raised to the **max** hint.
+
+    Each per-block hint is already an upper bound on the per-task peak heap
+    for that block. The bundled task's peak is bounded by the largest hint,
+    not the sum (per-block work runs sequentially within the task, so peaks
+    don't compose additively).
+    """
+    from ray.data.block import BlockMetadata
+
+    m1 = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        task_memory_bytes=100_000_000,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    m2 = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        task_memory_bytes=200_000_000,
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    m3 = BlockMetadata(
+        num_rows=1,
+        size_bytes=100,
+        # Block without a hint should not affect the result.
+        exec_stats=None,
+        task_exec_stats=None,
+    )
+    map_op = _make_task_pool_map_op()
+    remote_args = {"memory": 0}
+    map_op._merge_task_memory_into_ray_remote_args(
+        _make_bundle([m1, m2, m3]), remote_args
+    )
+    assert remote_args["memory"] == 200_000_000
+
+
+# Module-level postprocess fn used by
+# ``test_block_metadata_postprocess_fn_is_invoked`` — must be top-level so it
+# could pickle across a Ray task boundary if a hypothetical caller relied on
+# it. The test invokes ``_map_task`` in-process so pickling isn't actually
+# exercised here, but the contract is enforced this way.
+def _stamp_postprocess(block, meta, data_context):
+    """Test postprocess: stamps ``task_memory_bytes=12345`` onto metadata."""
+    from dataclasses import replace
+
+    return replace(meta, task_memory_bytes=12345)
+
+
+def test_block_metadata_postprocess_fn_is_invoked_by_map_task(
+    ray_start_regular_shared,
+):
+    """End-to-end: the postprocess fn attached via map_task_kwargs runs in-task
+    and the stamped ``task_memory_bytes`` propagates to the output metadata.
+    """
+    from ray.data._internal.execution.operators.map_operator import (
+        MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS,
+    )
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(),
+        make_ref_bundles([[i] for i in range(3)]),
+    )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestPostprocess",
+        compute_strategy=TaskPoolStrategy(),
+        map_task_kwargs={
+            MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS: _stamp_postprocess,
+        },
+    )
+    op.start(ExecutionOptions())
+    run_op_tasks_sync(op)
+
+    captured_metadata = []
+    while op.has_next():
+        bundle = op.get_next()
+        captured_metadata.extend(bundle.metadata)
+
+    assert captured_metadata, "expected at least one output bundle"
+    # The postprocess stamped ``task_memory_bytes=12345`` on every output
+    # block's metadata.
+    observed = [m.task_memory_bytes for m in captured_metadata]
+    assert all(v == 12345 for v in observed), observed
+
+
 if __name__ == "__main__":
     import sys
 

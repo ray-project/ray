@@ -124,6 +124,10 @@ class TaskPoolMapOperator(MapOperator):
         )
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
+        # Merge any per-block ``task_memory_bytes`` hints into the Ray
+        # ``memory`` reservation. No-op when no block carries a hint, so this
+        # is safe to call unconditionally for every TaskPoolMapOperator.
+        self._merge_task_memory_into_ray_remote_args(bundle, dynamic_ray_remote_args)
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 

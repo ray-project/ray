@@ -135,6 +135,19 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     return None
 
 
+# Reserved ``map_task_kwargs`` key for an optional, datasource-agnostic
+# metadata-postprocess hook. When set, the value must be a *module-level*
+# (picklable) callable with signature:
+#
+#     fn(block, meta, data_context) -> BlockMetadata
+#
+# ``_map_task`` applies it once per yielded block after ``get_metadata()``
+# and before the block is yielded. Planners (e.g. DataSource V2's
+# ``plan_list_files_op``) use this to attach hint-producing helpers
+# without the generic execution layer importing from those modules.
+MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS = "_block_metadata_postprocess_fn"
+
+
 class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
@@ -483,6 +496,42 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
         return ray_remote_args
 
+    def _estimate_task_memory_bytes(self, input_bundle: RefBundle) -> Optional[int]:
+        """Max ``task_memory_bytes`` hint across the bundle's block metadata.
+
+        Returns ``None`` when no block carries a hint. Uses ``max`` rather
+        than ``sum`` because each per-block hint is already an upper bound
+        on the per-task peak heap for that block; the bundled task's peak
+        is bounded by the largest constituent hint, not the sum (peak ≠
+        cumulative when blocks are processed sequentially within the task).
+        """
+        max_tm: Optional[int] = None
+        for meta in input_bundle.metadata:
+            tm = getattr(meta, "task_memory_bytes", None)
+            if tm is not None:
+                tm_i = int(tm)
+                if max_tm is None or tm_i > max_tm:
+                    max_tm = tm_i
+        return max_tm
+
+    def _merge_task_memory_into_ray_remote_args(
+        self,
+        input_bundle: RefBundle,
+        ray_remote_args: Dict[str, Any],
+    ) -> None:
+        """Raise Ray ``memory`` reservation using per-block hints.
+
+        No-op when no block carries ``task_memory_bytes``. When at least one
+        does, the Ray ``memory`` arg is raised to
+        ``max(user_memory, max_block_hint)`` — user-supplied ``memory=``
+        wins when larger.
+        """
+        task_mem = self._estimate_task_memory_bytes(input_bundle)
+        if task_mem is None:
+            return
+        user_mem = ray_remote_args.get("memory") or 0
+        ray_remote_args["memory"] = max(user_mem, task_mem)
+
     @abstractmethod
     def _try_schedule_task(self, refs: RefBundle, strict: bool):
         """Method to try schedule task handling provided bundle
@@ -734,6 +783,13 @@ def _map_task(
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
                 block_meta = BlockAccessor.for_block(block).get_metadata()
+                # Optional per-block metadata postprocess hook. The hook is
+                # opt-in: set by planners (e.g. DataSource V2 ListFiles) via
+                # ``map_task_kwargs[MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS]``.
+                # Must be a module-level callable so it pickles into Ray tasks.
+                postprocess = kwargs.get(MAP_TASK_KWARG_BLOCK_METADATA_POSTPROCESS)
+                if postprocess is not None:
+                    block_meta = postprocess(block, block_meta, data_context)
                 block_schema = BlockAccessor.for_block(block).schema()
 
                 # Finish processing before yielding the block!
