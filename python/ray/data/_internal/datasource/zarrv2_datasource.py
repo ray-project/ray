@@ -621,6 +621,7 @@ class ZarrV2Datasource(Datasource):
                                 input_files=(self.paths[0],),
                                 exec_stats=None,
                             ),
+                            per_task_row_limit=per_task_row_limit,
                         )
                     )
                     batch = []
@@ -640,6 +641,7 @@ class ZarrV2Datasource(Datasource):
                         input_files=(self.paths[0],),
                         exec_stats=None,
                     ),
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
         return read_tasks
