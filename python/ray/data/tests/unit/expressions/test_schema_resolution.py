@@ -203,17 +203,22 @@ class TestExprlistToFields:
         result = pa.schema(
             exprlist_to_fields([star(), col("a")._rename("renamed_a")], schema)
         )
-        # Renaming "a" -> "renamed_a" drops "a" from star expansion and
-        # appends the renamed field at the end.
+        # Renaming "a" -> "renamed_a" substitutes the renamed field at
+        # "a"'s position (matching runtime ``eval_projection``).
         expected = pa.schema(
             [
+                pa.field("renamed_a", pa.int32(), nullable=True),
                 pa.field("b", pa.float32(), nullable=False),
                 pa.field("name", pa.string(), nullable=True),
                 pa.field("flag", pa.bool_(), nullable=True),
-                pa.field("renamed_a", pa.int32(), nullable=True),
             ]
         )
         assert result == expected
+
+    def test_star_with_rename_missing_source_returns_none(self, schema):
+        # Renaming an absent column must fail resolution (matching the
+        # runtime, which raises "column not found"), not silently append.
+        assert exprlist_to_fields([star(), col("missing")._rename("x")], schema) is None
 
     def test_star_with_with_column(self, schema):
         # with_column-style: [star(), expr.alias(name)] preserves all input

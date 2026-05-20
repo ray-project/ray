@@ -1688,6 +1688,23 @@ class AliasExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
+def is_rename_expr(expr: Expr) -> bool:
+    """Return True iff ``expr`` is a column rename of the form
+    ``col(src)._rename(dst)``.
+
+    Renames are ``AliasExpr`` with ``_is_rename=True`` wrapping a
+    ``ColumnExpr``. ``rename_columns`` produces them, and ``Project``
+    star-expansion treats them specially: the renamed field substitutes
+    for its source column in place rather than appending at the end.
+    """
+    return (
+        isinstance(expr, AliasExpr)
+        and expr._is_rename
+        and isinstance(expr.expr, ColumnExpr)
+    )
+
+
+@DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class StarExpr(Expr):
     """Expression that represents all columns from the input.
@@ -1802,8 +1819,10 @@ def exprlist_to_fields(
     """Resolve a list of expressions against the input schema into PyArrow fields.
 
     Handles ``StarExpr`` inline: when encountered, splices in the input
-    schema's fields (minus columns listed as a rename source by any
-    ``AliasExpr`` with ``_is_rename=True`` elsewhere in the list).
+    schema's fields, with each rename ``AliasExpr`` (``_is_rename=True``
+    wrapping a ``ColumnExpr``) substituted in place of its source field.
+    This preserves the source column's position in the output, matching
+    runtime ``eval_projection``.
 
     Deduplicates on field name with last-wins semantics, matching the
     runtime ``eval_projection`` (which uses ``fill_column``/upsert when
@@ -1831,41 +1850,57 @@ def exprlist_to_fields(
     if input_schema is None:
         return None
 
-    # Collect rename sources so StarExpr expansion can drop them.
-    rename_sources = set()
-    for expr in exprs:
-        if (
-            isinstance(expr, AliasExpr)
-            and expr._is_rename
-            and isinstance(expr.expr, ColumnExpr)
-        ):
-            rename_sources.add(expr.expr.name)
-
-    # Walk the projection list, tracking each field by name. Later
-    # entries with the same name replace earlier ones in place to
-    # match runtime upsert semantics.
-    name_to_index: Dict[str, int] = {}
-    out_fields: List["pyarrow.Field"] = []
-
-    def _emit(field_: "pyarrow.Field") -> None:
-        idx = name_to_index.get(field_.name)
-        if idx is None:
-            name_to_index[field_.name] = len(out_fields)
-            out_fields.append(field_)
-        else:
-            out_fields[idx] = field_
-
+    # Bucket the projection list: rename AliasExprs substitute for their
+    # source column during StarExpr expansion (preserving on-disk column
+    # order, matching runtime ``eval_projection``); non-rename exprs are
+    # emitted afterwards in original order.
+    has_star = False
+    rename_by_source_name: Dict[str, AliasExpr] = {}
+    non_rename_exprs: List[Expr] = []
     for expr in exprs:
         if isinstance(expr, StarExpr):
-            for field_ in input_schema:
-                if field_.name not in rename_sources:
-                    _emit(field_)
-            continue
+            has_star = True
+        elif is_rename_expr(expr):
+            rename_by_source_name[expr.expr.name] = expr
+        else:
+            non_rename_exprs.append(expr)
+
+    # Output fields, deduped by name with last-wins semantics (matching
+    # runtime ``eval_projection``'s ``fill_column``/upsert behavior).
+    output_field_index: Dict[str, int] = {}
+    output_fields: List["pyarrow.Field"] = []
+
+    def _upsert_field(field_: "pyarrow.Field") -> None:
+        idx = output_field_index.get(field_.name)
+        if idx is None:
+            output_field_index[field_.name] = len(output_fields)
+            output_fields.append(field_)
+        else:
+            output_fields[idx] = field_
+
+    def _resolve_and_upsert(expr: Expr) -> bool:
         resolved = expr.to_field(input_schema)
         if resolved is None:
+            return False
+        _upsert_field(resolved)
+        return True
+
+    if has_star:
+        for input_field in input_schema:
+            rename_expr = rename_by_source_name.pop(input_field.name, None)
+            if rename_expr is None:
+                _upsert_field(input_field)
+            elif not _resolve_and_upsert(rename_expr):
+                return None
+
+    # Any rename whose source isn't in ``input_schema`` falls through
+    # here and will fail resolution -> None, matching the runtime's
+    # "column not found" error.
+    for expr in (*rename_by_source_name.values(), *non_rename_exprs):
+        if not _resolve_and_upsert(expr):
             return None
-        _emit(resolved)
-    return out_fields
+
+    return output_fields
 
 
 @PublicAPI(stability="beta")

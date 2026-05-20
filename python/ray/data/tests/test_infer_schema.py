@@ -126,11 +126,13 @@ class TestProject:
 
     def test_rename_columns(self, ray_start_regular_shared_2_cpus, parquet_path):
         ds = ray.data.read_parquet(str(parquet_path)).rename_columns({"a": "x"})
+        # Renamed columns occupy the source column's position so the static
+        # schema matches the materialized column order.
         assert _static_schema(ds) == pa.schema(
             [
+                pa.field("x", pa.int32()),
                 pa.field("b", pa.float32()),
                 pa.field("k", pa.string()),
-                pa.field("x", pa.int32()),
             ]
         )
 
