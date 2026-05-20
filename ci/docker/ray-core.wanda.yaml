@@ -17,6 +17,7 @@ srcs:
   - python/ray/includes/
   - python/ray/serve/_private/_timeseries_utils.pyx
   - python/ray/serve/BUILD.bazel
+  - python/ray/serve/serve_exported_symbols.lds
   - java/BUILD.bazel
   - java/dependencies.bzl
   - release/BUILD.bazel
