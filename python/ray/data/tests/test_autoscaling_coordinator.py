@@ -1,4 +1,3 @@
-import logging
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +8,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     HEAD_NODE_RESOURCE_LABEL,
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,
+    _format_allocated_resources_for_log,
     get_or_create_autoscaling_coordinator,
 )
 from ray.data._internal.util import GiB
@@ -214,7 +214,7 @@ def test_double_allocation_with_multiple_request_remaining():
     assert res2 == req2 + [expected_remaining_per_requester]
 
 
-def test_allocated_resources_debug_log_filters_and_aggregates(propagate_logs, caplog):
+def test_allocated_resources_log_formatter_filters_and_aggregates():
     cluster_nodes = [
         {
             "Resources": {
@@ -255,39 +255,27 @@ def test_allocated_resources_debug_log_filters_and_aggregates(propagate_logs, ca
             "NodeID": "n3",
         },
     ]
+
     coordinator = _AutoscalingCoordinatorActor(
         get_current_time=lambda: 0,
         send_resources_request=Mock(),
         get_cluster_nodes=lambda: cluster_nodes,
     )
-
-    logger_name = (
-        "ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator"
+    coordinator.request_resources(
+        requester_id="requester1",
+        resources=[],
+        expire_after_s=100,
+        request_remaining=True,
     )
-    with caplog.at_level(logging.DEBUG, logger=logger_name):
-        coordinator.request_resources(
-            requester_id="requester1",
-            resources=[],
-            expire_after_s=100,
-            request_remaining=True,
-        )
 
     allocated = coordinator.get_allocated_resources("requester1")
     assert any("anyscale/cpu_only:true" in bundle for bundle in allocated)
     assert any("node:10.0.193.159" in bundle for bundle in allocated)
 
-    allocated_resource_logs = [
-        record.message
-        for record in caplog.records
-        if record.message.startswith("Allocated resources:")
-    ]
-    assert allocated_resource_logs == [
-        "Allocated resources:\n"
-        "Requester requester1: "
-        "[2 x {CPU: 8, memory: 32.0GiB, object_store_memory: 9.0GiB}]\n"
-    ]
-
-    log_message = allocated_resource_logs[0]
+    log_message = _format_allocated_resources_for_log(allocated)
+    assert log_message == (
+        "[2 x {CPU: 8, memory: 32.0GiB, object_store_memory: 9.0GiB}]"
+    )
     assert "anyscale/" not in log_message
     assert "node:" not in log_message
     assert "GPU" not in log_message
