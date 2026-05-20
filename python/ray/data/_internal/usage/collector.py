@@ -108,55 +108,45 @@ def _safe_version(pkg: str) -> Optional[str]:
         return importlib.metadata.version(pkg)
     except importlib.metadata.PackageNotFoundError:
         return None
-    except Exception:
-        return None
 
 
 def _collect_workload(logical_plan: "LogicalPlan") -> dict:
     """Collect anonymized plan and per-op config"""
-    ops: List[dict] = []
-    _walk_operators(logical_plan.dag, ops)
+    ops = _walk_operators(logical_plan.dag)
     return {
         "plan": "->".join(op["name"] for op in ops),
         "ops": ops,
     }
 
 
-def _walk_operators(op: LogicalOperator, out: List[dict]) -> None:
+def _walk_operators(op: LogicalOperator) -> List[dict]:
     """Post-order walk producing anonymized op names + per-op config."""
+    ops: List[dict] = []
     for child in op.input_dependencies:
-        _walk_operators(child, out)
+        ops.extend(_walk_operators(child))
 
     entry: Dict[str, Any] = {"name": _anonymize_op_name(op)}
     if isinstance(op, AbstractUDFMap):
         batch_format = getattr(op, "batch_format", None)
         if batch_format is not None:
             entry["config"] = {"batch_format": batch_format}
-    out.append(entry)
+    ops.append(entry)
+    return ops
 
 
 def _anonymize_op_name(op: LogicalOperator) -> str:
-    """Reuse the existing whitelist logic from ``logical/util.py``."""
+    """Anonymize an operator name against the whitelist from ``logical/util.py``.
+    """
     if isinstance(op, Read):
         name = f"Read{op.datasource.get_name()}"
         return name if name in _op_name_white_list else "ReadCustom"
     if isinstance(op, Write):
         name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
         return name if name in _op_name_white_list else "WriteCustom"
-    if isinstance(op, AbstractUDFMap):
-        return _anonymize_op_name_str(op.name)
-    return _anonymize_op_name_str(op.name)
-
-
-def _anonymize_op_name_str(name: Optional[str]) -> str:
-    """Anonymize an operator name string against the whitelist.
-
-    Used for physical-operator names from ``OperatorStatsSummary`` and
-    ``_topology`` where we only have a string. UDF suffixes like
-    ``MapBatches(my_fn)`` are stripped before whitelist lookup.
-    """
+    name = op.name
     if not name:
         return "Unknown"
+    # Remove the function name from the map operator name
     bare = re.sub(r"\(.*\)$", "", name).strip()
     return bare if bare in _op_name_white_list else "Unknown"
 
