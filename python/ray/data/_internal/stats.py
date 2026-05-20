@@ -512,6 +512,8 @@ class _StatsActor:
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
                 continue
+            if metric.metrics_type == MetricsType.Unsupported:
+                continue
             metric_name = f"data_{metric.name}"
             metric_description = metric.description
             if metric.metrics_type == MetricsType.Gauge:
