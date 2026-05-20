@@ -234,9 +234,8 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
         MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
     std::string used_memory_gb = "Not Found";
     if (used_memory_or.has_value()) {
-      int64_t used_memory = used_memory_or.value();
-      used_memory_gb =
-          absl::StrFormat("%.2f", static_cast<float>(used_memory) / 1024 / 1024 / 1024);
+      used_memory_gb = absl::StrFormat(
+          "%.2f", static_cast<float>(used_memory_or.value()) / 1024 / 1024 / 1024);
     } else {
       RAY_LOG_EVERY_MS(INFO, 60000) << used_memory_or.message();
     }
@@ -256,7 +255,7 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
     }
     worker_debug_strings.push_back(absl::StrFormat(
         "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %s "
-        "bytes)",
+        "GiB)",
         worker->GetGrantedLeaseId().Hex(),
         worker_granted_time,
         retriable ? "yes" : "no",
