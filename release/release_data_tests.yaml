@@ -590,7 +590,7 @@
       worker_type: [actors, tasks]
 
   run:
-    timeout: 1800
+    timeout: 2700
     # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded.
     # PYSPY_S3_DEST   → profile + log are uploaded under this prefix at the
     #                   end of the run. ANYSCALE_JOB_ID is set by the job
@@ -601,8 +601,8 @@
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
-      --num-scalar-cols 100
-      --num-array-cols 200
+      --num-scalar-cols 200
+      --num-array-cols 400
 
 
 ########################
