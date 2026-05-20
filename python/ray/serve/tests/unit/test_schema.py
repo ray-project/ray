@@ -21,6 +21,7 @@ from ray.serve.config import (
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
+    ControllerHealthMetrics,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
@@ -1457,10 +1458,6 @@ def test_serve_instance_details_is_json_serializable():
 def test_serve_instance_details_default_controller_health_metrics():
     """ServeInstanceDetails.controller_health_metrics defaults to a
     ControllerHealthMetrics instance with zeroed values."""
-    from ray.serve._private.controller_health_metrics_tracker import (
-        ControllerHealthMetrics,
-    )
-
     details = ServeInstanceDetails(
         controller_info={"node_id": "fake_node_id"},
         proxy_location="EveryNode",
@@ -1477,10 +1474,6 @@ def test_serve_instance_details_default_controller_health_metrics():
 def test_serve_instance_details_includes_controller_health_metrics():
     """When controller_health_metrics is explicitly set, it should appear in the
     user-facing JSON-serializable representation."""
-    from ray.serve._private.controller_health_metrics_tracker import (
-        ControllerHealthMetrics,
-    )
-
     health_metrics = ControllerHealthMetrics(
         timestamp=1000.0,
         controller_start_time=900.0,

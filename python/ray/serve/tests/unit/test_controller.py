@@ -9,11 +9,11 @@ from ray.serve._private.controller import (
 )
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
-    ControllerHealthMetrics,
     ControllerHealthMetricsTracker,
-    DurationStats,
 )
 from ray.serve.schema import (
+    ControllerHealthMetrics,
+    DurationStats,
     HTTPOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
