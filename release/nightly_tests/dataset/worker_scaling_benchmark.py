@@ -14,11 +14,14 @@ production workloads.
 Set ``PYSPY_ENABLED=1`` in the environment to record a py-spy speedscope
 profile of the driver process (the StreamingExecutor's scheduler thread).
 The profile is written to ``--profile-output-dir`` (default
-``/tmp/worker_scaling_profile``).
+``/tmp/worker_scaling_profile``) and uploaded to the telemetry bucket
+configured in ``pyspy_profiler.py``.
 """
 
 import argparse
+import os
 import pickle
+import uuid
 from typing import Dict, List
 
 import numpy as np
@@ -204,4 +207,6 @@ if __name__ == "__main__":
     try:
         main(args)
     finally:
-        pyspy_profiler.stop()
+        job_id = os.environ.get("ANYSCALE_JOB_ID", f"local-{uuid.uuid4().hex[:8]}")
+        s3_prefix = f"worker-scaling/{args.num_workers}_{args.worker_type}/{job_id}"
+        pyspy_profiler.stop(s3_prefix=s3_prefix)
