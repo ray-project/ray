@@ -840,6 +840,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         if pod_type:
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
-        TPUAcceleratorManager.inject_torch_tpu_env_vars()
-
         return tpu_labels
+
+    @staticmethod
+    def set_accelerator_env_vars(environ: Optional[Dict[str, str]] = None) -> None:
+        TPUAcceleratorManager.inject_torch_tpu_env_vars(environ=environ)

@@ -25,10 +25,7 @@ class TPUTorchDeviceManager(TorchDeviceManager):
     @staticmethod
     def register_custom_torch_dist_backend():
         if TORCH_TPU_PACKAGE_AVAILABLE:
-            from torch_tpu import api
-
-            # Trigger torch_tpu initialization for correct backend registration
-            _ = api.tpu_device()  # noqa: F841
+            import torch_tpu  # noqa: F401, F811
 
     def is_available(self) -> bool:
         return TORCH_TPU_PACKAGE_AVAILABLE

@@ -338,6 +338,8 @@ class ResourceAndLabelSpec:
         if not accelerator_manager:
             return
 
+        accelerator_manager.set_accelerator_env_vars()
+
         accelerator_resource_name = accelerator_manager.get_resource_name()
         visible_accelerator_ids = (
             accelerator_manager.get_current_process_visible_accelerator_ids()

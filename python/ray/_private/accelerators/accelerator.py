@@ -156,3 +156,8 @@ class AcceleratorManager(ABC):
             A dictionary mapping accelerator related label keys to values.
         """
         return None
+
+    @staticmethod
+    def set_accelerator_env_vars(environ: Optional[Dict[str, str]] = None) -> None:
+        """Set accelerator specific environment variables in the current process if missing."""
+        pass

@@ -27,6 +27,7 @@ class FakeAcceleratorManager(AcceleratorManager):
         self._num_accelerators = num_accelerators
         self._additional_resources = additional_resources
         self._visible_ids = visible_ids
+        self.set_env_vars_called = False
 
     def get_current_node_num_accelerators(self) -> int:
         return self._num_accelerators
@@ -53,6 +54,9 @@ class FakeAcceleratorManager(AcceleratorManager):
 
     def validate_resource_request_quantity(self, quantity: int) -> None:
         pass
+
+    def set_accelerator_env_vars(self, environ=None) -> None:
+        self.set_env_vars_called = True
 
 
 def test_resource_and_label_spec_resolves_with_params():
@@ -351,6 +355,22 @@ def test_resolve_sets_non_gpu_accelerator():
     # Accelerator type label is present
     assert spec.labels.get("ray.io/accelerator-type") == "TPU-v6e"
     assert spec.resolved()
+
+
+def test_resolve_calls_set_accelerator_env_vars():
+    """Verify that resolve calls set_accelerator_env_vars on the accelerator manager."""
+    spec = ResourceAndLabelSpec()
+    fake_manager = FakeAcceleratorManager("GPU", "A100", 4)
+    with patch(
+        "ray._private.accelerators.get_accelerator_manager_for_resource",
+        return_value=fake_manager,
+    ), patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["GPU"],
+    ):
+        spec.resolve(is_head=False)
+
+    assert fake_manager.set_env_vars_called
 
 
 if __name__ == "__main__":
