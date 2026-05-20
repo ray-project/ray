@@ -32,6 +32,7 @@ from ray.data._internal.util import (
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
+    strip_invalid_tail,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -418,91 +419,180 @@ def test_matches_error(pattern, error_message, expected):
     assert matches_error(pattern, error_message) is expected
 
 
+def _np_cols(table: pa.Table) -> List[np.ndarray]:
+    """Helper: materialize all of a table's columns as numpy arrays."""
+    return [table[c].to_numpy(zero_copy_only=False) for c in table.column_names]
+
+
 def test_find_partition_index_single_column_ascending():
-    table = pa.table({"value": [1, 2, 2, 3, 5]})
+    cols = _np_cols(pa.table({"value": [1, 2, 2, 3, 5]}))
     sort_key = SortKey(key=["value"], descending=[False])
-    assert find_partition_index(table, (0,), sort_key) == 0  # all entries > 0
-    assert find_partition_index(table, (2,), sort_key) == 1  # first match index
-    assert find_partition_index(table, (4,), sort_key) == 4  # belongs after 3, before 5
-    assert find_partition_index(table, (6,), sort_key) == 5  # all entries < 6
+    assert find_partition_index(cols, (0,), sort_key) == 0  # all entries > 0
+    assert find_partition_index(cols, (2,), sort_key) == 1  # first match index
+    assert find_partition_index(cols, (4,), sort_key) == 4  # belongs after 3, before 5
+    assert find_partition_index(cols, (6,), sort_key) == 5  # all entries < 6
 
 
 def test_find_partition_index_single_column_descending():
-    table = pa.table({"value": [5, 3, 2, 2, 1]})
+    cols = _np_cols(pa.table({"value": [5, 3, 2, 2, 1]}))
     sort_key = SortKey(key=["value"], descending=[True])
-    assert find_partition_index(table, (6,), sort_key) == 0  # belongs before 5
-    assert find_partition_index(table, (3,), sort_key) == 2  # after the last 3
-    assert find_partition_index(table, (2,), sort_key) == 4  # after the last 2
-    assert find_partition_index(table, (0,), sort_key) == 5  # all entries > 0
+    assert find_partition_index(cols, (6,), sort_key) == 0  # belongs before 5
+    assert find_partition_index(cols, (3,), sort_key) == 2  # after the last 3
+    assert find_partition_index(cols, (2,), sort_key) == 4  # after the last 2
+    assert find_partition_index(cols, (0,), sort_key) == 5  # all entries > 0
 
 
 def test_find_partition_index_multi_column():
     # Table sorted by col1 asc, then col2 desc.
-    table = pa.table({"col1": [1, 1, 1, 2, 2], "col2": [3, 2, 1, 2, 1]})
+    cols = _np_cols(pa.table({"col1": [1, 1, 1, 2, 2], "col2": [3, 2, 1, 2, 1]}))
     sort_key = SortKey(key=["col1", "col2"], descending=[False, True])
     # Insert value (1,3) -> belongs before (1,2)
-    assert find_partition_index(table, (1, 3), sort_key) == 0
+    assert find_partition_index(cols, (1, 3), sort_key) == 0
     # Insert value (1,2) -> belongs after the first (1,3) and before (1,2)
     # because col1 ties, col2 descending
-    assert find_partition_index(table, (1, 2), sort_key) == 1
+    assert find_partition_index(cols, (1, 2), sort_key) == 1
     # Insert value (2,2) -> belongs right before (2,2) that starts at index 3
-    assert find_partition_index(table, (2, 2), sort_key) == 3
+    assert find_partition_index(cols, (2, 2), sort_key) == 3
     # Insert value (0, 4) -> belongs at index 0 (all col1 > 0)
-    assert find_partition_index(table, (0, 4), sort_key) == 0
+    assert find_partition_index(cols, (0, 4), sort_key) == 0
     # Insert value (2,0) -> belongs after (2,1)
-    assert find_partition_index(table, (2, 0), sort_key) == 5
+    assert find_partition_index(cols, (2, 0), sort_key) == 5
 
 
-def test_find_partition_index_with_nulls():
-    # _NullSentinel is sorted greater, so they appear after all real values.
-    table = pa.table({"value": [1, 2, 3, None, None]})
+def test_find_partition_index_null_boundary():
+    # Precondition: columns are already null/NaN-free (caller strips the tail
+    # via strip_invalid_tail). A None boundary belongs at the end.
+    cols = [np.array([1, 2, 3])]
     sort_key = SortKey(key=["value"], descending=[False])
-    # Insert (2,) -> belongs after 1, before 2 => index 1
-    # (But the actual find_partition_index uses the table as-is.)
-    assert find_partition_index(table, (2,), sort_key) == 1
-    # Insert (4,) -> belongs before any null => index 3
-    assert find_partition_index(table, (4,), sort_key) == 3
-    # Insert (None,) -> always belongs at the end
-    assert find_partition_index(table, (None,), sort_key) == 3
-
-
-def test_find_partition_index_with_nan():
-    # NaN sorts after regular values in Arrow (before nulls).
-    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), float("nan")]})
-    sort_key = SortKey(key=["value"], descending=[False])
-    assert find_partition_index(table, (2.0,), sort_key) == 1
-    assert find_partition_index(table, (4.0,), sort_key) == 3
-
-
-def test_find_partition_index_with_nan_and_nulls():
-    # NaN sorts after regular values, nulls sort after NaN.
-    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), None]})
-    sort_key = SortKey(key=["value"], descending=[False])
-    assert find_partition_index(table, (2.0,), sort_key) == 1
-    assert find_partition_index(table, (4.0,), sort_key) == 3
-    assert find_partition_index(table, (None,), sort_key) == 3
+    assert find_partition_index(cols, (2,), sort_key) == 1
+    assert find_partition_index(cols, (4,), sort_key) == 3
+    assert find_partition_index(cols, (None,), sort_key) == 3
 
 
 def test_find_partition_index_duplicates():
-    table = pa.table({"value": [2, 2, 2, 2, 2]})
+    cols = [np.array([2, 2, 2, 2, 2])]
     sort_key = SortKey(key=["value"], descending=[False])
     # Insert (2,) in a table of all 2's -> first matching index is 0
-    assert find_partition_index(table, (2,), sort_key) == 0
+    assert find_partition_index(cols, (2,), sort_key) == 0
     # Insert (1,) -> belongs at index 0
-    assert find_partition_index(table, (1,), sort_key) == 0
+    assert find_partition_index(cols, (1,), sort_key) == 0
     # Insert (3,) -> belongs at index 5
-    assert find_partition_index(table, (3,), sort_key) == 5
+    assert find_partition_index(cols, (3,), sort_key) == 5
 
 
 def test_find_partition_index_duplicates_descending():
-    table = pa.table({"value": [2, 2, 2, 2, 2]})
+    cols = [np.array([2, 2, 2, 2, 2])]
     sort_key = SortKey(key=["value"], descending=[True])
     # Insert (2,) in a table of all 2's -> belongs at index 5
-    assert find_partition_index(table, (2,), sort_key) == 5
+    assert find_partition_index(cols, (2,), sort_key) == 5
     # Insert (1,) -> belongs at index 5
-    assert find_partition_index(table, (1,), sort_key) == 5
+    assert find_partition_index(cols, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
-    assert find_partition_index(table, (3,), sort_key) == 0
+    assert find_partition_index(cols, (3,), sort_key) == 0
+
+
+# --- strip_invalid_tail ----------------------------------------------------
+
+
+def test_strip_invalid_tail_arrow_no_nulls_is_passthrough():
+    arr = pa.array([1, 2, 3, 4, 5])
+    np.testing.assert_array_equal(strip_invalid_tail(arr), np.array([1, 2, 3, 4, 5]))
+
+
+def test_strip_invalid_tail_arrow_bitmap_nulls():
+    arr = pa.array([1, 2, 3, None, None])
+    out = strip_invalid_tail(arr)
+    assert len(out) == 3
+    assert list(out) == [1, 2, 3]
+
+
+def test_strip_invalid_tail_arrow_float_nan_not_in_bitmap():
+    # Float NaN that isn't tagged as a bitmap null still sorts last; the
+    # tail-element pd.isna check must catch it.
+    arr = pa.array([1.0, 2.0, 3.0, float("nan"), float("nan")])
+    assert arr.null_count == 0  # NaN, not bitmap null
+    out = strip_invalid_tail(arr)
+    assert len(out) == 3
+
+
+def test_strip_invalid_tail_arrow_nan_and_bitmap_nulls():
+    # NaN sorts before nulls but both appear at the tail.
+    arr = pa.array([1.0, 2.0, 3.0, float("nan"), None])
+    out = strip_invalid_tail(arr)
+    assert len(out) == 3
+
+
+def test_strip_invalid_tail_arrow_all_nulls():
+    arr = pa.array([None, None, None], type=pa.int64())
+    assert len(strip_invalid_tail(arr)) == 0
+
+
+def test_strip_invalid_tail_arrow_empty():
+    arr = pa.array([], type=pa.int64())
+    assert len(strip_invalid_tail(arr)) == 0
+
+
+def test_strip_invalid_tail_pandas_series_pd_na_tail():
+    # pandas nullable Int64 with pd.NA at the tail — the universal pd.isna
+    # path must catch this even though Series has no null_count attribute.
+    s = pd.Series([1, 2, 3, pd.NA, pd.NA], dtype="Int64")
+    out = strip_invalid_tail(s)
+    assert len(out) == 3
+    assert list(out) == [1, 2, 3]
+
+
+def test_strip_invalid_tail_pandas_series_object_with_none():
+    s = pd.Series(["a", "b", None, None], dtype="object")
+    assert len(strip_invalid_tail(s)) == 2
+
+
+def test_strip_invalid_tail_pandas_series_datetime_with_nat():
+    s = pd.Series(pd.to_datetime(["2024-01-01", "2024-01-02", pd.NaT]))
+    assert len(strip_invalid_tail(s)) == 2
+
+
+# --- end-to-end: _find_partitions_sorted with nullable inputs --------------
+#
+# These cover what the old test_find_partition_index_with_{nulls,nan,
+# nan_and_nulls} tests were exercising — i.e. that the caller correctly
+# strips the tail before delegating to ``find_partition_index``.
+
+
+def _partition_offsets(table: pa.Table, boundaries: List[tuple], sort_key: SortKey):
+    """Run a block accessor's ``_find_partitions_sorted`` and return the
+    boundary offsets (the starting index of each non-final partition)."""
+    from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+    parts = ArrowBlockAccessor(table)._find_partitions_sorted(boundaries, sort_key)
+    offsets = []
+    n = 0
+    for p in parts[:-1]:
+        n += len(p)
+        offsets.append(n)
+    return offsets
+
+
+def test_find_partitions_sorted_with_nulls():
+    table = pa.table({"value": [1, 2, 3, None, None]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert _partition_offsets(table, [(2,)], sort_key) == [1]
+    assert _partition_offsets(table, [(4,)], sort_key) == [3]
+    assert _partition_offsets(table, [(None,)], sort_key) == [3]
+
+
+def test_find_partitions_sorted_with_nan():
+    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), float("nan")]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert _partition_offsets(table, [(2.0,)], sort_key) == [1]
+    assert _partition_offsets(table, [(4.0,)], sort_key) == [3]
+
+
+def test_find_partitions_sorted_with_nan_and_nulls():
+    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), None]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert _partition_offsets(table, [(2.0,)], sort_key) == [1]
+    assert _partition_offsets(table, [(4.0,)], sort_key) == [3]
+    assert _partition_offsets(table, [(None,)], sort_key) == [3]
 
 
 def test_merge_resources_to_ray_remote_args():

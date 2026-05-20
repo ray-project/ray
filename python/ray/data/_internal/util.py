@@ -859,24 +859,52 @@ def unify_ref_bundles_schema(
     return unify_schemas_with_validation(schemas_to_unify)
 
 
+def strip_invalid_tail(column) -> np.ndarray:
+    """Truncate a sorted column to its leading null-free prefix as a numpy array.
+
+    PyArrow sorts every null-like value (Arrow bitmap nulls, float NaN,
+    ``pd.NA``, ``NaT``, ``None``) at the tail, so the valid region of a
+    sorted column is always ``[0, first_null)``. ``pd.isna`` recognizes
+    all of those encodings on any dtype, so a single O(1) tail check
+    covers the common no-null case; only when the tail is null do we pay
+    an O(n) ``argmax`` to locate the boundary.
+
+    Stripping once here — rather than per boundary inside
+    ``find_partition_index`` — lets ``np.searchsorted`` operate on clean
+    arrays in the hot loop.
+    """
+    from ray.data.block import BlockColumnAccessor
+
+    np_col = BlockColumnAccessor.for_column(column).to_numpy()
+    if len(np_col) == 0 or not pd.isna(np_col[-1]):
+        return np_col
+    return np_col[: int(np.argmax(pd.isna(np_col)))]
+
+
 def find_partition_index(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    columns: List[np.ndarray],
     desired: Tuple[Union[int, float]],
     sort_key: "SortKey",
 ) -> int:
-    """For the given block, find the index where the desired value should be
-    added, to maintain sorted order.
+    """For the given list of sorted columns, find the index where ``desired``
+    should be inserted to maintain sorted order.
 
     We do this by iterating over each column, starting with the primary sort key,
     and binary searching for the desired value in the column. Each binary search
     shortens the "range" of indices (represented by ``left`` and ``right``, which
     are indices of rows) where the desired value could be inserted.
 
+    Precondition: ``columns`` must contain no nulls or NaN values. PyArrow sorts
+    those at the tail; callers are expected to truncate the tail (via
+    ``strip_invalid_tail``) before passing arrays in. ``np.searchsorted`` is
+    undefined on NaN, so we cannot accept them here; stripping per call would
+    also reintroduce an O(n*B) hot path that this contract is designed to avoid.
+
     Args:
-        table: The block to search in.
+        columns: List of sorted, null/NaN-free numpy arrays — one per sort key
+            column. All arrays must have the same length.
         desired: A single tuple representing the boundary to partition at.
-            ``len(desired)`` must be less than or equal to the number of columns
-            being sorted.
+            ``len(desired)`` must be less than or equal to ``len(columns)``.
         sort_key: The sort key to use for sorting, providing the columns to be
             sorted and their directions.
 
@@ -884,28 +912,21 @@ def find_partition_index(
         The index where the desired value should be inserted to maintain sorted
         order.
     """
-    columns = sort_key.get_columns()
+    assert columns, "Expected non-empty list of key columns"
+
     descending = sort_key.get_descending()
 
-    left, right = 0, len(table)
+    left, right = 0, len(columns[0])
     for i in range(len(desired)):
         if left == right:
             return right
-        col_name = columns[i]
-        col_vals = table[col_name].to_numpy()[left:right]
+        col_vals = columns[i][left:right]
         desired_val = desired[i]
 
-        # Nulls and NaN sort last in Arrow, so they accumulate at the tail of
-        # col_vals. Strip them before np.searchsorted to avoid incorrect bounds.
-        # Use O(1) null_count as a fast path, and fall back to np.isnan for
-        # float columns that may contain NaN without Arrow nulls.
-        column = table[col_name]
-        if hasattr(column, "null_count") and column.null_count > 0:
-            col_vals = col_vals[~pd.isna(col_vals)]
-        elif col_vals.dtype.kind == "f" and np.isnan(col_vals).any():
-            col_vals = col_vals[~np.isnan(col_vals)]
+        # A ``None`` boundary belongs at the end of the (already-stripped)
+        # non-null region.
         if desired_val is None:
-            return left + len(col_vals)
+            return right
 
         prevleft = left
         if descending[i] is True:

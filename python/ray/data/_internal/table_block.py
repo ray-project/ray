@@ -22,6 +22,7 @@ from ray.data._internal.util import (
     find_partition_index,
     is_nan,
     keys_equal,
+    strip_invalid_tail,
 )
 from ray.data.block import (
     Block,
@@ -494,6 +495,16 @@ class TableBlockAccessor(BlockAccessor):
     ):
         partitions = []
 
+        # Materialize sort-key columns as null/NaN-free numpy arrays once per
+        # block. PyArrow sorts null-like values (bitmap nulls, NaN, pd.NA, NaT,
+        # None) at the tail, so we truncate them here instead of stripping
+        # per-boundary inside ``find_partition_index``. Returned partition
+        # indices remain valid against ``self._table`` because the stripped
+        # tail lands in the final partition (``self._table[last_idx:]``) below.
+        key_columns = [
+            strip_invalid_tail(self._table[col]) for col in sort_key.get_columns()
+        ]
+
         # For each boundary value, count the number of items that are less
         # than it. Since the block is sorted, these counts partition the items
         # such that boundaries[i] <= x < boundaries[i + 1] for each x in
@@ -501,7 +512,7 @@ class TableBlockAccessor(BlockAccessor):
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
         bounds = [
-            find_partition_index(self._table, boundary, sort_key)
+            find_partition_index(key_columns, boundary, sort_key)
             for boundary in boundaries
         ]
 
