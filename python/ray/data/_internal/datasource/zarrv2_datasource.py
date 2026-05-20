@@ -280,22 +280,6 @@ def _resolve_store(
     return fs, root.rstrip("/")
 
 
-def _strip_protocol(path: str, filesystem) -> str:
-    """Return ``path`` without its URL scheme, as ``fsspec.get_mapper`` expects.
-
-    Prefers the filesystem's own ``_strip_protocol`` if it exposes one (the
-    standard fsspec contract); otherwise removes any ``<scheme>://`` prefix
-    found via :func:`urlsplit`.
-    """
-    if hasattr(filesystem, "_strip_protocol"):
-        return filesystem._strip_protocol(path)
-
-    parsed = urlsplit(path)
-    if parsed.scheme:
-        return path.removeprefix(f"{parsed.scheme}://")
-    return path
-
-
 def _create_read_fn(
     batch: list[ZarrChunkRow], root: ZarrRoot | None = None
 ) -> Callable[[], Iterable[pd.DataFrame]]:
@@ -381,9 +365,6 @@ def _create_read_fn(
 
                 dtype = np.dtype(row["meta"]["dtype"])
                 chunk = chunk.astype(dtype, copy=False)
-
-                if np.issubdtype(chunk.dtype, np.floating):
-                    chunk = np.nan_to_num(chunk, nan=0, posinf=0, neginf=0, copy=False)
 
                 if any(p > 0 for p in padding):
                     chunk = np.pad(
@@ -491,27 +472,15 @@ class ZarrV2Datasource(Datasource):
         self._grid_shape_dict = self._gen_grid_shape()
 
         if self.materialize:
-            self.root = self._zarr_root_init()
+            # Lazy zarr import: descriptor-only callers don't need it.
+            # zarr.open returns an Array when the store's root is itself an
+            # array (.zarray at root) and a Group otherwise; the read-task
+            # dispatch handles both via the empty-string convention in
+            # self._selected_arrays.
+            import zarr
 
-    def _zarr_root_init(self) -> ZarrRoot:
-        """Open the Zarr store and return its root handle for materialization.
-
-        Only called when ``materialize=True``. ``zarr`` is imported lazily here
-        so descriptor-only usage doesn't need it. ``zarr.open`` returns an
-        ``Array`` when the store's root is itself an array (``.zarray`` at
-        root) and a ``Group`` when the root is a group (``.zgroup`` at root);
-        the read-task dispatch handles both via the empty-string convention
-        in ``self._selected_arrays``.
-        """
-        import zarr
-
-        filesystem = self._filesystem
-        if filesystem is None:
-            filesystem, _ = _resolve_store(self.paths[0], filesystem)
-
-        mapper_path = _strip_protocol(self.paths[0], filesystem)
-        mapper = filesystem.get_mapper(mapper_path)
-        return zarr.open(mapper, mode="r")
+            fs, store_path = _resolve_store(self.paths[0], self._filesystem)
+            self.root = zarr.open(fs.get_mapper(store_path), mode="r")
 
     def _load_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
         """Discover and load ``.zarray`` metadata for the selected arrays.
