@@ -1662,7 +1662,6 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_SERVE_ENABLE_HA_PROXY=1
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
         - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
@@ -1673,7 +1672,7 @@
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/microbenchmarks.py --run-http --run-handle --run-latency --run-throughput --run-streaming
+    script: python workloads/microbenchmarks.py --run-all
 
   alert: default
 
