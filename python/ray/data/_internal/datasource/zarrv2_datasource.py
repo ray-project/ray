@@ -23,9 +23,12 @@ from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
+    from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
     from ray.data.context import DataContext
+
+    ZarrRoot = ZarrGroup | ZarrArray
 
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
@@ -87,7 +90,7 @@ def _strip_protocol(path: str, filesystem) -> str:
 
 
 def _create_read_fn(
-    batch: list[ZarrChunkRow], root: ZarrGroup | None = None
+    batch: list[ZarrChunkRow], root: ZarrRoot | None = None
 ) -> Callable[[], Iterable[pd.DataFrame]]:
     """Build a read-task callable for a batch of Zarr chunk descriptors.
 
@@ -96,7 +99,7 @@ def _create_read_fn(
     rows that describe the chunk bounds, shape, dtype, and edge padding needed
     to reconstruct truncated boundary chunks.
     """
-    if root:
+    if root is not None:
 
         def read_fn() -> Iterable[pd.DataFrame]:
             def _read_with_retry(
@@ -303,9 +306,7 @@ class ZarrV2Datasource(Datasource):
         if self.materialize:
             self.root = self._zarr_root_init(filesystem)
 
-    def _zarr_root_init(
-        self, filesystem: AbstractFileSystem | None = None
-    ) -> ZarrGroup:
+    def _zarr_root_init(self, filesystem: AbstractFileSystem | None = None) -> ZarrRoot:
         import zarr
 
         if filesystem is None:
@@ -314,7 +315,10 @@ class ZarrV2Datasource(Datasource):
         mapper_path = _strip_protocol(self.paths[0], filesystem)
         mapper = filesystem.get_mapper(mapper_path)
 
-        root = zarr.open_group(mapper, mode="r")
+        # zarr.open returns an Array when the store's root is itself an array
+        # (.zarray at root) and a Group when the root is a group (.zgroup at
+        # root).
+        root = zarr.open(mapper, mode="r")
         return root
 
     def _load_array_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
