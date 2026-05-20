@@ -1077,15 +1077,16 @@ def get_top_level_dir_from_compressed_package(package_path: str):
 
 
 def remove_dir_from_filepaths(base_dir: str, rdir: str):
-    """
-    base_dir: String path of the directory containing rdir
-    rdir: String path of directory relative to base_dir whose contents should
-          be moved to its base_dir, its parent directory
+    """Removes rdir from the filepaths of all files and directories inside it.
 
-    Removes rdir from the filepaths of all files and directories inside it.
     In other words, moves all the files inside rdir to the directory that
     contains rdir. Assumes base_dir's contents and rdir's contents have no
     name conflicts.
+
+    Args:
+        base_dir: String path of the directory containing rdir
+        rdir: String path of directory relative to base_dir whose contents should
+              be moved to its base_dir, its parent directory
     """
 
     # Move rdir to a temporary directory, so its contents can be moved to
@@ -1245,8 +1246,7 @@ def untar_package(
     unlink_tar: bool,
     logger: Optional[logging.Logger] = default_logger,
 ) -> None:
-    """
-    Extract the tar archive at package_path to target_dir.
+    """Extract the tar archive at package_path to target_dir.
 
     If remove_top_level_directory is True and the archive contains a single
     top-level directory, the contents are extracted directly into target_dir

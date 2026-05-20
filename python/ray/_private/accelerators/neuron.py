@@ -104,7 +104,7 @@ class NeuronAcceleratorManager(AcceleratorManager):
         given visible_neuron_core_ids.
 
         Args:
-            visible_neuron_core_ids: List of int representing core IDs.
+            visible_neuron_core_ids: List of str representing core IDs.
         """
         if env_bool(NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR, False):
             return
