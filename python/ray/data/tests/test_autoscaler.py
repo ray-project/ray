@@ -32,6 +32,7 @@ def test_actor_pool_scaling():
         spec=ResourceManager,
         get_budget=MagicMock(return_value=None),
         get_allocation=MagicMock(return_value=None),
+        get_op_usage=MagicMock(return_value=None),
     )
     autoscaler = DefaultActorAutoscaler(
         topology=MagicMock(),
@@ -323,6 +324,7 @@ def autoscaler_max_upscaling_delta_setup():
         spec=ResourceManager,
         get_budget=MagicMock(return_value=None),
         get_allocation=MagicMock(return_value=None),
+        get_op_usage=MagicMock(return_value=None),
     )
 
     actor_pool = MagicMock(
