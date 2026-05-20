@@ -35,7 +35,6 @@ from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
     DeploymentActorConfig,
-    DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
@@ -1109,7 +1108,7 @@ def prepare_imperative_http_options(
     Precedence:
     - If `proxy_location` is provided, it overrides any `location` in `http_options`.
     - Else if `http_options` specifies a `location` explicitly (HTTPOptions(...) or dict with 'location'), keep it.
-    - Else (no `proxy_location` and no explicit `location`) set `location` to `DeploymentMode.EveryNode`.
+    - Else (no `proxy_location` and no explicit `location`) set `location` to `ProxyLocation.EveryNode`.
       A bare `HTTPOptions()` counts as an explicit default (`HeadOnly`).
 
     Args:
@@ -1120,8 +1119,8 @@ def prepare_imperative_http_options(
         HTTPOptions: New instance with resolved location.
 
     Note:
-        1. Default ProxyLocation (when unspecified) resolves to DeploymentMode.EveryNode.
-        2. Default HTTPOptions() location is DeploymentMode.HeadOnly.
+        1. Default ProxyLocation (when unspecified) resolves to ProxyLocation.EveryNode.
+        2. Default HTTPOptions() location is ProxyLocation.HeadOnly.
         3. `HTTPOptions` is used in `imperative` mode (Python API) cluster set-up.
             `Declarative` mode (CLI / REST) uses `HTTPOptionsSchema`.
 
@@ -1145,8 +1144,8 @@ def prepare_imperative_http_options(
 
     if proxy_location is None:
         if not location_set_explicitly:
-            http_options.location = DeploymentMode.EveryNode
+            http_options.location = ProxyLocation.EveryNode
     else:
-        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
+        http_options.location = ProxyLocation._normalize(proxy_location)
 
     return http_options
