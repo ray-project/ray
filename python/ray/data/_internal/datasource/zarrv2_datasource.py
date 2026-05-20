@@ -424,6 +424,11 @@ class ZarrV2Datasource(Datasource):
                 logger.debug("No array_paths provided; loading .zmetadata file")
                 with fs.open(z_meta_path, "rb") as f:
                     consolidated = json.load(f)
+                if "metadata" not in consolidated:
+                    raise ValueError(
+                        f"Missing 'metadata' key in consolidated metadata at "
+                        f"{z_meta_path}."
+                    )
                 metadata = consolidated["metadata"]
 
                 for key, value in metadata.items():

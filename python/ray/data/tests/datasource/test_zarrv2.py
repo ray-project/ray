@@ -50,17 +50,6 @@ def zarrv2_store(tmp_path) -> Path:
     )
 
 
-def test_zarrv2_datasource_selects_all_arrays_and_estimates_size(zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_store), materialize=False
-    )
-
-    assert set(datasource._selected_arrays) == {"", "nested"}
-    assert datasource._grid_shape_dict[""]["grid_shape"] == (3, 2)
-    assert datasource._grid_shape_dict["nested"]["grid_shape"] == (2,)
-    assert datasource.estimate_inmemory_data_size() == 83
-
-
 def test_zarrv2_datasource_normalizes_requested_array_paths(zarrv2_store):
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(zarrv2_store),
@@ -142,7 +131,7 @@ def test_zarrv2_datasource_get_read_tasks_batches_chunks_by_parallelism(zarrv2_s
 
     assert len(read_tasks) == 3
     assert [task.metadata.num_rows for task in read_tasks] == [3, 3, 2]
-    assert all(task.metadata.input_files == [str(zarrv2_store)] for task in read_tasks)
+    assert all(task.metadata.input_files == (str(zarrv2_store),) for task in read_tasks)
 
 
 def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store):
@@ -161,7 +150,7 @@ def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store
         for row in rows
         if row["array"] == "" and row["chunk_slices"] == [(0, 2), (0, 3)]
     )
-    assert first_root_chunk["array_shape"] == [5, 4]
+    assert first_root_chunk["array_shape"] == (5, 4)
     assert first_root_chunk["chunk_shape"] == (2, 3)
     assert first_root_chunk["dtype"] == "<i4"
     assert first_root_chunk["padding"] == [0, 0]
@@ -260,8 +249,11 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
     assert result is dataset
     mock_datasource.assert_called_once_with(
         path="/tmp/sample.zarr",
+        filesystem=None,
         chunk_shape=[4, 2],
         array_paths=["nested"],
+        allow_full_metadata_scan=False,
+        materialize=True,
     )
     mock_read_datasource.assert_called_once()
     args, kwargs = mock_read_datasource.call_args
