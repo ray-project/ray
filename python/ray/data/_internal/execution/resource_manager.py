@@ -934,7 +934,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         adjusted_usage = self._resource_manager.get_op_usage(op).copy(
             object_store_memory=self._get_adjusted_object_store_usage(op)
         )
-        return allocation.subtract(adjusted_usage).max(ExecutionResources.zero())
+        # Cap usage at the reservation: over-consuming ops have already reduced
+        # the shared pool (see update_budgets).
+        return allocation.subtract(adjusted_usage.min(self._op_reserved[op])).max(
+            ExecutionResources.zero()
+        )
 
     def get_output_budget(self, op: PhysicalOperator) -> Optional[int]:
         return self._output_budgets.get(op)
@@ -983,13 +987,18 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return
 
         # Compute op_reserved_remaining used by the borrow heuristic below.
+        # and total_excess (usage beyond reservations, subtracted from the shared pool).
         op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
+        total_excess = ExecutionResources.zero()
         for op in eligible_ops:
             op_usage = self._resource_manager.get_op_usage(op).copy(
                 object_store_memory=self._get_adjusted_object_store_usage(op)
             )
             op_reserved_remaining[op] = (
                 self._op_reserved[op].subtract(op_usage).max(ExecutionResources.zero())
+            )
+            total_excess = total_excess.add(
+                op_usage.subtract(self._op_reserved[op]).max(ExecutionResources.zero())
             )
 
         op_max_resources = {
@@ -998,7 +1007,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # Allocate the remaining shared resources to each operator.
         op_shared_alloc: Dict[PhysicalOperator, ExecutionResources] = {}
-        remaining_shared = self._total_shared.copy()
+        remaining_shared = self._total_shared.subtract(total_excess).max(
+            ExecutionResources.zero()
+        )
         for i, op in enumerate(reversed(eligible_ops)):
             # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
