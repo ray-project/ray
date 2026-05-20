@@ -173,6 +173,23 @@ def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store
     assert truncated_nested_chunk["padding"] == [1]
 
 
+def test_zarrv2_datasource_accepts_pyarrow_fs_filesystem(zarrv2_store):
+    """A pyarrow.fs.FileSystem passed in is wrapped into fsspec internally."""
+    pa_fs = pytest.importorskip("pyarrow.fs")
+
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_store),
+        filesystem=pa_fs.LocalFileSystem(),
+        materialize=False,
+    )
+
+    # Stored as fsspec internally.
+    from fsspec.spec import AbstractFileSystem
+
+    assert isinstance(datasource._filesystem, AbstractFileSystem)
+    assert set(datasource._selected_arrays) == {"", "nested"}
+
+
 def test_zarrv2_datasource_materializes_chunk_data_end_to_end(tmp_path):
     """End-to-end materialize=True: write a real Zarr v2 store, read it back,
     and check the chunks round-trip the source array exactly.

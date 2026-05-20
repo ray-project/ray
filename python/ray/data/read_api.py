@@ -122,6 +122,7 @@ if TYPE_CHECKING:
     import daft
     import dask
     import datasets
+    import fsspec.spec
     import mars
     import modin
     import pandas
@@ -814,7 +815,9 @@ def read_audio(
 @PublicAPI(stability="alpha")
 def read_zarr(
     path: str,
-    filesystem: Any | None = None,
+    filesystem: Optional[
+        Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
+    ] = None,
     chunk_shape: List[int] | None = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
@@ -857,11 +860,14 @@ def read_zarr(
     ``"chunks"``, and ``"dtype"``. Reads fail if any discovered array metadata
     is missing one or more of these required fields.
 
-    The datasource resolves storage with ``fsspec``. For non-local stores, you're
-    encouraged to pass a preconfigured ``fsspec`` filesystem through
-    ``filesystem`` so authentication and backend-specific settings are explicit.
-    Local paths typically don't need an explicit filesystem. If ``filesystem`` is
-    omitted, the datasource infers the filesystem from ``path``.
+    ``filesystem`` accepts either a :class:`pyarrow.fs.FileSystem` (as the rest
+    of Ray Data does) or an :class:`fsspec.spec.AbstractFileSystem` (as Zarr's
+    own ecosystem does). pyarrow filesystems are wrapped internally into fsspec
+    via :class:`fsspec.implementations.arrow.ArrowFSWrapper` because Zarr's
+    storage layer requires fsspec. For non-local stores, passing an explicit
+    filesystem is recommended so authentication and backend settings are
+    explicit. If ``filesystem`` is omitted, the datasource infers it from
+    ``path``.
 
     Examples:
         >>> import ray
@@ -908,13 +914,16 @@ def read_zarr(
 
     Args:
         path: Path to the Zarr v2 store.
-        filesystem: Optional preconfigured :class:`fsspec.spec.AbstractFileSystem`
-            instance to use when reading from ``path``. Use this for private buckets,
-            custom credentials, anonymous/public cloud access, or any storage backend
-            configuration that shouldn't be inferred internally. Passing a
-            filesystem is recommended for non-local Zarr stores; for local paths,
-            it's usually fine to omit it. If omitted, the datasource infers the
-            filesystem from ``path`` using ``fsspec``.
+        filesystem: Optional preconfigured filesystem. Accepts either a
+            :class:`pyarrow.fs.FileSystem` (matching other Ray Data
+            ``read_*`` APIs) or an :class:`fsspec.spec.AbstractFileSystem`.
+            pyarrow filesystems are wrapped internally with
+            :class:`fsspec.implementations.arrow.ArrowFSWrapper`. Use this for
+            private buckets, custom credentials, anonymous/public cloud
+            access, or any storage backend configuration that shouldn't be
+            inferred internally. Recommended for non-local Zarr stores; for
+            local paths it's usually fine to omit. If omitted, the datasource
+            infers the filesystem from ``path`` using ``fsspec``.
         chunk_shape: Optional chunk shape override to use for all selected arrays.
             If unspecified, the datasource uses the chunk shape recorded in each
             array's ``.zarray`` metadata. If provided, the chunk shape must have the

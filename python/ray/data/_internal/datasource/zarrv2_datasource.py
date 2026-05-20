@@ -25,6 +25,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    import pyarrow
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
@@ -223,6 +224,33 @@ def _chunk_geometry(
         else:
             padding.append(0)
     return chunk_slices, padding, tuple(chunk_shape)
+
+
+def _to_fsspec(
+    filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None,
+) -> AbstractFileSystem | None:
+    """Normalize a user-supplied filesystem to an fsspec ``AbstractFileSystem``.
+
+    Ray Data normally uses pyarrow.fs.FileSystem, but the zarr python library
+    requires fsspec.spec.AbstractFileSystem. This function wraps the pyarrow
+    filesystem in an fsspec filesystem if needed.
+    """
+    if filesystem is None:
+        return None
+    if isinstance(filesystem, AbstractFileSystem):
+        return filesystem
+
+    from pyarrow.fs import FileSystem
+
+    if isinstance(filesystem, FileSystem):
+        from fsspec.implementations.arrow import ArrowFSWrapper
+
+        return ArrowFSWrapper(filesystem)
+
+    raise TypeError(
+        f"filesystem must be pyarrow.fs.FileSystem or "
+        f"fsspec.spec.AbstractFileSystem, got {type(filesystem).__name__}"
+    )
 
 
 def _resolve_store(
@@ -436,7 +464,7 @@ class ZarrV2Datasource(Datasource):
     def __init__(
         self,
         path: str,
-        filesystem: AbstractFileSystem | None = None,
+        filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
         chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
@@ -457,13 +485,15 @@ class ZarrV2Datasource(Datasource):
         self.chunk_shape: tuple[int, ...] | None = (
             tuple(chunk_shape) if chunk_shape is not None else None
         )
-        self._selected_arrays = self._load_metadata(array_paths, filesystem)
+        # Accept pyarrow.fs or fsspec; downstream code speaks fsspec.
+        self._filesystem = _to_fsspec(filesystem)
+        self._selected_arrays = self._load_metadata(array_paths)
         self._grid_shape_dict = self._gen_grid_shape()
 
         if self.materialize:
-            self.root = self._zarr_root_init(filesystem)
+            self.root = self._zarr_root_init()
 
-    def _zarr_root_init(self, filesystem: AbstractFileSystem | None = None) -> ZarrRoot:
+    def _zarr_root_init(self) -> ZarrRoot:
         """Open the Zarr store and return its root handle for materialization.
 
         Only called when ``materialize=True``. ``zarr`` is imported lazily here
@@ -475,6 +505,7 @@ class ZarrV2Datasource(Datasource):
         """
         import zarr
 
+        filesystem = self._filesystem
         if filesystem is None:
             filesystem, _ = _resolve_store(self.paths[0], filesystem)
 
@@ -482,7 +513,7 @@ class ZarrV2Datasource(Datasource):
         mapper = filesystem.get_mapper(mapper_path)
         return zarr.open(mapper, mode="r")
 
-    def _load_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
+    def _load_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
         """Discover and load ``.zarray`` metadata for the selected arrays.
 
         Discovery prefers consolidated ``.zmetadata`` when it exists. If the
@@ -493,7 +524,7 @@ class ZarrV2Datasource(Datasource):
         any requested paths that aren't present in the store raise a
         ``ValueError`` listing what is available.
         """
-        fs, store_path = _resolve_store(self.paths[0], filesystem)
+        fs, store_path = _resolve_store(self.paths[0], self._filesystem)
 
         z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
         if fs.exists(z_meta_path):
