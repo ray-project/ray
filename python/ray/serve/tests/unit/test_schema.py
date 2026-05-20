@@ -1464,6 +1464,8 @@ def test_serve_instance_details_default_controller_health_metrics():
     details = ServeInstanceDetails(
         controller_info={"node_id": "fake_node_id"},
         proxy_location="EveryNode",
+        proxies={},
+        applications={},
     )
 
     assert isinstance(details.controller_health_metrics, ControllerHealthMetrics)
@@ -1489,6 +1491,8 @@ def test_serve_instance_details_includes_controller_health_metrics():
     details = ServeInstanceDetails(
         controller_info={"node_id": "fake_node_id"},
         proxy_location="EveryNode",
+        proxies={},
+        applications={},
         controller_health_metrics=health_metrics,
     )._get_user_facing_json_serializable_dict(exclude_unset=True)
 

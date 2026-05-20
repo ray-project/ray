@@ -115,8 +115,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-    controller_health_metrics = ray.get(controller.get_health_metrics.remote())
-
     http_port, grpc_port = None, None
 
     for target_group in details["target_groups"]:
@@ -280,29 +278,20 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "ingress_request_router_targets": [],
                 },
             ],
-            "controller_health_metrics": {
-                "timestamp": controller_health_metrics["timestamp"],
-                "controller_start_time": controller_health_metrics["controller_start_time"],
-                "uptime_s": controller_health_metrics["uptime_s"],
-                "last_control_loop_time": controller_health_metrics["last_control_loop_time"],
-                "num_control_loops": controller_health_metrics["num_control_loops"],
-                "loop_duration_s": controller_health_metrics["loop_duration_s"],
-                "loops_per_second": controller_health_metrics["loops_per_second"],
-                "last_sleep_duration_s": controller_health_metrics["last_sleep_duration_s"],
-                "expected_sleep_duration_s": controller_health_metrics["expected_sleep_duration_s"],
-                "event_loop_delay_s": controller_health_metrics["event_loop_delay_s"],
-                "num_asyncio_tasks": controller_health_metrics["num_asyncio_tasks"],
-                "deployment_state_update_duration_s": controller_health_metrics["deployment_state_update_duration_s"],
-                "application_state_update_duration_s": controller_health_metrics["application_state_update_duration_s"],
-                "proxy_state_update_duration_s": controller_health_metrics["proxy_state_update_duration_s"],
-                "node_update_duration_s": controller_health_metrics["node_update_duration_s"],
-                "handle_metrics_delay_ms": controller_health_metrics["handle_metrics_delay_ms"],
-                "replica_metrics_delay_ms": controller_health_metrics["replica_metrics_delay_ms"],
-                "process_memory_mb": controller_health_metrics["process_memory_mb"],
-            },
         }
     )
-    assert details_json == expected_json
+
+    # Health metrics contain timestamps that change between calls, so verify
+    # the keys match what get_health_metrics returns rather than exact values.
+    details_dict = json.loads(details_json)
+    actual_health_metrics = details_dict.pop("controller_health_metrics")
+    expected_dict = json.loads(expected_json)
+    assert details_dict == expected_dict
+
+    controller_health_metrics = ray.get(controller.get_health_metrics.remote())
+    assert set(actual_health_metrics.keys()) == set(
+        controller_health_metrics.keys()
+    )
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]
