@@ -591,10 +591,7 @@
 
   run:
     timeout: 2700
-    # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded and uploaded
-    # to the hardcoded telemetry bucket (see pyspy_profiler.py).
     script: >
-      PYSPY_ENABLED=1
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
