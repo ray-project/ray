@@ -527,7 +527,7 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
 
             return task_index
 
-        def get_canceled_task_indices(self) -> Set[str]:
+        def get_canceled_task_indices(self) -> Set[int]:
             return self._canceled_task_indices
 
     actor = ConcurrentActor.options(max_concurrency=3).remote()
