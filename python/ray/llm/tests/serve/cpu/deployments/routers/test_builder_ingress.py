@@ -22,7 +22,9 @@ from ray.llm._internal.serve.core.ingress.builder import (
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 
 @pytest.fixture
@@ -389,6 +391,39 @@ class TestBuildOpenaiApp:
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
         assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        # `RequestRouterConfig._serialize_request_router_cls` normalizes the
+        # class to its import path at config-build time.
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
+        )
+
+    def test_direct_streaming_user_request_router_config_wins(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        """A user-supplied ``request_router_config`` on ``LLMConfig`` must
+        survive direct-streaming wiring rather than being overwritten with the
+        default.
+        """
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
+        )
 
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch

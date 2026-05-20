@@ -738,10 +738,34 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     )
 
 
-def test_fixed_scaling_policy_coordinator_lifecycle():
+@pytest.mark.parametrize(
+    "label_selector, expected_label_selectors",
+    [
+        # No label_selector — passed through as None; the coordinator
+        # auto-fills to a list of empty dicts internally.
+        (None, None),
+        # Single dict — replicated per worker.
+        (
+            {"instance-type": "m6i.xlarge"},
+            [{"instance-type": "m6i.xlarge"}, {"instance-type": "m6i.xlarge"}],
+        ),
+        # Per-worker list — passed through unchanged.
+        (
+            [{"zone": "us-west-2a"}, {"zone": "us-west-2b"}],
+            [{"zone": "us-west-2a"}, {"zone": "us-west-2b"}],
+        ),
+    ],
+)
+def test_fixed_scaling_policy_coordinator_lifecycle(
+    label_selector, expected_label_selectors
+):
     """Test that FixedScalingPolicy registers training resources with the
     AutoscalingCoordinator on start, periodically re-requests to keep
-    the reservation alive, and cancels on shutdown/abort."""
+    the reservation alive, and cancels on shutdown/abort.
+
+    Parametrized to cover the three `ScalingConfig.label_selector` shapes
+    (None / Dict / List) end-to-end through the controller→coordinator path
+    (regression test for #63241)."""
     from unittest.mock import patch
 
     from freezegun import freeze_time
@@ -763,12 +787,14 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
         num_workers=num_workers,
         use_gpu=True,
         resources_per_worker=resources_per_worker,
+        label_selector=label_selector,
     )
 
     mock_coordinator = MagicMock()
     expected_request_kwargs = dict(
         requester_id="train-test-run-123",
         resources=[resources_per_worker] * num_workers,
+        label_selectors=expected_label_selectors,
         expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
         priority=ResourceRequestPriority.HIGH,
     )
