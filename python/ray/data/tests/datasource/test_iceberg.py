@@ -1311,9 +1311,9 @@ class TestUpsertScanMerge:
     See ``IcebergDatasink._commit_upsert_scan_merge`` for algorithm details.
     """
 
-    def test_upsert_preserves_false_positives_sparse_keys(self, clean_table):
-        """Sparse upsert keys leave intermediate rows as false positives that
-        must be preserved after the rewrite."""
+    def test_upsert_preserves_rows_sparse_keys(self, clean_table):
+        """Sparse upsert keys leave intermediate rows that must be preserved
+        after the rewrite."""
         from ray.data import SaveMode
 
         seed = _create_typed_dataframe(
@@ -1352,7 +1352,7 @@ class TestUpsertScanMerge:
 
     def test_upsert_across_multiple_files(self, clean_table):
         """Two separate seed writes produce at least two data files. A sparse
-        upsert that spans both files must rewrite false positives in each."""
+        upsert that spans both files must preserve non-upsert rows in each."""
         from ray.data import SaveMode
 
         _write_to_iceberg(
@@ -1479,10 +1479,10 @@ class TestUpsertScanMerge:
         )
         assert rows_same(result, expected)
 
-    def test_upsert_composite_key_preserves_false_positives(self, clean_table):
+    def test_upsert_composite_key_preserves_rows(self, clean_table):
         """Composite-key anti-join must match on all join columns; rows that
-        share one column with an upsert key but not the full composite are
-        false positives that must be preserved."""
+        share one column with an upsert key but not the full composite must be
+        preserved."""
         from ray.data import SaveMode
 
         composites = [(a, b) for a in [1, 2, 3] for b in ["x", "y", "z"]]
@@ -1606,8 +1606,7 @@ class TestUpsertScanMerge:
     def test_upsert_with_new_column(self, clean_table):
         """Upsert that introduces a new column must evolve the table schema,
         populate the new column for upserted rows, and leave NULLs for
-        untouched seed rows (including false-positive rows preserved during
-        rewrite)."""
+        untouched seed rows (including preserved rows rewritten during upsert)."""
         from ray.data import SaveMode
 
         seed = _create_typed_dataframe(
@@ -1619,8 +1618,8 @@ class TestUpsertScanMerge:
         )
         _write_to_iceberg(seed)
 
-        # Upsert touches col_a=1 and col_a=5 (false positives at 2, 3, 4 in
-        # the same file) and introduces a new column ``col_d``.
+        # Upsert touches col_a=1 and col_a=5 (preserved rows at 2, 3, 4 in the
+        # same file) and introduces a new column ``col_d``.
         upsert_data = _create_typed_dataframe(
             {
                 "col_a": [1, 5, 6],

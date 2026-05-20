@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional,
 
 import ray
 from ray._common.retry import call_with_retry
+from ray.data._internal.datasource.parquet_datasource import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
@@ -14,7 +17,6 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-from ray.data._internal.datasource.parquet_datasource import PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_REWRITE_STALL_TIMEOUT_S = 600
 
 @ray.remote
 def _rewrite_iceberg_file(
@@ -38,14 +41,14 @@ def _rewrite_iceberg_file(
     table_metadata: "TableMetadata",
     io: "FileIO",
 ) -> "tuple[Optional[DataFile], List[DataFile]]":
-    """Read one Iceberg file, anti-join against upsert keys, write false-positive rows.
+    """Read one Iceberg file, anti-join against upsert keys, write preserved rows.
 
-    False positives are rows in the file that are not in the upsert batch. The
+    Preserved rows are rows in the file that are not in the upsert batch. The
     coarse range filter would delete them (see ``IcebergDatasink._build_coarse_range_filter``),
     so we preserve them by writing them as new data files before the delete.
 
-    Returns (original DataFile to delete, list of new FP DataFiles).
-    If the entire file is matched (no FPs), returns (file, []).
+    Returns (original DataFile to delete, list of new preserved DataFiles).
+    If the entire file is matched (no preserved rows), returns (file, []).
     If the file has no matched rows at all, returns (None, []), leave it untouched.
     """
     import hashlib
@@ -91,12 +94,12 @@ def _rewrite_iceberg_file(
             )
 
     idx_col = pa.array(range(len(batch)), type=pa.int64())
-    fp_keys = batch_keys.append_column("__row_idx__", idx_col).join(
+    preserved_keys = batch_keys.append_column("__row_idx__", idx_col).join(
         keys_ref, keys=upsert_cols, join_type="left anti"
     )
 
-    if len(fp_keys) == 0:
-        # Every row in this file is being upserted — delete the whole file, no FP file needed.
+    if len(preserved_keys) == 0:
+        # Every row in this file is being upserted — delete the whole file, no preserved file needed.
         logger.debug(
             "[rewrite] %s: all %d rows matched -> whole-file delete",
             file_path.split("/")[-1],
@@ -104,31 +107,34 @@ def _rewrite_iceberg_file(
         )
         return (file_scan_task.file, [])
 
-    if len(fp_keys) == len(batch):
+    if len(preserved_keys) == len(batch):
         # No rows in this file match any upsert key — leave it alone entirely.
         logger.debug(
             "[rewrite] %s: 0 rows matched -> untouched", file_path.split("/")[-1]
         )
         return (None, [])
 
-    fp_rows = batch.take(fp_keys["__row_idx__"])
+    preserved_rows = batch.take(preserved_keys["__row_idx__"])
     # Derive a deterministic write_uuid from the source file path so that
     # task retries overwrite the same object rather than leaking orphan files.
-    fp_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
-    fp_files = list(
+    preserved_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
+    preserved_files = list(
         _dataframe_to_data_files(
-            table_metadata=table_metadata, df=fp_rows, io=io, write_uuid=fp_write_uuid
+            table_metadata=table_metadata,
+            df=preserved_rows,
+            io=io,
+            write_uuid=preserved_write_uuid,
         )
     )
     logger.debug(
-        "[rewrite] %s: %d/%d rows are FPs -> wrote %d FP file(s) in %.2fs",
+        "[rewrite] %s: %d/%d rows preserved -> wrote %d preserved file(s) in %.2fs",
         file_path.split("/")[-1],
-        len(fp_keys),
+        len(preserved_keys),
         len(batch),
-        len(fp_files),
+        len(preserved_files),
         _time.perf_counter() - t_read,
     )
-    return (file_scan_task.file, fp_files)
+    return (file_scan_task.file, preserved_files)
 
 
 @dataclass
@@ -340,7 +346,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         """Build an O(1) coarse range filter covering all upsert key values.
 
         For each upsert column computes AND(GTE(col, min), LTE(col, max)).
-        The filter may match rows outside the upsert batch (false positives);
+        The filter may match rows outside the upsert batch (filter overshoot);
         callers must anti-join to identify and preserve those rows.
         """
         import pyarrow.compute as pc
@@ -378,11 +384,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         1. Build an O(1) coarse range filter using min-max covering upsert key values (for each column).
         2. plan_files() on the driver to find candidate files that could be updated
         3. Dispatch one Ray task per candidate file. Each task reads its file,
-           anti-joins against the upsert keys to find false positives (rows that
+           anti-joins against the upsert keys to find preserved rows (rows that
            the coarse delete would remove but that are NOT being upserted), and
            writes them as new data files directly to storage.
         4. Commit atomically via txn.update_snapshot().overwrite(): delete each
-           original candidate file and append FP files + new upsert data files.
+           original candidate file and append preserved files + new upsert data files.
         """
         import time
 
@@ -409,6 +415,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         scan: "DataScan" = self._table.scan(
             row_filter=coarse_filter, case_sensitive=case_sensitive
         )
+        # Use the specific branch for the scan
         scan = scan.use_ref(branch)
         file_scan_tasks: List["FileScanTask"] = list(scan.plan_files())
 
@@ -429,7 +436,10 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         t0 = time.perf_counter()
         refs = [
             _rewrite_iceberg_file.options(
-                memory=int(task.file.file_size_in_bytes * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT)
+                memory=int(
+                    task.file.file_size_in_bytes
+                    * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+                )
             ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
             for task in file_scan_tasks
         ]
@@ -441,7 +451,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         _LOG_INTERVAL = max(1, len(refs) // 10)  # log ~10 times total
         while pending:
             done, pending = ray.wait(
-                pending, num_returns=min(_LOG_INTERVAL, len(pending))
+                pending, num_returns=min(_LOG_INTERVAL, len(pending)),
+                timeout=_REWRITE_STALL_TIMEOUT_S, fetch_local=True
             )
             results.extend(ray.get(done))
             logger.debug(
@@ -458,9 +469,14 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         )
 
         # Count how many files were wholly deleted vs partially rewritten.
-        n_whole_delete = sum(1 for old, fps in results if old is not None and not fps)
-        n_partial = sum(1 for old, fps in results if fps)
-        n_untouched = sum(1 for old, fps in results if old is None)
+        n_whole_delete = n_partial = n_untouched = 0
+        for old, preserved_files in results:
+            if old is None:
+                n_untouched += 1
+            elif preserved_files:
+                n_partial += 1
+            else:
+                n_whole_delete += 1
         logger.info(
             "[scan-merge] files: %d whole-delete, %d partial-rewrite, %d untouched",
             n_whole_delete,
@@ -474,11 +490,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         with txn.update_snapshot(
             snapshot_properties=self._snapshot_properties, branch=branch
         ).overwrite() as snap:
-            for old_file, fp_files in results:
+            for old_file, preserved_files in results:
                 if old_file is not None:
                     snap.delete_data_file(old_file)
-                for fp_file in fp_files:
-                    snap.append_data_file(fp_file)
+                for preserved_file in preserved_files:
+                    snap.append_data_file(preserved_file)
             for df in data_files:
                 snap.append_data_file(df)
 
