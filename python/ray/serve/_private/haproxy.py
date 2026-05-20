@@ -758,6 +758,7 @@ class HAProxyApi(ProxyApi):
 
     async def _graceful_reload(self) -> None:
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
+        reload_start = time.time()
         try:
             old_proc = self._proc
             await self._wait_for_hap_availability(old_proc)
@@ -779,10 +780,15 @@ class HAProxyApi(ProxyApi):
                 self._old_procs.append(old_proc)
 
             logger.info(
-                "Successfully performed graceful HAProxy reload with process restart."
+                "Graceful HAProxy reload completed in "
+                f"{(time.time() - reload_start) * 1000:.0f}ms "
+                f"(new pid={self._proc.pid})."
             )
         except Exception as e:
-            logger.error(f"HAProxy graceful reload failed: {e}")
+            logger.error(
+                f"HAProxy graceful reload failed after "
+                f"{(time.time() - reload_start) * 1000:.0f}ms: {e}"
+            )
             raise
 
     async def _wait_for_hap_availability(
@@ -1522,8 +1528,13 @@ class HAProxyManager(ProxyActorInterface):
         while self._update_pending:
             await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
             self._update_pending = False
+            apply_start = time.time()
             try:
                 self._update_haproxy_backends()
+                logger.info(
+                    "Coalesced HAProxy update applied in "
+                    f"{(time.time() - apply_start) * 1000:.0f}ms."
+                )
                 consecutive_failures = 0
             except Exception as e:
                 logger.exception(f"Coalesced HAProxy update failed: {e}")
