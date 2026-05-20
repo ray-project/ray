@@ -57,9 +57,11 @@ defaults
     option httplog
     option abortonclose
     # Retry to a different slot on safe failures only: connect failed
-    # (no bytes sent) or empty response (slot died before sending body).
+    # (no bytes sent), empty response (slot died before sending body),
+    # or 503 (replica returned "service unavailable" — usually a
+    # transient routing race resolved by retrying to a peer slot).
     option redispatch
-    retry-on conn-failure empty-response
+    retry-on conn-failure empty-response 503
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
