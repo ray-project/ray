@@ -15,15 +15,9 @@ from ray.util.state import list_runtime_envs
 logger = logging.getLogger(__name__)
 
 
-def _get_object_store_stats(state):
-    """Get aggregate object store stats across the cluster."""
-    memory_info = get_memory_info_reply(state)
-    return memory_info.store_stats
-
-
 def _get_spilled_bytes_total(state) -> float:
     """Get the total number of spilled bytes across the cluster."""
-    return _get_object_store_stats(state).spilled_bytes_total
+    return get_memory_info_reply(state).store_stats.spilled_bytes_total
 
 
 def _bytes_to_gb(b: float) -> float:
@@ -43,8 +37,23 @@ class ObjectStoreMemorySampler:
         self._stop_event = threading.Event()
         self._thread = None
 
-        self.peak_used_bytes = 0
-        self.peak_utilization = 0.0
+        self._peak_used_bytes = 0
+        self._peak_utilization = 0.0
+
+    @property
+    def peak_used_bytes(self) -> int:
+        return self._peak_used_bytes
+
+    @property
+    def peak_utilization(self) -> float:
+        return self._peak_utilization
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
 
     def start(self):
         self._sample_once()
@@ -67,7 +76,7 @@ class ObjectStoreMemorySampler:
 
     def _sample_once(self):
         try:
-            store_stats = _get_object_store_stats(self._state)
+            store_stats = get_memory_info_reply(self._state).store_stats
         except Exception:
             logger.warning("Failed to sample object store memory.", exc_info=True)
             return
@@ -75,11 +84,11 @@ class ObjectStoreMemorySampler:
         used_bytes = store_stats.object_store_bytes_used
         capacity_bytes = store_stats.object_store_bytes_avail
 
-        self.peak_used_bytes = max(self.peak_used_bytes, used_bytes)
+        self._peak_used_bytes = max(self._peak_used_bytes, used_bytes)
 
         if capacity_bytes > 0:
-            self.peak_utilization = max(
-                self.peak_utilization,
+            self._peak_utilization = max(
+                self._peak_utilization,
                 used_bytes / capacity_bytes,
             )
 
@@ -97,11 +106,11 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
                 "operator_name": op.operator_name,
                 "earliest_start_time": op.earliest_start_time,
                 "latest_end_time": op.latest_end_time,
-                "scheduling_overhead": [
-                    dataclasses.asdict(bucket) for bucket in op.scheduling_overhead
-                ]
-                if op.scheduling_overhead
-                else [],
+                "scheduling_overhead": (
+                    [dataclasses.asdict(bucket) for bucket in op.scheduling_overhead]
+                    if op.scheduling_overhead
+                    else []
+                ),
             }
             for op in summary.operators_stats
         ],
@@ -214,17 +223,15 @@ class Benchmark:
 
         print(f"Running case: {name}")
         state = get_state_from_address(ray.get_runtime_context().gcs_address)
-        memory_sampler = ObjectStoreMemorySampler(state)
-        memory_sampler.start()
 
-        start_time = time.perf_counter()
-        start_spilled_bytes = _get_spilled_bytes_total(state)
+        with ObjectStoreMemorySampler(state) as memory_sampler:
+            start_time = time.perf_counter()
+            start_spilled_bytes = _get_spilled_bytes_total(state)
 
-        try:
-            fn_output = fn(*fn_args, **fn_kwargs)
-        finally:
-            duration = time.perf_counter() - start_time
-            memory_sampler.stop()
+            try:
+                fn_output = fn(*fn_args, **fn_kwargs)
+            finally:
+                duration = time.perf_counter() - start_time
 
         assert fn_output is None or isinstance(fn_output, dict), fn_output
 
