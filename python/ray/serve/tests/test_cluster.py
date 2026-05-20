@@ -122,9 +122,7 @@ def test_node_failure(ray_cluster):
 
     worker_node = cluster.add_node(num_cpus=2)
 
-    @serve.deployment(
-        num_replicas=5, health_check_period_s=1, max_ongoing_requests=1
-    )
+    @serve.deployment(num_replicas=5, health_check_period_s=1, max_ongoing_requests=1)
     def D(*args):
         time.sleep(0.1)
         return os.getpid()
