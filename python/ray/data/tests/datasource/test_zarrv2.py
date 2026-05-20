@@ -3,8 +3,11 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
+import pyarrow.fs
 import pytest
+import zarr
 
 import ray.data.read_api as read_api
 from ray.data._internal.datasource import zarrv2_datasource
@@ -19,15 +22,6 @@ def _write_zmetadata(store_path: Path, metadata: dict) -> Path:
 def _execute_read_tasks(tasks) -> pd.DataFrame:
     frames = [block for task in tasks for block in task()]
     return pd.concat(frames, ignore_index=True)
-
-
-@pytest.fixture(autouse=True)
-def stub_optional_imports(monkeypatch):
-    monkeypatch.setattr(
-        zarrv2_datasource,
-        "_check_import",
-        lambda *args, **kwargs: None,
-    )
 
 
 @pytest.fixture
@@ -175,11 +169,9 @@ def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store
 
 def test_zarrv2_datasource_accepts_pyarrow_fs_filesystem(zarrv2_store):
     """A pyarrow.fs.FileSystem passed in is wrapped into fsspec internally."""
-    pa_fs = pytest.importorskip("pyarrow.fs")
-
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(zarrv2_store),
-        filesystem=pa_fs.LocalFileSystem(),
+        filesystem=pyarrow.fs.LocalFileSystem(),
         materialize=False,
     )
 
@@ -193,12 +185,7 @@ def test_zarrv2_datasource_accepts_pyarrow_fs_filesystem(zarrv2_store):
 def test_zarrv2_datasource_materializes_chunk_data_end_to_end(tmp_path):
     """End-to-end materialize=True: write a real Zarr v2 store, read it back,
     and check the chunks round-trip the source array exactly.
-
-    Skipped when zarr / numpy aren't available. CI installs both.
     """
-    zarr = pytest.importorskip("zarr")
-    np = pytest.importorskip("numpy")
-
     # Write a small store with one root array of shape (5, 4), chunks (2, 3).
     store_path = tmp_path / "real.zarr"
     arr = zarr.open(
@@ -237,9 +224,6 @@ def test_zarrv2_datasource_preserves_nan_and_inf_in_materialize(tmp_path):
     Inf as a valid computed result). This test pins that behaviour by writing
     a float array containing NaN/Inf and confirming the values round-trip.
     """
-    zarr = pytest.importorskip("zarr")
-    np = pytest.importorskip("numpy")
-
     store_path = tmp_path / "floats.zarr"
     arr = zarr.open(
         str(store_path),
@@ -283,9 +267,6 @@ def test_zarrv2_datasource_materializes_nested_group_arrays(tmp_path):
     (the Group branch in ``_read_with_retry``), which the root-array test
     does not.
     """
-    zarr = pytest.importorskip("zarr")
-    np = pytest.importorskip("numpy")
-
     store_path = tmp_path / "group.zarr"
     root = zarr.open_group(str(store_path), mode="w")
     images_src = np.arange(24, dtype="<i4").reshape(4, 6)
