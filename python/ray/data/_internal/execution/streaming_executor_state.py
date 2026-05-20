@@ -196,6 +196,13 @@ class OpState:
         # _waiting_consumers_lock since += is not atomic.
         self._num_waiting_consumers: int = 0
         self._waiting_consumers_lock = threading.Lock()
+        # Signals the consumer thread (inside `get_output_blocking`) that new
+        # output is available in `output_queue`, or that the operator has
+        # finished / errored. The executor thread sets this event from
+        # `add_output` and `mark_finished`; the consumer clears-then-rechecks
+        # before each wait so a concurrent set from the executor is never
+        # lost (clear-check-wait idiom).
+        self._output_ready_event = threading.Event()
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -290,6 +297,10 @@ class OpState:
             self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
+        # Wake any consumer blocked in `get_output_blocking`. Set after the
+        # append so the consumer's post-wake queue poll always observes this
+        # bundle.
+        self._output_ready_event.set()
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
@@ -337,11 +348,25 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
+        # The consumer blocks on an `_output_ready_event` that the executor
+        # signals from `add_output` and `mark_finished`. The clear-check-wait
+        # idiom below avoids a signal-loss race:
+        #
+        #   1. Pop the queue. If we got a ref, return it.
+        #   2. Clear the event (under the assumption the queue is empty).
+        #   3. Re-check the queue and the finished/exception flags. If the
+        #      executor set the event between our pop and our clear, the
+        #      state change is visible here and we don't enter a stale wait.
+        #   4. Wait with a short timeout as a safety net — the invariant
+        #      above should already prevent signal loss, so the timeout
+        #      should rarely fire; it only exists to tolerate bugs elsewhere.
+        #
+        # Master tracks `_num_waiting_consumers` for starvation observability;
+        # we increment when this call first finds the queue empty and
+        # decrement on exit.
         starving = False
         try:
             while True:
-                # Check if StreamingExecutor has caught an exception or is done
-                # execution.
                 if self._exception is not None:
                     raise self._exception
                 elif self._finished and not self.output_queue.has_next(
@@ -352,16 +377,32 @@ class OpState:
                 if ref is not None:
                     # Update outqueue metrics when blocks are removed from
                     # this operator's outqueue.
-                    # TODO: Abstract queue-releated metrics to queue.
+                    # TODO: Abstract queue-related metrics to queue.
                     self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                     self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                     return ref
+
+                # Queue is empty — mark this consumer as starving (once per
+                # call, before the first wait).
                 if not starving:
-                    # Queue is empty — mark this consumer as starving.
                     with self._waiting_consumers_lock:
                         self._num_waiting_consumers += 1
                     starving = True
-                time.sleep(0.01)
+
+                # Arm the wait by clearing the event, then re-check — this
+                # closes the race with a concurrent `add_output` /
+                # `mark_finished` that fires between our pop and our clear.
+                self._output_ready_event.clear()
+                if self._exception is not None:
+                    raise self._exception
+                if self._finished and not self.output_queue.has_next(
+                    output_split_idx
+                ):
+                    raise StopIteration()
+                if self.output_queue.has_next(output_split_idx):
+                    # Executor raced us; skip the wait, loop back to pop.
+                    continue
+                self._output_ready_event.wait(timeout=1.0)
         finally:
             if starving:
                 with self._waiting_consumers_lock:
@@ -386,6 +427,9 @@ class OpState:
             self._finished = True
         else:
             self._exception = exception
+        # Wake the consumer thread so it observes the flag change. Set after
+        # the flag write so the consumer's post-wake check always sees it.
+        self._output_ready_event.set()
 
 
 def build_streaming_topology(
@@ -428,11 +472,20 @@ def build_streaming_topology(
     return topology
 
 
+#: Minimum timeout (seconds) for `ray.wait` inside `process_completed_tasks`.
+#: Kept at 1ms — Ray's C++ core truncates timeouts to ms, so going below this
+#: rounds to the same value as 1ms. This is also the floor of the adaptive
+#: poll interval, defining how aggressively a hot scheduler loop polls.
+#: The maximum is `WAIT_FOR_TASK_COMPLETION_TIMEOUT_S` (defined above).
+MIN_WAIT_TIMEOUT_S = 0.001
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
-) -> int:
+    wait_timeout: float = WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+) -> Tuple[int, int]:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
 
@@ -441,8 +494,18 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        wait_timeout: Timeout (seconds) passed to the internal `ray.wait`
+            call. Defaults to ``WAIT_FOR_TASK_COMPLETION_TIMEOUT_S`` to preserve
+            historical behavior. Callers that want to adapt the poll
+            interval based on task completion rate should pass a shorter
+            value when tasks are available and a longer one when the
+            scheduler is idle.
     Returns:
-        The number of errored blocks.
+        A tuple ``(num_errored_blocks, num_ready)`` where ``num_ready`` is
+        the count of futures returned by `ray.wait` (before per-operator
+        backpressure filtering). A nonzero ``num_ready`` signals the
+        caller that tasks completed within the poll window — useful for
+        implementing adaptive-timeout strategies.
     """
 
     # All active tasks, keyed by their waitables.
@@ -480,13 +543,15 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+    num_ready = 0
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+            timeout=wait_timeout,
         )
+        num_ready = len(ready)
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
@@ -550,7 +615,7 @@ def process_completed_tasks(
         while op.has_next():
             op_state.add_output(op.get_next())
 
-    return num_errored_blocks
+    return num_errored_blocks, num_ready
 
 
 def update_operator_states(topology: Topology) -> None:
