@@ -24,6 +24,11 @@ from ray.dashboard.subprocesses.utils import (
 
 logger = logging.getLogger(__name__)
 
+# Prefix applied to the proctitle of every dashboard subprocess module.
+# Used by external consumers (e.g. the autoscaler V2 cluster-idle predicate)
+# to distinguish Ray-internal drivers from user drivers in the GCS job table.
+RAY_DASHBOARD_PROCTITLE_PREFIX = "ray-dashboard-"
+
 
 @dataclass
 class SubprocessModuleConfig:
@@ -240,7 +245,8 @@ def run_module(
     module_name = cls.__name__
     current_proctitle = ray._raylet.getproctitle()
     ray._raylet.setproctitle(
-        f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
+        f"{RAY_DASHBOARD_PROCTITLE_PREFIX}{module_name}-{incarnation} "
+        f"({current_proctitle})"
     )
     logging_filename = module_logging_filename(module_name, config.logging_filename)
     setup_component_logger(

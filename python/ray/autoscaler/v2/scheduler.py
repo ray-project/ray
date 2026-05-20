@@ -2086,10 +2086,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         Sets ctx.cluster_idle_termination_expired when all of:
         Gate 0: every worker node type is at min_worker_nodes.
-        Layer 1: every alive node's idle_duration_ms > idle_termination_seconds.
+        Layer 1: every alive worker's idle_duration_ms > idle_termination_seconds.
+                 Head is skipped (Ray-internal actors mark it permanently busy).
         Layer 2: scheduler input has no pending resource demand.
 
-        Layer 3 (no attached drivers) runs in the reconciler.
+        Layer 3: no attached drivers runs in the reconciler.
         """
         idle_termination_s = ctx.get_idle_termination_seconds()
         if idle_termination_s is None:
@@ -2108,19 +2109,21 @@ class ResourceDemandScheduler(IResourceScheduler):
             if worker_count_by_type.get(node_type, 0) > cfg.min_worker_nodes:
                 return
 
-        # Layer 1: every SCHEDULABLE node idle past threshold. TO_LAUNCH has
-        # no idle reading; TO_TERMINATE is on the way out.
-        alive_nodes = [
-            n for n in ctx.get_nodes() if n.status == SchedulingNodeStatus.SCHEDULABLE
+        # Layer 1: every SCHEDULABLE worker idle past threshold. Head is
+        # skipped because Ray-internal actors keep its NODE_WORKERS busy.
+        alive_workers = [
+            n
+            for n in ctx.get_nodes()
+            if n.status == SchedulingNodeStatus.SCHEDULABLE
+            and n.node_kind != NodeKind.HEAD
         ]
-        if not alive_nodes:
-            return
-        if any(n.idle_duration_ms == 0 for n in alive_nodes):
-            return
-        min_idle_ms = min(n.idle_duration_ms for n in alive_nodes)
         s_to_ms = 1000
-        if min_idle_ms <= idle_termination_s * s_to_ms:
-            return
+        if alive_workers:
+            if any(n.idle_duration_ms == 0 for n in alive_workers):
+                return
+            min_idle_ms = min(n.idle_duration_ms for n in alive_workers)
+            if min_idle_ms <= idle_termination_s * s_to_ms:
+                return
 
         # Layer 2: no pending demand on the input. Placed demand makes raylet
         # busy and is caught by Layer 1.
@@ -2131,10 +2134,12 @@ class ResourceDemandScheduler(IResourceScheduler):
         ):
             return
 
-        ctx.set_cluster_idle_termination_expired(
-            reason=(
-                f"all {len(alive_nodes)} alive nodes idle, "
+        if alive_workers:
+            reason = (
+                f"all {len(alive_workers)} alive workers idle, "
                 f"min={min_idle_ms / s_to_ms:.0f}s > "
                 f"idle_termination_seconds={idle_termination_s}s"
             )
-        )
+        else:
+            reason = f"no workers alive; idle_termination_seconds={idle_termination_s}s"
+        ctx.set_cluster_idle_termination_expired(reason=reason)

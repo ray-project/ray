@@ -990,8 +990,9 @@ def _clear_token():
 
 
 class _FakeJob:
-    def __init__(self, is_dead: bool):
+    def __init__(self, is_dead: bool, entrypoint: str = ""):
         self.is_dead = is_dead
+        self.entrypoint = entrypoint
 
 
 def _make_mock_gcs(jobs):
@@ -1031,6 +1032,18 @@ def test_count_active_drivers_returns_none_on_failure():
             raise RuntimeError("gcs unreachable")
 
     assert count_active_drivers(_FailingGcs()) is None
+
+
+def test_count_active_drivers_filters_ray_dashboard_subprocesses():
+    gcs = _make_mock_gcs(
+        [
+            _FakeJob(False, entrypoint="ray-dashboard-DataHead-0"),
+            _FakeJob(False, entrypoint="ray-dashboard-ServeHead-0"),
+            _FakeJob(False, entrypoint="python user_script.py"),
+            _FakeJob(False, entrypoint=""),
+        ]
+    )
+    assert count_active_drivers(gcs) == 2
 
 
 if __name__ == "__main__":

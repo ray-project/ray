@@ -2002,6 +2002,7 @@ class TestClusterIdleDriverMask:
         class _Job:
             def __init__(self, dead):
                 self.is_dead = dead
+                self.entrypoint = "python user_script.py"
 
         class _Gcs:
             def get_all_job_info(self, **_):
@@ -2129,6 +2130,7 @@ class TestClusterIdleDispatch:
         class _Job:
             def __init__(self, dead):
                 self.is_dead = dead
+                self.entrypoint = "python user_script.py"
 
         gcs_client = MagicMock()
         gcs_client.get_all_job_info.return_value = {0: _Job(False)}

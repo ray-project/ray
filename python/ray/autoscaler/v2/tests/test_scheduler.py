@@ -1766,15 +1766,19 @@ def test_cluster_idle_disabled_when_threshold_none():
     [
         # Gate 0: worker above minReplicas.
         ({"worker_count": 1, "worker_min": 0}, "gate-0-above-min"),
-        # Layer 1: any alive node has idle_duration_ms == 0.
-        ({"head_idle_ms": 0}, "layer-1-head-busy"),
+        # Layer 1: any alive worker is busy.
         (
             {"worker_count": 1, "worker_min": 1, "worker_idle_ms": 0},
             "layer-1-worker-busy",
         ),
-        # Layer 1: min(idle_ms) below threshold.
+        # Layer 1: alive worker idle below threshold.
         (
-            {"head_idle_ms": 1_000, "idle_termination_seconds": 10},
+            {
+                "worker_count": 1,
+                "worker_min": 1,
+                "worker_idle_ms": 1_000,
+                "idle_termination_seconds": 10,
+            },
             "layer-1-below-threshold",
         ),
         # Layer 2: outstanding resource demand of any kind.
@@ -1796,6 +1800,31 @@ def test_cluster_idle_blocked(kwargs, reason):
     scheduler = ResourceDemandScheduler(event_logger)
     reply = scheduler.schedule(_make_cluster_idle_request(**kwargs))
     assert reply.cluster_idle_termination_expired is False, reason
+
+
+def test_cluster_idle_skips_head_for_layer_1():
+    """Head's idle_duration_ms is unreliable (Ray-internal actors keep
+    NODE_WORKERS busy). _check_cluster_idle must fire when workers are idle
+    even if the head reports busy."""
+    scheduler = ResourceDemandScheduler(event_logger)
+    request = _make_cluster_idle_request(
+        head_idle_ms=0,
+        worker_count=1,
+        worker_min=1,
+        worker_idle_ms=999_000,
+    )
+    reply = scheduler.schedule(request)
+    assert reply.cluster_idle_termination_expired is True
+
+
+def test_cluster_idle_fires_with_no_workers_head_only():
+    """Head-only cluster (minReplicas: 0 and no workers): Layer 1 is a no-op
+    because there are no workers to check; Layer 2 alone gates the
+    predicate."""
+    scheduler = ResourceDemandScheduler(event_logger)
+    request = _make_cluster_idle_request(head_idle_ms=0, worker_count=0)
+    reply = scheduler.schedule(request)
+    assert reply.cluster_idle_termination_expired is True
 
 
 def test_cluster_idle_fires_after_per_node_drains_workers():

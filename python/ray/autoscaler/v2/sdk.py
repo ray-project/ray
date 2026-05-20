@@ -125,10 +125,14 @@ def get_cluster_resource_state(gcs_client: GcsClient) -> ClusterResourceState:
 
 
 def count_active_drivers(gcs_client: GcsClient) -> Optional[int]:
-    """Returns the number of alive drivers, or None when the GCS query fails.
+    """Returns the number of alive user drivers, or None on GCS query failure.
 
-    Callers must treat None as "unknown" and fail closed.
+    Dashboard subprocess modules register as drivers with entrypoints starting
+    with `RAY_DASHBOARD_PROCTITLE_PREFIX`; they are filtered out so only user
+    drivers count. Callers must treat None as "unknown" and fail closed.
     """
+    from ray.dashboard.subprocesses.module import RAY_DASHBOARD_PROCTITLE_PREFIX
+
     try:
         jobs = gcs_client.get_all_job_info(
             skip_submission_job_info_field=True,
@@ -137,4 +141,9 @@ def count_active_drivers(gcs_client: GcsClient) -> Optional[int]:
     except Exception:
         logger.exception("Failed to query GCS job table for cluster-idle check.")
         return None
-    return sum(1 for job in jobs.values() if not job.is_dead)
+    return sum(
+        1
+        for job in jobs.values()
+        if not job.is_dead
+        and not (job.entrypoint or "").startswith(RAY_DASHBOARD_PROCTITLE_PREFIX)
+    )
