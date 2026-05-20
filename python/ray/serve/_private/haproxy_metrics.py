@@ -122,6 +122,15 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("application", "reason"),
         )
+        self.requests_counter = metrics.Counter(
+            "serve_haproxy_ingress_router_requests",
+            description=(
+                "The number of requests that have been processed by "
+                "the ingress request router. This includes both successful "
+                "and failed requests."
+            ),
+            tag_keys=("application",),
+        )
 
     @staticmethod
     def parse_line(line: bytes) -> Optional[ParsedMetrics]:
@@ -185,12 +194,14 @@ class HAProxyMetricsCollector:
             self.failures_counter.inc(
                 tags={"application": app_tag, "reason": parsed.failed}
             )
+            self.requests_counter.inc(tags={"application": app_tag})
             return
 
         if not parsed.via_router:
             return
 
         tags = {"application": app_tag}
+        self.requests_counter.inc(tags=tags)
 
         if parsed.router_latency_us is not None:
             self.latency_histogram.observe(

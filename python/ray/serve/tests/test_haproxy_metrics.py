@@ -190,6 +190,7 @@ def collector() -> HAProxyMetricsCollector:
     c.latency_histogram = _RecordingMetric()
     c.replica_mismatches_counter = _RecordingMetric()
     c.failures_counter = _RecordingMetric()
+    c.requests_counter = _RecordingMetric()
     return c
 
 
@@ -298,6 +299,60 @@ def test_record_skips_when_not_via_router_and_not_failed(collector) -> None:
     assert collector.latency_histogram.calls == []
     assert collector.truncated_bodies_counter.calls == []
     assert collector.replica_mismatches_counter.calls == []
+    assert collector.requests_counter.calls == []
+
+
+def test_record_success_increments_requests_counter(collector) -> None:
+    """Every successful router consultation bumps the requests counter
+    with just the `application` tag."""
+    collector.record(_ok())
+    assert collector.requests_counter.calls == [("inc", {"application": "llm"}, 1.0)]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "router_unreachable",
+        "router_non_200",
+        "unparseable_replica_id",
+        "unknown_replica_id",
+    ],
+)
+def test_record_failure_increments_requests_counter(collector, reason) -> None:
+    """Failed consultations are still consultations: requests_counter must
+    bump on every failure reason so failure_total / requests_total yields
+    the failure ratio."""
+    parsed = ParsedMetrics(
+        app="llm",
+        intended_server=None,
+        actual_server="<NOSRV>",
+        router_latency_us=None,
+        body_truncated_full_length=None,
+        via_router=False,
+        failed=reason,
+    )
+    collector.record(parsed)
+    assert collector.requests_counter.calls == [("inc", {"application": "llm"}, 1.0)]
+
+
+def test_record_requests_counter_uses_unknown_app_tag_when_app_missing(
+    collector,
+) -> None:
+    """Missing `app` is reported as "unknown" instead of dropping the
+    observation, matching the rest of the record() paths."""
+    parsed = ParsedMetrics(
+        app=None,
+        intended_server="replica-A",
+        actual_server="replica-A",
+        router_latency_us=1000,
+        body_truncated_full_length=None,
+        via_router=True,
+        failed=None,
+    )
+    collector.record(parsed)
+    assert collector.requests_counter.calls == [
+        ("inc", {"application": "unknown"}, 1.0)
+    ]
 
 
 def test_record_uses_unknown_app_tag_when_app_missing(collector) -> None:
