@@ -566,7 +566,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
-        self._cum_max_uss_bytes: Optional[int] = None
         self._issue_detector_hanging = 0
         self._issue_detector_high_memory = 0
 
@@ -576,6 +575,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_bytes = RuntimeMetricsHistogram(histogram_buckets_bytes)
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
         self._op_task_duration_stats = DistributionTracker()
+        self._max_uss_bytes = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -897,16 +897,22 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self._op_task_duration_stats
 
     @metric_property(
+        description="Distribution of max USS bytes across tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def max_uss_bytes(self) -> DistributionTracker:
+        return self._max_uss_bytes
+
+    @metric_property(
         description="Average USS usage of tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
     def average_max_uss_per_task(self) -> Optional[float]:
         """Average max USS usage of tasks."""
-        if self._cum_max_uss_bytes is None:
+        if self.max_uss_bytes.num_samples == 0:
             return None
-        else:
-            assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
-            return self._cum_max_uss_bytes / self.num_task_outputs_generated
+        return self.max_uss_bytes.mean
 
     @metric_property(
         description="Indicates if the operator is hanging.",
@@ -1067,12 +1073,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             trace_allocation(block_ref, "operator_output")
 
-            if exec_stats.max_uss_bytes is not None:
-                if self._cum_max_uss_bytes is None:
-                    self._cum_max_uss_bytes = exec_stats.max_uss_bytes
-                else:
-                    self._cum_max_uss_bytes += exec_stats.max_uss_bytes
-
             output_node_id = node_id_from_block_metadata(meta)
             if first_output_node_id is None:
                 first_output_node_id = output_node_id
@@ -1158,6 +1158,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_sample(task_wall_time_s)
+
+        if task_exec_stats is not None and task_exec_stats.max_uss_bytes is not None:
+            self._max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
