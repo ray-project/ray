@@ -750,9 +750,10 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
-# HAProxy log port
-RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
-    os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
+# HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
+# supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
+RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
+    "RAY_SERVE_HAPROXY_LOG_TARGET", "127.0.0.1:514"
 )
 
 # HAProxy timeout configurations (in seconds, None = no timeout)
@@ -845,6 +846,10 @@ RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
 # Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+)
+
+RAY_SERVE_HAPROXY_TUNE_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384  # 16KB
 )
 
 # Escape hatch: when true, HAProxy forwards the (possibly truncated) request
