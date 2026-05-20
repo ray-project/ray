@@ -194,6 +194,5 @@ __all__ = [
     "read_webdataset",
     "KafkaAuthConfig",
     "Preprocessor",
-    "TFXReadOptions",
     "read_zarr",
 ]
