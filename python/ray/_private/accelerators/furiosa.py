@@ -1,5 +1,6 @@
 import logging
 import os
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -17,27 +18,27 @@ NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_FURIOSA_DEVICES"
 
 _FURIOSA_DEVICE_PREFIX = "npu:"
 
-# ``furiosa_smi_py.init()`` is not documented as idempotent, so guard it with a
-# module-level flag and run it at most once per process. ``list_devices`` is
-# re-imported on each call so that test monkeypatches on the module attribute
-# take effect.
-_furiosa_initialized = False
+
+@lru_cache(maxsize=None)
+def _ensure_furiosa_initialized() -> bool:
+    """Run ``furiosa_smi_py.init()`` exactly once per process."""
+    from furiosa_smi_py import init
+
+    init()
+    return True
 
 
 def _get_furiosa_list_devices():
     """Lazy import + one-shot init of ``furiosa_smi_py``.
 
     Returns the current ``list_devices`` callable on success, or ``None`` if
-    the SDK is unavailable or initialization fails. ``init()`` is invoked at
-    most once per process.
+    the SDK is unavailable or initialization fails. ``list_devices`` is
+    re-imported on each call so test monkeypatches on the module attribute
+    take effect.
     """
-    global _furiosa_initialized
     try:
-        from furiosa_smi_py import init, list_devices
-
-        if not _furiosa_initialized:
-            init()
-            _furiosa_initialized = True
+        _ensure_furiosa_initialized()
+        from furiosa_smi_py import list_devices
     except Exception as e:
         logger.debug("furiosa_smi_py is unavailable: %s", e)
         return None
