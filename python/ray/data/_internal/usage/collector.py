@@ -41,13 +41,11 @@ def record_workload(
     executor: "StreamingExecutor",
     logical_plan: "LogicalPlan",
 ) -> None:
-    """Record the planning-time entry for an execution.
-
-    The resulting entry sits in ``_executions`` with ``performance: None`` after the executor finishes (success or fail).
-    Flushes eagerly so attempted executions are captured even if the process
-    dies before completion.
-
-    Set ``RAY_DATA_USAGE_DISABLED=1`` to short-circuit all collection.
+    """Record the planning-time workload entry for an execution.
+    This consists of the DAG, env, and configs for each operator.
+    Flushes eagerly so that attempted executions are captured even if
+    the execution fails.
+    Set ``RAY_DATA_USAGE_DISABLED=1`` to disable all collection.
     """
     if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
         return
@@ -125,8 +123,7 @@ def _serialize_locked() -> str:
 
 
 def _collect_env() -> dict:
-    """Process-wide environment info. Memoized after the first call.
-    """
+    """Process-wide environment info. Memoized after the first call."""
     global _env_cache
     if _env_cache is not None:
         return _env_cache
@@ -154,8 +151,7 @@ def _collect_workload(logical_plan: "LogicalPlan") -> dict:
 
 
 def _walk_operators(op: LogicalOperator, out: List[dict]) -> None:
-    """Post-order walk producing anonymized op names + per-op config.
-    """
+    """Post-order walk producing anonymized op names + per-op config."""
     for child in op.input_dependencies:
         _walk_operators(child, out)
 

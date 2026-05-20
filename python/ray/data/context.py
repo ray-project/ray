@@ -1008,9 +1008,10 @@ class DataContext:
         2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
         3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
 
-        Note: `LoadCheckpointCallback` is NOT included here because it requires
-        a `CheckpointConfig` argument to be instantiated. It is conditionally added
-        later directly by the execution planner.
+        Note: `LoadCheckpointCallback` and `UsageCallback` are NOT included here
+        because they require constructor arguments (a `CheckpointConfig` and a
+        `LogicalPlan`, respectively). They are added directly by the execution
+        planner.
 
         Returns:
             A list of ExecutionCallback class types (not instances).
@@ -1025,13 +1026,11 @@ class DataContext:
             ResourceAllocatorPrometheusCallback,
         )
         from ray.data._internal.execution.execution_callback import ExecutionCallback
-        from ray.data._internal.usage.execution_callback import UsageCallback
 
         classes = [
             ExecutionIdxUpdateCallback,
             IssueDetectionExecutionCallback,
             ResourceAllocatorPrometheusCallback,
-            UsageCallback,
         ]
 
         # Parse environment variable for custom callbacks
