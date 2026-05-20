@@ -79,6 +79,13 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = True
 
+# Padding (in bytes) added on top of the per-task heap-memory hint computed
+# by producers such as DataSource V2 ``ReadFiles``. Tuned empirically; see
+# ``python/ray/data/tests/datasource_v2/read_files_task_memory_probe.py``.
+DEFAULT_READ_FILES_TASK_MEMORY_EPS_BYTES = env_integer(
+    "RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES", 64 * 1024 * 1024
+)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -665,6 +672,13 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    # Padding (in bytes) added on top of the per-task heap-memory hint
+    # computed by producers such as DataSource V2 ``ReadFiles``. Serialized
+    # on the ``DataContext`` ref, so driver-side changes propagate to
+    # worker tasks. Override via the env var
+    # ``RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES``.
+    read_files_task_memory_eps_bytes: int = DEFAULT_READ_FILES_TASK_MEMORY_EPS_BYTES
 
     autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 

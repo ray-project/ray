@@ -36,6 +36,32 @@ def test_data_context_current_context_manager():
     assert DataContext.get_current() is original
 
 
+def test_read_files_task_memory_eps_bytes_default():
+    """``DataContext.read_files_task_memory_eps_bytes`` defaults to 64 MiB and is mutable."""
+    from ray.data.context import (
+        DEFAULT_READ_FILES_TASK_MEMORY_EPS_BYTES,
+        DataContext,
+    )
+
+    ctx = DataContext.get_current()
+    original = ctx.read_files_task_memory_eps_bytes
+    try:
+        # Default value is the documented 64 MiB (unless overridden by the
+        # ``RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES`` env var).
+        assert DEFAULT_READ_FILES_TASK_MEMORY_EPS_BYTES == 64 * 1024 * 1024
+        # Live context exposes the field.
+        assert (
+            ctx.read_files_task_memory_eps_bytes
+            == DEFAULT_READ_FILES_TASK_MEMORY_EPS_BYTES
+        )
+
+        # Field is mutable for per-job overrides.
+        ctx.read_files_task_memory_eps_bytes = 7 * 1024 * 1024
+        assert ctx.read_files_task_memory_eps_bytes == 7 * 1024 * 1024
+    finally:
+        ctx.read_files_task_memory_eps_bytes = original
+
+
 if __name__ == "__main__":
     import sys
 
