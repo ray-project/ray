@@ -159,7 +159,7 @@ def join_tables(
             )
 
     # Preprocess: split unsupported columns and add index columns if needed
-    preprocess_result_l, preprocess_result_r = _preprocess_for_join(
+    preprocess_result_l, preprocess_result_r = _preprocess(
         left_table, right_table, left_on, right_on, join_type
     )
 
@@ -176,14 +176,14 @@ def join_tables(
     )
 
     # Add back unsupported columns
-    return _postprocess_join_result(
+    return _postprocess(
         supported,
         preprocess_result_l.unsupported_projection,
         preprocess_result_r.unsupported_projection,
     )
 
 
-def _preprocess_for_join(
+def _preprocess(
     left_table: "pa.Table",
     right_table: "pa.Table",
     left_on: List[str],
@@ -236,7 +236,7 @@ def _preprocess_for_join(
     return left, right
 
 
-def _postprocess_join_result(
+def _postprocess(
     supported: "pa.Table",
     unsupported_l: "pa.Table",
     unsupported_r: "pa.Table",
@@ -272,7 +272,24 @@ def _should_index_side(
     unsupported_table: "pa.Table",
     join_type: JoinType,
 ) -> bool:
-    """Determine whether to create an index column for a given side of the join."""
+    """
+    Determine whether to create an index column for a given side of the join.
+
+    A column is "supported" if it is "joinable", and "unsupported" otherwise.
+    A supported_table is a table with only "supported" columns. Index columns are
+    needed when we have both supported and unsupported columns in a table, and
+    that table's columns will appear in the final result.
+
+    Args:
+        side: "left" or "right" to indicate which side of the join
+        supported_table: Table containing ONLY joinable columns
+        unsupported_table: Table containing ONLY unjoinable columns
+        join_type: The join type, used to decide whether this side appears in
+            the result (semi/anti joins drop one side).
+
+    Returns:
+        True if an index column should be created for this side
+    """
     # Must have both supported and unsupported columns to need indexing.
     # We cannot rely on row_count because it can return a non-zero row count
     # for an empty-schema.
@@ -291,7 +308,20 @@ def _should_index_side(
 def _split_unsupported_columns(
     table: "pa.Table",
 ) -> Tuple["pa.Table", "pa.Table"]:
-    """Split a PyArrow table into supported / unsupported (for joins) columns."""
+    """
+    Split a PyArrow table into two tables based on column joinability.
+
+    Separates columns into supported types and unsupported types that cannot be
+    directly joined on but should be preserved in results.
+
+    Args:
+        table: Input PyArrow table to split
+
+    Returns:
+        Tuple of (supported_table, unsupported_table) where:
+        - supported_table contains columns with primitive/joinable types
+        - unsupported_table contains columns with complex/unjoinable types
+    """
     supported, unsupported = [], []
     for idx in range(len(table.columns)):
         col: "pa.ChunkedArray" = table.column(idx)
@@ -329,8 +359,18 @@ def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
 
 
 def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
-    """The latest pyarrow versions do not support joins on certain types
-    (lists, structs, maps, unions, extension types, etc.)."""
+    """
+    The latest pyarrow versions do not support joins where the
+    tables contain the following types below (lists,
+    structs, maps, unions, extension types, etc.)
+
+    Args:
+        type: The input type of column.
+
+    Returns:
+        True if the type cannot be present (non join-key) during joins.
+        False if the type can be present.
+    """
     import pyarrow as pa
 
     pyarrow_version = get_pyarrow_version()

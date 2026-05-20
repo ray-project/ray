@@ -170,12 +170,17 @@ class LogicalOperatorUnifiesInputSchemas:
     """
 
     def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
+
         from ray.data._internal.util import unify_schemas_with_validation
 
         input_schemas = [op.infer_schema() for op in self.input_dependencies]
         if not input_schemas or any(s is None for s in input_schemas):
             return None
-        return unify_schemas_with_validation(input_schemas)
+        try:
+            return unify_schemas_with_validation(input_schemas)
+        except (pa.ArrowTypeError, pa.ArrowInvalid):
+            return None
 
 
 class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):

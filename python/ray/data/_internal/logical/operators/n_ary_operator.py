@@ -132,7 +132,7 @@ class Zip(NAry):
             combined = input_schemas[0].empty_table()
             for s in input_schemas[1:]:
                 combined = BlockAccessor.for_block(combined).zip(s.empty_table())
-        except Exception:
+        except (pa.ArrowTypeError, pa.ArrowInvalid):
             return None
         return combined.schema
 

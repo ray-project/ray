@@ -228,6 +228,24 @@ class TestNAry:
             [pa.field("a", pa.int32()), pa.field("a_1", pa.int32())]
         )
 
+    def test_union_incompatible_column_types_returns_none(
+        self, ray_start_regular_shared_2_cpus, tmp_path
+    ):
+        # Same column name, irreconcilable types: ``infer_schema`` must
+        # return None (and ``Dataset.schema(fetch_if_missing=False)`` along
+        # with it), not surface an ArrowTypeError from unify_schemas.
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        pq.write_table(pa.table({"x": pa.array([1, 2], type=pa.int32())}), a_path)
+        pq.write_table(
+            pa.table({"x": pa.array([[1.0], [2.0]], type=pa.list_(pa.float64()))}),
+            b_path,
+        )
+        ds = ray.data.read_parquet(str(a_path)).union(
+            ray.data.read_parquet(str(b_path))
+        )
+        assert ds.schema(fetch_if_missing=False) is None
+
 
 class TestJoin:
     def test_inner_join(self, ray_start_regular_shared_2_cpus, tmp_path):

@@ -252,6 +252,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 left_columns_suffix=self.left_columns_suffix,
                 right_columns_suffix=self.right_columns_suffix,
             )
-        except Exception:
+        except (pa.ArrowTypeError, pa.ArrowInvalid, pa.ArrowKeyError, ValueError):
             return None
         return joined.schema
