@@ -138,9 +138,8 @@ def run_deser_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
         zero_copy_batch=True,
     ).materialize()
 
-    timeline_path = os.path.join(tempfile.gettempdir(), "deser_perf_timeline.json")
-    ray.timeline(filename=timeline_path)
-    stats = collect_deser_stats(timeline_path)
+    events = ray.timeline()
+    stats = collect_deser_stats(events)
     print(f"Deser stats (ms): {stats}")
 
     # Sanity check: each map_batches task does one task:deserialize_arguments,
