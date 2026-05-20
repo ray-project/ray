@@ -245,6 +245,7 @@ def _postprocess(
     should_index_l = _index_name("left") in supported.schema.names
     should_index_r = _index_name("right") in supported.schema.names
 
+    # Add back unsupported columns (join type logic is in should_index_* variables)
     if should_index_l:
         supported = _add_back_unsupported_columns(
             joined_table=supported,
