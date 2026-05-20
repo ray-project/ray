@@ -541,6 +541,107 @@ class TestPlanObstoreRouting:
             )
 
 
+class TestAsyncPartitionActorExactPartitioning:
+    def test_exact_size_columns_mark_every_row(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        block = pa.table({"uri": ["s3://bucket/a", "s3://bucket/b", "s3://bucket/c"]})
+
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = actor._annotate_file_size_columns(block, {"uri": [10, 20, 30]})
+
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        assert out.column(size_col).to_pylist() == [10, 20, 30]
+
+    def test_exact_partition_fetches_metadata_for_all_uris_in_block(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+            _ExactDownloadPartitioner,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        actor._size_provider = MagicMock()
+        actor._size_provider.get_file_sizes.side_effect = lambda uris: [10] * len(uris)
+        actor._partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            10_000,
+            actor._size_provider,
+            annotate_sizes=actor._annotate_file_size_columns,
+        )
+
+        block = pa.table({"uri": [f"s3://bucket/{i}" for i in range(100)]})
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = next(actor(block))
+
+        headed_uris = actor._size_provider.get_file_sizes.call_args.args[0]
+        assert len(headed_uris) == 100
+
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        sizes = out.column(size_col).to_pylist()
+        assert sizes == [10] * 100
+
+    def test_target_none_keeps_block_and_attaches_exact_sizes(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+            _ExactDownloadPartitioner,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        actor._size_provider = MagicMock()
+        actor._size_provider.get_file_sizes.return_value = [10, 20, 30]
+        actor._partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            None,
+            actor._size_provider,
+            annotate_sizes=actor._annotate_file_size_columns,
+            fetch_metadata_without_target=actor._should_annotate_file_size_columns,
+        )
+
+        block = pa.table({"uri": ["s3://bucket/a", "s3://bucket/b", "s3://bucket/c"]})
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [3]
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        assert out[0].column(size_col).to_pylist() == [10, 20, 30]
+
+
 # TestObstoreDownloadPath
 class TestObstoreDownloadPath:
     """Integration tests for the obstore async download path.
@@ -738,8 +839,9 @@ class TestObstoreRangeSplitDownload:
             )
         assert results == [content]
 
-    def test_range_split_with_unknown_size_falls_back_to_head(self, tmp_path):
-        # file_sizes=None → should HEAD to discover size, then range-split.
+    def test_range_split_with_unknown_size_uses_whole_file_get(self, tmp_path):
+        # file_sizes=None means unknown size. The downloader should avoid a
+        # full HEAD pass and use a simple GET.
         chunk_size = 512
         content = os.urandom(chunk_size * 4)
         (tmp_path / "big2.bin").write_bytes(content)
@@ -755,9 +857,21 @@ class TestObstoreRangeSplitDownload:
                 chunk_size,
             ),
         ):
-            results = asyncio.run(
-                _download_uris_with_obstore([uri], "uri", file_sizes=None)
-            )
+            import obstore as obs
+
+            async def _unexpected_head(*args, **kwargs):
+                raise AssertionError("HEAD should not be called for unknown sizes")
+
+            async def _unexpected_range(*args, **kwargs):
+                raise AssertionError("range GET requires a known size")
+
+            with (
+                patch.object(obs, "head_async", side_effect=_unexpected_head),
+                patch.object(obs, "get_range_async", side_effect=_unexpected_range),
+            ):
+                results = asyncio.run(
+                    _download_uris_with_obstore([uri], "uri", file_sizes=None)
+                )
         assert results == [content]
 
     def test_range_split_disabled_uses_whole_file_get(self, tmp_path):
@@ -965,9 +1079,9 @@ class TestObstoreRangeSplitDownload:
         # Explicitly verify ranged path was NOT taken.
         assert len(range_calls) == 0
 
-    def test_partial_unknown_sizes_head_only_for_unknowns(self, tmp_path):
-        # In a batch where some sizes are known and others are 0,
-        # HEAD should only be issued for the unknowns.
+    def test_partial_unknown_sizes_do_not_trigger_head(self, tmp_path):
+        # Known large sizes can still use range GET, but unknown entries should
+        # not trigger another metadata pass over the batch.
         chunk_size = 256
         large_content = os.urandom(chunk_size * 5)
         small_content = b"small"
@@ -996,20 +1110,18 @@ class TestObstoreRangeSplitDownload:
         ):
             import obstore as obs
 
-            original_head = obs.head_async
             head_calls = []
 
             async def _tracking_head(*args, **kwargs):
                 head_calls.append(args)
-                return await original_head(*args, **kwargs)
+                raise AssertionError("HEAD should not be called for unknown sizes")
 
             with patch.object(obs, "head_async", side_effect=_tracking_head):
                 results = asyncio.run(
                     _download_uris_with_obstore(uris, "uri", file_sizes=file_sizes)
                 )
 
-        # Only the unknown (index 2) should trigger a HEAD request.
-        assert len(head_calls) == 1
+        assert len(head_calls) == 0
         assert results == [large_content, small_content, unknown_content]
 
     def test_file_size_at_exact_threshold_uses_simple_get(self, tmp_path):
