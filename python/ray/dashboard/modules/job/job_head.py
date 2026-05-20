@@ -193,8 +193,16 @@ class JobAgentSubmissionClient:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 yield msg.data
             elif msg.type == aiohttp.WSMsgType.CLOSED:
+                logger.info(
+                    f"WebSocket to job agent closed for job {job_id} "
+                    f"with close code {ws.close_code}"
+                )
                 break
             elif msg.type == aiohttp.WSMsgType.ERROR:
+                logger.warning(
+                    f"WebSocket to job agent received an error message "
+                    f"while tailing logs for job {job_id}: {ws.exception()!r}. "
+                )
                 pass
 
     async def close(self, ignore_error=True):
