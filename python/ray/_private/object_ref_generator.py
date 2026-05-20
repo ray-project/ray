@@ -178,10 +178,7 @@ class ObjectRefGenerator:
     def _get_next_object_id_binary(self) -> bytes:
         """Return the binary id of the next object in the stream.
 
-        Equivalent to ``peek_object_ref_stream(...)[0].binary()`` but avoids
-        allocating a Python ObjectRef per call. ray.wait calls this once per
-        generator on every invocation, so the per-call allocation shows up in
-        the Ray Data streaming executor.
+        Avoids allocating a Python ObjectRef when only the id is needed.
         """
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)

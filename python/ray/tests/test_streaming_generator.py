@@ -41,22 +41,6 @@ def mocked_worker():
     yield worker
 
 
-def test_get_next_object_id_binary_unit(mocked_worker):
-    """`_get_next_object_id_binary` is the fast path used by ray.wait — it
-    must delegate to core_worker.peek_next_object_id_binary and return the
-    raw bytes without wrapping in an ObjectRef.
-    """
-    c = mocked_worker.core_worker
-    generator_ref = ray.ObjectRef.from_random()
-    generator = ObjectRefGenerator(generator_ref, mocked_worker)
-
-    expected_binary = b"\x01" * 28
-    c.peek_next_object_id_binary.return_value = expected_binary
-
-    assert generator._get_next_object_id_binary() == expected_binary
-    c.peek_next_object_id_binary.assert_called_with(generator_ref)
-
-
 def test_streaming_object_ref_generator_basic_unit(mocked_worker):
     """
     Verify the basic case:

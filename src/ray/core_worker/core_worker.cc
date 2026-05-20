@@ -3084,7 +3084,7 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   return {object_ref, ready};
 }
 
-ObjectID CoreWorker::PeekNextObjectIdFromStream(const ObjectID &generator_id) {
+ObjectID CoreWorker::PeekObjectIdStream(const ObjectID &generator_id) {
   return task_manager_->PeekObjectRefStream(generator_id).first;
 }
 
