@@ -387,28 +387,34 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 
 
 def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_shared):
-    # It is a regression test.
-    # https://github.com/ray-project/ray/issues/32376
-    # Make sure the core worker doesn't crash when
-    # exit_actor is used when async & regular actor tasks
-    # are executed.
+    # Regression test for:  https://github.com/ray-project/ray/issues/32376
+    # Ensure the core worker doesn't crash when exit_actor is used while mixing async
+    # and sync actor tasks.
     @ray.remote
     class A:
-        async def f(self):
-            await asyncio.sleep(1)
+        def __init__(self, *, exit_after: int):
+            self._remaining = exit_after
+            self._event = asyncio.Event()
+
+        async def wait_then_exit(self):
+            await self._event.wait()
             ray.actor.exit_actor()
 
         def ping(self):
-            pass
+            self._remaining -= 1
+            if self._remaining == 0:
+                self._event.set()
 
-    a = A.remote()
-    a.f.remote()
+    # Exit after 1/2 of the ping tasks have executed to ensure interleaving.
+    a = A.remote(exit_after=500)
+    exit_ref = a.wait_then_exit.remote()
+    ping_refs = [a.ping.remote() for _ in range(1000)]
 
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match=("exit_actor"),
+        match="INTENDED_USER_EXIT",
     ):
-        ray.get([a.ping.remote() for _ in range(10000)])
+        ray.get([exit_ref] + ping_refs)
 
 
 def test_asyncio_actor_argument_collision(ray_start_regular_shared):
