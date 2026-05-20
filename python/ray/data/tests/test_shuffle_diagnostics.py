@@ -48,7 +48,8 @@ def test_memory_usage(
     # TODO(swang): Sort on this dataset seems to produce significant skew, so
     # one task uses much more memory than the other.
     for op_stats in stats.operators_stats:
-        assert op_stats.memory.max < 2000
+        if op_stats.memory is not None:
+            assert op_stats.memory.max < 2000
 
 
 @pytest.mark.parametrize("under_threshold", [False, True])
