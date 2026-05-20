@@ -17,9 +17,9 @@ def parse_args() -> argparse.Namespace:
         required=True,
     )
     parser.add_argument("--num-input-blocks", type=int, default=128)
-    parser.add_argument("--outputs-per-input", type=int, default=8)
-    parser.add_argument("--batch-rows", type=int, default=128)
-    parser.add_argument("--bytes-per-row", type=int, default=1024**2)
+    parser.add_argument("--output-batches-per-input-batch", type=int, default=8)
+    parser.add_argument("--output-batch-rows", type=int, default=128)
+    parser.add_argument("--output-row-bytes", type=int, default=1024**2)
     parser.add_argument("--consumer-sleep-s", type=float, default=1.0)
     parser.add_argument("--num-trainers", type=int, default=8)
     parser.add_argument("--prefetch-batches", type=int, default=8)
@@ -32,10 +32,16 @@ def make_inputs(num_input_blocks: int):
     ]
 
 
-def produce(batch, *, outputs_per_input: int, batch_rows: int, bytes_per_row: int):
-    for _ in range(outputs_per_input):
+def produce(
+    batch,
+    *,
+    output_batches_per_input_batch: int,
+    output_batch_rows: int,
+    output_row_bytes: int,
+):
+    for _ in range(output_batches_per_input_batch):
         yield {
-            "data": np.zeros((batch_rows, bytes_per_row), dtype=np.uint8),
+            "data": np.zeros((output_batch_rows, output_row_bytes), dtype=np.uint8),
         }
 
 
@@ -47,9 +53,9 @@ def consume_slow(batch, *, sleep_s: float):
 def run_fast_producer_slow_consumer(args: argparse.Namespace):
     producer = functools.partial(
         produce,
-        outputs_per_input=args.outputs_per_input,
-        batch_rows=args.batch_rows,
-        bytes_per_row=args.bytes_per_row,
+        output_batches_per_input_batch=args.output_batches_per_input_batch,
+        output_batch_rows=args.output_batch_rows,
+        output_row_bytes=args.output_row_bytes,
     )
     consumer = functools.partial(consume_slow, sleep_s=args.consumer_sleep_s)
 
@@ -67,9 +73,9 @@ def run_fast_producer_slow_consumer(args: argparse.Namespace):
 def run_training_prefetch(args: argparse.Namespace):
     producer = functools.partial(
         produce,
-        outputs_per_input=args.outputs_per_input,
-        batch_rows=args.batch_rows,
-        bytes_per_row=args.bytes_per_row,
+        output_batches_per_input_batch=args.output_batches_per_input_batch,
+        output_batch_rows=args.output_batch_rows,
+        output_row_bytes=args.output_row_bytes,
     )
 
     iterators = (
@@ -87,7 +93,7 @@ def run_training_prefetch(args: argparse.Namespace):
     ]
     ray.get(
         [
-            trainers[i].train.remote(iterators[i], batch_size=args.batch_rows)
+            trainers[i].train.remote(iterators[i], batch_size=args.output_batch_rows)
             for i in range(args.num_trainers)
         ]
     )
