@@ -228,7 +228,13 @@ def _chunk_geometry(
 def _resolve_store(
     path: str, filesystem: AbstractFileSystem | None = None
 ) -> tuple[AbstractFileSystem, str]:
+    """Resolve a user-supplied store path to an ``(fsspec_filesystem, path)`` pair.
 
+    If ``filesystem`` is provided, it's used as-is and ``path`` is trimmed of
+    trailing slashes. Otherwise, local paths are resolved via the local
+    fsspec filesystem and remote URLs are dispatched through
+    :func:`fsspec.core.url_to_fs`.
+    """
     parsed = urlsplit(path)
 
     # if user passes filesystem, use it
@@ -247,6 +253,12 @@ def _resolve_store(
 
 
 def _strip_protocol(path: str, filesystem) -> str:
+    """Return ``path`` without its URL scheme, as ``fsspec.get_mapper`` expects.
+
+    Prefers the filesystem's own ``_strip_protocol`` if it exposes one (the
+    standard fsspec contract); otherwise removes any ``<scheme>://`` prefix
+    found via :func:`urlsplit`.
+    """
     if hasattr(filesystem, "_strip_protocol"):
         return filesystem._strip_protocol(path)
 
@@ -412,7 +424,14 @@ def _create_read_fn(
 
 
 class ZarrV2Datasource(Datasource):
-    """Datasource for reading Zarr arrays."""
+    """Reads chunks of one or more arrays from a Zarr v2 store.
+
+    Each output row corresponds to one chunk of one selected array. With
+    ``materialize=True`` (the default) rows include the chunk's data; with
+    ``materialize=False`` rows hold only the chunk's descriptor (array name,
+    slice bounds, padding, dtype). See :func:`ray.data.read_zarr` for the
+    public API and full argument documentation.
+    """
 
     def __init__(
         self,
@@ -445,6 +464,15 @@ class ZarrV2Datasource(Datasource):
             self.root = self._zarr_root_init(filesystem)
 
     def _zarr_root_init(self, filesystem: AbstractFileSystem | None = None) -> ZarrRoot:
+        """Open the Zarr store and return its root handle for materialization.
+
+        Only called when ``materialize=True``. ``zarr`` is imported lazily here
+        so descriptor-only usage doesn't need it. ``zarr.open`` returns an
+        ``Array`` when the store's root is itself an array (``.zarray`` at
+        root) and a ``Group`` when the root is a group (``.zgroup`` at root);
+        the read-task dispatch handles both via the empty-string convention
+        in ``self._selected_arrays``.
+        """
         import zarr
 
         if filesystem is None:
@@ -452,12 +480,7 @@ class ZarrV2Datasource(Datasource):
 
         mapper_path = _strip_protocol(self.paths[0], filesystem)
         mapper = filesystem.get_mapper(mapper_path)
-
-        # zarr.open returns an Array when the store's root is itself an array
-        # (.zarray at root) and a Group when the root is a group (.zgroup at
-        # root).
-        root = zarr.open(mapper, mode="r")
-        return root
+        return zarr.open(mapper, mode="r")
 
     def _load_metadata(self, array_paths, filesystem) -> dict[str, ZarrArrayMeta]:
         """Discover and load ``.zarray`` metadata for the selected arrays.
@@ -546,6 +569,7 @@ class ZarrV2Datasource(Datasource):
         return _descriptor_row_size_bytes(array_name, meta)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Estimate the dataset's total in-memory size as ``sum(num_chunks * row_size)``."""
         total = 0
         for array_name, data in self._grid_shape_dict.items():
             num_chunks = prod(data["grid_shape"])
@@ -553,6 +577,7 @@ class ZarrV2Datasource(Datasource):
         return total
 
     def _estimate_batch_mem_size(self, batch: List[ZarrChunkRow]) -> int:
+        """Sum the per-row size estimate across one read task's batch."""
         return sum(self._row_size_bytes(row["array"], row["meta"]) for row in batch)
 
     def get_read_tasks(
@@ -561,7 +586,12 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
+        """Flatten the chunk grid into ``parallelism`` batches and wrap each in a ReadTask.
 
+        Chunks across all selected arrays are concatenated and split into batches
+        of size ``ceil(num_chunks / parallelism)``. Each batch becomes one
+        ``ReadTask`` whose callable yields a single ``pd.DataFrame``.
+        """
         read_tasks: List[ReadTask] = []
         batch: list[ZarrChunkRow] = []
 
