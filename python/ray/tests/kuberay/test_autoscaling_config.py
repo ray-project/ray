@@ -636,39 +636,24 @@ def test_autoscaling_config(
 @pytest.mark.parametrize(
     "options,expected,expect_error_log",
     [
-        # Unset → disabled, no error log.
+        # Unset.
         ({}, None, False),
         ({IDLE_SECONDS_KEY: 60}, None, False),
-        # Valid: strictly greater than effective idleTimeoutSeconds.
+        # Valid: >= effective idleTimeoutSeconds.
         ({IDLE_TERMINATION_SECONDS_KEY: 1800}, 1800.0, False),
         ({IDLE_TERMINATION_SECONDS_KEY: 1800.5}, 1800.5, False),
-        (
-            {IDLE_SECONDS_KEY: 30, IDLE_TERMINATION_SECONDS_KEY: 60},
-            60.0,
-            False,
-        ),
+        ({IDLE_SECONDS_KEY: 30, IDLE_TERMINATION_SECONDS_KEY: 60}, 60.0, False),
+        ({IDLE_SECONDS_KEY: 600, IDLE_TERMINATION_SECONDS_KEY: 600}, 600.0, False),
         # Invalid: non-numeric.
         ({IDLE_TERMINATION_SECONDS_KEY: "1800"}, None, True),
         ({IDLE_TERMINATION_SECONDS_KEY: None}, None, False),
         # bool is a subclass of int in Python; rejected explicitly.
         ({IDLE_TERMINATION_SECONDS_KEY: True}, None, True),
-        # Invalid: <= effective idleTimeoutSeconds (uses default 60 when unset).
-        ({IDLE_TERMINATION_SECONDS_KEY: 60}, None, True),
+        # Invalid: < effective idleTimeoutSeconds (default 60 when unset).
         ({IDLE_TERMINATION_SECONDS_KEY: 30}, None, True),
         ({IDLE_TERMINATION_SECONDS_KEY: 0}, None, True),
         ({IDLE_TERMINATION_SECONDS_KEY: -1}, None, True),
-        # Invalid: equal to explicit idleTimeoutSeconds (strict >).
-        (
-            {IDLE_SECONDS_KEY: 600, IDLE_TERMINATION_SECONDS_KEY: 600},
-            None,
-            True,
-        ),
-        # Invalid: less than explicit idleTimeoutSeconds.
-        (
-            {IDLE_SECONDS_KEY: 600, IDLE_TERMINATION_SECONDS_KEY: 100},
-            None,
-            True,
-        ),
+        ({IDLE_SECONDS_KEY: 600, IDLE_TERMINATION_SECONDS_KEY: 100}, None, True),
     ],
 )
 def test_parse_idle_termination_seconds(options, expected, expect_error_log):
@@ -682,9 +667,9 @@ def test_parse_idle_termination_seconds(options, expected, expect_error_log):
 
 
 def test_parse_idle_termination_seconds_uses_default_timeout():
-    """Strict-greater-than is enforced against the 60s default when
-    idleTimeoutSeconds is unset, not against an implicit zero."""
-    assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 60}) is None
+    """Boundary against the 60s default when idleTimeoutSeconds is unset."""
+    assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 60}) == 60.0
+    assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 59}) is None
     assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 61}) == 61.0
 
 

@@ -152,9 +152,10 @@ def _parse_idle_termination_seconds(
 ) -> Optional[float]:
     """Parses `idleTerminationSeconds` from autoscalerOptions.
 
-    Returns None when unset, invalid, or not strictly greater than
-    `idleTimeoutSeconds`. The strict inequality avoids racing per-node
-    scale-down within the same reconcile loop.
+    Returns None when unset, invalid, or less than `idleTimeoutSeconds`.
+    A smaller value would mislead users because per-node scale-down still
+    runs at `idleTimeoutSeconds`, so the cluster cannot actually terminate
+    before that.
     """
     raw = autoscaler_options.get(IDLE_TERMINATION_SECONDS_KEY)
     if raw is None:
@@ -170,9 +171,9 @@ def _parse_idle_termination_seconds(
 
     # 60 matches the KubeRay default for `idleTimeoutSeconds` when unset.
     idle_timeout_seconds = autoscaler_options.get(IDLE_SECONDS_KEY, 60)
-    if raw <= idle_timeout_seconds:
+    if raw < idle_timeout_seconds:
         logger.error(
-            "%s=%s must be greater than %s=%s.",
+            "%s=%s must be >= %s=%s.",
             IDLE_TERMINATION_SECONDS_KEY,
             raw,
             IDLE_SECONDS_KEY,
