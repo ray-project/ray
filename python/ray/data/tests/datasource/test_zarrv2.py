@@ -173,6 +173,45 @@ def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store
     assert truncated_nested_chunk["padding"] == [1]
 
 
+def test_zarrv2_datasource_materializes_chunk_data_end_to_end(tmp_path):
+    """End-to-end materialize=True: write a real Zarr v2 store, read it back,
+    and check the chunks round-trip the source array exactly.
+
+    Skipped when zarr / numpy aren't available. CI installs both.
+    """
+    zarr = pytest.importorskip("zarr")
+    np = pytest.importorskip("numpy")
+
+    # Write a small store with one root array of shape (5, 4), chunks (2, 3).
+    store_path = tmp_path / "real.zarr"
+    arr = zarr.open(
+        str(store_path),
+        mode="w",
+        shape=(5, 4),
+        chunks=(2, 3),
+        dtype="<i4",
+    )
+    source = np.arange(20, dtype="<i4").reshape(5, 4)
+    arr[:] = source
+    zarr.consolidate_metadata(str(store_path))
+
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=True)
+    rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
+        "records"
+    )
+
+    # Reconstruct the array from the materialized chunks; strip the trailing
+    # zero-padding before placing each chunk into the output buffer.
+    reconstructed = np.zeros((5, 4), dtype="<i4")
+    for row in rows:
+        actual_shape = tuple(stop - start for start, stop in row["chunk_slices"])
+        unpadded = row["chunk"][tuple(slice(0, s) for s in actual_shape)]
+        target = tuple(slice(start, stop) for start, stop in row["chunk_slices"])
+        reconstructed[target] = unpadded
+
+    np.testing.assert_array_equal(reconstructed, source)
+
+
 def _deep_sizeof(obj, seen=None):
     """Recursive ``sys.getsizeof`` that follows containers."""
     if seen is None:
