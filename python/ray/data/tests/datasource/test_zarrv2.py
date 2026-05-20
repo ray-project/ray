@@ -229,6 +229,95 @@ def test_zarrv2_datasource_materializes_chunk_data_end_to_end(tmp_path):
     np.testing.assert_array_equal(reconstructed, source)
 
 
+def test_zarrv2_datasource_preserves_nan_and_inf_in_materialize(tmp_path):
+    """Materialize mode must not silently rewrite NaN / +-Inf to 0.
+
+    Earlier code unconditionally called ``np.nan_to_num`` on floating-point
+    chunks, which destroys valid scientific data (NaN as missing-observation,
+    Inf as a valid computed result). This test pins that behaviour by writing
+    a float array containing NaN/Inf and confirming the values round-trip.
+    """
+    zarr = pytest.importorskip("zarr")
+    np = pytest.importorskip("numpy")
+
+    store_path = tmp_path / "floats.zarr"
+    arr = zarr.open(
+        str(store_path),
+        mode="w",
+        shape=(3, 3),
+        chunks=(2, 2),
+        dtype="<f4",
+    )
+    source = np.array(
+        [
+            [1.0, np.nan, 2.0],
+            [np.inf, 0.0, -np.inf],
+            [-1.0, 3.0, np.nan],
+        ],
+        dtype="<f4",
+    )
+    arr[:] = source
+    zarr.consolidate_metadata(str(store_path))
+
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=True)
+    rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
+        "records"
+    )
+
+    reconstructed = np.full((3, 3), np.nan, dtype="<f4")
+    for row in rows:
+        actual_shape = tuple(stop - start for start, stop in row["chunk_slices"])
+        unpadded = row["chunk"][tuple(slice(0, s) for s in actual_shape)]
+        target = tuple(slice(start, stop) for start, stop in row["chunk_slices"])
+        reconstructed[target] = unpadded
+
+    # Bit-exact comparison so NaN, +Inf, -Inf, and finite values are all
+    # checked uniformly (assert_array_equal doesn't accept ``equal_nan`` on
+    # older numpy releases).
+    np.testing.assert_array_equal(reconstructed.view(np.uint32), source.view(np.uint32))
+
+
+def test_zarrv2_datasource_materializes_nested_group_arrays(tmp_path):
+    """End-to-end materialize=True for a store with .zgroup at root and
+    arrays under nested keys. Exercises the ``root[array][slice]`` dispatch
+    (the Group branch in ``_read_with_retry``), which the root-array test
+    does not.
+    """
+    zarr = pytest.importorskip("zarr")
+    np = pytest.importorskip("numpy")
+
+    store_path = tmp_path / "group.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    images_src = np.arange(24, dtype="<i4").reshape(4, 6)
+    labels_src = np.arange(5, dtype="|u1")
+    root.create_dataset("images", shape=(4, 6), chunks=(2, 3), dtype="<i4")[
+        :
+    ] = images_src
+    root.create_dataset("labels", shape=(5,), chunks=(3,), dtype="|u1")[:] = labels_src
+    zarr.consolidate_metadata(str(store_path))
+
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=True)
+    rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
+        "records"
+    )
+
+    images_out = np.zeros((4, 6), dtype="<i4")
+    labels_out = np.zeros((5,), dtype="|u1")
+    for row in rows:
+        actual_shape = tuple(stop - start for start, stop in row["chunk_slices"])
+        unpadded = row["chunk"][tuple(slice(0, s) for s in actual_shape)]
+        target = tuple(slice(start, stop) for start, stop in row["chunk_slices"])
+        if row["array"] == "images":
+            images_out[target] = unpadded
+        elif row["array"] == "labels":
+            labels_out[target] = unpadded
+        else:
+            raise AssertionError(f"unexpected array: {row['array']!r}")
+
+    np.testing.assert_array_equal(images_out, images_src)
+    np.testing.assert_array_equal(labels_out, labels_src)
+
+
 def _deep_sizeof(obj, seen=None):
     """Recursive ``sys.getsizeof`` that follows containers."""
     if seen is None:
