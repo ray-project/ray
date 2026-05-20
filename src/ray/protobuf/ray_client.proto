@@ -113,8 +113,6 @@ message PutRequest {
   int32 total_chunks = 4;
   // Total size in bytes of the data being put
   int64 total_size = 5;
-  reserved 6;
-  reserved "owner_id";
 }
 
 message PutResponse {

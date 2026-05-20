@@ -3027,6 +3027,7 @@ def get(
 def put(
     value: R,
     *,
+    _owner: Optional["ray.actor.ActorHandle"] = None,
     _tensor_transport: Optional[str] = None,
 ) -> "ray.ObjectRef[R]":
     """Store an object in the object store.
@@ -3048,6 +3049,12 @@ def put(
     Returns:
         The object ref assigned to this value.
     """
+    if _owner is not None:
+        raise ValueError(
+            "The experimental _owner argument to ray.put has been removed in "
+            "Ray 2.56."
+        )
+
     worker = global_worker
     worker.check_connected()
 
