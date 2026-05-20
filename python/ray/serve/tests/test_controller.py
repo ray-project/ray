@@ -289,9 +289,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
     assert details_dict == expected_dict
 
     controller_health_metrics = ray.get(controller.get_health_metrics.remote())
-    assert set(actual_health_metrics.keys()) == set(
-        controller_health_metrics.keys()
-    )
+    assert set(actual_health_metrics.keys()) == set(controller_health_metrics.keys())
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]
