@@ -1,5 +1,6 @@
 import heapq
 import logging
+import time
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.serve._private.common import RequestProtocol
@@ -8,6 +9,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+    RAY_SERVE_PORT_QUARANTINE_S,
     SERVE_LOGGER_NAME,
 )
 
@@ -33,11 +35,30 @@ class PortAllocator:
 
         self._allocated_ports: Dict[str, int] = {}
         self._blocked_ports: Set[int] = set()
+        # port -> monotonic deadline at which it leaves quarantine.
+        self._quarantined_ports: Dict[int, float] = {}
+
+    def _drain_expired_quarantine(self) -> None:
+        """Return quarantined ports past their expiry to the available pool."""
+        if not self._quarantined_ports:
+            return
+        now = time.monotonic()
+        expired = [p for p, exp in self._quarantined_ports.items() if exp <= now]
+        for port in expired:
+            heapq.heappush(self._available_ports, port)
+            del self._quarantined_ports[port]
+            logger.info(
+                f"Released {self._protocol} port {port} from quarantine on "
+                f"node {self._node_id}; returning it to the available pool."
+            )
 
     def update_port_if_missing(self, replica_id: str, port: Optional[int]):
         """Update port value for a replica."""
         if replica_id in self._allocated_ports:
             return
+        # Reclaim trumps quarantine: the port is back in active use.
+        if port is not None:
+            self._quarantined_ports.pop(port, None)
         assert (
             port is not None
         ), f"Port is None for {self._protocol} protocol on replica {replica_id} on node {self._node_id}"
@@ -69,9 +90,14 @@ class PortAllocator:
             )
             return self._allocated_ports[replica_id]
 
+        self._drain_expired_quarantine()
+
+        # Recovered replicas live in _allocated_ports but their ports are
+        # still in _available_ports, so guard against re-handing them out.
+        allocated = set(self._allocated_ports.values())
         while self._available_ports:
             port = heapq.heappop(self._available_ports)
-            if port not in self._blocked_ports:
+            if port not in self._blocked_ports and port not in allocated:
                 self._allocated_ports[replica_id] = port
                 logger.info(
                     f"Allocated {self._protocol} port {port} to replica {replica_id} on node {self._node_id}"
@@ -100,15 +126,30 @@ class PortAllocator:
             f"expected {expected_port}, got {port}"
         )
 
-        heapq.heappush(self._available_ports, port)
         del self._allocated_ports[replica_id]
-        logger.info(
-            f"Released {self._protocol} port {port} for replica {replica_id} on node {self._node_id}"
-        )
 
         if block_port:
+            # Block is a stronger guarantee than quarantine; skip quarantine.
             self._blocked_ports.add(port)
-            logger.info(f"Blocked {self._protocol} port {port} on node {self._node_id}")
+            heapq.heappush(self._available_ports, port)
+            logger.info(
+                f"Released and blocked {self._protocol} port {port} for replica "
+                f"{replica_id} on node {self._node_id}"
+            )
+        elif RAY_SERVE_PORT_QUARANTINE_S > 0:
+            self._quarantined_ports[port] = (
+                time.monotonic() + RAY_SERVE_PORT_QUARANTINE_S
+            )
+            logger.info(
+                f"Quarantined {self._protocol} port {port} for "
+                f"{RAY_SERVE_PORT_QUARANTINE_S}s after releasing for replica "
+                f"{replica_id} on node {self._node_id}"
+            )
+        else:
+            heapq.heappush(self._available_ports, port)
+            logger.info(
+                f"Released {self._protocol} port {port} for replica {replica_id} on node {self._node_id}"
+            )
 
     def prune(self, active_replica_ids: Set[str]):
         for replica_id in list(self._allocated_ports.keys()):
