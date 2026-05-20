@@ -2455,7 +2455,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2470,7 +2470,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2487,7 +2487,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2504,7 +2504,7 @@
   python: "3.12"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2523,7 +2523,7 @@
   python: "3.12"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
