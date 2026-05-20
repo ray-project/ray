@@ -298,7 +298,7 @@ pkg_files(
     prefix = "ray/serve/_private/",
     renames = select({
         "@platforms//os:windows": {
-            "//python/ray/serve:serve_so_output": "_timeseries_utils.pyd",
+            "python/ray/serve/_private/_timeseries_utils.so": "_timeseries_utils.pyd",
         },
         "//conditions:default": {},
     }),
