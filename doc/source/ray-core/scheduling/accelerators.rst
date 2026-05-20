@@ -155,8 +155,9 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             to limit the FuriosaAI NPUs that are visible to Ray.
             The value uses the same ``npu:<id>`` notation accepted by
             ``furiosa-llm --devices``, so it can be passed straight through to the runtime.
-            For example, ``FURIOSA_DEVICES=npu:1,npu:3 ray start --head --resources='{"FURIOSA": 2}'``
-            lets Ray only see devices 1 and 3, and a worker can run
+            For example, ``FURIOSA_DEVICES=npu:1,npu:3 ray start --head``
+            lets Ray only see devices 1 and 3 (Ray auto-detects the count),
+            and a worker can run
             ``furiosa-llm serve --devices "$FURIOSA_DEVICES" ...`` without reformatting.
             Bare integer IDs (e.g., ``FURIOSA_DEVICES=1,3``) are also accepted on read.
 .. note::

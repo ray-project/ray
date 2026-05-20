@@ -17,6 +17,32 @@ NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_FURIOSA_DEVICES"
 
 _FURIOSA_DEVICE_PREFIX = "npu:"
 
+# ``furiosa_smi_py.init()`` is not documented as idempotent, so guard it with a
+# module-level flag and run it at most once per process. ``list_devices`` is
+# re-imported on each call so that test monkeypatches on the module attribute
+# take effect.
+_furiosa_initialized = False
+
+
+def _get_furiosa_list_devices():
+    """Lazy import + one-shot init of ``furiosa_smi_py``.
+
+    Returns the current ``list_devices`` callable on success, or ``None`` if
+    the SDK is unavailable or initialization fails. ``init()`` is invoked at
+    most once per process.
+    """
+    global _furiosa_initialized
+    try:
+        from furiosa_smi_py import init, list_devices
+
+        if not _furiosa_initialized:
+            init()
+            _furiosa_initialized = True
+    except Exception as e:
+        logger.debug("furiosa_smi_py is unavailable: %s", e)
+        return None
+    return list_devices
+
 
 def _strip_npu_prefix(token: str) -> str:
     """Return the numeric device index from an ``npu:<id>`` token.
@@ -79,14 +105,13 @@ class FuriosaAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_num_accelerators() -> int:
         """Detects the number of Furiosa NPU devices on the current machine."""
+        list_devices = _get_furiosa_list_devices()
+        if list_devices is None:
+            return 0
         try:
-            from furiosa_smi_py import init, list_devices
-
-            init()
-
             return len(list_devices())
         except Exception as e:
-            logger.debug("Could not detect Furiosa NPU devices: %s", e)
+            logger.debug("Could not list Furiosa NPU devices: %s", e)
             return 0
 
     @staticmethod
@@ -106,10 +131,10 @@ class FuriosaAcceleratorManager(AcceleratorManager):
         matching the PyO3 enum form ``RngdPlus``), and any remaining
         non-alphanumeric characters are stripped.
         """
+        list_devices = _get_furiosa_list_devices()
+        if list_devices is None:
+            return None
         try:
-            from furiosa_smi_py import init, list_devices
-
-            init()
             devices = list_devices()
             if not devices:
                 return None
