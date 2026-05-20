@@ -1283,9 +1283,11 @@ def untar_package(
                 parent_dir = os.path.dirname(member_path)
                 if parent_dir:
                     os.makedirs(parent_dir, exist_ok=True)
-                with tar.extractfile(member) as source:
-                    with open(member_path, "wb") as target:
-                        shutil.copyfileobj(source, target)
+                with (
+                    tar.extractfile(member) as source,
+                    open(member_path, "wb") as target,
+                ):
+                    shutil.copyfileobj(source, target)
                 os.chmod(member_path, member.mode)
 
     if remove_top_level_directory:

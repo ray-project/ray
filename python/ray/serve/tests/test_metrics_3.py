@@ -223,9 +223,7 @@ def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
 
     # Update user_config to trigger in-place reconfigure (same version, different config)
     serve.run(
-        Configurable.options(
-            _internal=True, version="1", user_config={"version": 2}
-        ).bind(),
+        Configurable.options(user_config={"version": 2}).bind(),
         name="app",
         route_prefix="/config",
     )
