@@ -733,7 +733,7 @@ RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
 # HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
 # supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
-RAY_SERVE_HAPROXY_LOG_TARGET = os.environ.get(
+RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
     "RAY_SERVE_HAPROXY_LOG_TARGET", "127.0.0.1:514"
 )
 
