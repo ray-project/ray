@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, Optional
+from typing import Dict, Optional, Union
 
 try:
     from datasketches import kll_doubles_sketch
@@ -93,7 +93,7 @@ class DistributionTracker:
     def p99(self) -> Optional[float]:
         return self._quantile(0.99)
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> Dict[str, Optional[Union[int, float]]]:
         return {
             "num_samples": self.num_samples,
             "mean": self.mean,
