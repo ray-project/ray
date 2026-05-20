@@ -1748,45 +1748,28 @@ def test_read_null_data_in_first_file(
     ]
 
 
-def test_read_parquet_metadata_fetch_not_linear(tmp_path, ray_start_regular_shared):
-    """read_parquet metadata fetch time should not grow linearly with file count.
+def test_read_parquet_does_not_call_infer_schema(
+    tmp_path, monkeypatch, ray_start_regular_shared
+):
+    """read_parquet should not call _infer_schema, which can cause O(N) metadata reads."""
 
-    Regression test for a bug where _infer_schema fell back to reading every
-    fragment's physical_schema when the sampled fragment had a pa.null() column
-    (PyArrow < 22.0), causing O(N) metadata reads.
-    """
-    small_n = 100
-    large_n = 1000
+    num_files = 10
+    for i in range(num_files):
+        cols = {"data": [0]}
+        if i == 0:
+            cols["null_col"] = pa.nulls(1)
+        else:
+            cols["null_col"] = [1]
+        pq.write_table(pa.table(cols), tmp_path / f"part_{i:05d}.parquet")
 
-    def _write_files(directory, n_files):
-        directory.mkdir(exist_ok=True)
-        for i in range(n_files):
-            cols = {"data": [0]}
-            if i == 0:
-                cols["null_col"] = pa.nulls(1)
-            else:
-                cols["null_col"] = [1]
-            pq.write_table(pa.table(cols), directory / f"part_{i:05d}.parquet")
-
-    _write_files(tmp_path / "small", small_n)
-    _write_files(tmp_path / "large", large_n)
-
-    start = time.perf_counter()
-    ray.data.read_parquet(str(tmp_path / "small"))
-    elapsed_small = time.perf_counter() - start
-
-    start = time.perf_counter()
-    ray.data.read_parquet(str(tmp_path / "large"))
-    elapsed_large = time.perf_counter() - start
-
-    ratio = elapsed_large / max(elapsed_small, 0.01)
-
-    print(f"ratio={ratio:.1f} (small={elapsed_small:.2f}s, large={elapsed_large:.2f}s)")
-
-    assert ratio < 5, (
-        f"read_parquet time scaled too steeply with file count: "
-        f"ratio={ratio:.1f} (small={elapsed_small:.2f}s, large={elapsed_large:.2f}s)"
+    mock = MagicMock()
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.parquet_datasource._infer_schema",
+        mock,
     )
+    mock.return_value = pa.schema({"data": pa.int64()})
+    ray.data.read_parquet(str(tmp_path))
+    mock.assert_not_called()
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
