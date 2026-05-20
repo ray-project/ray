@@ -818,7 +818,7 @@ def read_zarr(
     chunk_shape: List[int] | None = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
-    materialize: bool = False,
+    materialize: bool = True,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -830,16 +830,15 @@ def read_zarr(
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
     Each row in the resulting dataset describes a single chunk from one of the
-    selected arrays in the store. By default, the returned rows contain chunk
-    metadata, per-dimension slice bounds that can be used to query the chunk,
-    and per-dimension padding for truncated edge chunks. If
-    ``materialize=True``, the returned rows also include the fully materialized
-    chunk data for each tile.
+    selected arrays in the store. By default, the returned rows include the
+    fully materialized chunk data in a ``"chunk"`` column. Pass
+    ``materialize=False`` to return only the chunk descriptors (metadata, slice
+    bounds, padding) without reading the data — useful when the caller wants to
+    drive I/O scheduling in a downstream ``map_batches`` step.
 
     The column names are ``"array"``, ``"array_shape"``, ``"chunk_shape"``,
-    ``"dtype"``, ``"chunk_slices"``, and ``"padding"``. When
-    ``materialize=True``, the dataset also includes a ``"chunk"`` column
-    containing the rendered chunk data.
+    ``"dtype"``, ``"chunk_slices"``, ``"padding"``, and (when ``materialize=True``,
+    the default) ``"chunk"``.
 
     Metadata discovery follows three paths:
 
@@ -899,11 +898,12 @@ def read_zarr(
         ...     allow_full_metadata_scan=True,
         ... )
 
-        Materialize full chunk data instead of returning metadata only.
+        Return chunk descriptors only and defer the chunk read to a downstream
+        ``map_batches`` step.
 
         >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "/path/to/store",
-        ...     materialize=True,
+        ...     materialize=False,
         ... )
 
     Args:
@@ -929,9 +929,10 @@ def read_zarr(
             ``.zarray`` files when ``array_paths`` is unspecified and ``.zmetadata``
             is missing. This may be slow or expensive for large remote stores, so it
             is disabled by default.
-        materialize: If ``False``, return metadata-only rows describing each chunk.
-            If ``True``, read and return the chunk data itself in an additional
-            ``"chunk"`` column.
+        materialize: If ``True`` (the default), read each chunk and include the
+            data in a ``"chunk"`` column. If ``False``, return only chunk
+            descriptors (slice bounds, padding, dtype, etc.) so the caller can
+            schedule the actual reads downstream.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -954,12 +955,12 @@ def read_zarr(
         contains the chunk data itself.
     """
     datasource = ZarrV2Datasource(
-        path=path, 
-        filesystem=filesystem, 
-        chunk_shape=chunk_shape, 
-        array_paths=array_paths, 
+        path=path,
+        filesystem=filesystem,
+        chunk_shape=chunk_shape,
+        array_paths=array_paths,
         allow_full_metadata_scan=allow_full_metadata_scan,
-        materialize=materialize
+        materialize=materialize,
     )
     return read_datasource(
         datasource,

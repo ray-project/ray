@@ -283,7 +283,7 @@ class ZarrV2Datasource(Datasource):
         chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
-        materialize: bool = False,
+        materialize: bool = True,
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")

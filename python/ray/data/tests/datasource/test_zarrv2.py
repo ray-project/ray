@@ -50,7 +50,9 @@ def zarrv2_store(tmp_path) -> Path:
 
 
 def test_zarrv2_datasource_selects_all_arrays_and_estimates_size(zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(zarrv2_store))
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_store), materialize=False
+    )
 
     assert set(datasource._selected_arrays) == {"", "nested"}
     assert datasource._grid_shape_dict[""]["grid_shape"] == (3, 2)
@@ -62,6 +64,7 @@ def test_zarrv2_datasource_normalizes_requested_array_paths(zarrv2_store):
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(zarrv2_store),
         array_paths=[".", "nested/"],
+        materialize=False,
     )
 
     assert list(datasource._selected_arrays) == ["", "nested"]
@@ -75,6 +78,7 @@ def test_zarrv2_datasource_rejects_missing_array_paths(zarrv2_store):
         zarrv2_datasource.ZarrV2Datasource(
             str(zarrv2_store),
             array_paths=["missing"],
+            materialize=False,
         )
 
 
@@ -84,6 +88,7 @@ def test_zarrv2_datasource_rejects_invalid_chunk_shape(zarrv2_store, chunk_shape
         zarrv2_datasource.ZarrV2Datasource(
             str(zarrv2_store),
             chunk_shape=chunk_shape,
+            materialize=False,
         )
 
 
@@ -93,6 +98,7 @@ def test_zarrv2_datasource_rejects_chunk_rank_mismatch(zarrv2_store):
             str(zarrv2_store),
             chunk_shape=[4, 4],
             array_paths=["nested"],
+            materialize=False,
         )
 
 
@@ -101,6 +107,7 @@ def test_zarrv2_datasource_applies_chunk_shape_override(zarrv2_store):
         str(zarrv2_store),
         chunk_shape=[4, 2],
         array_paths=["."],
+        materialize=False,
     )
 
     read_tasks = datasource.get_read_tasks(parallelism=8)
@@ -122,11 +129,13 @@ def test_zarrv2_datasource_requires_consolidated_metadata(tmp_path):
     (store_path / ".zmetadata").write_text(json.dumps({}))
 
     with pytest.raises(ValueError, match="Missing 'metadata'"):
-        zarrv2_datasource.ZarrV2Datasource(str(store_path))
+        zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=False)
 
 
 def test_zarrv2_datasource_get_read_tasks_batches_chunks_by_parallelism(zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(zarrv2_store))
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_store), materialize=False
+    )
 
     read_tasks = datasource.get_read_tasks(parallelism=3)
 
@@ -136,7 +145,9 @@ def test_zarrv2_datasource_get_read_tasks_batches_chunks_by_parallelism(zarrv2_s
 
 
 def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(zarrv2_store))
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_store), materialize=False
+    )
 
     read_tasks = datasource.get_read_tasks(parallelism=16)
     rows = _execute_read_tasks(read_tasks).to_dict("records")
