@@ -624,7 +624,7 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
         ray.get(consumer.remote([producer_ref]))
 
 
-def test_is_canceled_with_keyboard_interrupt(ray_start_regular, i):
+def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
     """Test checking is_canceled() within KeyboardInterrupt in normal tasks.
 
     is_canceled() will be True in KeyboardInterrupt exception block.
@@ -648,7 +648,7 @@ def test_is_canceled_with_keyboard_interrupt(ray_start_regular, i):
 
     # The task should be canceled and unblock without sending the signal.
     try:
-        ray.get(ref) == "canceled_via_keyboard_interrupt"
+        assert ray.get(ref) is True
     finally:
         ray.get(signal_actor.send.remote())
 
