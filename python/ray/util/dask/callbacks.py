@@ -1,7 +1,7 @@
 import contextlib
 from collections import defaultdict, namedtuple
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from dask.callbacks import Callback
 
@@ -79,7 +79,9 @@ class RayDaskCallback(Callback):
         type(self).ray_active.remove(self._ray_callback)
         super().unregister()
 
-    def _ray_presubmit(self, task, key, deps) -> Optional[Any]:
+    def _ray_presubmit(
+        self, task: Any, key: Any, deps: Dict[Any, Any]
+    ) -> Optional[Any]:
         """Run before submitting a Ray task.
 
         If this callback returns a non-`None` value, Ray does _not_ create
@@ -102,7 +104,13 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_postsubmit(self, task, key, deps, object_ref: ray.ObjectRef):
+    def _ray_postsubmit(
+        self,
+        task: Any,
+        key: Any,
+        deps: Dict[Any, Any],
+        object_ref: ray.ObjectRef,
+    ):
         """Run after submitting a Ray task.
 
         Args:
@@ -119,25 +127,21 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_pretask(self, key, object_refs: List[ray.ObjectRef]):
+    def _ray_pretask(self, key: Any, object_refs: List[ray.ObjectRef]):
         """Run before executing a Dask task within a Ray task.
 
         This method executes after Ray submits the task within a Ray
-        worker. Ray passes the return value of this task to the
+        worker. The return value of this method is passed to the
         _ray_posttask callback, if provided.
 
         Args:
             key: The Dask graph key for the Dask task.
             object_refs: The object references
                 for the arguments of the Ray task.
-
-        Returns:
-            A value that Ray passes to the corresponding
-            _ray_posttask callback, if the callback is defined.
         """
         pass
 
-    def _ray_posttask(self, key, result, pre_state):
+    def _ray_posttask(self, key: Any, result: Any, pre_state: Any):
         """Run after executing a Dask task within a Ray task.
 
         This method executes within a Ray worker. This callback receives the
@@ -151,7 +155,7 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_postsubmit_all(self, object_refs: List[ray.ObjectRef], dsk):
+    def _ray_postsubmit_all(self, object_refs: List[ray.ObjectRef], dsk: Any):
         """Run after Ray submits all tasks.
 
         Args:
@@ -161,7 +165,7 @@ class RayDaskCallback(Callback):
         """
         pass
 
-    def _ray_finish(self, result):
+    def _ray_finish(self, result: Any):
         """Run after Ray finishes executing all Ray tasks and returns the final
         result.
 
