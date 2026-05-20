@@ -300,6 +300,12 @@ class BlockMetadata(BlockStats):
     # the empty list if indeterminate.
     # Stored as a tuple for hash-ability.
     input_files: Optional[Tuple[str, ...]] = field(default=None)
+    # Optional per-task heap-memory hint in bytes. Producers may set this
+    # so a downstream consumer (e.g. ``TaskPoolMapOperator``) can raise the
+    # Ray ``memory`` reservation for the task that consumes the block.
+    # Default ``None`` means "no hint" — generic consumers must treat
+    # missing hints as a no-op.
+    task_memory_bytes: Optional[int] = field(default=None)
 
     def __post_init__(self):
         super().__post_init__()
@@ -339,6 +345,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=metadata.exec_stats,
             task_exec_stats=metadata.task_exec_stats,
             input_files=metadata.input_files,
+            task_memory_bytes=metadata.task_memory_bytes,
             schema=schema,
         )
 
@@ -360,12 +367,18 @@ class BlockMetadataWithSchema(BlockMetadata):
 
     @property
     def metadata(self) -> BlockMetadata:
+        """Plain :class:`BlockMetadata` without schema.
+
+        Preserves all :class:`BlockMetadata` fields, including ``task_memory_bytes``,
+        so streaming hand-offs do not drop the hint.
+        """
         return BlockMetadata(
             num_rows=self.num_rows,
             size_bytes=self.size_bytes,
             exec_stats=self.exec_stats,
             input_files=self.input_files,
             task_exec_stats=self.task_exec_stats,
+            task_memory_bytes=self.task_memory_bytes,
         )
 
     def __getstate__(self) -> Dict[str, Any]:
