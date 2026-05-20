@@ -1297,16 +1297,16 @@ class HAProxyManager(ProxyActorInterface):
 
             await self._haproxy.stop()
 
-            if self._metrics_collector is not None:
-                self._metrics_collector.close()
-                self._metrics_collector = None
-
             logger.info(
                 f"Successfully stopped HAProxy process on node {self._node_id}.",
                 extra={"log_to_stderr": False},
             )
         except Exception as e:
             raise RuntimeError(f"Error stopping HAProxy during shutdown: {e}")
+        finally:
+            if self._metrics_collector is not None:
+                self._metrics_collector.close()
+                self._metrics_collector = None
 
     async def ready(self) -> str:
         try:

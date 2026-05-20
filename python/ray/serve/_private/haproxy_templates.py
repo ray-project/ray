@@ -75,6 +75,7 @@ frontend prometheus
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
     {%- if ingress_request_router_metrics_enabled and has_ingress_request_router %}
+    log global
     # Per-request metrics for the ingress request router. Goes only to the
     # rfc5424 target below; the inherited rfc3164 targets do not include the
     # SD section, so their byte stream is unchanged.
