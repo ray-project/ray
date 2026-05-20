@@ -6,8 +6,6 @@ import json
 import logging
 import math
 from collections.abc import Callable, Iterable
-from itertools import product
-from math import prod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, TypedDict
 from urllib.parse import urlsplit
@@ -35,38 +33,11 @@ if TYPE_CHECKING:
 
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
-# CPython 64-bit object-size approximations, used to estimate the in-memory
-# size of a descriptor-mode output row without instantiating one. Values are
-# from `sys.getsizeof` on CPython 3.10+ and are stable enough for Ray Data's
-# block-sizing heuristics (they only need to be within an order of magnitude).
-_PYINT_BYTES = 28
-_PYSTR_BASE = 49  # plus one byte per character
-_PYTUPLE_BASE = 56  # plus 8 bytes per element
-_PYLIST_BASE = 56  # plus 8 bytes per element
-_PYPTR_BYTES = 8
-
-# Cost of one int held inside a tuple or list: the pointer slot in the
-# container + the int object itself.
-_INT_IN_SEQ = _PYPTR_BYTES + _PYINT_BYTES
-# Cost of one (int, int) tuple held inside a list.
-_PAIR_IN_LIST = _PYPTR_BYTES + _PYTUPLE_BASE + 2 * _INT_IN_SEQ
-
 
 class ZarrArrayMeta(TypedDict):
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
     dtype: str
-
-
-class ZarrChunkRow(TypedDict):
-    array: str
-    meta: ZarrArrayMeta
-    chunk_index: tuple[int, ...]
-
-
-class ZarrGridData(TypedDict):
-    meta: ZarrArrayMeta
-    grid_shape: tuple[int, ...]
 
 
 def _zarr_array_meta_from_json(raw_meta: Any, array_path: str) -> ZarrArrayMeta:
@@ -93,35 +64,6 @@ def _zarr_array_meta_from_json(raw_meta: Any, array_path: str) -> ZarrArrayMeta:
         "chunks": tuple(int(x) for x in raw_meta["chunks"]),
         "dtype": str(raw_meta["dtype"]),
     }
-
-
-def _descriptor_row_size_bytes(array_name: str, meta: ZarrArrayMeta) -> int:
-    """Estimate the in-memory bytes of one descriptor-mode output row.
-
-    A descriptor row has six cells: ``array`` (str), ``dtype`` (str),
-    ``array_shape`` and ``chunk_shape`` (each a tuple of ``ndim`` ints),
-    ``chunk_slices`` (a list of ``ndim`` ``(int, int)`` tuples), and
-    ``padding`` (a list of ``ndim`` ints). The estimate is derived from the
-    Python object sizes defined above; the dominant term scales linearly with
-    ``ndim``.
-    """
-    ndim = len(meta["shape"])
-    return (
-        # "array" cell
-        _PYSTR_BASE
-        + len(array_name)
-        # "dtype" cell
-        + _PYSTR_BASE
-        + len(meta["dtype"])
-        # "array_shape" and "chunk_shape" — two tuples of ndim ints
-        + 2 * (_PYTUPLE_BASE + ndim * _INT_IN_SEQ)
-        # "chunk_slices" — list of ndim (int, int) tuples
-        + _PYLIST_BASE
-        + ndim * _PAIR_IN_LIST
-        # "padding" — list of ndim ints
-        + _PYLIST_BASE
-        + ndim * _INT_IN_SEQ
-    )
 
 
 def _load_metadata_from_zmetadata_file(
@@ -197,33 +139,42 @@ def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
     return out
 
 
-def _chunk_geometry(
-    chunk_index: tuple[int, ...],
-    shape: tuple[int, ...],
-    chunks: tuple[int, ...],
-) -> tuple[list[tuple[int, int]], list[int], tuple[int, ...]]:
-    """Compute per-dimension slice bounds, trailing padding, and actual shape
-    for one chunk of an array.
+def _axis0_chunk_slices(shape0: int, chunk_size: int) -> list[tuple[int, int]]:
+    """Tile axis 0 into ``(start, stop)`` slice pairs of length up to ``chunk_size``.
 
-    ``chunks`` is the array's chunk shape; the chunk at the trailing edge of an
-    axis may be smaller than ``chunks[dim]`` if the array's ``shape[dim]`` is
-    not divisible. The returned ``chunk_shape`` reflects that truncation, and
-    ``padding`` records how many trailing zeros would be needed to pad each
-    truncated chunk back to ``chunks``.
+    The final slice may be shorter than ``chunk_size`` if ``shape0`` is not a
+    multiple of it. No padding is applied — callers receive the actual shapes.
     """
-    chunk_slices: list[tuple[int, int]] = []
-    padding: list[int] = []
-    chunk_shape = list(chunks)
-    for dim, (i, size, c) in enumerate(zip(chunk_index, shape, chunks)):
-        start = i * c
-        stop = min((i + 1) * c, size)
-        chunk_slices.append((start, stop))
-        if start + c > size:
-            padding.append(start + c - size)
-            chunk_shape[dim] = stop - start
-        else:
-            padding.append(0)
-    return chunk_slices, padding, tuple(chunk_shape)
+    if chunk_size <= 0:
+        raise ValueError(f"chunk_size must be positive, got {chunk_size}")
+    return [
+        (start, min(start + chunk_size, shape0))
+        for start in range(0, shape0, chunk_size)
+    ]
+
+
+def _resolve_store(
+    path: str, filesystem: AbstractFileSystem | None = None
+) -> tuple[AbstractFileSystem, str]:
+    """Resolve a user-supplied store path to an ``(fsspec_filesystem, path)`` pair.
+
+    If ``filesystem`` is provided, it's used as-is and ``path`` is trimmed of
+    trailing slashes. Otherwise, local paths are resolved via the local
+    fsspec filesystem and remote URLs are dispatched through
+    :func:`fsspec.core.url_to_fs`.
+    """
+    parsed = urlsplit(path)
+
+    if filesystem is not None:
+        return filesystem, path.rstrip("/")
+
+    if parsed.scheme in ("", "file"):
+        local = path if not parsed.scheme else parsed.path
+        root = str(Path(local).resolve())
+        return fsspec.filesystem("file"), root
+
+    fs, root = fsspec.core.url_to_fs(path)
+    return fs, root.rstrip("/")
 
 
 def _to_fsspec(
@@ -253,262 +204,139 @@ def _to_fsspec(
     )
 
 
-def _resolve_store(
-    path: str, filesystem: AbstractFileSystem | None = None
-) -> tuple[AbstractFileSystem, str]:
-    """Resolve a user-supplied store path to an ``(fsspec_filesystem, path)`` pair.
+def _read_array_slice(
+    root: ZarrRoot,
+    array_name: str,
+    start: int,
+    stop: int,
+    max_retries: int = 5,
+    base_delay: float = 1.0,
+) -> np.ndarray:
+    """Read ``array[start:stop, ...]`` from a Zarr root with network-retry."""
+    import time
 
-    If ``filesystem`` is provided, it's used as-is and ``path`` is trimmed of
-    trailing slashes. Otherwise, local paths are resolved via the local
-    fsspec filesystem and remote URLs are dispatched through
-    :func:`fsspec.core.url_to_fs`.
-    """
-    parsed = urlsplit(path)
-
-    # if user passes filesystem, use it
-    if filesystem is not None:
-        return filesystem, path.rstrip("/")
-
-    # local default
-    if parsed.scheme in ("", "file"):
-        local = path if not parsed.scheme else parsed.path
-        root = str(Path(local).resolve())
-        return fsspec.filesystem("file"), root
-
-    # Generic fallback
-    fs, root = fsspec.core.url_to_fs(path)
-    return fs, root.rstrip("/")
+    last_error: Optional[BaseException] = None
+    retry_keywords = (
+        "connection reset",
+        "timeout",
+        "connection refused",
+        "network",
+        "socket",
+        "http error",
+    )
+    arr = root if array_name == "" else root[array_name]
+    for attempt in range(max_retries):
+        try:
+            return arr[start:stop, ...]
+        except Exception as e:
+            last_error = e
+            error_msg = str(e).lower()
+            if any(kw in error_msg for kw in retry_keywords):
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    "Network error reading array=%s [%s:%s], "
+                    "attempt %s/%s, retrying in %.1fs: %s",
+                    array_name,
+                    start,
+                    stop,
+                    attempt + 1,
+                    max_retries,
+                    delay,
+                    e,
+                )
+                time.sleep(delay)
+            else:
+                raise
+    raise RuntimeError(
+        f"Failed to read array={array_name!r} [{start}:{stop}] "
+        f"after {max_retries} attempts"
+    ) from last_error
 
 
 def _create_read_fn(
-    batch: list[ZarrChunkRow], root: ZarrRoot | None = None
+    slices: list[tuple[int, int]],
+    array_names: list[str],
+    root: ZarrRoot,
 ) -> Callable[[], Iterable[pd.DataFrame]]:
-    """Build a read-task callable for a batch of Zarr chunk descriptors.
+    """Build a read-task callable that materializes one row per axis-0 slice.
 
-    If ``root`` is provided, the returned callable reads and materializes each
-    chunk's data into a ``"chunk"`` column. Otherwise, it returns metadata-only
-    rows that describe the chunk bounds, shape, dtype, and edge padding needed
-    to reconstruct truncated boundary chunks.
+    Each output row has one column per array in ``array_names``. The column
+    value is the array's ``[start:stop, ...]`` slice (an ndarray). Edge
+    slices at the trailing boundary may be shorter than the others.
     """
-    if root is not None:
 
-        def read_fn() -> Iterable[pd.DataFrame]:
-            def _chunk_geometry(
-                chunk_index: tuple[int, ...],
-                shape: tuple[int, ...],
-                chunks: tuple[int, ...],
-            ) -> tuple[list[tuple[int, int]], list[int], tuple[int, ...]]:
-                """Compute per-dimension slice bounds, trailing padding, and actual shape
-                for one chunk of an array.
+    def read_fn() -> Iterable[pd.DataFrame]:
+        columns: dict[str, list] = {name: [] for name in array_names}
+        for start, stop in slices:
+            for name in array_names:
+                columns[name].append(_read_array_slice(root, name, start, stop))
+        yield pd.DataFrame(columns)
 
-                ``chunks`` is the array's chunk shape; the chunk at the trailing edge of an
-                axis may be smaller than ``chunks[dim]`` if the array's ``shape[dim]`` is
-                not divisible. The returned ``chunk_shape`` reflects that truncation, and
-                ``padding`` records how many trailing zeros would be needed to pad each
-                truncated chunk back to ``chunks``.
-                """
-                chunk_slices: list[tuple[int, int]] = []
-                padding: list[int] = []
-                chunk_shape = list(chunks)
-                for dim, (i, size, c) in enumerate(zip(chunk_index, shape, chunks)):
-                    start = i * c
-                    stop = min((i + 1) * c, size)
-                    chunk_slices.append((start, stop))
-                    if start + c > size:
-                        padding.append(start + c - size)
-                        chunk_shape[dim] = stop - start
-                    else:
-                        padding.append(0)
-                return chunk_slices, padding, tuple(chunk_shape)
-            
-            def _read_with_retry(
-                array: str,
-                chunk_slices: list[tuple[int, int]] | tuple[tuple[int, int], ...],
-                max_retries: int = 5,
-                base_delay: float = 1.0,
-            ) -> np.ndarray:
-                import time
-
-                slice_tuple = tuple(slice(start, stop) for start, stop in chunk_slices)
-                last_error = None
-
-                for attempt in range(max_retries):
-                    try:
-                        if array == "":
-                            return root[slice_tuple]
-
-                        return root[array][slice_tuple]
-
-                    except Exception as e:
-                        last_error = e
-                        error_msg = str(e).lower()
-
-                        if any(
-                            keyword in error_msg
-                            for keyword in [
-                                "connection reset",
-                                "timeout",
-                                "connection refused",
-                                "network",
-                                "socket",
-                                "http error",
-                            ]
-                        ):
-                            delay = base_delay * (2**attempt)
-                            logger.warning(
-                                "Network error reading array=%s slices=%s, "
-                                "attempt %s/%s, retrying in %.1fs: %s",
-                                array,
-                                chunk_slices,
-                                attempt + 1,
-                                max_retries,
-                                delay,
-                                e,
-                            )
-                            time.sleep(delay)
-                        else:
-                            raise
-
-                raise RuntimeError(
-                    f"Failed to read array={array!r} slices={chunk_slices} "
-                    f"after {max_retries} attempts"
-                ) from last_error
-
-            arrays = []
-            array_shapes = []
-            chunk_shapes = []
-            dtypes = []
-            full_chunk_slices = []
-            full_paddings = []
-            chunks = []
-
-            for row in batch:
-                chunk_slices, padding, chunk_shape = _chunk_geometry(
-                    row["chunk_index"],
-                    row["meta"]["shape"],
-                    row["meta"]["chunks"],
-                )
-
-                chunk = _read_with_retry(row["array"], chunk_slices)
-
-                dtype = np.dtype(row["meta"]["dtype"])
-                chunk = chunk.astype(dtype, copy=False)
-
-                if any(p > 0 for p in padding):
-                    chunk = np.pad(
-                        chunk,
-                        pad_width=[(0, int(p)) for p in padding],
-                        mode="constant",
-                        constant_values=0,
-                    )
-
-                arrays.append(row["array"])
-                array_shapes.append(row["meta"]["shape"])
-                chunk_shapes.append(chunk_shape)
-                dtypes.append(row["meta"]["dtype"])
-                full_chunk_slices.append(chunk_slices)
-                full_paddings.append(padding)
-                chunks.append(chunk)
-
-            yield pd.DataFrame(
-                {
-                    "array": arrays,
-                    "array_shape": array_shapes,
-                    "chunk_shape": chunk_shapes,
-                    "dtype": dtypes,
-                    "chunk_slices": full_chunk_slices,
-                    "padding": full_paddings,
-                    "chunk": chunks,
-                }
-            )
-
-        return read_fn
-    else:
-
-        def read_fn() -> Iterable[pd.DataFrame]:
-            arrays = []
-            array_shapes = []
-            chunk_shapes = []
-            dtypes = []
-            full_chunk_slices = []
-            full_paddings = []
-
-            for row in batch:
-                chunk_slices, padding, chunk_shape = _chunk_geometry(
-                    row["chunk_index"],
-                    row["meta"]["shape"],
-                    row["meta"]["chunks"],
-                )
-                arrays.append(row["array"])
-                array_shapes.append(row["meta"]["shape"])
-                chunk_shapes.append(chunk_shape)
-                dtypes.append(row["meta"]["dtype"])
-                full_chunk_slices.append(chunk_slices)
-                full_paddings.append(padding)
-
-            yield pd.DataFrame(
-                {
-                    "array": arrays,
-                    "array_shape": array_shapes,
-                    "chunk_shape": chunk_shapes,
-                    "dtype": dtypes,
-                    "chunk_slices": full_chunk_slices,
-                    "padding": full_paddings,
-                }
-            )
-
-        return read_fn
+    return read_fn
 
 
 class ZarrV2Datasource(Datasource):
-    """Reads chunks of one or more arrays from a Zarr v2 store.
+    """Reads chunks of axis-0-aligned arrays from a Zarr v2 store.
 
-    Each output row corresponds to one chunk of one selected array. With
-    ``materialize=True`` (the default) rows include the chunk's data; with
-    ``materialize=False`` rows hold only the chunk's descriptor (array name,
-    slice bounds, padding, dtype). See :func:`ray.data.read_zarr` for the
-    public API and full argument documentation.
+    Each output row corresponds to one slice along axis 0; the row carries one
+    column per selected array, containing that array's ``[start:stop, ...]``
+    slice. All selected arrays must share ``shape[0]``. See
+    :func:`ray.data.read_zarr` for the public API.
     """
 
     def __init__(
         self,
         path: str,
         filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
-        chunk_shape: List[int] | None = None,
+        chunk_size: Optional[int] = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
-        materialize: bool = True,
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
+
         self.allow_full_metadata_scan = allow_full_metadata_scan
-        self.materialize = materialize
-        self.root = None
-
-        if chunk_shape:
-            for val in chunk_shape:
-                if val <= 0 or not isinstance(val, int):
-                    raise ValueError("chunk shape must only contain positive integers")
-
         self.paths = [str(path)]
-        self.chunk_shape: tuple[int, ...] | None = (
-            tuple(chunk_shape) if chunk_shape is not None else None
-        )
-        # Accept pyarrow.fs or fsspec; downstream code speaks fsspec.
         self._filesystem = _to_fsspec(filesystem)
+
         self._selected_arrays = self._load_metadata(array_paths)
-        self._grid_shape_dict = self._gen_grid_shape()
+        if not self._selected_arrays:
+            raise ValueError(
+                f"No arrays discovered in Zarr store at {self.paths[0]!r}."
+            )
 
-        if self.materialize:
-            # Lazy zarr import: descriptor-only callers don't need it.
-            # zarr.open returns an Array when the store's root is itself an
-            # array (.zarray at root) and a Group otherwise; the read-task
-            # dispatch handles both via the empty-string convention in
-            # self._selected_arrays.
-            import zarr
+        self._shape0 = self._validate_axis0_alignment()
 
-            fs, store_path = _resolve_store(self.paths[0], self._filesystem)
-            self.root = zarr.open(fs.get_mapper(store_path), mode="r")
+        if chunk_size is None:
+            chunk_size = min(
+                meta["chunks"][0] for meta in self._selected_arrays.values()
+            )
+        if not isinstance(chunk_size, int) or chunk_size <= 0:
+            raise ValueError(
+                f"chunk_size must be a positive integer, got {chunk_size!r}"
+            )
+        self.chunk_size = chunk_size
+        self._slices = _axis0_chunk_slices(self._shape0, self.chunk_size)
+
+        # Lazy zarr import: only needed once we read.
+        import zarr
+
+        fs, store_path = _resolve_store(self.paths[0], self._filesystem)
+        self.root = zarr.open(fs.get_mapper(store_path), mode="r")
+
+    def _validate_axis0_alignment(self) -> int:
+        """Ensure all selected arrays agree on ``shape[0]``; return that length."""
+        shape0_by_array = {
+            name: meta["shape"][0] for name, meta in self._selected_arrays.items()
+        }
+        sizes = set(shape0_by_array.values())
+        if len(sizes) > 1:
+            raise ValueError(
+                "Arrays in a single read_zarr call must share axis 0 (their "
+                f"first dimension). Got: {shape0_by_array!r}. Use array_paths="
+                "[...] to select a compatible subset."
+            )
+        return sizes.pop()
 
     def _load_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
         """Discover and load ``.zarray`` metadata for the selected arrays.
@@ -544,8 +372,6 @@ class ZarrV2Datasource(Datasource):
             )
 
         if array_paths:
-            # Normalize user-supplied paths for the filter step: strip slashes
-            # and treat "." as the root ("").
             requested: set[str] = set()
             for p in array_paths:
                 normalized = p.strip("/")
@@ -563,50 +389,26 @@ class ZarrV2Datasource(Datasource):
 
         return all_arrays
 
-    def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
-        """Compute per-array chunk grid shapes from array metadata.
-
-        This applies any user-provided chunk-shape override, validates that the
-        chunk rank matches the array rank, and records the number of chunks
-        needed along each dimension for downstream read task generation.
-        """
-        grid_shape_dict: dict[str, ZarrGridData] = {}
-        for array, meta in self._selected_arrays.items():
-            shape = meta["shape"]
-            chunk_shape = meta["chunks"]
-            if self.chunk_shape:
-                chunk_shape = self.chunk_shape
-                meta["chunks"] = chunk_shape
-
-            if len(shape) != len(chunk_shape):
-                raise ValueError(
-                    f"chunk shape must have same dimension length as the array: {array}"
-                )
-
-            grid_shape = tuple(
-                math.ceil(size / chunk) for size, chunk in zip(shape, chunk_shape)
-            )
-
-            grid_shape_dict[array] = {"meta": meta, "grid_shape": grid_shape}
-        return grid_shape_dict
-
-    def _row_size_bytes(self, array_name: str, meta: ZarrArrayMeta) -> int:
-        """Approximate in-memory size of a single output row from this datasource."""
-        if self.materialize:
-            return prod(meta["chunks"]) * np.dtype(meta["dtype"]).itemsize
-        return _descriptor_row_size_bytes(array_name, meta)
-
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        """Estimate the dataset's total in-memory size as ``sum(num_chunks * row_size)``."""
+    def _row_bytes(self, slice_len: int) -> int:
+        """In-memory bytes for one output row carrying ``slice_len`` along axis 0."""
         total = 0
-        for array_name, data in self._grid_shape_dict.items():
-            num_chunks = prod(data["grid_shape"])
-            total += num_chunks * self._row_size_bytes(array_name, data["meta"])
+        for meta in self._selected_arrays.values():
+            non_axis0_numel = (
+                math.prod(meta["shape"][1:]) if len(meta["shape"]) > 1 else 1
+            )
+            total += slice_len * non_axis0_numel * np.dtype(meta["dtype"]).itemsize
         return total
 
-    def _estimate_batch_mem_size(self, batch: List[ZarrChunkRow]) -> int:
-        """Sum the per-row size estimate across one read task's batch."""
-        return sum(self._row_size_bytes(row["array"], row["meta"]) for row in batch)
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Total bytes = sum of (full array sizes) across all selected arrays."""
+        return sum(
+            math.prod(meta["shape"]) * np.dtype(meta["dtype"]).itemsize
+            for meta in self._selected_arrays.values()
+        )
+
+    def _estimate_batch_mem_size(self, batch: list[tuple[int, int]]) -> int:
+        """Sum per-row sizes across one read task's batch."""
+        return sum(self._row_bytes(stop - start) for start, stop in batch)
 
     def get_read_tasks(
         self,
@@ -614,46 +416,25 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """Flatten the chunk grid into ``parallelism`` batches and wrap each in a ReadTask.
+        """Split the axis-0 chunk list into ``parallelism`` batches and wrap each in a ReadTask.
 
-        Chunks across all selected arrays are concatenated and split into batches
-        of size ``ceil(num_chunks / parallelism)``. Each batch becomes one
-        ``ReadTask`` whose callable yields a single ``pd.DataFrame``.
+        Each ``ReadTask``'s callable yields a single ``pd.DataFrame`` whose
+        rows are axis-0 slices and whose columns are the selected arrays.
         """
         read_tasks: List[ReadTask] = []
-        batch: list[ZarrChunkRow] = []
+        array_names = list(self._selected_arrays)
 
-        num_chunks = sum(
-            prod(value["grid_shape"]) for _, value in self._grid_shape_dict.items()
-        )
-        parallelism = min(parallelism, num_chunks) if num_chunks > 0 else 1
-        batch_size = math.ceil(num_chunks / parallelism)
+        n_rows = len(self._slices)
+        if n_rows == 0:
+            return read_tasks
+        actual_parallelism = min(parallelism, n_rows)
+        batch_size = math.ceil(n_rows / actual_parallelism)
 
-        for array, data in self._grid_shape_dict.items():
-            for chunk_index in product(*(range(n) for n in data["grid_shape"])):
-
-                batch.append(
-                    {"array": array, "meta": data["meta"], "chunk_index": chunk_index}
-                )
-
-                if len(batch) >= batch_size:
-                    read_tasks.append(
-                        ReadTask(
-                            _create_read_fn(batch, self.root),
-                            BlockMetadata(
-                                num_rows=len(batch),
-                                size_bytes=self._estimate_batch_mem_size(batch),
-                                input_files=(self.paths[0],),
-                                exec_stats=None,
-                            ),
-                            per_task_row_limit=per_task_row_limit,
-                        )
-                    )
-                    batch = []
-        if batch:
+        for start in range(0, n_rows, batch_size):
+            batch = self._slices[start : start + batch_size]
             read_tasks.append(
                 ReadTask(
-                    _create_read_fn(batch, self.root),
+                    _create_read_fn(batch, array_names, self.root),
                     BlockMetadata(
                         num_rows=len(batch),
                         size_bytes=self._estimate_batch_mem_size(batch),
