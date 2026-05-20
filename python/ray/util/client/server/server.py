@@ -531,8 +531,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         data: Union[bytes, bytearray],
         client_ref_id: bytes,
         client_id: str,
-        context=None,
-    ):
+        context: Optional[grpc.ServicerContext] = None,
+    ) -> ray_client_pb2.PutResponse:
         """Put an object in the cluster with ray.put() via gRPC.
 
         Args:
@@ -542,6 +542,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             client_id: The client who owns this data, for tracking when to
               delete this reference.
             context: gRPC context.
+
+        Returns:
+            A ``PutResponse`` containing the resulting object ref id, or an
+            error payload if the put failed.
         """
         try:
             obj = loads_from_client(data, self)

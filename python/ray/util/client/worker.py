@@ -442,8 +442,13 @@ class Worker:
         metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.
+
         Args:
             metadata: the gRPC metadata to append the IDs to
+
+        Returns:
+            The metadata with the thread id and request id appended, or the
+            original metadata unchanged if reconnects are disabled.
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
