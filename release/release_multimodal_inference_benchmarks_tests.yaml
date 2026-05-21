@@ -1,5 +1,5 @@
 - name: DEFAULTS
-  python: "3.10"
+  python: "3.14"
   group: data-multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
@@ -90,7 +90,7 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: audio_transcription_py3.10.lock
 
