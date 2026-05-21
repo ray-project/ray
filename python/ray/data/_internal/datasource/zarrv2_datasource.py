@@ -6,12 +6,8 @@ import json
 import logging
 import math
 from collections.abc import Callable, Iterable
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, TypedDict
-from urllib.parse import urlsplit
 
-import fsspec
-import fsspec.core
 import numpy as np
 import pandas as pd
 from fsspec.spec import AbstractFileSystem
@@ -158,23 +154,21 @@ def _resolve_store(
 ) -> tuple[AbstractFileSystem, str]:
     """Resolve a user-supplied store path to an ``(fsspec_filesystem, path)`` pair.
 
-    If ``filesystem`` is provided, it's used as-is and ``path`` is trimmed of
-    trailing slashes. Otherwise, local paths are resolved via the local
-    fsspec filesystem and remote URLs are dispatched through
-    :func:`fsspec.core.url_to_fs`.
+    If the caller already supplied an fsspec filesystem, use it as-is.
+    Otherwise delegate URL resolution to Ray Data's standard
+    :func:`_resolve_paths_and_filesystem` helper (the same one every other
+    ``read_*`` API uses) and wrap the resulting ``pyarrow.fs.FileSystem``
+    into fsspec via :class:`fsspec.implementations.arrow.ArrowFSWrapper`
+    since Zarr's storage layer speaks fsspec. This gives free support for
+    Ray Data URL conventions like ``s3://anonymous@<bucket>/...``.
     """
-    parsed = urlsplit(path)
-
     if filesystem is not None:
         return filesystem, path.rstrip("/")
 
-    if parsed.scheme in ("", "file"):
-        local = path if not parsed.scheme else parsed.path
-        root = str(Path(local).resolve())
-        return fsspec.filesystem("file"), root
+    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
-    fs, root = fsspec.core.url_to_fs(path)
-    return fs, root.rstrip("/")
+    paths, pa_fs = _resolve_paths_and_filesystem([path])
+    return _to_fsspec(pa_fs), paths[0].rstrip("/")
 
 
 def _to_fsspec(

@@ -1,15 +1,20 @@
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
+import fsspec
 import numpy as np
 import pandas as pd
 import pyarrow.fs
 import pytest
 import zarr
+from pytest_lazy_fixtures import lf as lazy_fixture
 
+import ray
 import ray.data.read_api as read_api
 from ray.data._internal.datasource import zarrv2_datasource
+from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
@@ -55,6 +60,12 @@ def zarrv2_root_store(tmp_path) -> Path:
     arr[:] = np.arange(20, dtype="<i4").reshape(5, 4)
     zarr.consolidate_metadata(str(store_path))
     return store_path
+
+
+@pytest.fixture
+def local_fsspec_fs():
+    """fsspec local filesystem (for parametrized cross-fs read tests)."""
+    return fsspec.filesystem("file")
 
 
 @pytest.fixture
@@ -334,6 +345,70 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
         "concurrency": 3,
         "override_num_blocks": 2,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-filesystem end-to-end (Ray Data convention)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fs",
+    [
+        None,
+        lazy_fixture("local_fs"),  # pyarrow.fs (gets wrapped to fsspec internally)
+        lazy_fixture("local_fsspec_fs"),  # native fsspec
+    ],
+)
+def test_read_zarr_basic_across_filesystems(ray_start_regular_shared, fs, local_path):
+    """Round-trip a real Zarr store through read_zarr for each filesystem flavor.
+
+    Mirrors the parametrized read-path coverage other Ray Data datasources use
+    (lance, parquet, json, hudi, …) — exercises None / pyarrow.fs / fsspec
+    input shapes against the same store written to a local path.
+    """
+    store_path = os.path.join(local_path, "data.zarr")
+    images_src = np.arange(20, dtype="<i4").reshape(5, 4)
+    labels_src = np.arange(5, dtype="|u1")
+    _write_real_zarr_store(
+        Path(store_path),
+        {
+            "images": (images_src, (2, 4)),
+            "labels": (labels_src, (2,)),
+        },
+    )
+
+    ds = ray.data.read_zarr(store_path, filesystem=fs, chunk_size=2)
+
+    assert ds.count() == 3  # 5 samples, chunk_size=2 → 3 rows
+    rows = ds.take_all()
+    images_out = np.concatenate([row["images"] for row in rows], axis=0)
+    labels_out = np.concatenate([row["labels"] for row in rows], axis=0)
+    np.testing.assert_array_equal(images_out, images_src)
+    np.testing.assert_array_equal(labels_out, labels_src)
+
+
+# ---------------------------------------------------------------------------
+# Public-bucket integration test
+# ---------------------------------------------------------------------------
+
+
+def test_read_zarr_integration_public_s3(ray_start_regular_shared):
+    """End-to-end read against a real Zarr store in a public S3 bucket.
+
+    Uses ``s3://anonymous@ray-example-data/mnist-tiny.zarr`` — a 200-sample
+    MNIST subset with two aligned arrays (``images`` shape (200, 28, 28),
+    ``labels`` shape (200,)). Both with axis-0 chunks of 50, so the resulting
+    dataset has 4 rows by default.
+    """
+    ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
+
+    assert ds.count() == 4
+    rows = ds.take_all()
+    assert {row["images"].shape for row in rows} == {(50, 28, 28)}
+    assert {row["labels"].shape for row in rows} == {(50,)}
+    assert all(row["images"].dtype == np.uint8 for row in rows)
+    assert all(row["labels"].dtype == np.uint8 for row in rows)
 
 
 if __name__ == "__main__":
