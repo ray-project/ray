@@ -13,7 +13,8 @@ def get_activation_fn(
 
     Args:
         name: One of "relu" (default), "tanh", "elu", "gelu", "leaky_relu",
-            "swish" (or "silu", which is the same), or "linear" (same as None).
+            "leakyrelu", "softmax", "swish" (or "silu", which is the same),
+            or "linear" (same as None).
         framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
