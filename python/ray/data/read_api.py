@@ -879,23 +879,34 @@ def read_zarr(
         array.
 
         >>> import ray
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ... )
+        >>> ds.schema()
+        Column  Type
+        ------  ----
+        images  ArrowTensorTypeV2(shape=(50, 28, 28), dtype=uint8)
+        labels  ArrowTensorTypeV2(shape=(50,), dtype=uint8)
+        >>> ds.count()
+        4
 
         Select only the ``images`` array; each row holds one image-batch.
 
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ...     array_paths=["images"],
         ... )
+        >>> ds.count()
+        4
 
         Override the axis-0 batch size for read tasks.
 
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ...     chunk_size=100,
         ... )
+        >>> ds.count()
+        2
 
         Pass an explicit filesystem for private/authenticated storage.
 
