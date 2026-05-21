@@ -216,9 +216,12 @@ def _read_array_slice(
         "socket",
         "http error",
     )
-    arr = root if array_name == "" else root[array_name]
     for attempt in range(max_retries):
         try:
+            # Resolve the array inside the retry loop: on remote stores
+            # ``root[array_name]`` reads the ``.zarray`` metadata file and
+            # can fail transiently the same way the data read can.
+            arr = root if array_name == "" else root[array_name]
             return arr[start:stop, ...]
         except Exception as e:
             last_error = e
@@ -318,6 +321,20 @@ class ZarrV2Datasource(Datasource):
 
     def _validate_axis0_alignment(self) -> int:
         """Ensure all selected arrays agree on ``shape[0]``; return that length."""
+        # Reject 0-D (scalar) arrays upfront — they appear in real stores
+        # (e.g., per-experiment hyperparameters in ERA5/CMIP6) but have no
+        # axis 0 to align on. Indexing ``meta["shape"][0]`` on them would
+        # raise IndexError with no useful context.
+        scalars = [
+            name for name, meta in self._selected_arrays.items() if not meta["shape"]
+        ]
+        if scalars:
+            raise ValueError(
+                f"Cannot read 0-dimensional (scalar) arrays via read_zarr; "
+                f"this datasource requires alignment along axis 0. Offending "
+                f"array(s): {scalars!r}. Use array_paths=[...] to exclude them."
+            )
+
         shape0_by_array = {
             name: meta["shape"][0] for name, meta in self._selected_arrays.items()
         }

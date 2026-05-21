@@ -139,6 +139,29 @@ def test_requires_consolidated_metadata(tmp_path):
         zarrv2_datasource.ZarrV2Datasource(str(store_path))
 
 
+def test_rejects_scalar_arrays(tmp_path):
+    """0-D (scalar) arrays can't be aligned on axis 0 — clear error.
+
+    Real-world stores (ERA5, CMIP6) include scalar arrays like ``hybrid``
+    or ``step`` carrying per-experiment hyperparameters. Indexing
+    ``shape[0]`` on a scalar would raise ``IndexError`` with no context;
+    we surface a specific ``ValueError`` instead.
+    """
+    store_path = tmp_path / "scalar.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    # Real 1-D array — fine on its own.
+    root.create_dataset("ok", data=np.arange(5, dtype="<i4"), chunks=(5,))
+    # Scalar — should be rejected when included.
+    root.create_dataset("hyperparam", data=np.array(3.14, dtype="<f4"))
+    zarr.consolidate_metadata(str(store_path))
+
+    with pytest.raises(
+        ValueError,
+        match=r"Cannot read 0-dimensional.*'hyperparam'",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(str(store_path))
+
+
 def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
     """``allow_full_metadata_scan=True`` against a store the filesystem can't
     walk (or that genuinely has no arrays) raises a specific error pointing
