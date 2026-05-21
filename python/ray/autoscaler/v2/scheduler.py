@@ -375,6 +375,9 @@ class SchedulingNode:
             disable_launch_config_check: If outdated node check through launch config is
                 disabled.
 
+        Returns:
+            A scheduling node for the instance, or None if the instance is not
+            schedulable.
         """
         if not SchedulingNode.is_schedulable(instance):
             return None
@@ -497,7 +500,9 @@ class SchedulingNode:
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
             im_instance_status: The instance status of the im instance.
-            node_kind: The node kind.
+
+        Returns:
+            A scheduling node for the given node config.
         """
         return SchedulingNode(
             node_type=node_config.name,
@@ -601,6 +606,10 @@ class SchedulingNode:
             label of the resource request, we should give it a higher score.
 
         TODO(rickyx): add pluggable scoring functions here.
+
+        Args:
+            resource_request_source: The resource request source to score
+                against.
 
         Returns:
             A utilization score for this node.
@@ -897,6 +906,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             Args:
                 req: The scheduling request. The caller should make sure the
                     request is valid.
+
+            Returns:
+                A schedule context populated from the scheduling request.
             """
 
             nodes = []
@@ -1494,7 +1506,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         Args:
             ctx: The schedule context.
-            requests_by_count: The resource requests.
+            requests: The resource requests.
 
         Returns:
             A list of infeasible resource requests.
@@ -1596,8 +1608,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         then try to schedule the requests on new nodes if possible.
 
         Args:
-            requests_to_sched: The resource requests to be scheduled.
             ctx: The current scheduling context.
+            requests_to_sched: The resource requests to be scheduled.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource
                 constraints.

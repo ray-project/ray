@@ -160,11 +160,12 @@ class AutoscalingConfig:
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
     ) -> None:
-        """
+        """Initialize the autoscaling config.
+
         Args:
-            configs : The raw configs dict.
-            skip_content_hash :
-                Whether to skip file mounts/ray command hash calculation.
+            configs: The raw configs dict.
+            skip_content_hash: Whether to skip file mounts/ray command hash
+                calculation.
         """
         self._sync_continuously = False
         self.update_configs(configs, skip_content_hash)
@@ -452,10 +453,11 @@ class FileConfigReader(IConfigReader):
     """A class that reads cluster config from a yaml file."""
 
     def __init__(self, config_file: str, skip_content_hash: bool = True) -> None:
-        """
+        """Initialize the file config reader.
+
         Args:
             config_file: The path to the config file.
-            skip_content_hash:  Whether to skip file mounts/ray command
+            skip_content_hash: Whether to skip file mounts/ray command
                 hash calculation. Default to True.
         """
         self._config_file_path = Path(config_file).resolve()
