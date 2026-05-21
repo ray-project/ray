@@ -2379,17 +2379,17 @@ class TestTimerHistogram:
         assert t.approx_percentile(0.99) == pytest.approx(0.2)
 
     def test_overflow_bin_reports_max(self):
-        # Force p90 into the overflow bin: 50 small samples + 51 large
-        # samples above the largest histogram bound. p90 = 0.9 * 101 =
+        # Force p90 into the overflow bin: 50 small samples + 51 samples
+        # above the largest histogram bound (100s). p90 = 0.9 * 101 =
         # 90.9 → falls past the 1ms bin (cum 50) into overflow (cum 101).
         # Should be reported as max(), not the last finite bin edge.
         t = Timer(track_distribution=True)
         for _ in range(50):
             t.add(0.001)
         for _ in range(51):
-            t.add(30.0)
-        assert t.max() == pytest.approx(30.0)
-        assert t.approx_percentile(0.9) == pytest.approx(30.0)
+            t.add(500.0)
+        assert t.max() == pytest.approx(500.0)
+        assert t.approx_percentile(0.9) == pytest.approx(500.0)
 
     def test_bin_boundaries(self):
         # Sample on a bin edge should be counted in that edge's bin

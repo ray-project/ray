@@ -170,10 +170,13 @@ class Timer:
     """
 
     # Log-spaced upper bin bounds (seconds) — ~2x resolution covering
-    # 1 ms to 5 s, which is the realistic range for the scheduling-loop
-    # step. Samples above the last bound land in an overflow slot;
-    # ``percentile()`` reports ``max()`` for that case so the tail is
-    # never under-reported as the last finite bound.
+    # 1 ms to 100 s. The lower end (1 ms-1 s) is where healthy
+    # scheduling-loop steps live; the upper end (1 s-100 s) lets us
+    # distinguish "loop is degraded" from "cluster is wedged" without
+    # collapsing everything past 5 s into a single bucket. Samples
+    # above the last bound land in an overflow slot;
+    # ``approx_percentile()`` reports ``max()`` for that case so the
+    # tail is never under-reported as the last finite bound.
     _HIST_BOUNDS_S: Tuple[float, ...] = (
         0.001,
         0.002,
@@ -187,6 +190,10 @@ class Timer:
         1.0,
         2.0,
         5.0,
+        10.0,
+        20.0,
+        50.0,
+        100.0,
     )
 
     def __init__(self, track_distribution: bool = False):
@@ -237,8 +244,8 @@ class Timer:
         regardless of sample count, which matters because this is called
         on every scheduling-loop iteration of every Ray Data job).
         Resolution is the width of one bin — roughly 2x in the realistic
-        1ms-5s range — and tail samples above the largest bound collapse
-        into a single overflow bucket.
+        1ms-100s range — and tail samples above the largest bound
+        collapse into a single overflow bucket.
 
         Args:
             p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
