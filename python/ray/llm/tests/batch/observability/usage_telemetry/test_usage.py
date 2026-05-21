@@ -54,7 +54,7 @@ def test_push_telemetry_report():
         apply_chat_template=True,
         tokenize=True,
         detokenize=True,
-        has_image=True,
+        prepare_multimodal_stage={"enabled": True},
     )
     _ = ProcessorBuilder.build(config)
 

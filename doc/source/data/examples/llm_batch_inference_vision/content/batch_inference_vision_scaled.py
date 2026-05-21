@@ -36,7 +36,7 @@ processor_config_large = vLLMEngineProcessorConfig(
     batch_size=16,
     accelerator_type="L4", # Or upgrade to larger GPU
     concurrency=10, # Increase the number of parallel workers
-    has_image=True,  # Enable image input
+    prepare_multimodal_stage={"enabled": True},  # Enable multimodal input
 )
 
 

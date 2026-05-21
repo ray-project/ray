@@ -41,7 +41,7 @@ processor_config = vLLMEngineProcessorConfig(
     batch_size=16,
     accelerator_type="L4",
     concurrency=4,
-    has_image=True,  # Enable image input.
+    prepare_multimodal_stage={"enabled": True},  # Enable multimodal input.
 )
 
 

@@ -97,7 +97,7 @@ This example uses the `Qwen/Qwen2.5-VL-3B-Instruct` model, a vision-language mod
 - `batch_size`: Number of requests to batch together (set to 16 for vision models).
 - `accelerator_type`: GPU type to use (L4 in this case).
 - `concurrency`: Number of parallel workers (4 in this case).
-- `has_image`: Enable image input support.
+- `prepare_multimodal_stage`: Enable the multimodal (image/audio/video) input stage.
 
 Vision models process each image as hundreds or thousands of vision tokens, unlike text-only models. You can set a larger token limit using `max_model_len`. You also need to use smaller batch sizes because image processing increases per-request memory. Adjust both `max_model_len` and `batch_size` for your vision token requirements and available memory.
 
@@ -113,7 +113,7 @@ processor_config = vLLMEngineProcessorConfig(
     batch_size=16,
     accelerator_type="L4",
     concurrency=4,
-    has_image=True,  # Enable image input.
+    prepare_multimodal_stage={"enabled": True},  # Enable multimodal input.
 )
 
 ```
@@ -330,7 +330,7 @@ processor_config_large = vLLMEngineProcessorConfig(
     batch_size=16,
     accelerator_type="L4", # Or upgrade to larger GPU
     concurrency=10, # Increase the number of parallel workers
-    has_image=True,  # Enable image input
+    prepare_multimodal_stage={"enabled": True},  # Enable multimodal input
 )
 
 # Build the LLM processor with the configuration and functions.
