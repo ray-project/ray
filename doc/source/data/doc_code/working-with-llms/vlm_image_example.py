@@ -196,7 +196,6 @@ def run_vlm_example():
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
 # __vlm_run_example_end__
