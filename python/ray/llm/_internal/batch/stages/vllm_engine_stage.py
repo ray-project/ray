@@ -403,9 +403,20 @@ class vLLMEngineWrapper:
                     "populate it automatically from chat messages."
                 )
                 self._image_row_column_warning_logged = True
-            if legacy_image:
+            # Use len() rather than truthiness — `if legacy_image:` raises on
+            # numpy arrays ("ambiguous truth value"), and we want empty
+            # containers to behave like "no image" (matches pre-deprecation
+            # behavior where an empty list never reached the engine).
+            if legacy_image is not None and len(legacy_image) > 0:
                 if multimodal_data is None:
                     multimodal_data = {"image": legacy_image}
+                elif "image" in multimodal_data:
+                    raise ValueError(
+                        "Both the deprecated 'image' column and "
+                        "multimodal_data['image'] are set on the same row. "
+                        "Remove the 'image' column and pass images only via "
+                        "multimodal_data['image']."
+                    )
                 else:
                     multimodal_data = {**multimodal_data, "image": legacy_image}
 

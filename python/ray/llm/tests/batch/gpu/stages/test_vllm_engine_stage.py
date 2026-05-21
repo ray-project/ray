@@ -396,6 +396,43 @@ async def test_vllm_wrapper_legacy_image_merges_into_existing_multimodal_data():
 
 
 @pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_conflict_with_multimodal_data_raises():
+    """Setting both legacy `image` and multimodal_data['image'] must raise."""
+    wrapper = _make_bare_wrapper()
+
+    legacy_img = object()
+    modern_img = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [legacy_img],
+        "multimodal_data": {"image": [modern_img]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    with pytest.raises(ValueError, match="multimodal_data"):
+        await wrapper._prepare_llm_request(row)
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_empty_list_is_noop():
+    """Empty legacy `image=[]` should be skipped, not merged or conflict."""
+    wrapper = _make_bare_wrapper()
+
+    modern_img = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [],
+        "multimodal_data": {"image": [modern_img]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+    assert request.multimodal_data == {"image": [modern_img]}
+
+
+@pytest.mark.asyncio
 async def test_vllm_wrapper_generate(model_llama_3_2_216M):
     # TODO: Test v1 engine. The issue is once vLLM is imported with v0,
     # we cannot configure it to use v1, so we need a separate test for v1.
