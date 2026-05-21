@@ -663,22 +663,26 @@ def deployment(
     if accelerator_config is not DEFAULT.VALUE and accelerator_config is not None:
         accelerator_config = _resolve_accelerator_config(accelerator_config)
 
-        if (
-            gang_scheduling_config is not DEFAULT.VALUE
-            and gang_scheduling_config is not None
-        ):
-            # TODO(ryanaoleary@): Revisit this mutual exclusivity restriction once
-            # Data Parallel (DP) attention or more complex multi-slice gang
-            # scheduling is supported for TPUs.
-            #
-            # The only supported accelerator_config currently is for TPU, which utilizes
-            # SlicePlacementGroup internally for atomic scheduling of SPMD workers. This
-            # check can be loosened if additional accelerator configs are added in the
-            # future that don't manage their own gang scheduling.
-            raise ValueError(
-                "Cannot specify both `accelerator_config` and `gang_scheduling_config`. "
-                "Accelerator configurations automatically manage their own gang scheduling."
-            )
+    has_accelerator = (
+        accelerator_config is not DEFAULT.VALUE and accelerator_config is not None
+    )
+    has_gang = (
+        gang_scheduling_config is not DEFAULT.VALUE
+        and gang_scheduling_config is not None
+    )
+    if has_accelerator and has_gang:
+        # TODO(ryanaoleary@): Revisit this mutual exclusivity restriction once
+        # Data Parallel (DP) attention or more complex multi-slice gang
+        # scheduling is supported for TPUs.
+        #
+        # The only supported accelerator_config currently is for TPU, which utilizes
+        # SlicePlacementGroup internally for atomic scheduling of SPMD workers. This
+        # check can be loosened if additional accelerator configs are added in the
+        # future that don't manage their own gang scheduling.
+        raise ValueError(
+            "Cannot specify both `accelerator_config` and `gang_scheduling_config`. "
+            "Accelerator configurations automatically manage their own gang scheduling."
+        )
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,

@@ -1397,6 +1397,23 @@ def test_serve_decorator_and_options_integration():
     assert isinstance(config2, TPUAcceleratorConfig)
     assert config2.topology == "4x4"
 
+    # 3. Verify mutual exclusivity raises ValueError in decorator
+    with pytest.raises(
+        ValueError,
+        match="Cannot specify both `accelerator_config` and `gang_scheduling_config`",
+    ):
+
+        @serve.deployment(
+            accelerator_config={
+                "kind": "tpu",
+                "topology": "2x2",
+                "accelerator_version": "v6e",
+            },
+            gang_scheduling_config={"gang_size": 2},
+        )
+        class ConflictDeployment:
+            pass
+
 
 def test_deployment_actors_deployment_schema_roundtrip():
     """Ensure deployment_to_schema -> schema_to_deployment preserves deployment_actors."""
