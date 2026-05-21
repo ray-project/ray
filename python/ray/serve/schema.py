@@ -1580,10 +1580,16 @@ class TargetGroup(BaseModel):
 class DurationStats(BaseModel):
     """Statistics for a collection of duration/latency measurements."""
 
-    mean: float = 0.0
-    std: float = 0.0
-    min: float = 0.0
-    max: float = 0.0
+    mean: float = Field(default=0.0, description="Mean value over the rolling window.")
+    std: float = Field(
+        default=0.0, description="Standard deviation over the rolling window."
+    )
+    min: float = Field(
+        default=0.0, description="Minimum value over the rolling window."
+    )
+    max: float = Field(
+        default=0.0, description="Maximum value over the rolling window."
+    )
 
     @classmethod
     def from_values(cls, values: List[float]) -> "DurationStats":
@@ -1615,39 +1621,89 @@ class ControllerHealthMetrics(BaseModel):
     """
 
     # Timestamps
-    timestamp: float = 0.0  # When these metrics were collected
-    controller_start_time: float = 0.0  # When the controller started
-    uptime_s: float = 0.0  # Controller uptime in seconds
-    last_control_loop_time: float = 0.0  # Time of last control loop execution
+    timestamp: float = Field(
+        default=0.0, description="When these metrics were collected (epoch seconds)."
+    )
+    controller_start_time: float = Field(
+        default=0.0, description="When the controller started (epoch seconds)."
+    )
+    uptime_s: float = Field(default=0.0, description="Controller uptime in seconds.")
+    last_control_loop_time: float = Field(
+        default=0.0,
+        description="Time of the last control loop execution (epoch seconds).",
+    )
 
     # Control loop metrics
-    num_control_loops: int = 0  # Total number of control loops executed
-    loop_duration_s: Optional[
-        DurationStats
-    ] = None  # Loop duration stats (rolling window)
-    loops_per_second: float = 0.0  # Control loop iterations per second
+    num_control_loops: int = Field(
+        default=0, description="Total number of control loops executed."
+    )
+    loop_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Control loop duration statistics over a rolling window.",
+    )
+    loops_per_second: float = Field(
+        default=0.0, description="Control loop iterations per second."
+    )
 
     # Sleep/scheduling metrics
-    last_sleep_duration_s: float = 0.0  # Actual sleep duration of last iteration
-    expected_sleep_duration_s: float = 0.0  # Expected sleep (CONTROL_LOOP_INTERVAL_S)
-    event_loop_delay_s: float = 0.0  # Delay = actual - expected (positive = overloaded)
+    last_sleep_duration_s: float = Field(
+        default=0.0, description="Actual sleep duration of the last iteration."
+    )
+    expected_sleep_duration_s: float = Field(
+        default=0.0,
+        description="Expected sleep duration (CONTROL_LOOP_INTERVAL_S).",
+    )
+    event_loop_delay_s: float = Field(
+        default=0.0,
+        description=(
+            "Difference between actual and expected sleep duration. "
+            "Positive values indicate an overloaded event loop."
+        ),
+    )
 
     # Event loop health
-    num_asyncio_tasks: int = 0  # Number of pending asyncio tasks
+    num_asyncio_tasks: int = Field(
+        default=0, description="Number of pending asyncio tasks."
+    )
 
     # Component update durations (rolling window stats)
-    deployment_state_update_duration_s: Optional[DurationStats] = None
-    application_state_update_duration_s: Optional[DurationStats] = None
-    proxy_state_update_duration_s: Optional[DurationStats] = None
-    node_update_duration_s: Optional[DurationStats] = None
+    deployment_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Deployment state update duration statistics over a rolling window.",
+    )
+    application_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Application state update duration statistics over a rolling window.",
+    )
+    proxy_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Proxy state update duration statistics over a rolling window.",
+    )
+    node_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Node update duration statistics over a rolling window.",
+    )
 
     # Autoscaling metrics latency tracking (rolling window stats)
-    # These track the delay between when metrics are generated and when they reach controller
-    handle_metrics_delay_ms: Optional[DurationStats] = None
-    replica_metrics_delay_ms: Optional[DurationStats] = None
+    handle_metrics_delay_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Delay between when handle metrics are generated and when they "
+            "reach the controller (rolling window, milliseconds)."
+        ),
+    )
+    replica_metrics_delay_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Delay between when replica metrics are generated and when they "
+            "reach the controller (rolling window, milliseconds)."
+        ),
+    )
 
-    # Memory usage (in MB)
-    process_memory_mb: float = 0.0
+    # Memory usage
+    process_memory_mb: float = Field(
+        default=0.0, description="Controller process memory usage in MB."
+    )
 
 
 @PublicAPI(stability="stable")
