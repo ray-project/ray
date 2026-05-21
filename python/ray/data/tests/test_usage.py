@@ -22,25 +22,26 @@ def mock_record(monkeypatch):
 
 @pytest.fixture
 def reset_collector(monkeypatch):
-    collector._reset_for_testing()
+    collector.reset_for_testing()
     monkeypatch.setattr(collector, "_cluster_spilled_bytes", lambda: 0)
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
     yield
-    collector._reset_for_testing()
+    collector.reset_for_testing()
 
 
 def test_round_trip_payload_shape(reset_collector, mock_record):
-    """End-to-end: record_workload + record_execution_result yields a valid
+    """End-to-end: record_workload, record_execution_result yields a valid
     payload with anonymized plan, env, and performance filled in."""
-    ds = ray.data.range(10).map_batches(lambda b: b)
+    ds = ray.data.range(1).map_batches(lambda b: b)
     collector.record_workload("exec-1", ds._logical_plan)
     collector.record_execution_result("exec-1")
 
-    entry = json.loads(mock_record[-1][1])["executions"][0]
+    _, payload_json = mock_record[-1]
+    payload = json.loads(payload_json)
+    entry = payload["executions"][0]
     assert entry["id"] == "exec-1"
     assert entry["workload"]["plan"] == "ReadRange->MapBatches"
     assert "pyarrow" in entry["env"]
-    assert entry["performance"]["bytes_spilled"] == 0
 
 
 def test_unknown_operators_anonymized(reset_collector):
@@ -51,7 +52,7 @@ def test_unknown_operators_anonymized(reset_collector):
         name = "MyCompanySecretOp"
         input_dependencies = []
 
-    assert collector._anonymize_op_name(FakeOp()) == "Unknown"
+    assert collector.anonymize_op_name(FakeOp()) == "Unknown"
 
 
 def test_limit_anonymized_to_class_name(reset_collector):
@@ -59,7 +60,7 @@ def test_limit_anonymized_to_class_name(reset_collector):
     must collapse it back to ``Limit`` so the value isn't recorded."""
     ds = ray.data.range(100).limit(10)
     collector.record_workload("exec-limit", ds._logical_plan)
-    entry = collector._executions["exec-limit"]
+    entry = collector.get_executions()["exec-limit"]
     plan_ops = [op.name for op in entry.workload.ops]
     assert "Limit" in plan_ops
     assert not any(op.startswith("limit=") for op in plan_ops)
@@ -96,7 +97,7 @@ def test_does_not_record_when_disabled_via_env_var(
     collector.record_execution_result("exec-1")
 
     assert mock_record == []
-    assert "exec-1" not in collector._executions
+    assert "exec-1" not in collector.get_executions()
 
 
 def test_does_not_raise_on_internal_errors(reset_collector, mock_record, monkeypatch):

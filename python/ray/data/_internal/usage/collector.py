@@ -14,10 +14,12 @@ from collections import OrderedDict
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+import ray
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import AbstractUDFMap
-from ray.data._internal.logical.util import _anonymize_op_name
+from ray.data._internal.logical.util import anonymize_op_name
 
 if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -171,7 +173,7 @@ def _walk_operators(op: LogicalOperator) -> List[_Op]:
         batch_format = getattr(op, "batch_format", None)
         if batch_format is not None:
             config = _OpConfig(batch_format=batch_format)
-    ops.append(_Op(name=_anonymize_op_name(op), config=config))
+    ops.append(_Op(name=anonymize_op_name(op), config=config))
     return ops
 
 
@@ -200,12 +202,6 @@ def _cluster_spilled_bytes() -> Optional[int]:
     Returns None on any failure — usage collection must never break execution.
     """
     try:
-        import ray
-        from ray._private.internal_api import (
-            get_memory_info_reply,
-            get_state_from_address,
-        )
-
         reply = get_memory_info_reply(
             get_state_from_address(ray.get_runtime_context().gcs_address)
         )
@@ -215,8 +211,14 @@ def _cluster_spilled_bytes() -> Optional[int]:
         return None
 
 
-def _reset_for_testing() -> None:
+def reset_for_testing() -> None:
     """Reset module state. Tests only."""
     with _lock:
         _executions.clear()
         _spillage_dict.clear()
+
+
+def get_executions() -> "OrderedDict[str, _Entry]":
+    """Get the current executions. Tests only."""
+    with _lock:
+        return _executions

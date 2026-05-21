@@ -111,7 +111,7 @@ def record_operators_usage(op: LogicalOperator):
     record_extra_usage_tag(TagKey.DATA_LOGICAL_OPS, ops_json_str)
 
 
-def _anonymize_op_name(op: LogicalOperator) -> str:
+def anonymize_op_name(op: LogicalOperator) -> str:
     """Return an op name suitable for telemetry, anonymized against
     ``_op_name_white_list``. User-defined datasources/datasinks collapse to
     ``ReadCustom``/``WriteCustom``
@@ -143,6 +143,6 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
     for child in op.input_dependencies:
         _collect_operators_to_dict(child, ops_dict)
 
-    op_name = _anonymize_op_name(op)
+    op_name = anonymize_op_name(op)
     ops_dict.setdefault(op_name, 0)
     ops_dict[op_name] += 1
