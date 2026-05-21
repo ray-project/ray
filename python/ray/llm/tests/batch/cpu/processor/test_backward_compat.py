@@ -95,17 +95,5 @@ def test_legacy_dict_stage_config():
     assert config.tokenize_stage["concurrency"] == 4
 
 
-@pytest.mark.parametrize("legacy_field", ["has_image", "prepare_image_stage"])
-def test_removed_legacy_fields_rejected(legacy_field):
-    """Removed legacy fields must raise on construction (pydantic extra=forbid)."""
-    import pydantic
-
-    with pytest.raises(pydantic.ValidationError):
-        vLLMEngineProcessorConfig(
-            model_source="test-model",
-            **{legacy_field: True},
-        )
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

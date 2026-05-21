@@ -60,7 +60,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
     ),
     batch_size=16,
     concurrency=1,
-    prepare_multimodal_stage={"enabled": True},
+    prepare_multimodal_stage=True,
 )
 # __vlm_config_example_end__
 
@@ -178,7 +178,7 @@ def create_vlm_config():
         ),
         batch_size=1,
         concurrency=1,
-        prepare_multimodal_stage={"enabled": True},
+        prepare_multimodal_stage=True,
     )
 
 

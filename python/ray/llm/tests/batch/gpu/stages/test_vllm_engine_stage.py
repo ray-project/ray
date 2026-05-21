@@ -334,7 +334,7 @@ def _make_bare_wrapper():
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_legacy_image_row_column_warns_and_routes_to_multimodal_data():
+async def test_vllm_wrapper_legacy_image_warns_and_routes():
     """Legacy `image` row column should warn once and be routed to multimodal_data."""
     wrapper = _make_bare_wrapper()
 

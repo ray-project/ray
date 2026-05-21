@@ -392,7 +392,7 @@ class vLLMEngineWrapper:
 
         multimodal_data = row.pop("multimodal_data", None)
 
-        # TODO (jeffreywang): Remove the legacy `image` row column path in Ray 2.57.0.
+        # TODO (jeffreywang): Remove the legacy `image` row column path in Ray 2.58.0.
         if "image" in row:
             legacy_image = row.pop("image")
             if not self._image_row_column_warning_logged:
@@ -409,8 +409,8 @@ class vLLMEngineWrapper:
                 else:
                     multimodal_data = {**multimodal_data, "image": legacy_image}
 
-        # TODO (jeffreywang): As we decouple the multimodal processor from the vLLM engine,
-        # these kwargs are not needed in the vLLM engine stage.
+        # TODO (jeffreywang): Remove in Ray 2.58.0 as we decouple the multimodal
+        # processor from the vLLM engine; these kwargs become unneeded here.
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
