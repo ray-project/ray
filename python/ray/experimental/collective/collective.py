@@ -5,11 +5,16 @@ from typing import Dict, List, Optional, Union
 import ray
 import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
+from ray.util import tpu as tpu_utils
 from ray.util.annotations import PublicAPI
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
 from ray.util.collective.types import Backend
+
+# Cache for actor ID to TPU device ID mapping. This is a process-local cache.
+_actor_to_device_ids_cache: Dict[str, List[int]] = {}
+_cache_lock = threading.Lock()
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
 _remote_communicator_manager_lock = threading.Lock()
@@ -131,6 +136,12 @@ def create_collective_group(
     if backend == Backend.GLOO:
         metadata_key = get_master_address_metadata_key(name)
 
+    if backend == Backend.JAX:
+        _populate_tpu_cache(actors)
+        comm = CommunicatorHandle(actors, name, backend)
+        manager.add_remote_communicator(comm)
+        return comm
+
     def _do_init_collective_group(self, rank: int):
         ray.util.collective.init_collective_group(
             world_size, rank, backend, group_name=name
@@ -167,6 +178,9 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     Args:
         group_or_name: Either a communicator handle or the name of the group to
             destroy.
+
+    Returns:
+        None
     """
     if isinstance(group_or_name, CommunicatorHandle):
         name = group_or_name.name
@@ -178,6 +192,11 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     manager = RemoteCommunicatorManager.get()
     group = manager.remove_remote_communicator(name)
     if group is not None:
+        if group.backend == Backend.JAX:
+            with _cache_lock:
+                for actor in group.actors:
+                    _actor_to_device_ids_cache.pop(actor._actor_id.hex(), None)
+            return
 
         def _do_destroy_collective_group(self):
             ray.util.collective.destroy_collective_group(name)
@@ -207,3 +226,64 @@ def destroy_all_collective_groups():
     manager = RemoteCommunicatorManager.get()
     for collective in manager.get_collective_groups():
         destroy_collective_group(collective.name)
+
+
+@PublicAPI(stability="alpha")
+def get_all_local_device_ids_from_actor(actor: ray.actor.ActorHandle) -> List[int]:
+    """
+    Get all local JAX device IDs of the TPU devices assigned to the actor
+    by reading from the process-local cache.
+    This function assumes the cache has already been populated.
+    Args:
+        actor: The Ray actor handle to get the device IDs from.
+    Returns:
+        A list of global JAX device IDs.
+    """
+    # Using actor._actor_id.hex() is a reliable way to get a unique string key.
+    actor_id_str = actor._actor_id.hex()
+    with _cache_lock:
+        # The cache is expected to be primed, so we read directly.
+        device_ids = _actor_to_device_ids_cache[actor_id_str]
+        return device_ids
+
+
+@PublicAPI(stability="alpha")
+def get_global_device_id_from_actor(actor: ray.actor.ActorHandle) -> int:
+    """
+    Get the global JAX device ID of the TPU device assigned to the actor.
+    This function executes a remote task on the specified actor to retrieve the
+    ID of the first JAX TPU device available to that actor.
+    It uses a process-local cache to avoid repeated remote calls.
+    Args:
+        actor: The Ray actor handle to get the device ID from.
+    Returns:
+        The global JAX device ID.
+    """
+    actor_id_str = actor._actor_id.hex()
+    with _cache_lock:
+        # The cache is expected to be primed, so we read directly.
+        device_ids = _actor_to_device_ids_cache[actor_id_str]
+        return device_ids[0]
+
+
+def _populate_tpu_cache(actors):
+    """
+    Standalone helper to fetch and cache TPU device IDs for a list of actors.
+    Runs entirely on the driver process.
+    """
+    # Concurrently fetch TPU device IDs from all actors
+    futures = [
+        actor.__ray_call__.remote(lambda self: tpu_utils.get_tpu_device_ids(self))
+        for actor in actors
+    ]
+
+    # Wait for all workers to return their device IDs
+    device_ids_list = ray.get(futures)
+
+    # Safely write the results to the driver's global cache
+    with _cache_lock:
+        for actor, device_ids in zip(actors, device_ids_list):
+            actor_id = actor._actor_id.hex()
+
+            # This mutates the dictionary that is shared across the entire Ray driver
+            _actor_to_device_ids_cache[actor_id] = device_ids

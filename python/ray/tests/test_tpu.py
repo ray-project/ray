@@ -839,5 +839,33 @@ def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
     assert override_pg.bundle_resources["TPU"] == 4
 
 
+@pytest.mark.parametrize(
+    "jax_available, local_devices_result, expected_ids",
+    [
+        (True, [10, 20], [10, 20]),
+        (True, [], []),
+        (False, None, []),
+    ],
+)
+def test_get_tpu_device_ids_cases(jax_available, local_devices_result, expected_ids):
+    """Tests get_tpu_device_ids under different JAX availability scenarios."""
+    if jax_available:
+        mock_devices = []
+        for d_id in local_devices_result:
+            m = MagicMock()
+            m.id = d_id
+            mock_devices.append(m)
+        mock_jax = MagicMock()
+        mock_jax.local_devices.return_value = mock_devices
+        with patch.dict("sys.modules", {"jax": mock_jax}):
+            ids = ray.util.tpu.get_tpu_device_ids(None)
+            assert ids == expected_ids
+    else:
+        with patch.dict("sys.modules", {"jax": None}):
+            with patch("builtins.__import__", side_effect=ImportError):
+                ids = ray.util.tpu.get_tpu_device_ids(None)
+                assert ids == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
