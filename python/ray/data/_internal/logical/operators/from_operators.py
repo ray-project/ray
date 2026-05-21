@@ -1,4 +1,3 @@
-import abc
 import functools
 from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Union
@@ -29,22 +28,19 @@ __all__ = [
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
+class AbstractFrom(LogicalOperator, SourceOperator):
     """Abstract logical operator for `from_*`."""
 
     input_blocks: InitVar[List[ObjectRef[Block]]]
     input_metadata: InitVar[List[BlockMetadataWithSchema]]
     input_data: List[RefBundle] = field(init=False)
-    _input_dependencies: list[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadataWithSchema],
     ):
+        super().__post_init__()
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),
@@ -63,14 +59,13 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
                 for i in range(len(input_blocks))
             ],
         )
-        object.__setattr__(self, "_num_outputs", len(input_blocks))
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
 
     @property
     def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
+        return len(self.input_data)
 
     @functools.cached_property
     def _cached_output_metadata(self) -> BlockMetadata:

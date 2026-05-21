@@ -353,5 +353,5 @@ class PredicatePushdown(Rule):
         if isinstance(op, Union) and is_dataclass(op):
             return Union(*new_inputs)
         new_op = copy.copy(op)
-        new_op.input_dependencies = new_inputs
+        object.__setattr__(new_op, "input_dependencies", new_inputs)
         return new_op

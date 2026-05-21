@@ -62,6 +62,8 @@ def estimate_num_mix_outputs(
 class NAry(LogicalOperator):
     """Base class for n-ary operators, which take multiple input operators."""
 
+    num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
     def __init__(
         self,
         *input_ops: LogicalOperator,
@@ -72,13 +74,9 @@ class NAry(LogicalOperator):
             input_ops: The input operators.
         """
         super().__init__(
-            _num_outputs=num_outputs,
+            input_dependencies=list(input_ops),
         )
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
+        object.__setattr__(self, "num_outputs", num_outputs)
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -90,17 +88,11 @@ class NAry(LogicalOperator):
 class Zip(NAry):
     """Logical operator for zip."""
 
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
-
     def __init__(
         self,
         *input_ops: LogicalOperator,
     ):
-        for input_op in input_ops:
-            assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        super().__init__(*input_ops)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
@@ -116,9 +108,6 @@ class Zip(NAry):
 class Mix(NAry):
     """Logical operator for weighted dataset mixing."""
 
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
     weights: List[float] = field(init=False, repr=False)
     stopping_condition: MixStoppingCondition = field(init=False, repr=False)
 
@@ -136,11 +125,7 @@ class Mix(NAry):
         if any(weight <= 0 for weight in weights):
             raise ValueError(f"Weights must be positive. Got weights: {weights}")
 
-        for input_op in input_ops:
-            assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_name", self.__class__.__name__)
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        super().__init__(*input_ops)
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "stopping_condition", stopping_condition)
 
@@ -168,17 +153,11 @@ class Mix(NAry):
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for union."""
 
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
-
     def __init__(
         self,
         *input_ops: LogicalOperator,
     ):
-        for input_op in input_ops:
-            assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        super().__init__(*input_ops)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

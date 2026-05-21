@@ -1,6 +1,6 @@
 import functools
 import math
-from dataclasses import InitVar, dataclass, field, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
 from ray.data._internal.compute import ComputeStrategy
@@ -39,7 +39,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, repr=False, eq=False)
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class Read(
     AbstractMap,
     SourceOperator,
@@ -51,7 +51,7 @@ class Read(
     datasource: Datasource
     datasource_or_legacy_reader: Union[Datasource, Reader]
     parallelism: int
-    num_outputs: InitVar[Optional[int]] = None
+    num_outputs: Optional[int] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     compute: Optional[ComputeStrategy] = None
     detected_parallelism: Optional[int] = None
@@ -59,19 +59,40 @@ class Read(
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _input_dependencies: list = field(init=False, repr=False, default_factory=list)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
-    def __post_init__(self, num_outputs: Optional[int]):
-        if self.compute is None:
-            from ray.data._internal.compute import TaskPoolStrategy
+    def __init__(
+        self,
+        datasource: Datasource,
+        datasource_or_legacy_reader: Union[Datasource, Reader],
+        parallelism: int,
+        num_outputs: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        compute: Optional[ComputeStrategy] = None,
+        detected_parallelism: Optional[int] = None,
+        per_block_limit: Optional[int] = None,
+        *,
+        input_dependencies: Optional[List[LogicalOperator]] = None,
+    ):
+        super().__init__(
+            input_dependencies=input_dependencies or [],
+            can_modify_num_rows=True,
+            num_outputs=num_outputs,
+            min_rows_per_bundled_input=None,
+            ray_remote_args=ray_remote_args,
+            ray_remote_args_fn=None,
+            compute=compute,
+        )
+        object.__setattr__(self, "datasource", datasource)
+        object.__setattr__(
+            self, "datasource_or_legacy_reader", datasource_or_legacy_reader
+        )
+        object.__setattr__(self, "parallelism", parallelism)
+        object.__setattr__(self, "detected_parallelism", detected_parallelism)
+        object.__setattr__(self, "per_block_limit", per_block_limit)
 
-            object.__setattr__(self, "compute", TaskPoolStrategy())
-        if self.ray_remote_args is None:
-            object.__setattr__(self, "ray_remote_args", {})
-        object.__setattr__(self, "_name", f"Read{self.datasource.get_name()}")
-        object.__setattr__(self, "_input_dependencies", [])
-        object.__setattr__(self, "_num_outputs", num_outputs)
+    @property
+    def name(self) -> str:
+        return f"Read{self.datasource.get_name()}"
 
     def output_data(self):
         return None
@@ -91,7 +112,7 @@ class Read(
         return self.detected_parallelism
 
     def estimated_num_outputs(self) -> Optional[int]:
-        return self._num_outputs or self._estimate_num_outputs()
+        return self.num_outputs or self._estimate_num_outputs()
 
     def infer_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
@@ -209,7 +230,7 @@ class Read(
             self,
             datasource=projected_datasource,
             datasource_or_legacy_reader=projected_datasource,
-            num_outputs=self._num_outputs,
+            num_outputs=self.num_outputs,
         )
 
     def supports_predicate_pushdown(self) -> bool:
@@ -232,7 +253,7 @@ class Read(
             self,
             datasource=predicated_datasource,
             datasource_or_legacy_reader=predicated_datasource,
-            num_outputs=self._num_outputs,
+            num_outputs=self.num_outputs,
         )
 
 
@@ -278,10 +299,9 @@ class ReadFiles(
     # limit pushdown is applied via ``scanner.push_limit`` (see
     # ``LimitPushdownRule._apply_per_block_limit_if_supported``), not this field.
     per_block_limit: Optional[int] = field(init=False, default=None)
-    _name: str = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, repr=False, default=None)
 
     def __post_init__(self):
+        super().__post_init__()
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(
             self.input_dependencies[0], LogicalOperator
@@ -292,8 +312,10 @@ class ReadFiles(
             object.__setattr__(self, "compute", TaskPoolStrategy())
         if self.ray_remote_args is None:
             object.__setattr__(self, "ray_remote_args", {})
-        object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def name(self) -> str:
+        return f"ReadFiles{self.datasource_name}"
 
     def infer_schema(self) -> "pa.Schema":
         # Scanner schema reflects any applied projection pushdown
@@ -451,14 +473,9 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: List[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
-    _num_outputs: Optional[int] = field(init=False, repr=False, default=None)
 
     def __post_init__(self):
-        object.__setattr__(self, "_name", self.__class__.__name__)
+        super().__post_init__()
 
     def output_data(self) -> Optional[list]:
         return None

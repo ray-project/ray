@@ -386,9 +386,9 @@ class FuseOperators(Rule):
 
         input_op = up_logical_op.input_dependencies[0]
         logical_op = AbstractUDFMap(
-            name,
-            input_op,
+            [input_op],
             up_logical_op.fn,
+            name=name,
             can_modify_num_rows=up_logical_op.can_modify_num_rows,
             fn_args=up_logical_op.fn_args,
             fn_kwargs=up_logical_op.fn_kwargs,
@@ -560,9 +560,9 @@ class FuseOperators(Rule):
         )
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
-                name,
-                input_op,
+                [input_op],
                 down_logical_op.fn,
+                name=name,
                 fn_args=down_logical_op.fn_args,
                 fn_kwargs=down_logical_op.fn_kwargs,
                 fn_constructor_args=down_logical_op.fn_constructor_args,
@@ -576,8 +576,8 @@ class FuseOperators(Rule):
         else:
             # The downstream op is AbstractMap instead of AbstractUDFMap.
             logical_op = AbstractMap(
-                name,
-                input_op,
+                [input_op],
+                name=name,
                 can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,

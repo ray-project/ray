@@ -19,12 +19,7 @@ class StreamingSplit(LogicalOperator):
     equal: bool
     locality_hints: Optional[List["NodeIdStr"]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
+        super().__post_init__()
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        object.__setattr__(self, "_num_outputs", None)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs

@@ -26,9 +26,12 @@ class AbstractOneToOne(LogicalOperator):
     have one input and one output dependency.
     """
 
+    _name: Optional[str] = field(init=False, default=None, repr=False)
+    num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
     def __init__(
         self,
-        input_op: Optional[LogicalOperator],
+        input_dependencies: List[LogicalOperator],
         can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
         *,
@@ -37,8 +40,7 @@ class AbstractOneToOne(LogicalOperator):
         """Initialize an AbstractOneToOne operator.
 
         Args:
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
+            input_dependencies: The operators preceding this operator in the plan DAG.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             num_outputs: If known, the number of blocks produced by this operator.
@@ -46,16 +48,16 @@ class AbstractOneToOne(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            _num_outputs=num_outputs,
+            input_dependencies=input_dependencies,
         )
-        object.__setattr__(self, "_input_dependencies", [input_op] if input_op else [])
+        object.__setattr__(self, "num_outputs", num_outputs)
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
 
     @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
+    def name(self) -> str:
+        return self._name or super().name
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -65,12 +67,14 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     limit: int
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
+        super().__post_init__()
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        object.__setattr__(self, "_name", f"limit={self.limit}")
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def name(self) -> str:
+        return f"limit={self.limit}"
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -120,13 +124,12 @@ class Download(AbstractOneToOne):
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
+        super().__post_init__()
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if len(self.uri_column_names) != len(self.output_bytes_column_names):
             raise ValueError(
                 f"Number of URI columns ({len(self.uri_column_names)}) must match "
                 f"number of output columns ({len(self.output_bytes_column_names)})"
             )
-        object.__setattr__(self, "_num_outputs", None)
