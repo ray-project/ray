@@ -188,6 +188,20 @@ message DeploymentActorConfig {
   string actor_class_name = 6;
 }
 
+message TPUAcceleratorConfig {
+  string topology = 1;
+  string accelerator_version = 2;
+  int32 num_slices = 3;
+  optional int32 chips_per_vm = 4;
+  map<string, double> resources_per_bundle = 5;
+}
+
+message AcceleratorConfig {
+  oneof config {
+    TPUAcceleratorConfig tpu = 1;
+  }
+}
+
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
@@ -251,7 +265,7 @@ message DeploymentConfig {
   optional double rolling_update_percentage = 23;
 
   // Serialized representation of AcceleratorConfig.
-  bytes accelerator_config = 24;
+  optional AcceleratorConfig accelerator_config = 24;
 }
 
 // Deployment language.

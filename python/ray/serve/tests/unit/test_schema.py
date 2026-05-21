@@ -5,6 +5,7 @@ import sys
 from typing import Dict, List, Optional, Union
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 import ray
@@ -13,6 +14,7 @@ from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
+    AcceleratorConfig,
     AutoscalingConfig,
     DeploymentActorConfig,
     GangPlacementStrategy,
@@ -630,6 +632,37 @@ class TestDeploymentSchema:
             match="Cannot specify both `accelerator_config` and `gang_scheduling_config`",
         ):
             DeploymentSchema.model_validate(deployment_schema)
+
+    def test_abstract_accelerator_config_raises_error(self):
+        """Test that direct instantiation of the abstract AcceleratorConfig base class is rejected."""
+        with pytest.raises(
+            ValidationError, match="AcceleratorConfig is an abstract base class"
+        ):
+            AcceleratorConfig(kind="tpu")
+
+    def test_yaml_loading_and_validation(self):
+        """Test that DeploymentSchema resolves TPU configurations loaded from declarative YAML config strings."""
+        yaml_string = """
+name: my_tpu_deployment
+num_replicas: 2
+accelerator_config:
+  kind: tpu
+  topology: 4x4
+  accelerator_version: v6e
+  num_slices: 2
+  chips_per_vm: 8
+  resources_per_bundle:
+    TPU: 4
+"""
+        config_dict = yaml.safe_load(yaml_string)
+        schema = DeploymentSchema.model_validate(config_dict)
+
+        assert isinstance(schema.accelerator_config, TPUAcceleratorConfig)
+        assert schema.accelerator_config.topology == "4x4"
+        assert schema.accelerator_config.accelerator_version == "v6e"
+        assert schema.accelerator_config.num_slices == 2
+        assert schema.accelerator_config.chips_per_vm == 8
+        assert schema.accelerator_config.resources_per_bundle == {"TPU": 4}
 
 
 class TestServeApplicationSchema:
@@ -1329,6 +1362,40 @@ def test_mutual_exclusivity_accelerator_and_gang():
         "Cannot specify both `accelerator_config` and `gang_scheduling_config`"
         in str(e.value)
     )
+
+
+def test_serve_decorator_and_options_integration():
+    # 1. Verify serve.deployment decorator integration
+    @serve.deployment(
+        num_replicas=2,
+        accelerator_config={
+            "kind": "tpu",
+            "topology": "2x2",
+            "accelerator_version": "v6e",
+        },
+    )
+    class MyDecoratorDeployment:
+        pass
+
+    assert MyDecoratorDeployment.num_replicas == 2
+    config = MyDecoratorDeployment._deployment_config.accelerator_config
+    assert isinstance(config, TPUAcceleratorConfig)
+    assert config.topology == "2x2"
+    assert config.accelerator_version == "v6e"
+
+    # 2. Verify options() updates and preserves accelerator_config
+    updated_dep = MyDecoratorDeployment.options(
+        num_replicas=5,
+        accelerator_config={
+            "kind": "tpu",
+            "topology": "4x4",
+            "accelerator_version": "v6e",
+        },
+    )
+    assert updated_dep.num_replicas == 5
+    config2 = updated_dep._deployment_config.accelerator_config
+    assert isinstance(config2, TPUAcceleratorConfig)
+    assert config2.topology == "4x4"
 
 
 def test_deployment_actors_deployment_schema_roundtrip():

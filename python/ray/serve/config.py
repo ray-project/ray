@@ -725,6 +725,15 @@ class AcceleratorConfig(BaseModel):
 
     model_config = {"frozen": True, "extra": "forbid"}
 
+    @model_validator(mode="after")
+    def validate_concrete_subclass(self):
+        if type(self) is AcceleratorConfig:
+            raise ValueError(
+                "AcceleratorConfig is an abstract base class. "
+                "Please use a concrete subclass like TPUAcceleratorConfig."
+            )
+        return self
+
 
 @PublicAPI(stability="alpha")
 class TPUAcceleratorConfig(AcceleratorConfig):

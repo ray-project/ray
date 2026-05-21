@@ -2,6 +2,7 @@ import pytest
 
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.deployment_state import DeploymentVersion
+from ray.serve.config import TPUAcceleratorConfig
 
 
 def test_validation():
@@ -404,6 +405,33 @@ def test_requires_long_poll_broadcast():
     v1 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=5), {})
     v2 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=10), {})
     assert not v1.requires_long_poll_broadcast(v2)
+
+
+def test_accelerator_config_restart():
+    # Changing topology or other accelerator fields should require replica actor restart
+    v1 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            accelerator_config=TPUAcceleratorConfig(
+                topology="2x2", accelerator_version="v6e"
+            )
+        ),
+        {},
+    )
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            accelerator_config=TPUAcceleratorConfig(
+                topology="4x4", accelerator_version="v6e"
+            )
+        ),
+        {},
+    )
+    assert v1.requires_actor_restart(v2)
+
+    # Going from no accelerator to having one should also require restart
+    v3 = DeploymentVersion("1", DeploymentConfig(), {})
+    assert v3.requires_actor_restart(v1)
 
 
 if __name__ == "__main__":

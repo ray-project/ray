@@ -21,6 +21,7 @@ from ray._common import ray_option_utils
 from ray._common.serialization import pickle_dumps
 from ray._common.utils import resources_from_ray_options
 from ray.serve._private.constants import (
+    ACCELERATOR_KIND_TPU,
     DEFAULT_CONSTRUCTOR_RETRY_COUNT,
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -42,8 +43,9 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
-    _resolve_accelerator_config,
+    TPUAcceleratorConfig,
 )
+from ray.serve.generated import serve_pb2
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentActorConfig as DeploymentActorConfigProto,
@@ -89,9 +91,12 @@ def _proto_to_dict(proto: Message) -> Dict:
             # `google.protobuf.internal.containers.RepeatedScalarFieldContainer
             # Explicitly convert to list
             if field.type == FieldDescriptor.TYPE_MESSAGE:
-                data[field.name] = [
-                    _proto_to_dict(v) for v in value
-                ]  # Convert each item
+                if field.message_type.GetOptions().map_entry:
+                    data[field.name] = dict(value)
+                else:
+                    data[field.name] = [
+                        _proto_to_dict(v) for v in value
+                    ]  # Convert each item
             else:
                 data[field.name] = list(value)  # Convert to list directly
         # Recursively call if the field is another protobuf.
@@ -328,10 +333,20 @@ class DeploymentConfig(BaseModel):
 
     def to_proto(self):
         data = self.model_dump()
-        if data.get("accelerator_config") is not None:
-            data[
-                "accelerator_config"
-            ] = self.accelerator_config.model_dump_json().encode("utf-8")
+        if self.accelerator_config is not None:
+            if isinstance(self.accelerator_config, TPUAcceleratorConfig):
+                tpu_proto = serve_pb2.TPUAcceleratorConfig(
+                    topology=self.accelerator_config.topology,
+                    accelerator_version=self.accelerator_config.accelerator_version,
+                    num_slices=self.accelerator_config.num_slices,
+                )
+                if self.accelerator_config.chips_per_vm is not None:
+                    tpu_proto.chips_per_vm = self.accelerator_config.chips_per_vm
+                if self.accelerator_config.resources_per_bundle is not None:
+                    tpu_proto.resources_per_bundle.update(
+                        self.accelerator_config.resources_per_bundle
+                    )
+                data["accelerator_config"] = serve_pb2.AcceleratorConfig(tpu=tpu_proto)
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -439,12 +454,26 @@ class DeploymentConfig(BaseModel):
             data["is_cross_language"] if "is_cross_language" in data else False
         )
         needs_pickle = _needs_pickle(deployment_language, is_cross_language)
-        if "accelerator_config" in data:
-            if data["accelerator_config"] != b"":
-                config_dict = json.loads(proto.accelerator_config.decode("utf-8"))
-                data["accelerator_config"] = _resolve_accelerator_config(config_dict)
+        if proto.HasField("accelerator_config"):
+            ac_proto = proto.accelerator_config
+            field = ac_proto.WhichOneof("config")
+            if field == ACCELERATOR_KIND_TPU:
+                tpu_proto = ac_proto.tpu
+                data["accelerator_config"] = TPUAcceleratorConfig(
+                    topology=tpu_proto.topology,
+                    accelerator_version=tpu_proto.accelerator_version,
+                    num_slices=tpu_proto.num_slices,
+                    chips_per_vm=tpu_proto.chips_per_vm
+                    if tpu_proto.HasField("chips_per_vm")
+                    else None,
+                    resources_per_bundle=dict(tpu_proto.resources_per_bundle)
+                    if tpu_proto.resources_per_bundle
+                    else None,
+                )
             else:
                 data["accelerator_config"] = None
+        else:
+            data["accelerator_config"] = None
         if "user_config" in data:
             if data["user_config"] != b"":
                 if needs_pickle:

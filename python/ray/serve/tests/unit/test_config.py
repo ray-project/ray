@@ -35,6 +35,7 @@ from ray.serve.config import (
     ProxyLocation,
     RequestRouterConfig,
     TPUAcceleratorConfig,
+    _resolve_accelerator_config,
     gRPCOptions,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -1666,20 +1667,31 @@ def test_accelerator_config_proto_roundtrip():
     config = DeploymentConfig(
         num_replicas=2,
         accelerator_config=TPUAcceleratorConfig(
-            topology="2x2",
+            topology="4x4",
             accelerator_version="v6e",
+            num_slices=2,
+            chips_per_vm=8,
+            resources_per_bundle={"TPU": 4},
         ),
     )
     deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
     assert deserialized.accelerator_config is not None
     assert isinstance(deserialized.accelerator_config, TPUAcceleratorConfig)
-    assert deserialized.accelerator_config.topology == "2x2"
+    assert deserialized.accelerator_config.topology == "4x4"
     assert deserialized.accelerator_config.accelerator_version == "v6e"
+    assert deserialized.accelerator_config.num_slices == 2
+    assert deserialized.accelerator_config.chips_per_vm == 8
+    assert deserialized.accelerator_config.resources_per_bundle == {"TPU": 4}
 
     # Test without accelerator_config
     config = DeploymentConfig(num_replicas=2)
     deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
     assert deserialized.accelerator_config is None
+
+
+def test_unsupported_kind():
+    with pytest.raises(ValueError, match="Unknown accelerator kind"):
+        _resolve_accelerator_config({"kind": "xpu"})
 
 
 if __name__ == "__main__":
