@@ -21,9 +21,15 @@ SUCCESS_JSON = {
 def _make_resp(status_code: int, json_data=None, text: str = "") -> MagicMock:
     resp = MagicMock(spec=requests.Response)
     resp.status_code = status_code
+    resp.text = text
     if json_data is not None:
         resp.json.return_value = json_data
-    resp.text = text
+    # Mimic real Response: raise_for_status() raises HTTPError for 4xx/5xx and
+    # sets e.response to the response object.
+    if status_code >= 400:
+        resp.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            f"{status_code} Error", response=resp
+        )
     return resp
 
 
@@ -71,7 +77,7 @@ def test_500_500_200_retries_then_succeeds(mock_global_node, no_sleep):
 def test_all_500s_raises_with_full_context(mock_global_node, no_sleep):
     with patch("ray._private.test_utils.requests.get") as mock_get:
         mock_get.return_value = _make_resp(500, text="prometheus exploded")
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             get_system_metric_for_component(
                 "ray_component_uss_mb", "dashboard", "http://prom-server"
             )
@@ -90,7 +96,7 @@ def test_500_body_truncated_to_500_chars(mock_global_node, no_sleep):
     huge = "x" * 5000
     with patch("ray._private.test_utils.requests.get") as mock_get:
         mock_get.return_value = _make_resp(500, text=huge)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             get_system_metric_for_component("ray_x", "gcs", "http://prom")
     msg = str(exc_info.value)
     # The truncated body (500 chars) must appear; the full 5000-char body must not
@@ -115,7 +121,7 @@ def test_mixed_failures_then_success(mock_global_node, no_sleep):
 def test_4xx_not_retried(mock_global_node, no_sleep, status_code):
     with patch("ray._private.test_utils.requests.get") as mock_get:
         mock_get.return_value = _make_resp(status_code, text="bad query")
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             get_system_metric_for_component("ray_x", "gcs", "http://prom")
     msg = str(exc_info.value)
     assert f"last_status={status_code}" in msg
@@ -127,7 +133,7 @@ def test_4xx_not_retried(mock_global_node, no_sleep, status_code):
 def test_all_timeouts_raises_with_error_class(mock_global_node, no_sleep):
     with patch("ray._private.test_utils.requests.get") as mock_get:
         mock_get.side_effect = requests.exceptions.Timeout("timed out")
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             get_system_metric_for_component("ray_x", "gcs", "http://prom")
     msg = str(exc_info.value)
     assert "last_error" in msg
@@ -140,7 +146,7 @@ def test_all_timeouts_raises_with_error_class(mock_global_node, no_sleep):
 def test_max_attempts_kwarg_respected(mock_global_node, no_sleep):
     with patch("ray._private.test_utils.requests.get") as mock_get:
         mock_get.return_value = _make_resp(500, text="boom")
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             get_system_metric_for_component(
                 "ray_x", "gcs", "http://prom", max_attempts=5
             )

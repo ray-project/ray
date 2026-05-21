@@ -422,7 +422,6 @@ py_test_module_list(
     size = "small",
     files = [
         "test_basic_3.py",
-        "test_get_system_metric.py",
         "test_label_utils.py",
         "test_utils.py",
     ],
