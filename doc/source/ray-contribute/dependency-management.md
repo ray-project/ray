@@ -42,7 +42,7 @@ pin, or an environment marker). They're organized two ways:
 `ci/ci.sh compile_pip_dependencies` feeds all the Layer 1 files to
 `pip-compile` at once and solves for a single consistent version of every
 package, direct and transitive. The output is the compiled lockfile, which CI
-passes as a `-c` constraint everywhere Ray is installed. Each track is for a different python version supported by ray.
+passes as a `-c` constraint everywhere Ray is installed. Each track is for a different Python version supported by Ray.
 
 | File | Covers |
 |---|---|
