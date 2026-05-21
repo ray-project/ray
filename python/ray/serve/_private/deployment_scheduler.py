@@ -21,6 +21,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    ACCELERATOR_KIND_TPU,
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
@@ -671,7 +672,12 @@ class DeploymentScheduler(ABC):
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
                 if scheduling_request.placement_group_strategy
-                else "PACK"
+                else (
+                    "SPREAD"
+                    if getattr(scheduling_request.accelerator_config, "kind", None)
+                    == ACCELERATOR_KIND_TPU
+                    else "PACK"
+                )
             )
             try:
                 pg_result = self._create_placement_group_fn(

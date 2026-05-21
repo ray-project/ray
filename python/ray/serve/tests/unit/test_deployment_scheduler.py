@@ -793,6 +793,102 @@ def test_schedule_replica_dispatch(bundles, acc_config_present, expect_pg_create
         assert scheduling_strategy == "some_default"
 
 
+def test_placement_group_strategy_defaulting():
+    """Validate that placement group strategy defaults to SPREAD for TPU configs and PACK for standard."""
+    d_id = DeploymentID("strategy_test", "app1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    captured_requests = []
+
+    def mock_create_pg(request):
+        captured_requests.append(request)
+        return default_impl.ReplicaPlacementGroup(
+            placement_group=MockPlacementGroup(request)
+        )
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=mock_create_pg,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    # Case 1: TPU Accelerator Config is set, placement_group_strategy is not.
+    # Expect strategy defaults to "SPREAD".
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+    acc_config = TPUAcceleratorConfig(topology="2x2", accelerator_version="v6e")
+    req_tpu = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        placement_group_bundles=None,
+        accelerator_config=acc_config,
+        placement_group_strategy=None,
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+    )
+    scheduler._pending_replicas[d_id][r0_id] = req_tpu
+    scheduler._schedule_replica(
+        scheduling_request=req_tpu,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels=None,
+    )
+    assert len(captured_requests) == 1
+    assert captured_requests[0].strategy == "SPREAD"
+
+    captured_requests.clear()
+
+    # Case 2: TPU Accelerator Config is set, and placement_group_strategy is explicitly provided.
+    # Expect strategy is respected.
+    req_tpu_explicit = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        placement_group_bundles=None,
+        accelerator_config=acc_config,
+        placement_group_strategy="STRICT_PACK",
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+    )
+    scheduler._pending_replicas[d_id][r0_id] = req_tpu_explicit
+    scheduler._schedule_replica(
+        scheduling_request=req_tpu_explicit,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels=None,
+    )
+    assert len(captured_requests) == 1
+    assert captured_requests[0].strategy == "STRICT_PACK"
+
+    captured_requests.clear()
+
+    # Case 3: Standard GPU/CPU config (bundles set), placement_group_strategy is not.
+    # Expect strategy defaults to "PACK".
+    req_std = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        placement_group_bundles=[{"CPU": 1}],
+        accelerator_config=None,
+        placement_group_strategy=None,
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+    )
+    scheduler._pending_replicas[d_id][r0_id] = req_std
+    scheduler._schedule_replica(
+        scheduling_request=req_std,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels=None,
+    )
+    assert len(captured_requests) == 1
+    assert captured_requests[0].strategy == "PACK"
+
+
 def test_downscale_multiple_deployments():
     """Test to make sure downscale prefers replicas without node id
     and then replicas on a node with fewest replicas of all deployments.

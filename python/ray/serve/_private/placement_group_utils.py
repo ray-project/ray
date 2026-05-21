@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import ray
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import ACCELERATOR_KIND_TPU, SERVE_LOGGER_NAME
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 from ray.util.tpu import SlicePlacementGroup, slice_placement_group
 
@@ -104,7 +104,7 @@ def _create_replica_placement_group(
     """
     accelerator_config = request.accelerator_config
 
-    if getattr(accelerator_config, "kind", None) == "tpu":
+    if getattr(accelerator_config, "kind", None) == ACCELERATOR_KIND_TPU:
         slice_pg = slice_placement_group(
             topology=accelerator_config.topology,
             accelerator_version=accelerator_config.accelerator_version,

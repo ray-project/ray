@@ -27,6 +27,7 @@ from ray.actor import ActorClass
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
+    ACCELERATOR_KIND_TPU,
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -45,8 +46,6 @@ from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-ACCELERATOR_KIND_TPU = "tpu"
 
 
 @PublicAPI(stability="stable")
