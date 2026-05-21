@@ -146,14 +146,15 @@ def _format_msg(
     `*args` and `**kwargs`.
 
     Args:
-        *args (Any): `.format` arguments for `msg`.
-        no_format (bool):
+        msg: The message to format.
+        *args: `.format` arguments for `msg`.
+        no_format:
             If `no_format` is `True`,
             `.format` will not be called on the message.
 
             Useful if the output is user-provided or may otherwise
             contain an unexpected formatting string (e.g. "{}").
-        _tags (Dict[str, Any]):
+        _tags:
             key-value pairs to display at the end of
             the message in square brackets.
 
@@ -162,7 +163,7 @@ def _format_msg(
 
             E.g. `_format_msg("hello", _tags=dict(from=mom, signed=True))`
                  `hello [from=Mom, signed]`
-        _numbered (Tuple[str, int, int]):
+        _numbered:
             `(brackets, i, n)`
 
             The `brackets` string is composed of two "bracket" characters,
@@ -176,6 +177,7 @@ def _format_msg(
 
             E.g. `_format_msg("hello", _numbered=("[]", 0, 5))`
                  `[0/5] hello`
+        **kwargs: `.format` keyword arguments for `msg`.
 
     Returns:
         The formatted message.
@@ -372,14 +374,16 @@ class _CliLogger:
         _level_str: str = "INFO",
         _linefeed: bool = True,
         end: str = None,
-    ):
+    ) -> None:
         """Proxy for printing messages.
 
         Args:
             msg: Message to print.
-            linefeed (bool):
-                If `linefeed` is `False` no linefeed is printed at the
+            _level_str: Log level label used by the non-pretty formatter.
+            _linefeed:
+                If `_linefeed` is `False` no linefeed is printed at the
                 end of the message.
+            end: String appended after the last value, passed to print().
         """
         if self.pretty:
             rendered_message = "  " * self.indent_level + msg
@@ -469,8 +473,9 @@ class _CliLogger:
 
         Args:
             key: Label that is prepended to the message.
-
-        For other arguments, see `_format_msg`.
+            msg: Message to print after the label. See `_format_msg`.
+            *args: Additional positional args forwarded to `_format_msg`.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
         """
         self._print(cf.skyBlue(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
 
@@ -585,8 +590,9 @@ class _CliLogger:
 
         Args:
             val: Value to check.
-
-        For other arguments, see `_format_msg`.
+            msg: Message to print on assertion failure. See `_format_msg`.
+            *args: Additional positional args forwarded to `_format_msg`.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
         """
         if not val:
             exc = None
@@ -620,15 +626,21 @@ class _CliLogger:
         Args:
             yes: If `yes` is `True` the dialog will default to "yes"
                         and continue without waiting for user input.
-            _abort (bool):
+            msg: The prompt message to display. See `_format_msg`.
+            *args: Additional positional args forwarded to `_format_msg`.
+            _abort:
                 If `_abort` is `True`,
                 "no" means aborting the program.
-            _default (bool):
+            _default:
                 The default action to take if the user just presses enter
                 with no input.
-            _timeout_s (float):
+            _timeout_s:
                 If user has no input within _timeout_s seconds, the default
                 action is taken. None means no timeout.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
+
+        Returns:
+            True if the user confirmed (or `yes` was set); False otherwise.
         """
         should_abort = _abort
         default = _default
@@ -744,6 +756,8 @@ class _CliLogger:
 
         Args:
             msg: The mesage to display to the user before the prompt.
+            *args: Additional positional args forwarded to `_format_msg`.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
 
         Returns:
             The string entered by the user.

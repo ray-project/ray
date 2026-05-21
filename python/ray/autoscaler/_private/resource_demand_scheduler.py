@@ -486,9 +486,12 @@ class ResourceDemandScheduler:
         """Returns node resource list and node type counts.
 
         Counts the running nodes, pending nodes.
+
         Args:
              nodes: Existing nodes.
              pending_nodes: Pending nodes.
+             unused_resources_by_ip: Mapping from node IP to available resources.
+
         Returns:
              node_resources: a list of running + pending resources.
                  E.g., [{"CPU": 4}, {"GPU": 2}].
@@ -550,20 +553,18 @@ class ResourceDemandScheduler:
         on the node, then allocate new nodes for the unfulfilled portion.
 
         Args:
-            strict_spreads (List[List[ResourceDict]]): A list of placement
-                groups which must be spread out.
-            node_resources (List[ResourceDict]): Available node resources in
-                the cluster.
-            node_type_counts (Dict[NodeType, int]): The amount of each type of
-                node pending or in the cluster.
+            strict_spreads: A list of placement groups which must be spread out.
+            node_resources: Available node resources in the cluster.
+            node_type_counts: The amount of each type of node pending or in the
+                cluster.
             utilization_scorer: A function that, given a node
                 type, its resources, and resource demands, returns what its
                 utilization would be.
 
         Returns:
-            Dict[NodeType, int]: Nodes to add.
-            List[ResourceDict]: The updated node_resources after the method.
-            Dict[NodeType, int]: The updated node_type_counts.
+            Nodes to add.
+            The updated node_resources after the method.
+            The updated node_type_counts.
 
         """
         to_add = collections.defaultdict(int)
@@ -652,6 +653,7 @@ def _add_min_workers_nodes(
         node_type_counts: Counts of existing nodes already launched/pending.
         node_types: Node types config.
         max_workers: global max_workers constaint.
+        head_node_type: The node type used for the head node.
         ensure_min_cluster_size: resource demands from request_resources().
         utilization_scorer: A function that, given a node
             type, its resources, and resource demands, returns what its
@@ -742,13 +744,14 @@ def get_nodes_for(
         node_types: node types config.
         existing_nodes: counts of existing nodes already launched.
             This sets constraints on the number of new nodes to add.
+        head_node_type: The node type used for the head node.
         max_to_add: global constraint on nodes to add.
         resources: resource demands to fulfill.
-        strict_spread: If true, each element in `resources` must be placed on a
-            different node.
         utilization_scorer: A function that, given a node
             type, its resources, and resource demands, returns what its
             utilization would be.
+        strict_spread: If true, each element in `resources` must be placed on a
+            different node.
 
     Returns:
         Dict of count to add for each node type, and residual of resources
@@ -888,15 +891,16 @@ def get_bin_pack_residual(
     supports a placement groups API.
 
     Args:
-        node_resources (List[ResourceDict]): List of resources per node.
-        resource_demands (List[ResourceDict]): List of resource bundles that
-            need to be bin packed onto the nodes.
+        node_resources: List of resources per node.
+        resource_demands: List of resource bundles that need to be bin packed
+            onto the nodes.
         strict_spread: If true, each element in resource_demands must be
             placed on a different entry in `node_resources`.
 
     Returns:
-        List[ResourceDict]: the residual list resources that do not fit.
-        List[ResourceDict]: The updated node_resources after the method. The order of the list elements remains unchanged.
+        The residual list resources that do not fit.
+        The updated node_resources after the method. The order of the list
+        elements remains unchanged.
     """
 
     unfulfilled = []
@@ -981,14 +985,11 @@ def placement_groups_to_resource_demands(
         * SPREAD - Flatten into a resource demand vector.
 
     Args:
-        pending_placement_groups (List[PlacementGroupData]): List of
-            PlacementGroupLoad's.
+        pending_placement_groups: List of PlacementGroupLoad's.
 
     Returns:
-        List[ResourceDict]: The placement groups which were converted to a
-            resource demand vector.
-        List[List[ResourceDict]]: The placement groups which should be strictly
-            spread.
+        The placement groups which were converted to a resource demand vector.
+        The placement groups which should be strictly spread.
     """
     resource_demand_vector = []
     unconverted = []

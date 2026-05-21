@@ -244,6 +244,7 @@ try-import %workspace%/.user.bazelrc
 # Work around for https://github.com/bazelbuild/bazel/issues/8053
 build:macos --sandbox_block_path=/usr/local/
 build:macos --copt="-Wno-error=deprecated-declarations"
+build:macos --copt="-Wno-deprecated-builtins"
 # Disable build_bazel_apple_support's Apple CC toolchain on macOS CI machines
 # that only have Xcode CLT (no full Xcode.app). With BAZEL_NO_APPLE_CPP_TOOLCHAIN=1,
 # apple_cc_configure's _apple_cc_autoconf generates an empty local_config_apple_cc,

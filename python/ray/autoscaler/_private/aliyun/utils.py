@@ -53,7 +53,13 @@ class AcsClient:
         max_retries: The maximum number of retries each connection.
     """
 
-    def __init__(self, access_key, access_key_secret, region_id, max_retries):
+    def __init__(
+        self,
+        access_key: str,
+        access_key_secret: str,
+        region_id: str,
+        max_retries: int,
+    ):
         self.cli = client.AcsClient(
             ak=access_key,
             secret=access_key_secret,

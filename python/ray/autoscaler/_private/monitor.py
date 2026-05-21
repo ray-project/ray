@@ -60,7 +60,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def parse_resource_demands(resource_load_by_shape):
+def parse_resource_demands(resource_load_by_shape: "gcs_pb2.ResourceLoad"):
     """Handle the message.resource_load_by_shape protobuf for the demand
     based autoscaling. Catch and log all exceptions so this doesn't
     interfere with the utilization based autoscaler until we're confident
@@ -68,12 +68,11 @@ def parse_resource_demands(resource_load_by_shape):
     resource demand vector.
 
     Args:
-        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
-            in protobuf form or None.
+        resource_load_by_shape: The resource demands in protobuf form or None.
 
     Returns:
-        List[ResourceDict]: Waiting bundles (ready and feasible).
-        List[ResourceDict]: Infeasible bundles.
+        Waiting bundles (ready and feasible).
+        Infeasible bundles.
     """
     waiting_bundles, infeasible_bundles = [], []
     try:
