@@ -11,6 +11,7 @@ from pydantic import ValidationError
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.test_utils import check_running, get_application_url
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
@@ -531,6 +532,47 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     serve.run(v2.bind(), name="app")
     responses2 = make_calls({"2": 4})
     assert all(pid not in pids1 for pid in responses2["2"])
+
+
+def test_redeploy_uses_cached_actor_class(serve_instance):
+    # The controller caches the dynamic ReplicaActor subclass by `actor_name`
+    # (i.e. per `(app, deployment)` pair) to avoid the per-cycle class leak.
+    # User code rides on `replica_config.serialized_deployment_def` (a
+    # cloudpickled init arg), not on the cached class, so a rollout with the
+    # same name must still invoke the new code while reusing the cached class.
+    name = "D"
+    app = "rollout"
+    actor_name = DeploymentID(name=name, app_name=app).to_replica_actor_class_name()
+    controller = serve_instance._controller
+
+    @serve.deployment(name=name)
+    class V1:
+        async def __call__(self):
+            return "v1"
+
+    handle = serve.run(V1.bind(), name=app)
+    assert handle.remote().result() == "v1"
+
+    cache_after_v1 = ray.get(
+        controller._get_dynamic_actor_class_cache_ids_for_testing.remote()
+    )
+    assert actor_name in cache_after_v1
+    v1_class_id = cache_after_v1[actor_name]
+
+    @serve.deployment(name=name)
+    class V2:
+        async def __call__(self):
+            return "v2"
+
+    handle = serve.run(V2.bind(), name=app)
+    assert handle.remote().result() == "v2"
+
+    cache_after_v2 = ray.get(
+        controller._get_dynamic_actor_class_cache_ids_for_testing.remote()
+    )
+    # Same actor_name across the rollout -> same cached class object reused
+    # (id(cls) is stable within the controller process).
+    assert cache_after_v2[actor_name] == v1_class_id
 
 
 def test_handle_method_name_validation(serve_instance):

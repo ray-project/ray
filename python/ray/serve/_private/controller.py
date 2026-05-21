@@ -57,7 +57,10 @@ from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
     get_proxy_actor_class,
 )
-from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.deployment_info import (
+    _DYNAMIC_ACTOR_CLASS_CACHE,
+    DeploymentInfo,
+)
 from ray.serve._private.deployment_state import (
     DeploymentStateManager,
 )
@@ -427,6 +430,12 @@ class ServeController:
         self.deployment_state_manager._stop_one_running_replica_for_testing(
             deployment_id
         )
+
+    def _get_dynamic_actor_class_cache_ids_for_testing(self) -> Dict[str, int]:
+        """
+        Snapshot of the dynamic-actor-class cache.
+        """
+        return {name: id(cls) for name, cls in _DYNAMIC_ACTOR_CLASS_CACHE.items()}
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
