@@ -44,38 +44,29 @@ class TestFuriosaAcceleratorManager:
             == FURIOSA_VISIBLE_DEVICES_ENV_VAR
         )
 
-    def test_get_current_process_visible_accelerator_ids(self):
-        # furiosa-llm --devices form (preferred)
-        os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "npu:0,npu:1,npu:2,npu:3"
+    @pytest.mark.parametrize(
+        "env_value,expected",
+        [
+            # furiosa-llm --devices form (preferred).
+            ("npu:0,npu:1,npu:2,npu:3", ["0", "1", "2", "3"]),
+            # Bare integer form is also accepted for convenience.
+            ("0,1,2,3", ["0", "1", "2", "3"]),
+            # Core range notation: only the device index is returned.
+            ("npu:0:0-3,npu:1:0-3", ["0", "1"]),
+            # Empty string yields an empty list.
+            ("", []),
+            # Sentinel ``None`` means the env var is unset.
+            (None, None),
+        ],
+    )
+    def test_get_current_process_visible_accelerator_ids(self, env_value, expected):
+        if env_value is None:
+            os.environ.pop(FURIOSA_VISIBLE_DEVICES_ENV_VAR, None)
+        else:
+            os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = env_value
         assert (
             FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
-            == ["0", "1", "2", "3"]
-        )
-
-        # Bare integer form is also accepted for convenience.
-        os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "0,1,2,3"
-        assert (
-            FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
-            == ["0", "1", "2", "3"]
-        )
-
-        # Core range notation: only the device index is returned.
-        os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "npu:0:0-3,npu:1:0-3"
-        assert (
-            FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
-            == ["0", "1"]
-        )
-
-        os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = ""
-        assert (
-            FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
-            == []
-        )
-
-        os.environ.pop(FURIOSA_VISIBLE_DEVICES_ENV_VAR)
-        assert (
-            FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
-            is None
+            == expected
         )
 
     def test_get_current_node_num_accelerators(self):
