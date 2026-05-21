@@ -92,10 +92,6 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
                                                      const Status &) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
       ReleaseFreedLocalObject(obj_id);
-      // TODO(aaronscalene) currently just frees objects directly here, will wire
-      // in better way in the following PR that gets rid of this owner dead
-      // callback dependency
-      on_objects_freed_({obj_id});
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
@@ -112,32 +108,33 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 }
 
 void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
-  // Only free the object if it is not already freed.
+  // Primary-copy bookkeeping only runs when we actually hold the primary copy
+  // and it hasn't been freed yet. Secondary copies fall through to the enqueue
+  // below.
   auto it = local_objects_.find(object_id);
-  if (it == local_objects_.end() || it->second.is_freed_) {
-    return;
-  }
-  // Mark the object as freed. NOTE(swang): We have to mark this instead of
-  // deleting the entry immediately in case the object is currently being
-  // spilled. In that case, we should process the free event once the object
-  // spill is complete.
-  it->second.is_freed_ = true;
+  if (it != local_objects_.end() && !it->second.is_freed_) {
+    // Mark the object as freed. NOTE(swang): We have to mark this instead of
+    // deleting the entry immediately in case the object is currently being
+    // spilled. In that case, we should process the free event once the object
+    // spill is complete.
+    it->second.is_freed_ = true;
 
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-  // The object should be in one of these states: pinned, spilling, or spilled.
-  auto pinned_objects_it = pinned_objects_.find(object_id);
-  RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
-            spilled_objects_url_.contains(object_id) ||
-            objects_pending_spill_.contains(object_id));
-  if (pinned_objects_it != pinned_objects_.end()) {
-    pinned_objects_size_ -= pinned_objects_it->second->GetSize();
-    pinned_objects_.erase(pinned_objects_it);
-    local_objects_.erase(it);
-  } else {
-    // If the object is being spilled or is already spilled, then we will clean
-    // up the local_objects_ entry once the spilled copy has been
-    // freed.
-    spilled_object_pending_delete_.push(object_id);
+    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    // The object should be in one of these states: pinned, spilling, or spilled.
+    auto pinned_objects_it = pinned_objects_.find(object_id);
+    RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
+              spilled_objects_url_.contains(object_id) ||
+              objects_pending_spill_.contains(object_id));
+    if (pinned_objects_it != pinned_objects_.end()) {
+      pinned_objects_size_ -= pinned_objects_it->second->GetSize();
+      pinned_objects_.erase(pinned_objects_it);
+      local_objects_.erase(it);
+    } else {
+      // If the object is being spilled or is already spilled, then we will clean
+      // up the local_objects_ entry once the spilled copy has been
+      // freed.
+      spilled_object_pending_delete_.push(object_id);
+    }
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -150,9 +147,15 @@ void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
   }
 }
 
-// TODO(aaronscalene): Deal with ProcessSpilledObjectsDeleteQueue within FlushFreeObjects
 void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
+    RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()
+                   << " out-of-scope objects";
+    // TODO(irabbani): CORE-1640 will modify as much as the plasma API as is
+    // reasonable to remove usage of vectors in favor of sets.
+    std::vector<ObjectID> objects_to_delete(objects_pending_deletion_.begin(),
+                                            objects_pending_deletion_.end());
+    on_objects_freed_(objects_to_delete);
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);

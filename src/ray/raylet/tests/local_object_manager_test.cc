@@ -44,12 +44,6 @@ namespace ray {
 
 namespace raylet {
 
-// TODO(aaronscalene): revamp for the FreeLocalObjects RPC path. The
-// eviction-pubsub callback and on_objects_freed_ trigger have been retired, so
-// these tests inline `manager.ReleaseFreedLocalObject(...)` and
-// `on_objects_freed_(...)` after each PublishObjectEviction to mimic the
-// retired wiring.
-
 using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
@@ -348,7 +342,12 @@ class LocalObjectManagerTestWithMinSpillingSize {
             /*max_io_workers=*/2,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
-            /*on_objects_freed=*/on_objects_freed_,
+            /*on_objects_freed=*/
+            [&](const std::vector<ObjectID> &object_ids) {
+              for (const auto &object_id : object_ids) {
+                freed.insert(object_id);
+              }
+            },
             /*is_plasma_object_spillable=*/
             [&](const ray::ObjectID &object_id) {
               return unevictable_objects_.count(object_id) == 0;
@@ -422,17 +421,9 @@ class LocalObjectManagerTestWithMinSpillingSize {
       fake_spill_manager_objects_bytes_gauge_,
       fake_spill_manager_request_total_gauge_,
       fake_spill_manager_throughput_mb_gauge_};
-  std::unordered_set<ObjectID> freed;
-  // Hoisted out of the manager constructor so tests can invoke it directly to
-  // simulate the eventual cluster-propagation trigger; see the file-level TODO.
-  std::function<void(const std::vector<ObjectID> &)> on_objects_freed_ =
-      [this](const std::vector<ObjectID> &ids) {
-        for (const auto &id : ids) {
-          freed.insert(id);
-        }
-      };
   LocalObjectManager manager;
 
+  std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins;
@@ -490,7 +481,6 @@ TEST_F(LocalObjectManagerTest, TestPin) {
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
     manager.ReleaseFreedLocalObject(object_ids[i]);
   }
-  on_objects_freed_(object_ids);
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 }
@@ -1396,7 +1386,6 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePin) {
     ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
     manager.ReleaseFreedLocalObject(object_ids[i]);
   }
-  on_objects_freed_(object_ids);
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 
@@ -1441,7 +1430,6 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
     ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
     manager.ReleaseFreedLocalObject(object_ids[i]);
   }
-  on_objects_freed_(object_ids);
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 
