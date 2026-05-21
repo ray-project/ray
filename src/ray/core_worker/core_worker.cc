@@ -3036,6 +3036,10 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   return {object_ref, ready};
 }
 
+ObjectID CoreWorker::PeekObjectIdStream(const ObjectID &generator_id) {
+  return task_manager_->PeekObjectRefStream(generator_id).first;
+}
+
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
                                          const ObjectID &generator_id,
