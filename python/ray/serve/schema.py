@@ -656,7 +656,8 @@ class DeploymentSchema(BaseModel):
             None,
         ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
             raise ValueError(
-                "Cannot specify both `accelerator_config` and `gang_scheduling_config`."
+                "Cannot specify both `accelerator_config` and `gang_scheduling_config`. "
+                "Accelerator configurations automatically manage their own gang scheduling."
             )
 
         return self
