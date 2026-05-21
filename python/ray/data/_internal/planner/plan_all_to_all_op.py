@@ -62,10 +62,7 @@ def _plan_hash_shuffle_repartition(
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
         num_partitions=logical_op.num_outputs,
-        # `Repartition.sort` requires a reduce function that sees the full
-        # partition, which is exactly what blocking_reduce gives us.
-        blocking_reduce=logical_op.sort,
-        # TODO wire in aggregator args overrides
+        sort=logical_op.sort,
     )
 
 
@@ -89,7 +86,7 @@ def _plan_hash_shuffle_aggregate(
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
         num_partitions=logical_op.num_partitions,
-        # TODO wire in aggregator args overrides
+        aggregator_ray_remote_args_override=logical_op.ray_remote_args,
     )
 
 

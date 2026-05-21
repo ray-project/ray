@@ -592,24 +592,19 @@ class TestPlanAllToAllOpRouting:
 
         assert isinstance(op, GPUShuffleOperator)
 
-    def test_hash_shuffle_still_routes_to_hash_operator(self):
-        from ray.data._internal.execution.operators.hash_shuffle import (
-            HashShuffleOperator,
+    def test_hash_shuffle_routes_to_hash_shuffle_operator_v2(self):
+        from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+            HashShuffleOperatorV2,
         )
 
         ctx = DataContext()
         ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
-        with patch(
-            "ray.data._internal.execution.operators.hash_shuffle"
-            "._get_total_cluster_resources",
-            return_value=ExecutionResources(cpu=4, gpu=0),
-        ):
-            logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
-            input_physical_op = _make_input_op_mock()
-            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+        logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
+        input_physical_op = _make_input_op_mock()
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
 
-        assert isinstance(op, HashShuffleOperator)
+        assert isinstance(op, HashShuffleOperatorV2)
 
     def test_unsupported_strategy_with_keys_raises(self):
         ctx = DataContext()
