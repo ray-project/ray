@@ -86,10 +86,10 @@ def misaligned_zarrv2_store(tmp_path) -> Path:
 
 
 def test_normalizes_requested_root_array_path(zarrv2_root_store):
-    """``"."`` and ``""`` both refer to the root array."""
+    """The empty string refers to the root array."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(zarrv2_root_store),
-        array_paths=["."],
+        array_paths=[""],
     )
     assert list(datasource._selected_arrays) == [""]
 
@@ -216,7 +216,7 @@ def test_accepts_pyarrow_fs_filesystem(zarrv2_group_store):
     )
     from fsspec.spec import AbstractFileSystem
 
-    assert isinstance(datasource._filesystem, AbstractFileSystem)
+    assert isinstance(datasource._fs, AbstractFileSystem)
     assert set(datasource._selected_arrays) == {"images", "nested"}
 
 

@@ -51,9 +51,9 @@ class ZarrArrayMeta:
                 f"missing required key(s) {missing}."
             )
         return cls(
-            shape=tuple(int(x) for x in raw_meta.shape),
-            chunks=tuple(int(x) for x in raw_meta.chunks),
-            dtype=str(raw_meta.dtype),
+            shape=tuple(int(x) for x in raw_meta["shape"]),
+            chunks=tuple(int(x) for x in raw_meta["chunks"]),
+            dtype=str(raw_meta["dtype"]),
         )
 
 
@@ -81,16 +81,17 @@ def _load_metadata_from_array_paths(
 ) -> dict[str, ZarrArrayMeta]:
     """Load ``.zarray`` files for the user's explicit array paths.
 
-    Normalizes each path: trims slashes and treats ``"."`` as the root array
-    (the canonical key ``""``). Raises ``ValueError`` if a requested path has
+    Each path is normalized via :func:`zarr.util.normalize_storage_path`,
+    which strips surrounding slashes, collapses doubles, and rejects
+    ``.``/``..`` segments. Raises ``ValueError`` if a requested path has
     no ``.zarray`` file at the expected location.
     """
+    from zarr.util import normalize_storage_path
+
     store_root = store_path.rstrip("/")
     out: dict[str, ZarrArrayMeta] = {}
     for raw in array_paths:
-        normalized = raw.strip("/")
-        if normalized == ".":
-            normalized = ""
+        normalized = normalize_storage_path(raw)
         zarray_path = (
             f"{store_root}/{normalized}/.zarray"
             if normalized
@@ -128,69 +129,6 @@ def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
             continue
         out[array_path] = ZarrArrayMeta.from_json(raw, array_path)
     return out
-
-
-def _axis0_chunk_slices(shape0: int, chunk_size: int) -> list[tuple[int, int]]:
-    """Tile axis 0 into ``(start, stop)`` slice pairs of length up to ``chunk_size``.
-
-    The final slice may be shorter than ``chunk_size`` if ``shape0`` is not a
-    multiple of it. No padding is applied — callers receive the actual shapes.
-    """
-    if chunk_size <= 0:
-        raise ValueError(f"chunk_size must be positive, got {chunk_size}")
-    return [
-        (start, min(start + chunk_size, shape0))
-        for start in range(0, shape0, chunk_size)
-    ]
-
-
-def _resolve_store(
-    path: str, filesystem: AbstractFileSystem | None = None
-) -> tuple[AbstractFileSystem, str]:
-    """Resolve a user-supplied store path to an ``(fsspec_filesystem, path)`` pair.
-
-    If the caller already supplied an fsspec filesystem, use it as-is.
-    Otherwise delegate URL resolution to Ray Data's standard
-    :func:`_resolve_paths_and_filesystem` helper (the same one every other
-    ``read_*`` API uses) and wrap the resulting ``pyarrow.fs.FileSystem``
-    into fsspec via :class:`fsspec.implementations.arrow.ArrowFSWrapper`
-    since Zarr's storage layer speaks fsspec. This gives free support for
-    Ray Data URL conventions like ``s3://anonymous@<bucket>/...``.
-    """
-    if filesystem is not None:
-        return filesystem, path.rstrip("/")
-
-    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-
-    paths, pa_fs = _resolve_paths_and_filesystem([path])
-    return _to_fsspec(pa_fs), paths[0].rstrip("/")
-
-
-def _to_fsspec(
-    filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None,
-) -> AbstractFileSystem | None:
-    """Normalize a user-supplied filesystem to an fsspec ``AbstractFileSystem``.
-
-    Ray Data normally uses pyarrow.fs.FileSystem, but the zarr python library
-    requires fsspec.spec.AbstractFileSystem. This function wraps the pyarrow
-    filesystem in an fsspec filesystem if needed.
-    """
-    if filesystem is None:
-        return None
-    if isinstance(filesystem, AbstractFileSystem):
-        return filesystem
-
-    from pyarrow.fs import FileSystem
-
-    if isinstance(filesystem, FileSystem):
-        from fsspec.implementations.arrow import ArrowFSWrapper
-
-        return ArrowFSWrapper(filesystem)
-
-    raise TypeError(
-        f"filesystem must be pyarrow.fs.FileSystem or "
-        f"fsspec.spec.AbstractFileSystem, got {type(filesystem).__name__}"
-    )
 
 
 def _read_array_slice(
@@ -289,8 +227,37 @@ class ZarrV2Datasource(Datasource):
 
         self.allow_full_metadata_scan = allow_full_metadata_scan
         self.paths = [str(path)]
-        self._filesystem = _to_fsspec(filesystem)
-        self._fs, self._store_path = _resolve_store(self.paths[0], self._filesystem)
+
+        # Resolve filesystem (zarr requires fsspec) and store path. When no
+        # filesystem is provided, delegate URL resolution to Ray Data's
+        # standard helper so we get the same handling as every other
+        # ``read_*`` API (e.g., ``s3://anonymous@<bucket>/...`` URLs).
+        if filesystem is None:
+            from fsspec.implementations.arrow import ArrowFSWrapper
+
+            from ray.data.datasource.path_util import (
+                _resolve_paths_and_filesystem,
+            )
+
+            resolved_paths, pa_fs = _resolve_paths_and_filesystem([self.paths[0]])
+            self._fs = ArrowFSWrapper(pa_fs)
+            self._store_path = resolved_paths[0].rstrip("/")
+        else:
+            from pyarrow.fs import FileSystem
+
+            if isinstance(filesystem, AbstractFileSystem):
+                self._fs = filesystem
+            elif isinstance(filesystem, FileSystem):
+                from fsspec.implementations.arrow import ArrowFSWrapper
+
+                self._fs = ArrowFSWrapper(filesystem)
+            else:
+                raise TypeError(
+                    f"filesystem must be pyarrow.fs.FileSystem or "
+                    f"fsspec.spec.AbstractFileSystem, got "
+                    f"{type(filesystem).__name__}"
+                )
+            self._store_path = self.paths[0].rstrip("/")
 
         self._selected_arrays = self._load_metadata(array_paths)
         if not self._selected_arrays:
@@ -307,12 +274,68 @@ class ZarrV2Datasource(Datasource):
                 f"chunk_size must be a positive integer, got {chunk_size!r}"
             )
         self.chunk_size = chunk_size
-        self._slices = _axis0_chunk_slices(self._shape0, self.chunk_size)
+        self._slices = [
+            (start, min(start + self.chunk_size, self._shape0))
+            for start in range(0, self._shape0, self.chunk_size)
+        ]
 
         # Lazy zarr import: only needed once we read.
         import zarr
 
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Total bytes = sum of (full array sizes) across all selected arrays."""
+        return sum(
+            math.prod(meta.shape) * np.dtype(meta.dtype).itemsize
+            for meta in self._selected_arrays.values()
+        )
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        """Split the axis-0 chunk list into ``parallelism`` batches and wrap each in a ReadTask.
+
+        Each ``ReadTask``'s callable yields a single ``pd.DataFrame`` whose
+        rows are axis-0 slices and whose columns are the selected arrays.
+        """
+        read_tasks: List[ReadTask] = []
+        array_names = list(self._selected_arrays)
+
+        n_rows = len(self._slices)
+        if n_rows == 0:
+            return read_tasks
+        actual_parallelism = min(parallelism, n_rows)
+        batch_size = math.ceil(n_rows / actual_parallelism)
+
+        for start in range(0, n_rows, batch_size):
+            batch = self._slices[start : start + batch_size]
+            read_tasks.append(
+                ReadTask(
+                    _create_read_fn(batch, array_names, self.root),
+                    BlockMetadata(
+                        num_rows=len(batch),
+                        size_bytes=self._estimate_batch_mem_size(batch),
+                        input_files=(self.paths[0],),
+                        exec_stats=None,
+                    ),
+                    per_task_row_limit=per_task_row_limit,
+                )
+            )
+        return read_tasks
+
+    def _estimate_batch_mem_size(self, batch: list[tuple[int, int]]) -> int:
+        """Sum in-memory bytes across all (slice_len × array) pairs in one batch."""
+        return sum(
+            (stop - start)
+            * (math.prod(meta.shape[1:]) if len(meta.shape) > 1 else 1)
+            * np.dtype(meta.dtype).itemsize
+            for start, stop in batch
+            for meta in self._selected_arrays.values()
+        )
 
     def _validate_axis0_alignment(self) -> int:
         """Ensure all selected arrays agree on ``shape[0]``; return that length."""
@@ -389,12 +412,9 @@ class ZarrV2Datasource(Datasource):
             )
 
         if array_paths:
-            requested: set[str] = set()
-            for p in array_paths:
-                normalized = p.strip("/")
-                if normalized == ".":
-                    normalized = ""
-                requested.add(normalized)
+            from zarr.util import normalize_storage_path
+
+            requested = {normalize_storage_path(p) for p in array_paths}
 
             missing = sorted(requested - all_arrays.keys())
             if missing:
@@ -405,58 +425,3 @@ class ZarrV2Datasource(Datasource):
             all_arrays = {k: v for k, v in all_arrays.items() if k in requested}
 
         return all_arrays
-
-    def _row_bytes(self, slice_len: int) -> int:
-        """In-memory bytes for one output row carrying ``slice_len`` along axis 0."""
-        total = 0
-        for meta in self._selected_arrays.values():
-            non_axis0_numel = math.prod(meta.shape[1:]) if len(meta.shape) > 1 else 1
-            total += slice_len * non_axis0_numel * np.dtype(meta.dtype).itemsize
-        return total
-
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        """Total bytes = sum of (full array sizes) across all selected arrays."""
-        return sum(
-            math.prod(meta.shape) * np.dtype(meta.dtype).itemsize
-            for meta in self._selected_arrays.values()
-        )
-
-    def _estimate_batch_mem_size(self, batch: list[tuple[int, int]]) -> int:
-        """Sum per-row sizes across one read task's batch."""
-        return sum(self._row_bytes(stop - start) for start, stop in batch)
-
-    def get_read_tasks(
-        self,
-        parallelism: int,
-        per_task_row_limit: Optional[int] = None,
-        data_context: Optional["DataContext"] = None,
-    ) -> List[ReadTask]:
-        """Split the axis-0 chunk list into ``parallelism`` batches and wrap each in a ReadTask.
-
-        Each ``ReadTask``'s callable yields a single ``pd.DataFrame`` whose
-        rows are axis-0 slices and whose columns are the selected arrays.
-        """
-        read_tasks: List[ReadTask] = []
-        array_names = list(self._selected_arrays)
-
-        n_rows = len(self._slices)
-        if n_rows == 0:
-            return read_tasks
-        actual_parallelism = min(parallelism, n_rows)
-        batch_size = math.ceil(n_rows / actual_parallelism)
-
-        for start in range(0, n_rows, batch_size):
-            batch = self._slices[start : start + batch_size]
-            read_tasks.append(
-                ReadTask(
-                    _create_read_fn(batch, array_names, self.root),
-                    BlockMetadata(
-                        num_rows=len(batch),
-                        size_bytes=self._estimate_batch_mem_size(batch),
-                        input_files=(self.paths[0],),
-                        exec_stats=None,
-                    ),
-                    per_task_row_limit=per_task_row_limit,
-                )
-            )
-        return read_tasks
