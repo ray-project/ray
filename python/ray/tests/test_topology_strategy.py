@@ -7,11 +7,17 @@ import ray
 from ray.util.placement_group import placement_group, placement_group_table
 
 NODE_ID_LABEL = "ray.io/node-id"
-RACK_LABEL = "rack_id"
-ONE = "1"
-TWO = "2"
+RACK_LABEL = "ray.io/gpu-domain"
+ONE = "rack-1"
+TWO = "rack-2"
 rack1_labels = {RACK_LABEL: ONE}
 rack2_labels = {RACK_LABEL: TWO}
+
+
+def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
+    node_id_to_labels = {node["NodeID"]: node["Labels"] for node in cluster_nodes}
+    for node_id in placement_group_table(pg)["bundles_to_node_id"].values():
+        assert node_id_to_labels[node_id].get(label) == value
 
 
 def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
@@ -28,11 +34,6 @@ def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
     ray.init(address=cluster.address)
 
     rack1_nodes = [cluster.add_node(num_cpus=1, labels=rack1_labels) for _ in range(4)]
-
-    def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
-        node_id_to_labels = {node["NodeID"]: node["Labels"] for node in cluster_nodes}
-        for node_id in placement_group_table(pg)["bundles_to_node_id"].values():
-            assert node_id_to_labels[node_id].get(label) == value
 
     bundles = [{"CPU": 1}] * 4
 
@@ -64,17 +65,20 @@ def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
 
 
 def test_topology_strategy_strict_pack(ray_start_cluster):
-    """Testing STRICT_PACK on the node level and STRICT_PACK on the rack level"""
+    """Testing STRICT_PACK on the node level and STRICT_PACK on the rack level.
+
+    Provides two candidate 4-CPU nodes on rack 1 so STRICT_PACK at the node
+    level has a real choice to make; asserts that all bundles end up on a
+    single node (validating the node-level packing) and on rack 1
+    (validating the rack-level packing).
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
 
+    # Two candidate nodes — STRICT_PACK at the node level must pick one.
     cluster.add_node(num_cpus=4, labels=rack1_labels)
-
-    def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
-        node_id_to_labels = {node["NodeID"]: node["Labels"] for node in cluster_nodes}
-        for node_id in placement_group_table(pg)["bundles_to_node_id"].values():
-            assert node_id_to_labels[node_id].get(label) == value
+    cluster.add_node(num_cpus=4, labels=rack1_labels)
 
     bundles = [{"CPU": 1}] * 4
 
@@ -86,20 +90,26 @@ def test_topology_strategy_strict_pack(ray_start_cluster):
     assert placement_group_table(pg)["state"] == "CREATED"
     assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
 
+    # Verify STRICT_PACK at the node level: all bundles on the same node.
+    bundle_nodes = set(placement_group_table(pg)["bundles_to_node_id"].values())
+    assert len(bundle_nodes) == 1
+
 
 def test_topology_strategy_strict_spread(ray_start_cluster):
-    """Testing STRICT_SPREAD on the node level and STRICT_PACK on the rack level"""
+    """Testing STRICT_SPREAD on the node level and STRICT_PACK on the rack level.
+
+    Provides six rack-1 nodes for four bundles so STRICT_SPREAD at the node
+    level has slack to choose from; asserts that each bundle lands on a
+    distinct node (validating node-level spreading) and that all bundles
+    share rack 1 (validating rack-level packing).
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
 
-    for _ in range(4):
+    # Six rack-1 nodes for four bundles — STRICT_SPREAD has slack.
+    for _ in range(6):
         cluster.add_node(num_cpus=1, labels=rack1_labels)
-
-    def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
-        node_id_to_labels = {node["NodeID"]: node["Labels"] for node in cluster_nodes}
-        for node_id in placement_group_table(pg)["bundles_to_node_id"].values():
-            assert node_id_to_labels[node_id].get(label) == value
 
     bundles = [{"CPU": 1}] * 4
 
@@ -110,6 +120,10 @@ def test_topology_strategy_strict_spread(ray_start_cluster):
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
     assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
+
+    # Verify STRICT_SPREAD at the node level: each bundle on a distinct node.
+    bundle_nodes = list(placement_group_table(pg)["bundles_to_node_id"].values())
+    assert len(bundle_nodes) == len(set(bundle_nodes)) == 4
 
 
 if __name__ == "__main__":

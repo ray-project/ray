@@ -182,7 +182,13 @@ void GcsPlacementGroup::ComputeTopologyStrategy() {
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
         (constraint.GetLabelValues().contains(kGB300) ||
          constraint.GetLabelValues().contains(kGB200))) {
-      auto *level = placement_group_table_data_.add_topology_strategy();
+      // Only create a level within topology strategy if empty
+      if (static_cast<size_t>(placement_group_table_data_.topology_strategy_size()) ==
+          0) {
+        placement_group_table_data_.add_topology_strategy();
+      }
+
+      auto *level = placement_group_table_data_.mutable_topology_strategy(0);
       auto *entries = level->mutable_entries();
       (*entries)[kGpuDomainLabelKey] = rpc::PlacementStrategy::STRICT_PACK;
       return;

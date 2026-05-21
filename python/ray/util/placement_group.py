@@ -171,7 +171,7 @@ def placement_group(
         ValueError: if empty bundle or empty resource bundles are given.
         ValueError: if the wrong lifetime arguments are given.
         ValueError: if `topology_strategy` and `strategy` are both provided,
-            or if `topology_strategy` does not match the v1 shape.
+            or if invalid `topology_strategy` is passed.
 
     Return:
         PlacementGroup: Placement group object.
@@ -191,20 +191,16 @@ def placement_group(
     if bundle_label_selector is None:
         bundle_label_selector = []
 
-    # Derive effective strategy from topology_strategy if defined with ray.io/node-id
+    node_level_strategy = _derive_node_level_strategy(strategy, topology_strategy)
+
+    # Current implementation derives node level strategy from topology_strategy,
+    # while we pass a topology strategy with node level strategy stripped
     if topology_strategy is not None:
         level = topology_strategy[0]
-
-        if NODE_ID_LABEL_KEY in level:
-            effective_strategy = level[NODE_ID_LABEL_KEY]
-        else:
-            effective_strategy = "PACK"
-
         stripped_level = {k: v for k, v in level.items() if k != NODE_ID_LABEL_KEY}
-        topology_strategy_for_core = [stripped_level] if stripped_level else []
+        stripped_topology_strategy = [stripped_level] if stripped_level else []
     else:
-        effective_strategy = strategy if strategy is not None else "PACK"
-        topology_strategy_for_core = []
+        stripped_topology_strategy = []
 
     if lifetime == "detached":
         detached = True
@@ -214,11 +210,11 @@ def placement_group(
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
-        effective_strategy,
+        node_level_strategy,
         detached,
         _soft_target_node_id,
         bundle_label_selector,
-        topology_strategy_for_core,
+        stripped_topology_strategy,
     )
 
     return PlacementGroup(placement_group_id)
@@ -345,6 +341,20 @@ def check_placement_group_index(
         )
 
 
+def _derive_node_level_strategy(strategy: str, topology_strategy: List[Dict[str, str]]):
+    """Assumes valid strategy and topology strategy, and derives the node level
+    strategy from the corresponding fields accordingly.
+    """
+    if topology_strategy is not None:
+        level = topology_strategy[0]
+        node_level_strategy = (
+            level[NODE_ID_LABEL_KEY] if NODE_ID_LABEL_KEY in level else "PACK"
+        )
+    else:
+        node_level_strategy = strategy if strategy is not None else "PACK"
+    return node_level_strategy
+
+
 def validate_placement_group(
     bundles: List[Dict[str, float]],
     strategy: Optional[str] = None,
@@ -365,13 +375,16 @@ def validate_placement_group(
             f"`topology_strategy[0]['{NODE_ID_LABEL_KEY}']`."
         )
 
-    # Resolve the effective strategy for the rest of validation that depends on it.
-    effective_strategy = strategy if strategy is not None else "PACK"
+    if topology_strategy is not None:
+        _validate_topology_strategy(topology_strategy)
 
-    if _soft_target_node_id and effective_strategy != "STRICT_PACK":
+    # Resolve the strategy for the rest of validation that depends on it.
+    node_level_strategy = _derive_node_level_strategy(strategy, topology_strategy)
+
+    if _soft_target_node_id and node_level_strategy != "STRICT_PACK":
         raise ValueError(
             "_soft_target_node_id currently only works "
-            f"with STRICT_PACK but got {effective_strategy}"
+            f"with STRICT_PACK but got {node_level_strategy}"
         )
 
     if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
@@ -389,9 +402,9 @@ def validate_placement_group(
             )
         _validate_bundle_label_selector(bundle_label_selector)
 
-    if effective_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+    if node_level_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
-            f"Invalid placement group strategy {effective_strategy}. "
+            f"Invalid placement group strategy {node_level_strategy}. "
             f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
         )
 
@@ -401,14 +414,11 @@ def validate_placement_group(
             f"'detached'. Got {lifetime}."
         )
 
-    if topology_strategy is not None:
-        _validate_topology_strategy(topology_strategy)
-
 
 def _validate_topology_strategy(topology_strategy: List[Dict[str, str]]) -> None:
-    """Validates topology_strategy v1 shape.
+    """Validates topology_strategy shape.
 
-    v1 accepts a single level whose dict contains "ray.io/node-id" and at most
+    Currently accepts a single level whose dict contains "ray.io/node-id" and at most
     one other topology label. The "ray.io/node-id" entry is equivalent to the
     `strategy=` parameter and accepts any value in
     VALID_PLACEMENT_GROUP_STRATEGIES. The other (topology) label is restricted

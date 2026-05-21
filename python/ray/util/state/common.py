@@ -551,7 +551,7 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
-    #: Per-level topology strategy for this placement group. Each level is a
+    #: The topology strategy for this placement group. Each level is a
     #: dict mapping a label key (e.g. "rack_id", "ray.io/gpu-domain") to a
     #: placement strategy (e.g. "STRICT_PACK"). Empty list if the placement
     #: group does not use topology-aware scheduling.
