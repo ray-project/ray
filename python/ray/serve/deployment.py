@@ -13,9 +13,11 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import (
+    AcceleratorConfig,
     AutoscalingConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
+    _resolve_accelerator_config,
 )
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
@@ -257,6 +259,9 @@ class Deployment:
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
+        accelerator_config: Default[
+            Union[Dict, AcceleratorConfig, None]
+        ] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -408,6 +413,18 @@ class Deployment:
         if gang_scheduling_config is not DEFAULT.VALUE:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
 
+        if accelerator_config is not DEFAULT.VALUE:
+            if accelerator_config is not None:
+                accelerator_config = _resolve_accelerator_config(accelerator_config)
+            new_deployment_config.accelerator_config = accelerator_config
+
+        ac = new_deployment_config.accelerator_config
+        gc = new_deployment_config.gang_scheduling_config
+        if ac is not None and gc is not None:
+            raise ValueError(
+                "Cannot specify both `accelerator_config` and `gang_scheduling_config`."
+            )
+
         if deployment_actors is not DEFAULT.VALUE:
             new_deployment_config.deployment_actors = deployment_actors
 
@@ -513,6 +530,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
         "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
+        "accelerator_config": d._deployment_config.accelerator_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -577,6 +595,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
         rolling_update_percentage=s.rolling_update_percentage,
+        accelerator_config=s.accelerator_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

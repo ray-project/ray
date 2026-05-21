@@ -26,7 +26,6 @@ from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    CreatePlacementGroupRequest,
     DeploymentID,
     DeploymentStatus,
     ReplicaID,
@@ -45,6 +44,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
 )
+from ray.serve._private.placement_group_utils import CreatePlacementGroupRequest
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (

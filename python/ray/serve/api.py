@@ -40,7 +40,6 @@ from ray.serve._private.utils import (
     wait_for_interrupt,
 )
 from ray.serve.config import (
-    ACCELERATOR_KIND_TPU,
     AcceleratorConfig,
     AutoscalingConfig,
     ControllerOptions,
@@ -49,7 +48,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
-    TPUAcceleratorConfig,
+    _resolve_accelerator_config,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -468,22 +467,6 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
         return ASGIIngressWrapper
 
     return decorator
-
-
-def _resolve_accelerator_config(
-    value: Union[Dict, AcceleratorConfig, None],
-) -> Optional[AcceleratorConfig]:
-
-    if value is None or isinstance(value, AcceleratorConfig):
-        return value
-    if isinstance(value, dict):
-        kind = value.get("kind")
-        if kind == ACCELERATOR_KIND_TPU:
-            return TPUAcceleratorConfig(**value)
-        raise ValueError(f"Unknown accelerator kind {kind!r}. Supported types: 'tpu'.")
-    raise TypeError(
-        f"accelerator_config must be a dict or AcceleratorConfig, got {type(value)}."
-    )
 
 
 @PublicAPI(stability="stable")

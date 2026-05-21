@@ -18,6 +18,7 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    TPUAcceleratorConfig,
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
@@ -1217,6 +1218,85 @@ def test_schema_to_deployment_gang_scheduling_config_from_dict():
     assert gc.gang_size == 3
     assert gc.gang_placement_strategy == GangPlacementStrategy.PACK
     assert dep.num_replicas == 6
+
+
+def test_accelerator_config_deployment_schema_roundtrip():
+    # Ensure deployment_to_schema -> schema_to_deployment preserves accelerator_config
+    accelerator_config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
+    dc = DeploymentConfig.from_default(
+        num_replicas=4,
+        accelerator_config=accelerator_config,
+    )
+    dc.user_configured_option_names = {"num_replicas", "accelerator_config"}
+
+    rc = ReplicaConfig.create(deployment_def="", init_args=(), init_kwargs={})
+    dep = Deployment(
+        name="TpuDep",
+        deployment_config=dc,
+        replica_config=rc,
+        _internal=True,
+    )
+
+    schema = deployment_to_schema(dep)
+    assert isinstance(schema.accelerator_config, TPUAcceleratorConfig)
+    assert schema.accelerator_config.topology == "4x4"
+    assert schema.accelerator_config.accelerator_version == "v6e"
+    assert schema.num_replicas == 4
+
+    dep2 = schema_to_deployment(schema)
+    ac2 = dep2._deployment_config.accelerator_config
+    assert isinstance(ac2, TPUAcceleratorConfig)
+    assert ac2.topology == "4x4"
+    assert ac2.accelerator_version == "v6e"
+    assert dep2.num_replicas == 4
+
+
+def test_schema_to_deployment_accelerator_config_from_dict():
+    # Ensure schema_to_deployment works when accelerator_config comes from a dict
+    schema = DeploymentSchema.model_validate(
+        {
+            "name": "TpuDep",
+            "num_replicas": 2,
+            "accelerator_config": {
+                "kind": "tpu",
+                "topology": "2x2",
+                "accelerator_version": "v6e",
+            },
+        }
+    )
+
+    assert isinstance(schema.accelerator_config, TPUAcceleratorConfig)
+    assert schema.accelerator_config.topology == "2x2"
+
+    dep = schema_to_deployment(schema)
+    ac = dep._deployment_config.accelerator_config
+    assert isinstance(ac, TPUAcceleratorConfig)
+    assert ac.topology == "2x2"
+    assert ac.accelerator_version == "v6e"
+    assert dep.num_replicas == 2
+
+
+def test_mutual_exclusivity_accelerator_and_gang():
+    # Cannot specify both accelerator_config and gang_scheduling_config
+    with pytest.raises(ValueError) as e:
+        DeploymentSchema.model_validate(
+            {
+                "name": "TpuDep",
+                "num_replicas": 2,
+                "accelerator_config": {
+                    "kind": "tpu",
+                    "topology": "2x2",
+                    "accelerator_version": "v6e",
+                },
+                "gang_scheduling_config": {
+                    "gang_size": 2,
+                },
+            }
+        )
+    assert (
+        "Cannot specify both `accelerator_config` and `gang_scheduling_config`"
+        in str(e.value)
+    )
 
 
 def test_deployment_actors_deployment_schema_roundtrip():

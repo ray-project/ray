@@ -125,10 +125,10 @@ class DeploymentVersion:
             else {}
         )
         self.gang_scheduling_config_hash = crc32(serialized_gang_scheduling_config)
-        serialized_accelerator_config = _serialize(
-            self.deployment_config.accelerator_config.model_dump()
+        serialized_accelerator_config = (
+            self.deployment_config.accelerator_config.model_dump_json().encode("utf-8")
             if self.deployment_config.accelerator_config is not None
-            else {}
+            else b""
         )
         self.accelerator_config_hash = crc32(serialized_accelerator_config)
         # Include app-level route prefix in the version hashes so changing

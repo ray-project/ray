@@ -12,7 +12,6 @@ from ray._raylet import NodeID
 from ray.serve._private import default_impl
 from ray.serve._private.common import (
     GANG_PG_NAME_PREFIX,
-    CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
     ReplicaID,
@@ -32,6 +31,7 @@ from ray.serve._private.deployment_scheduler import (
     SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager
+from ray.serve._private.placement_group_utils import CreatePlacementGroupRequest
 from ray.serve._private.test_utils import (
     MockActorClass,
     MockClusterNodeInfoCache,
