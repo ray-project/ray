@@ -8,28 +8,70 @@ import importlib.metadata
 import json
 import logging
 import os
-import re
 import threading
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import AbstractUDFMap, Read, Write
-from ray.data._internal.logical.util import _op_name_white_list
+from ray.data._internal.logical.operators import AbstractUDFMap
+from ray.data._internal.logical.util import _anonymize_op_name
 
 if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
 
+@dataclass(frozen=True)
+class _OpConfig:
+    """Configuration for an operator"""
+    batch_format: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class _Op:
+    """An operator in the plan"""
+    name: str
+    config: Optional[_OpConfig] = None
+
+
+@dataclass(frozen=True)
+class _Workload:
+    """The plan and operators in the plan"""
+    plan: str
+    ops: List[_Op]
+
+
+@dataclass(frozen=True)
+class _Env:
+    pyarrow: Optional[str]
+
+
+@dataclass(frozen=True)
+class _PipelinePerf:
+    bytes_spilled: Optional[int]
+    oom_kills: Optional[int] = None
+    unexpected_worker_kills: Optional[int] = None
+    node_deaths: Optional[int] = None
+
+
+@dataclass
+class _Entry:
+    id: str
+    started_at: float
+    env: _Env
+    workload: _Workload
+    performance: Optional[_PipelinePerf] = None
+
+
 # Bounded buffer of recent executions. OrderedDict so eviction picks the
 # oldest-inserted entry
 _MAX_EXECUTIONS_TO_TRACK = 100
 
 # Module state. Mutations are serialized through ``_lock``.
-_executions: "OrderedDict[str, dict]" = OrderedDict()
+_executions: "OrderedDict[str, _Entry]" = OrderedDict()
 # Per-execution spillage recorded at start of execution to compute delta
 _spillage_dict: Dict[str, Optional[int]] = {}
 _lock = threading.Lock()
@@ -48,13 +90,12 @@ def record_workload(
     if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
         return
     try:
-        entry = {
-            "id": execution_id,
-            "started_at": time.time(),
-            "env": _collect_env(),
-            "workload": _collect_workload(logical_plan),
-            "performance": None,
-        }
+        entry = _Entry(
+            id=execution_id,
+            started_at=time.time(),
+            env=_collect_env(),
+            workload=_collect_workload(logical_plan),
+        )
         spilled_at_start = _cluster_spilled_bytes()
         with _lock:
             if len(_executions) >= _MAX_EXECUTIONS_TO_TRACK:
@@ -85,7 +126,7 @@ def record_execution_result(
                 _spillage_dict.pop(execution_id, None)
                 return
             spilled_at_start = _spillage_dict.pop(execution_id, None)
-            entry["performance"] = _collect_pipeline_perf(spilled_at_start, spilled_now)
+            entry.performance = _collect_pipeline_perf(spilled_at_start, spilled_now)
             payload = _serialize_locked()
         record_extra_usage_tag(TagKey.DATA_USAGE, payload)
     except Exception:
@@ -94,12 +135,12 @@ def record_execution_result(
 
 def _serialize_locked() -> str:
     """Serialize current state to JSON. Caller must hold ``_lock``."""
-    return json.dumps({"executions": list(_executions.values())})
+    return json.dumps({"executions": [asdict(e) for e in _executions.values()]})
 
 
-def _collect_env() -> dict:
+def _collect_env() -> _Env:
     """Process-wide environment info."""
-    return {"pyarrow": _safe_version("pyarrow")}
+    return _Env(pyarrow=_safe_version("pyarrow"))
 
 
 def _safe_version(pkg: str) -> Optional[str]:
@@ -109,50 +150,31 @@ def _safe_version(pkg: str) -> Optional[str]:
         return None
 
 
-def _collect_workload(logical_plan: "LogicalPlan") -> dict:
+def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
     """Collect anonymized plan and per-op config"""
     ops = _walk_operators(logical_plan.dag)
-    return {
-        "plan": "->".join(op["name"] for op in ops),
-        "ops": ops,
-    }
+    return _Workload(plan="->".join(op.name for op in ops), ops=ops)
 
 
-def _walk_operators(op: LogicalOperator) -> List[dict]:
+def _walk_operators(op: LogicalOperator) -> List[_Op]:
     """Post-order walk producing anonymized op names + per-op config."""
-    ops: List[dict] = []
+    ops: List[_Op] = []
     for child in op.input_dependencies:
         ops.extend(_walk_operators(child))
 
-    entry: Dict[str, Any] = {"name": _anonymize_op_name(op)}
+    config: Optional[_OpConfig] = None
     if isinstance(op, AbstractUDFMap):
         batch_format = getattr(op, "batch_format", None)
         if batch_format is not None:
-            entry["config"] = {"batch_format": batch_format}
-    ops.append(entry)
+            config = _OpConfig(batch_format=batch_format)
+    ops.append(_Op(name=_anonymize_op_name(op), config=config))
     return ops
-
-
-def _anonymize_op_name(op: LogicalOperator) -> str:
-    """Anonymize an operator name against the whitelist from ``logical/util.py``."""
-    if isinstance(op, Read):
-        name = f"Read{op.datasource.get_name()}"
-        return name if name in _op_name_white_list else "ReadCustom"
-    if isinstance(op, Write):
-        name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
-        return name if name in _op_name_white_list else "WriteCustom"
-    name = op.name
-    if not name:
-        return "Unknown"
-    # Remove the function name from the map operator name
-    bare = re.sub(r"\(.*\)$", "", name).strip()
-    return bare if bare in _op_name_white_list else "Unknown"
 
 
 def _collect_pipeline_perf(
     spilled_at_start: Optional[int],
     spilled_now: Optional[int],
-) -> dict:
+) -> _PipelinePerf:
     """Pipeline-level perf metrics
 
     ``bytes_spilled`` is a cluster-wide delta sourced from Ray core's
@@ -165,12 +187,7 @@ def _collect_pipeline_perf(
     else:
         bytes_spilled = max(0, spilled_now - spilled_at_start)
 
-    return {
-        "bytes_spilled": bytes_spilled,
-        "oom_kills": None,
-        "unexpected_worker_kills": None,
-        "node_deaths": None,
-    }
+    return _PipelinePerf(bytes_spilled=bytes_spilled)
 
 
 def _cluster_spilled_bytes() -> Optional[int]:

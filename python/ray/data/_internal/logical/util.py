@@ -81,30 +81,30 @@ def record_operators_usage(op: LogicalOperator):
     record_extra_usage_tag(TagKey.DATA_LOGICAL_OPS, ops_json_str)
 
 
+def _anonymize_op_name(op: LogicalOperator) -> str:
+    """Return an op name suitable for telemetry, anonymized against
+    ``_op_name_white_list``. User-defined datasources/datasinks collapse to
+    ``ReadCustom``/``WriteCustom``
+    """
+    if isinstance(op, Read):
+        name = f"Read{op.datasource.get_name()}"
+        return name if name in _op_name_white_list else "ReadCustom"
+    if isinstance(op, Write):
+        name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
+        return name if name in _op_name_white_list else "WriteCustom"
+    name = op.name or ""
+    if isinstance(op, AbstractUDFMap):
+        # Remove the function name from the map operator name.
+        # E.g., Map(<lambda>) -> Map
+        name = re.sub(r"\(.*\)$", "", name)
+    return name if name in _op_name_white_list else "Unknown"
+
+
 def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
     """Collect the logical operator name and count into `ops_dict`."""
     for child in op.input_dependencies:
         _collect_operators_to_dict(child, ops_dict)
 
-    op_name = op.name
-
-    # Check read and write operator, and anonymize user-defined data source.
-    if isinstance(op, Read):
-        op_name = f"Read{op.datasource.get_name()}"
-        if op_name not in _op_name_white_list:
-            op_name = "ReadCustom"
-    elif isinstance(op, Write):
-        op_name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
-        if op_name not in _op_name_white_list:
-            op_name = "WriteCustom"
-    elif isinstance(op, AbstractUDFMap):
-        # Remove the function name from the map operator name.
-        # E.g., Map(<lambda>) -> Map
-        op_name = re.sub("\\(.*\\)$", "", op_name)
-
-    # Anonymize any operator name if not in white list.
-    if op_name not in _op_name_white_list:
-        op_name = "Unknown"
-
+    op_name = _anonymize_op_name(op)
     ops_dict.setdefault(op_name, 0)
     ops_dict[op_name] += 1
