@@ -14,6 +14,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # Similar to `default_impl.py`, methods like `_default_create_placement_group` are
 # common extension points and should be treated as a Developer API.
 
+
 @dataclass(frozen=True)
 class CreatePlacementGroupRequest:
     """Internal request for creating a per-replica placement group.

@@ -891,8 +891,6 @@ class ReplicaQueueLengthInfo:
     num_ongoing_requests: int
 
 
-
-
 @dataclass
 class GangPlacementGroupRequest:
     """Request to reserve gang placement groups for a deployment."""

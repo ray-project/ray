@@ -684,8 +684,6 @@ class DeploymentScheduler(ABC):
                         accelerator_config=scheduling_request.accelerator_config,
                     ),
                 )
-                # Statically imported from placement_group_utils
-
                 if isinstance(pg_result, ReplicaPlacementGroup):
                     placement_group = pg_result.placement_group
                     replica_pg = pg_result

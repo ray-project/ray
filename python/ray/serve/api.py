@@ -480,9 +480,7 @@ def _resolve_accelerator_config(
         kind = value.get("kind")
         if kind == ACCELERATOR_KIND_TPU:
             return TPUAcceleratorConfig(**value)
-        raise ValueError(
-            f"Unknown accelerator kind {kind!r}. Supported types: 'tpu'."
-        )
+        raise ValueError(f"Unknown accelerator kind {kind!r}. Supported types: 'tpu'.")
     raise TypeError(
         f"accelerator_config must be a dict or AcceleratorConfig, got {type(value)}."
     )

@@ -79,8 +79,7 @@ class DeploymentVersion:
             or self.max_replicas_per_node != new_version.max_replicas_per_node
             or self.gang_scheduling_config_hash
             != new_version.gang_scheduling_config_hash
-            or self.accelerator_config_hash
-            != new_version.accelerator_config_hash
+            or self.accelerator_config_hash != new_version.accelerator_config_hash
         )
 
     def requires_actor_reconfigure(self, new_version):
