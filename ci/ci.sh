@@ -49,6 +49,7 @@ compile_pip_dependencies() {
       python/requirements/lint-requirements.txt \
       python/requirements/test-requirements.txt \
       python/requirements/cloud-requirements.txt \
+      python/requirements/serve/serve-test-requirements.txt \
       python/requirements/docker/ray-docker-requirements.txt \
       python/requirements/ml/core-requirements.txt \
       python/requirements/ml/data-requirements.txt \
@@ -117,6 +118,7 @@ compile_313_pip_dependencies() {
       python/requirements/lint-requirements.txt \
       python/requirements/py313/test-requirements.txt \
       python/requirements/cloud-requirements.txt \
+      python/requirements/serve/serve-test-requirements.txt \
       python/requirements/docker/ray-docker-requirements.txt \
       python/requirements/ml/py313/core-requirements.txt \
       python/requirements/ml/py313/data-requirements.txt \

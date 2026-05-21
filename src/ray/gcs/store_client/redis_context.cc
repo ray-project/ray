@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/util/network_util.h"
 
 extern "C" {
@@ -157,7 +157,8 @@ const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray(
 RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
                                          RedisAsyncContext *context,
-                                         std::vector<std::string> args)
+                                         std::vector<std::string> args,
+                                         ClockInterface &clock)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
@@ -165,8 +166,9 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       redis_context_(context),
       pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
-      start_time_(absl::Now()),
-      redis_cmds_(std::move(args)) {
+      start_time_(clock.Now()),
+      redis_cmds_(std::move(args)),
+      clock_(clock) {
   argc_.reserve(redis_cmds_.size());
   argv_.reserve(redis_cmds_.size());
   for (size_t i = 0; i < redis_cmds_.size(); ++i) {
@@ -203,7 +205,7 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
           }
         },
         "RedisRequestContext.Callback");
-    auto end_time = absl::Now();
+    auto end_time = request_cxt->clock_.Now();
     request_cxt->ray_metric_gcs_latency_.Record(
         absl::ToDoubleMilliseconds(end_time - request_cxt->start_time_));
     delete request_cxt;
@@ -235,8 +237,9 @@ void RedisRequestContext::Run() {
     return Status::RedisError(REPLY->str);      \
   }
 
-RedisContext::RedisContext(instrumented_io_context &io_service)
+RedisContext::RedisContext(instrumented_io_context &io_service, ClockInterface &clock)
     : io_service_(io_service),
+      clock_(clock),
       context_(nullptr),
       ssl_context_(nullptr),
       redis_db_probe_timeout_milliseconds_(
@@ -740,7 +743,8 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
   auto request_context = new RedisRequestContext(io_service_,
                                                  std::move(redis_callback),
                                                  redis_async_context_.get(),
-                                                 std::move(args));
+                                                 std::move(args),
+                                                 clock_);
   // RedisRequestContext is thread safe.
   request_context->Run();
 }

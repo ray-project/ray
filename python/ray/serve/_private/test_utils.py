@@ -6,7 +6,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from unittest.mock import Mock
 
 import grpc
@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     DeploymentStatus,
     ReplicaID,
     RequestProtocol,
+    RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
@@ -45,6 +46,11 @@ from ray.serve._private.deployment_state import (
     ReplicaState,
 )
 from ray.serve._private.proxy import DRAINING_MESSAGE
+from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.request_router import (
+    PendingRequest,
+    RunningReplica,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.gang import GangContext
@@ -65,6 +71,10 @@ PROMETHEUS_METRICS_TIMEOUT_S = 5
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
+# Replicas registered in this set will report `was_initialized() == False` to
+# the controller during recovery, simulating the case where a previous
+# controller crashed before the actor finished its initial setup.
+uninitialized_replicas_context = set()
 replica_rank_context: Dict[str, ReplicaRank] = {}
 
 
@@ -181,6 +191,117 @@ class MockClusterNodeInfoCache:
 
     def get_node_labels(self, node_id: str):
         return self.node_labels.get(node_id, {})
+
+
+# Default value used by FakeRunningReplica when the test doesn't override.
+FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS = 10
+# Every FakeRunningReplica is stamped with this deployment id. Router
+# tests never care about app/name specifically; cross-test consistency
+# matters more than differentiation.
+FAKE_REPLICA_DEPLOYMENT_ID = DeploymentID(name="TEST_DEPLOYMENT")
+
+
+class FakeRunningReplica(RunningReplica):
+    """In-memory ``RunningReplica`` stand-in for request-router unit tests.
+
+    Shared between ``test_pow_2_request_router.py`` and
+    ``test_consistent_hash_router.py``. Supports enough knobs for pow-2's
+    locality / cancellation / re-probe tests; consistent-hash only uses
+    the queue-length response hooks.
+    """
+
+    def __init__(
+        self,
+        replica_unique_id: str,
+        *,
+        node_id: str = "",
+        availability_zone: Optional[str] = None,
+        reset_after_response: bool = False,
+        model_ids: Optional[Set[str]] = None,
+        sleep_time_s: float = 0.0,
+        max_ongoing_requests: int = FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS,
+    ):
+        self._replica_id = ReplicaID(
+            unique_id=replica_unique_id,
+            deployment_id=FAKE_REPLICA_DEPLOYMENT_ID,
+        )
+        self._node_id = node_id
+        self._availability_zone = availability_zone
+        self._queue_len = 0
+        self._max_ongoing_requests = max_ongoing_requests
+        self._has_queue_len_response = asyncio.Event()
+        self._reset_after_response = reset_after_response
+        self._model_ids = model_ids or set()
+        self._sleep_time_s = sleep_time_s
+        self._exception: Optional[Exception] = None
+
+        self.get_queue_len_was_cancelled = False
+        self.queue_len_deadline_history = list()
+        self.num_get_queue_len_calls = 0
+
+    @property
+    def replica_id(self) -> ReplicaID:
+        return self._replica_id
+
+    @property
+    def node_id(self) -> str:
+        return self._node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._availability_zone
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        return self._model_ids
+
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        self._model_ids = set(replica_info.multiplexed_model_ids)
+
+    @property
+    def max_ongoing_requests(self) -> int:
+        return self._max_ongoing_requests
+
+    def set_queue_len_response(
+        self,
+        queue_len: int,
+        exception: Optional[Exception] = None,
+    ):
+        self._queue_len = queue_len
+        self._exception = exception
+        self._has_queue_len_response.set()
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        pass
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        self.num_get_queue_len_calls += 1
+        self.queue_len_deadline_history.append(deadline_s)
+        try:
+            while not self._has_queue_len_response.is_set():
+                await self._has_queue_len_response.wait()
+
+            if self._sleep_time_s > 0:
+                await asyncio.sleep(self._sleep_time_s)
+
+            if self._reset_after_response:
+                self._has_queue_len_response.clear()
+
+            if self._exception is not None:
+                raise self._exception
+
+            return self._queue_len
+        except asyncio.CancelledError:
+            self.get_queue_len_was_cancelled = True
+            raise
+
+    def try_send_request(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> ReplicaResult:
+        raise NotImplementedError()
+
+    def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
+        raise NotImplementedError()
 
 
 class FakeRemoteFunction:
@@ -391,6 +512,7 @@ class MockReplicaActorWrapper:
         self._ingress = False
         self._gang_context = None
         self._gang_pg_index = None
+        self._unrecoverable = False
 
     @property
     def is_cross_language(self) -> bool:
@@ -577,9 +699,23 @@ class MockReplicaActorWrapper:
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
+        # Mirror production: the `was_initialized` probe is fired here and
+        # observed asynchronously in `check_ready()`. Tests register
+        # uninitialized replicas via `uninitialized_replicas_context`.
+        self._unrecoverable = self.replica_id in uninitialized_replicas_context
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:
+        # If the controller's async `was_initialized` probe came back False,
+        # report a failed-but-unrecoverable startup so the reconciler drops
+        # and replaces the replica without recording a deploy failure.
+        if self.recovering and self._unrecoverable:
+            return (
+                ReplicaStartupStatus.FAILED,
+                f"{self._replica_id} was found alive but never finished "
+                "its initial setup.",
+            )
+
         ready = self.status
         self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
@@ -602,7 +738,10 @@ class MockReplicaActorWrapper:
         return {}
 
     def graceful_stop(self) -> None:
-        assert self.started
+        # `started` is only set after a successful `check_ready` transition
+        # to RUNNING. A replica force-stopped while still RECOVERING (e.g.,
+        # because the `was_initialized` probe failed) is a legitimate stop.
+        assert self.started or self.recovering
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
@@ -629,6 +768,10 @@ class MockReplicaActorWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
 
 
 @serve.deployment
@@ -1120,19 +1263,77 @@ class Accumulator:
 
 @ray.remote(num_cpus=0)
 class FailedReplicaStore:
-    """Stores the first replica ID that failed, for constructor failure tests."""
+    """Controls replica constructor failure behavior for constructor failure tests.
+
+    Behavior is determined by ``fail_first``:
+      - ``fail_first=True``  (transient): first caller fails, rest succeed.
+      - ``fail_first=False`` (partial):   first caller succeeds, rest fail.
+
+    All decisions are made in a single atomic actor call to avoid races
+    between concurrent replicas.
+    """
+
+    def __init__(self, fail_first: bool = False):
+        self._fail_first = fail_first
+        self._first_caller = False
+        self._fail_count = 0
+
+    def get_fail_count(self) -> int:
+        """Returns the number replica startup failures"""
+        return self._fail_count
+
+    def should_fail(self) -> bool:
+        """Returns whether this replica should raise in its constructor."""
+        if not self._first_caller:
+            self._first_caller = True
+            result = self._fail_first
+        else:
+            result = not self._fail_first
+        if result:
+            self._fail_count += 1
+        return result
+
+
+@ray.remote(num_cpus=0)
+class FailedGangReplicaStore:
+    """
+    Controls replica constructor failure behavior for gang scheduling tests.
+        - The first gang seen is allowed to run.
+        - The next gang has first replica flagged to fail.
+        - Retry gangs after the first failed gang have first replica flagged.
+    """
 
     def __init__(self):
-        self.failed_replica_id = None
+        self._good_gang_chosen = False
+        self._successful_gang_id = None
+        self._failed_gang_ids = set()
 
-    def set_if_first(self, replica_id: str) -> bool:
-        if self.failed_replica_id is None:
-            self.failed_replica_id = replica_id
+    def mark_first_failing_gang(self, gang_id: str) -> bool:
+        """Picks the good gang on the first call and flags the first replica of the next gang to fail."""
+        if not self._good_gang_chosen:
+            self._good_gang_chosen = True
+            self._successful_gang_id = gang_id
+            return False
+        if gang_id == self._successful_gang_id:
+            return False
+        if len(self._failed_gang_ids) == 0:
+            self._failed_gang_ids.add(gang_id)
             return True
         return False
 
-    def get(self):
-        return self.failed_replica_id
+    def mark_retry_failing_gang(self, gang_id: str) -> bool:
+        """Flags the first replica of each new retry gang.
+        This is called after ``mark_first_failing_gang``."""
+        if gang_id == self._successful_gang_id:
+            return False
+        if gang_id not in self._failed_gang_ids:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
+
+    def get_failed_gang_count(self) -> int:
+        """Returns the number of distinct gangs that failed."""
+        return len(self._failed_gang_ids)
 
 
 @ray.remote(num_cpus=0)
