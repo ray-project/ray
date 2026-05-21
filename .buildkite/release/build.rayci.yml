@@ -60,6 +60,10 @@ steps:
         - "3.10"
       cuda:
         - "12.1.1-cudnn8"
+      adjustments:
+        - with:
+            python: "3.13"
+            cuda: "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -217,6 +221,10 @@ steps:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
         - "3.10"
+      adjustments:
+        - with:
+            python: "3.13"
+            gpu: "cu12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -227,7 +235,7 @@ steps:
       - ray-wheel-build($)
       - ray-mlcudabaseextra-testdeps($)
 
-  - label: ":crane: publish: ray-ml-anyscale py{{array.python}} cu12.1.1-cudnn8"
+  - label: ":crane: publish: ray-ml-anyscale py{{array.python}} {{array.gpu}}"
     key: anyscalemlbuild
     instance_type: release-medium
     mount_buildkite_agent: true
@@ -236,12 +244,18 @@ steps:
     commands:
       - bazel run //ci/ray_ci/automation:push_release_test_image --
         --python-version {{array.python}}
-        --platform cu12.1.1-cudnn8
+        --platform {{array.gpu}}
         --image-type ray-ml
         --upload
     depends_on:
       - forge
       - ray-ml-anyscale-cuda-build($)
     array:
+      gpu:
+        - cu12.1.1-cudnn8
       python:
         - "3.10"
+      adjustments:
+        - with:
+            python: "3.13"
+            gpu: cu12.8.1-cudnn

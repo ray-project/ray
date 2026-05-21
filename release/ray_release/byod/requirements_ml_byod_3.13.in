@@ -1,6 +1,5 @@
-# Python requirements to run release tests from anyscale byod (gpu type, python 3.9)
+# Python requirements to run release tests from anyscale byod (gpu type, python 3.13)
 
--c requirements_compiled.txt
 accelerate
 bitsandbytes
 boto3
@@ -8,7 +7,7 @@ cmake
 crc32c
 datasets
 decord
-deepspeed==0.17.2
+deepspeed==0.18.9
 diffusers==0.12.1
 evaluate
 fairscale
@@ -41,12 +40,13 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
+torchft==0.1.1
 torchft-nightly
 triton==3.3.0
 torch==2.7.0
 torchaudio
 torchmetrics
-torchtext
+# torchtext has no py3.13 wheels (last release 0.18.0 supports up to py3.12)
 tqdm
 transformers
 trueskill
