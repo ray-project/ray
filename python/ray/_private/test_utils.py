@@ -981,7 +981,12 @@ def raw_metric_timeseries(
 
 
 def get_system_metric_for_component(
-    system_metric: str, component: str, prometheus_server_address: str
+    system_metric: str,
+    component: str,
+    prometheus_server_address: str,
+    max_attempts: int = 3,
+    backoff_base_s: float = 1.0,
+    request_timeout_s: float = 30.0,
 ) -> List[float]:
     """Get the system metric for a given component from a Prometheus server address.
     Please note:
@@ -989,18 +994,71 @@ def get_system_metric_for_component(
     requires the server address.
     - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
     process id, so it can be used to uniquely identify the process.
+
+    Retries up to ``max_attempts`` times on connection errors, timeouts, and HTTP 5xx
+    responses, with exponential backoff (``backoff_base_s`` * 2^(attempt-1) seconds).
+    HTTP 4xx responses are not retried — they indicate a bad query.
     """
     session_name = os.path.basename(
         ray._private.worker._global_node.get_session_dir_path()
     )
     query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
-    resp = requests.get(
-        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
-    )
-    if resp.status_code != 200:
-        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
-    result = resp.json()
-    return [float(item["value"][1]) for item in result["data"]["result"]]
+    url = f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+
+    for attempt in range(1, max_attempts + 1):
+        backoff_s = backoff_base_s * (2 ** (attempt - 1))
+        try:
+            resp = requests.get(url, timeout=request_timeout_s)
+        except requests.exceptions.RequestException as e:
+            if attempt < max_attempts:
+                logger.warning(
+                    "Prometheus query failed (attempt %d/%d), retrying in %.1fs: "
+                    "error=%r, url=%s, query=%s",
+                    attempt,
+                    max_attempts,
+                    backoff_s,
+                    e,
+                    url,
+                    query,
+                )
+                time.sleep(backoff_s)
+                continue
+            raise Exception(
+                f"Failed to query Prometheus after {max_attempts} attempts: "
+                f"last_error={e!r}, url={url}, query={query}"
+            ) from e
+
+        if resp.status_code == 200:
+            if attempt > 1:
+                logger.info(
+                    "Prometheus query succeeded on attempt %d/%d",
+                    attempt,
+                    max_attempts,
+                )
+            result = resp.json()
+            return [float(item["value"][1]) for item in result["data"]["result"]]
+
+        body_truncated = (resp.text or "")[:500]
+        if 500 <= resp.status_code < 600 and attempt < max_attempts:
+            logger.warning(
+                "Prometheus query failed (attempt %d/%d), retrying in %.1fs: "
+                "status=%d, body=%r, url=%s, query=%s",
+                attempt,
+                max_attempts,
+                backoff_s,
+                resp.status_code,
+                body_truncated,
+                url,
+                query,
+            )
+            time.sleep(backoff_s)
+            continue
+
+        raise Exception(
+            f"Failed to query Prometheus after {attempt} attempts: "
+            f"last_status={resp.status_code}, url={url}, query={query}, "
+            f"response_body={body_truncated!r}"
+        )
 
 
 def get_test_config_path(config_file_name):
