@@ -471,7 +471,7 @@
 #################
 
 - name: "iter_batches_{{format}}"
-  python: "3.10"
+  python: "3.11"
   cluster:
     anyscale_sdk_2026: true
   matrix:
