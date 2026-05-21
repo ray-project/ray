@@ -34,6 +34,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    TPUAcceleratorConfig,
     gRPCOptions,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -1658,6 +1659,27 @@ class TestProtoToDict:
 
         # Optional field should not be filled.
         assert "initial_replicas" not in result
+
+
+def test_accelerator_config_proto_roundtrip():
+    """Test roundtrip serialization of AcceleratorConfig through protobuf."""
+    config = DeploymentConfig(
+        num_replicas=2,
+        accelerator_config=TPUAcceleratorConfig(
+            topology="2x2",
+            accelerator_version="v6e",
+        ),
+    )
+    deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert deserialized.accelerator_config is not None
+    assert isinstance(deserialized.accelerator_config, TPUAcceleratorConfig)
+    assert deserialized.accelerator_config.topology == "2x2"
+    assert deserialized.accelerator_config.accelerator_version == "v6e"
+
+    # Test without accelerator_config
+    config = DeploymentConfig(num_replicas=2)
+    deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert deserialized.accelerator_config is None
 
 
 if __name__ == "__main__":

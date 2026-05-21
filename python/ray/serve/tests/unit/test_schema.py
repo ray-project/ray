@@ -599,6 +599,38 @@ class TestDeploymentSchema:
         schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.deployment_actors is None
 
+    def test_accelerator_config_schema_validation(self):
+        """Test that DeploymentSchema resolves accelerator_config to concrete models."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["accelerator_config"] = {
+            "kind": "tpu",
+            "topology": "2x2",
+            "accelerator_version": "v6e",
+        }
+
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert isinstance(schema.accelerator_config, TPUAcceleratorConfig)
+        assert schema.accelerator_config.topology == "2x2"
+        assert schema.accelerator_config.accelerator_version == "v6e"
+
+    def test_mutually_exclusive_accelerator_config_and_gang_scheduling_config(self):
+        """Test that setting both accelerator_config and gang_scheduling_config is rejected."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["accelerator_config"] = {
+            "kind": "tpu",
+            "topology": "2x2",
+            "accelerator_version": "v6e",
+        }
+        deployment_schema["gang_scheduling_config"] = {
+            "gang_size": 2,
+        }
+
+        with pytest.raises(
+            ValueError,
+            match="Cannot specify both `accelerator_config` and `gang_scheduling_config`",
+        ):
+            DeploymentSchema.model_validate(deployment_schema)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):

@@ -770,6 +770,8 @@ class TPUAcceleratorConfig(AcceleratorConfig):
             "See ray.util.tpu.slice_placement_group for details."
         ),
     )
+
+
 @PublicAPI(stability="stable")
 class ProxyLocation(str, Enum):
     """Config for where to run proxies to receive ingress traffic to the cluster.
