@@ -1,22 +1,20 @@
 import json
-import sys
+import os
 from pathlib import Path
 from unittest.mock import patch
 
+import fsspec
 import numpy as np
 import pandas as pd
 import pyarrow.fs
 import pytest
 import zarr
+from pytest_lazy_fixtures import lf as lazy_fixture
 
+import ray
 import ray.data.read_api as read_api
 from ray.data._internal.datasource import zarrv2_datasource
-
-
-def _write_zmetadata(store_path: Path, metadata: dict) -> Path:
-    store_path.mkdir()
-    (store_path / ".zmetadata").write_text(json.dumps({"metadata": metadata}))
-    return store_path
+from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
@@ -24,214 +22,270 @@ def _execute_read_tasks(tasks) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+def _write_real_zarr_store(
+    store_path: Path,
+    arrays: dict,  # {name: (data, chunks)}
+) -> Path:
+    """Write a real Zarr v2 store from numpy arrays and consolidate metadata."""
+    root = zarr.open_group(str(store_path), mode="w")
+    for name, (data, chunks) in arrays.items():
+        root.create_dataset(name, data=data, chunks=chunks, dtype=data.dtype)
+    zarr.consolidate_metadata(str(store_path))
+    return store_path
+
+
 @pytest.fixture
-def zarrv2_store(tmp_path) -> Path:
-    return _write_zmetadata(
-        tmp_path / "sample.zarr",
+def zarrv2_group_store(tmp_path) -> Path:
+    """Group-rooted store with two arrays aligned on axis 0 (shape[0] == 5)."""
+    return _write_real_zarr_store(
+        tmp_path / "group.zarr",
         {
-            ".zarray": {
-                "shape": [5, 4],
-                "chunks": [2, 3],
-                "dtype": "<i4",
-            },
-            "nested/.zarray": {
-                "shape": [3],
-                "chunks": [2],
-                "dtype": "|u1",
-            },
-            ".zgroup": {"zarr_format": 2},
+            "images": (np.arange(20, dtype="<i4").reshape(5, 4), (2, 4)),
+            "nested": (np.arange(5, dtype="|u1"), (2,)),
         },
     )
 
 
-def test_zarrv2_datasource_normalizes_requested_array_paths(zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_store),
-        array_paths=[".", "nested/"],
-        materialize=False,
+@pytest.fixture
+def zarrv2_root_store(tmp_path) -> Path:
+    """Single-array store with the array sitting directly at the store root."""
+    store_path = tmp_path / "root.zarr"
+    arr = zarr.open(
+        str(store_path),
+        mode="w",
+        shape=(5, 4),
+        chunks=(2, 4),
+        dtype="<i4",
+    )
+    arr[:] = np.arange(20, dtype="<i4").reshape(5, 4)
+    zarr.consolidate_metadata(str(store_path))
+    return store_path
+
+
+@pytest.fixture
+def local_fsspec_fs():
+    """fsspec local filesystem (for parametrized cross-fs read tests)."""
+    return fsspec.filesystem("file")
+
+
+@pytest.fixture
+def misaligned_zarrv2_store(tmp_path) -> Path:
+    """Store with two arrays that disagree on axis 0 — for alignment-check tests."""
+    return _write_real_zarr_store(
+        tmp_path / "misaligned.zarr",
+        {
+            "images": (np.arange(20, dtype="<i4").reshape(5, 4), (2, 4)),
+            "labels": (np.arange(3, dtype="|u1"), (2,)),
+        },
     )
 
-    assert list(datasource._selected_arrays) == ["", "nested"]
+
+# ---------------------------------------------------------------------------
+# Metadata discovery and alignment validation
+# ---------------------------------------------------------------------------
 
 
-def test_zarrv2_datasource_rejects_missing_array_paths(zarrv2_store):
+def test_normalizes_requested_root_array_path(zarrv2_root_store):
+    """``"."`` and ``""`` both refer to the root array."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_root_store),
+        array_paths=["."],
+    )
+    assert list(datasource._selected_arrays) == [""]
+
+
+def test_normalizes_requested_array_paths(zarrv2_group_store):
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_group_store),
+        array_paths=["images/", "nested"],
+    )
+    assert list(datasource._selected_arrays) == ["images", "nested"]
+
+
+def test_rejects_missing_array_paths(zarrv2_group_store):
     with pytest.raises(
         ValueError,
-        match=r"Array\(s\) not found: 'missing'\. Available: '', 'nested'",
+        match=r"Array\(s\) not found: 'missing'\. Available: 'images', 'nested'",
     ):
         zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_store),
+            str(zarrv2_group_store),
             array_paths=["missing"],
-            materialize=False,
         )
 
 
-@pytest.mark.parametrize("chunk_shape", [[0, 2], [-1, 2], [1.5, 2]])
-def test_zarrv2_datasource_rejects_invalid_chunk_shape(zarrv2_store, chunk_shape):
-    with pytest.raises(ValueError, match="chunk shape must only contain positive"):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_store),
-            chunk_shape=chunk_shape,
-            materialize=False,
-        )
+def test_rejects_arrays_with_different_shape0(misaligned_zarrv2_store):
+    with pytest.raises(
+        ValueError,
+        match=r"Arrays in a single read_zarr call must share axis 0",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(str(misaligned_zarrv2_store))
 
 
-def test_zarrv2_datasource_rejects_chunk_rank_mismatch(zarrv2_store):
-    with pytest.raises(ValueError, match="same dimension length as the array"):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_store),
-            chunk_shape=[4, 4],
-            array_paths=["nested"],
-            materialize=False,
-        )
-
-
-def test_zarrv2_datasource_applies_chunk_shape_override(zarrv2_store):
+def test_accepts_subset_of_misaligned_store(misaligned_zarrv2_store):
+    """Filtering down to a single array dodges the alignment check."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_store),
-        chunk_shape=[4, 2],
-        array_paths=["."],
-        materialize=False,
+        str(misaligned_zarrv2_store),
+        array_paths=["images"],
     )
-
-    read_tasks = datasource.get_read_tasks(parallelism=8)
-    rows = _execute_read_tasks(read_tasks).to_dict("records")
-
-    assert datasource._grid_shape_dict[""]["grid_shape"] == (2, 2)
-    assert len(rows) == 4
-
-    truncated_chunk = next(
-        row for row in rows if row["chunk_slices"] == [(4, 5), (2, 4)]
-    )
-    assert truncated_chunk["chunk_shape"] == (1, 2)
-    assert truncated_chunk["padding"] == [3, 0]
+    assert list(datasource._selected_arrays) == ["images"]
 
 
-def test_zarrv2_datasource_requires_consolidated_metadata(tmp_path):
+def test_requires_consolidated_metadata(tmp_path):
     store_path = tmp_path / "broken.zarr"
     store_path.mkdir()
     (store_path / ".zmetadata").write_text(json.dumps({}))
 
     with pytest.raises(ValueError, match="Missing 'metadata'"):
-        zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=False)
+        zarrv2_datasource.ZarrV2Datasource(str(store_path))
 
 
-def test_zarrv2_datasource_get_read_tasks_batches_chunks_by_parallelism(zarrv2_store):
+def test_rejects_scalar_arrays(tmp_path):
+    """0-D (scalar) arrays can't be aligned on axis 0 — clear error.
+
+    Real-world stores (ERA5, CMIP6) include scalar arrays like ``hybrid``
+    or ``step`` carrying per-experiment hyperparameters. Indexing
+    ``shape[0]`` on a scalar would raise ``IndexError`` with no context;
+    we surface a specific ``ValueError`` instead.
+    """
+    store_path = tmp_path / "scalar.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    # Real 1-D array — fine on its own.
+    root.create_dataset("ok", data=np.arange(5, dtype="<i4"), chunks=(5,))
+    # Scalar — should be rejected when included.
+    root.create_dataset("hyperparam", data=np.array(3.14, dtype="<f4"))
+    zarr.consolidate_metadata(str(store_path))
+
+    with pytest.raises(
+        ValueError,
+        match=r"Cannot read 0-dimensional.*'hyperparam'",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(str(store_path))
+
+
+def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
+    """``allow_full_metadata_scan=True`` against a store the filesystem can't
+    walk (or that genuinely has no arrays) raises a specific error pointing
+    the user at ``array_paths=[...]`` as the workaround.
+
+    Pins the diagnosis we surface for the real-world HTTPS-without-listing
+    case (e.g., the vitessce anndata-zarr store hosted on plain HTTPS where
+    fsspec's HTTPFileSystem can't walk).
+    """
+    empty_store = tmp_path / "empty.zarr"
+    empty_store.mkdir()  # no .zmetadata, no .zarray files anywhere
+
+    with pytest.raises(
+        ValueError, match=r"Full-store scan of .* found no \.zarray files.*"
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(empty_store), allow_full_metadata_scan=True
+        )
+
+
+# ---------------------------------------------------------------------------
+# chunk_size validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("chunk_size", [0, -1, 1.5, "five"])
+def test_rejects_invalid_chunk_size(zarrv2_group_store, chunk_size):
+    with pytest.raises(ValueError, match="chunk_size must be a positive integer"):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(zarrv2_group_store),
+            chunk_size=chunk_size,
+        )
+
+
+def test_default_chunk_size_picks_smallest_axis0(zarrv2_group_store):
+    """Default chunk_size = min of axis-0 chunks across selected arrays."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(zarrv2_group_store))
+    # Both arrays use chunks[0] == 2.
+    assert datasource.chunk_size == 2
+
+
+# ---------------------------------------------------------------------------
+# Filesystem handling
+# ---------------------------------------------------------------------------
+
+
+def test_accepts_pyarrow_fs_filesystem(zarrv2_group_store):
+    """A pyarrow.fs.FileSystem passed in is wrapped into fsspec internally."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_store), materialize=False
+        str(zarrv2_group_store),
+        filesystem=pyarrow.fs.LocalFileSystem(),
     )
+    from fsspec.spec import AbstractFileSystem
+
+    assert isinstance(datasource._filesystem, AbstractFileSystem)
+    assert set(datasource._selected_arrays) == {"images", "nested"}
+
+
+# ---------------------------------------------------------------------------
+# Read task generation and execution (end-to-end)
+# ---------------------------------------------------------------------------
+
+
+def test_get_read_tasks_batches_slices_by_parallelism(tmp_path):
+    """5 slices split across parallelism=3 produces batches [2, 2, 1]."""
+    store_path = tmp_path / "store.zarr"
+    _write_real_zarr_store(
+        store_path,
+        {"images": (np.arange(5 * 4, dtype="<i4").reshape(5, 4), (1, 4))},
+    )
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), chunk_size=1)
 
     read_tasks = datasource.get_read_tasks(parallelism=3)
 
     assert len(read_tasks) == 3
-    assert [task.metadata.num_rows for task in read_tasks] == [3, 3, 2]
-    assert all(task.metadata.input_files == (str(zarrv2_store),) for task in read_tasks)
+    assert [task.metadata.num_rows for task in read_tasks] == [2, 2, 1]
+    assert all(task.metadata.input_files == (str(store_path),) for task in read_tasks)
 
 
-def test_zarrv2_datasource_get_read_tasks_returns_chunk_descriptors(zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_store), materialize=False
+def test_materializes_aligned_arrays(tmp_path):
+    """End-to-end: each row carries paired slices of every selected array."""
+    store_path = tmp_path / "aligned.zarr"
+    images_src = np.arange(20, dtype="<i4").reshape(5, 4)
+    labels_src = np.arange(5, dtype="|u1")
+    _write_real_zarr_store(
+        store_path,
+        {
+            "images": (images_src, (2, 4)),
+            "labels": (labels_src, (2,)),
+        },
     )
 
-    read_tasks = datasource.get_read_tasks(parallelism=16)
-    rows = _execute_read_tasks(read_tasks).to_dict("records")
-
-    assert len(read_tasks) == 8
-    assert all(task.metadata.num_rows == 1 for task in read_tasks)
-
-    first_root_chunk = next(
-        row
-        for row in rows
-        if row["array"] == "" and row["chunk_slices"] == [(0, 2), (0, 3)]
-    )
-    assert first_root_chunk["array_shape"] == (5, 4)
-    assert first_root_chunk["chunk_shape"] == (2, 3)
-    assert first_root_chunk["dtype"] == "<i4"
-    assert first_root_chunk["padding"] == [0, 0]
-
-    truncated_root_chunk = next(
-        row
-        for row in rows
-        if row["array"] == "" and row["chunk_slices"] == [(4, 5), (3, 4)]
-    )
-    assert truncated_root_chunk["chunk_shape"] == (1, 1)
-    assert truncated_root_chunk["padding"] == [1, 2]
-
-    truncated_nested_chunk = next(
-        row
-        for row in rows
-        if row["array"] == "nested" and row["chunk_slices"] == [(2, 3)]
-    )
-    assert truncated_nested_chunk["chunk_shape"] == (1,)
-    assert truncated_nested_chunk["dtype"] == "|u1"
-    assert truncated_nested_chunk["padding"] == [1]
-
-
-def test_zarrv2_datasource_accepts_pyarrow_fs_filesystem(zarrv2_store):
-    """A pyarrow.fs.FileSystem passed in is wrapped into fsspec internally."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_store),
-        filesystem=pyarrow.fs.LocalFileSystem(),
-        materialize=False,
-    )
-
-    # Stored as fsspec internally.
-    from fsspec.spec import AbstractFileSystem
-
-    assert isinstance(datasource._filesystem, AbstractFileSystem)
-    assert set(datasource._selected_arrays) == {"", "nested"}
-
-
-def test_zarrv2_datasource_materializes_chunk_data_end_to_end(tmp_path):
-    """End-to-end materialize=True: write a real Zarr v2 store, read it back,
-    and check the chunks round-trip the source array exactly.
-    """
-    # Write a small store with one root array of shape (5, 4), chunks (2, 3).
-    store_path = tmp_path / "real.zarr"
-    arr = zarr.open(
-        str(store_path),
-        mode="w",
-        shape=(5, 4),
-        chunks=(2, 3),
-        dtype="<i4",
-    )
-    source = np.arange(20, dtype="<i4").reshape(5, 4)
-    arr[:] = source
-    zarr.consolidate_metadata(str(store_path))
-
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=True)
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), chunk_size=2)
     rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
         "records"
     )
 
-    # Reconstruct the array from the materialized chunks; strip the trailing
-    # zero-padding before placing each chunk into the output buffer.
-    reconstructed = np.zeros((5, 4), dtype="<i4")
-    for row in rows:
-        actual_shape = tuple(stop - start for start, stop in row["chunk_slices"])
-        unpadded = row["chunk"][tuple(slice(0, s) for s in actual_shape)]
-        target = tuple(slice(start, stop) for start, stop in row["chunk_slices"])
-        reconstructed[target] = unpadded
-
-    np.testing.assert_array_equal(reconstructed, source)
+    # 5 samples, chunk_size=2 → slices [(0,2), (2,4), (4,5)] → 3 rows.
+    assert len(rows) == 3
+    # Reconstruct each array by concatenating its column.
+    images_out = np.concatenate([row["images"] for row in rows], axis=0)
+    labels_out = np.concatenate([row["labels"] for row in rows], axis=0)
+    np.testing.assert_array_equal(images_out, images_src)
+    np.testing.assert_array_equal(labels_out, labels_src)
 
 
-def test_zarrv2_datasource_preserves_nan_and_inf_in_materialize(tmp_path):
-    """Materialize mode must not silently rewrite NaN / +-Inf to 0.
+def test_edge_slice_is_shorter_not_padded(tmp_path):
+    """Final row has axis-0 length < chunk_size; nothing is zero-padded."""
+    store_path = tmp_path / "edge.zarr"
+    src = np.arange(7, dtype="<i4")
+    _write_real_zarr_store(store_path, {"data": (src, (3,))})
 
-    Earlier code unconditionally called ``np.nan_to_num`` on floating-point
-    chunks, which destroys valid scientific data (NaN as missing-observation,
-    Inf as a valid computed result). This test pins that behaviour by writing
-    a float array containing NaN/Inf and confirming the values round-trip.
-    """
-    store_path = tmp_path / "floats.zarr"
-    arr = zarr.open(
-        str(store_path),
-        mode="w",
-        shape=(3, 3),
-        chunks=(2, 2),
-        dtype="<f4",
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), chunk_size=3)
+    rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
+        "records"
     )
+    lengths = [row["data"].shape[0] for row in rows]
+    # 7 samples, chunk_size=3 → [3, 3, 1] — last is shorter, not padded.
+    assert lengths == [3, 3, 1]
+
+
+def test_preserves_nan_and_inf(tmp_path):
+    """Materialize must not silently rewrite NaN / +-Inf to 0."""
+    store_path = tmp_path / "floats.zarr"
     source = np.array(
         [
             [1.0, np.nan, 2.0],
@@ -240,112 +294,55 @@ def test_zarrv2_datasource_preserves_nan_and_inf_in_materialize(tmp_path):
         ],
         dtype="<f4",
     )
-    arr[:] = source
-    zarr.consolidate_metadata(str(store_path))
+    _write_real_zarr_store(store_path, {"data": (source, (2, 3))})
 
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=True)
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), chunk_size=2)
     rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
         "records"
     )
-
-    reconstructed = np.full((3, 3), np.nan, dtype="<f4")
-    for row in rows:
-        actual_shape = tuple(stop - start for start, stop in row["chunk_slices"])
-        unpadded = row["chunk"][tuple(slice(0, s) for s in actual_shape)]
-        target = tuple(slice(start, stop) for start, stop in row["chunk_slices"])
-        reconstructed[target] = unpadded
+    reconstructed = np.concatenate([row["data"] for row in rows], axis=0)
 
     # Bit-exact comparison so NaN, +Inf, -Inf, and finite values are all
-    # checked uniformly (assert_array_equal doesn't accept ``equal_nan`` on
-    # older numpy releases).
+    # checked uniformly.
     np.testing.assert_array_equal(reconstructed.view(np.uint32), source.view(np.uint32))
 
 
-def test_zarrv2_datasource_materializes_nested_group_arrays(tmp_path):
-    """End-to-end materialize=True for a store with .zgroup at root and
-    arrays under nested keys. Exercises the ``root[array][slice]`` dispatch
-    (the Group branch in ``_read_with_retry``), which the root-array test
-    does not.
-    """
-    store_path = tmp_path / "group.zarr"
-    root = zarr.open_group(str(store_path), mode="w")
-    images_src = np.arange(24, dtype="<i4").reshape(4, 6)
-    labels_src = np.arange(5, dtype="|u1")
-    root.create_dataset("images", shape=(4, 6), chunks=(2, 3), dtype="<i4")[
-        :
-    ] = images_src
-    root.create_dataset("labels", shape=(5,), chunks=(3,), dtype="|u1")[:] = labels_src
-    zarr.consolidate_metadata(str(store_path))
+def test_chunk_size_override(tmp_path):
+    """User-supplied chunk_size controls the row tiling along axis 0."""
+    store_path = tmp_path / "tile.zarr"
+    src = np.arange(10, dtype="<i4")
+    _write_real_zarr_store(store_path, {"data": (src, (2,))})
 
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), materialize=True)
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path), chunk_size=5)
     rows = _execute_read_tasks(datasource.get_read_tasks(parallelism=16)).to_dict(
         "records"
     )
-
-    images_out = np.zeros((4, 6), dtype="<i4")
-    labels_out = np.zeros((5,), dtype="|u1")
-    for row in rows:
-        actual_shape = tuple(stop - start for start, stop in row["chunk_slices"])
-        unpadded = row["chunk"][tuple(slice(0, s) for s in actual_shape)]
-        target = tuple(slice(start, stop) for start, stop in row["chunk_slices"])
-        if row["array"] == "images":
-            images_out[target] = unpadded
-        elif row["array"] == "labels":
-            labels_out[target] = unpadded
-        else:
-            raise AssertionError(f"unexpected array: {row['array']!r}")
-
-    np.testing.assert_array_equal(images_out, images_src)
-    np.testing.assert_array_equal(labels_out, labels_src)
+    assert [row["data"].shape[0] for row in rows] == [5, 5]
 
 
-def _deep_sizeof(obj, seen=None):
-    """Recursive ``sys.getsizeof`` that follows containers."""
-    if seen is None:
-        seen = set()
-    if id(obj) in seen:
-        return 0
-    seen.add(id(obj))
-    size = sys.getsizeof(obj)
-    if isinstance(obj, dict):
-        size += sum(
-            _deep_sizeof(k, seen) + _deep_sizeof(v, seen) for k, v in obj.items()
-        )
-    elif isinstance(obj, (list, tuple, set, frozenset)):
-        size += sum(_deep_sizeof(x, seen) for x in obj)
-    return size
+# ---------------------------------------------------------------------------
+# Estimator
+# ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("ndim", [1, 2, 3, 4, 8, 16, 32])
-def test_descriptor_row_size_formula_matches_actual_within_factor_of_two(ndim):
-    # Use distinct ints outside CPython's small-int cache (-5..256) for every
-    # slot. Reusing the same int across slots would make ``_deep_sizeof`` dedup
-    # them and undercount; the formula assumes each int contributes its own
-    # object overhead (the realistic case for chunk slice bounds, which are
-    # always distinct in practice).
-    big = 10**9
-    meta = {
-        "shape": tuple(big + i for i in range(ndim)),
-        "chunks": tuple(big + 100 + i for i in range(ndim)),
-        "dtype": "<f8",
-    }
-    array_name = "some/array"
-    row_cells = [
-        array_name,
-        meta["dtype"],
-        meta["shape"],
-        meta["chunks"],
-        [(big + 2 * i, big + 2 * i + 1) for i in range(ndim)],  # chunk_slices
-        [big + 1000 + i for i in range(ndim)],  # padding
-    ]
-    actual = sum(_deep_sizeof(v) for v in row_cells)
-
-    estimate = zarrv2_datasource._descriptor_row_size_bytes(array_name, meta)
-
-    assert 0.5 * actual <= estimate <= 2.0 * actual, (
-        f"estimate={estimate}, actual={actual}, ratio={estimate / actual:.2f} "
-        f"(ndim={ndim})"
+def test_estimate_inmemory_data_size(tmp_path):
+    """Estimate = sum over arrays of numel * dtype.itemsize."""
+    store_path = tmp_path / "est.zarr"
+    _write_real_zarr_store(
+        store_path,
+        {
+            "a": (np.zeros((5, 4), dtype="<i4"), (2, 4)),
+            "b": (np.zeros(5, dtype="|u1"), (2,)),
+        },
     )
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
+    # 5*4*4 (a) + 5*1 (b) = 80 + 5 = 85
+    assert datasource.estimate_inmemory_data_size() == 85
+
+
+# ---------------------------------------------------------------------------
+# Public API delegation
+# ---------------------------------------------------------------------------
 
 
 def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
@@ -362,7 +359,7 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
         ) as mock_read_datasource:
             result = read_api.read_zarr(
                 "/tmp/sample.zarr",
-                chunk_shape=[4, 2],
+                chunk_size=4,
                 array_paths=["nested"],
                 concurrency=3,
                 override_num_blocks=2,
@@ -376,10 +373,9 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
     mock_datasource.assert_called_once_with(
         path="/tmp/sample.zarr",
         filesystem=None,
-        chunk_shape=[4, 2],
+        chunk_size=4,
         array_paths=["nested"],
         allow_full_metadata_scan=False,
-        materialize=True,
     )
     mock_read_datasource.assert_called_once()
     args, kwargs = mock_read_datasource.call_args
@@ -392,6 +388,70 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
         "concurrency": 3,
         "override_num_blocks": 2,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-filesystem end-to-end (Ray Data convention)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fs",
+    [
+        None,
+        lazy_fixture("local_fs"),  # pyarrow.fs (gets wrapped to fsspec internally)
+        lazy_fixture("local_fsspec_fs"),  # native fsspec
+    ],
+)
+def test_read_zarr_basic_across_filesystems(ray_start_regular_shared, fs, local_path):
+    """Round-trip a real Zarr store through read_zarr for each filesystem flavor.
+
+    Mirrors the parametrized read-path coverage other Ray Data datasources use
+    (lance, parquet, json, hudi, …) — exercises None / pyarrow.fs / fsspec
+    input shapes against the same store written to a local path.
+    """
+    store_path = os.path.join(local_path, "data.zarr")
+    images_src = np.arange(20, dtype="<i4").reshape(5, 4)
+    labels_src = np.arange(5, dtype="|u1")
+    _write_real_zarr_store(
+        Path(store_path),
+        {
+            "images": (images_src, (2, 4)),
+            "labels": (labels_src, (2,)),
+        },
+    )
+
+    ds = ray.data.read_zarr(store_path, filesystem=fs, chunk_size=2)
+
+    assert ds.count() == 3  # 5 samples, chunk_size=2 → 3 rows
+    rows = ds.take_all()
+    images_out = np.concatenate([row["images"] for row in rows], axis=0)
+    labels_out = np.concatenate([row["labels"] for row in rows], axis=0)
+    np.testing.assert_array_equal(images_out, images_src)
+    np.testing.assert_array_equal(labels_out, labels_src)
+
+
+# ---------------------------------------------------------------------------
+# Public-bucket integration test
+# ---------------------------------------------------------------------------
+
+
+def test_read_zarr_integration_public_s3(ray_start_regular_shared):
+    """End-to-end read against a real Zarr store in a public S3 bucket.
+
+    Uses ``s3://anonymous@ray-example-data/mnist-tiny.zarr`` — a 200-sample
+    MNIST subset with two aligned arrays (``images`` shape (200, 28, 28),
+    ``labels`` shape (200,)). Both with axis-0 chunks of 50, so the resulting
+    dataset has 4 rows by default.
+    """
+    ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
+
+    assert ds.count() == 4
+    rows = ds.take_all()
+    assert {row["images"].shape for row in rows} == {(50, 28, 28)}
+    assert {row["labels"].shape for row in rows} == {(50,)}
+    assert all(row["images"].dtype == np.uint8 for row in rows)
+    assert all(row["labels"].dtype == np.uint8 for row in rows)
 
 
 if __name__ == "__main__":

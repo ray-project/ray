@@ -829,10 +829,9 @@ def read_zarr(
     filesystem: Optional[
         Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
     ] = None,
-    chunk_shape: List[int] | None = None,
+    chunk_size: Optional[int] = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
-    materialize: bool = True,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -843,16 +842,11 @@ def read_zarr(
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
-    Each row in the resulting dataset describes a single chunk from one of the
-    selected arrays in the store. By default, the returned rows include the
-    fully materialized chunk data in a ``"chunk"`` column. Pass
-    ``materialize=False`` to return only the chunk descriptors (metadata, slice
-    bounds, padding) without reading the data — useful when the caller wants to
-    drive I/O scheduling in a downstream ``map_batches`` step.
-
-    The column names are ``"array"``, ``"array_shape"``, ``"chunk_shape"``,
-    ``"dtype"``, ``"chunk_slices"``, ``"padding"``, and (when ``materialize=True``,
-    the default) ``"chunk"``.
+    Each output row is one slice along axis 0 of the store's selected arrays.
+    Every row carries one column per array, holding that array's
+    ``[start:stop, ...]`` slice. All selected arrays must share ``shape[0]``;
+    pass ``array_paths=[...]`` to pick a compatible subset when the store
+    contains arrays with different lengths.
 
     Metadata discovery follows these rules:
 
@@ -881,46 +875,53 @@ def read_zarr(
     ``path``.
 
     Examples:
+        Read a multi-array store. Each row contains a paired slice of every
+        array.
+
         >>> import ray
-        >>> ds = ray.data.read_zarr("/path/to/store")  # doctest: +SKIP
-
-        Read specific arrays from a store. This doesn't require ``.zmetadata``.
-
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "/path/to/store",
-        ...     array_paths=["images", "labels"],
+        >>> ds = ray.data.read_zarr(
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ... )
+        >>> ds.schema()
+        Column  Type
+        ------  ----
+        images  ArrowTensorTypeV2(shape=(50, 28, 28), dtype=uint8)
+        labels  ArrowTensorTypeV2(shape=(50,), dtype=uint8)
+        >>> ds.count()
+        4
 
-        Override the chunk shape used to generate chunk descriptors.
+        Select only the ``images`` array; each row holds one image-batch.
 
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "/path/to/store",
-        ...     chunk_shape=[256, 256],
+        >>> ds = ray.data.read_zarr(
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     array_paths=["images"],
         ... )
+        >>> ds.count()
+        4
 
-        Pass a custom ``fsspec`` filesystem for private or authenticated storage.
+        Override the axis-0 batch size for read tasks.
+
+        >>> ds = ray.data.read_zarr(
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     chunk_size=100,
+        ... )
+        >>> ds.count()
+        2
+
+        Pass an explicit filesystem for private/authenticated storage.
 
         >>> import fsspec
         >>> fs = fsspec.filesystem("s3")  # doctest: +SKIP
         >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "s3://bucket/path/to/store.zarr",
         ...     filesystem=fs,
-        ...     array_paths=["images"],
         ... )
 
-        Explicitly allow full metadata discovery when ``.zmetadata`` is missing.
+        Explicitly allow a full-store scan when no ``.zmetadata`` is present.
 
         >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "/path/to/store",
         ...     allow_full_metadata_scan=True,
-        ... )
-
-        Return chunk descriptors only and defer the chunk read to a downstream
-        ``map_batches`` step.
-
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "/path/to/store",
-        ...     materialize=False,
         ... )
 
     Args:
@@ -936,24 +937,17 @@ def read_zarr(
             inferred internally. Recommended for non-local Zarr stores; for
             local paths it's usually fine to omit. If omitted, the datasource
             infers the filesystem from ``path`` using ``fsspec``.
-        chunk_shape: Optional chunk shape override to use for all selected arrays.
-            If unspecified, the datasource uses the chunk shape recorded in each
-            array's ``.zarray`` metadata. If provided, the chunk shape must have the
-            same number of dimensions as each selected array.
-        array_paths: Optional list of array paths within the Zarr store to read.
-            If provided, the datasource reads each array's ``.zarray`` metadata file
-            directly and doesn't require ``.zmetadata``. If unspecified, the
-            datasource first tries to discover arrays from ``.zmetadata``. Each
-            discovered ``.zarray`` entry must contain ``"shape"``, ``"chunks"``,
-            and ``"dtype"``.
+        chunk_size: Optional number of samples along axis 0 to include in each
+            output row. If unspecified, defaults to the minimum of the selected
+            arrays' axis-0 ``chunks``. The trailing row may be shorter when
+            ``shape[0]`` isn't divisible by ``chunk_size``.
+        array_paths: Optional list of array paths within the Zarr store to
+            read. If unspecified, all arrays discovered in the store are
+            included. All selected arrays must share ``shape[0]``.
         allow_full_metadata_scan: If ``True``, recursively scan the store for
-            ``.zarray`` files when ``array_paths`` is unspecified and ``.zmetadata``
-            is missing. This may be slow or expensive for large remote stores, so it
-            is disabled by default.
-        materialize: If ``True`` (the default), read each chunk and include the
-            data in a ``"chunk"`` column. If ``False``, return only chunk
-            descriptors (slice bounds, padding, dtype, etc.) so the caller can
-            schedule the actual reads downstream.
+            ``.zarray`` files when ``array_paths`` is unspecified and
+            ``.zmetadata`` is missing. This may be slow or expensive for large
+            remote stores, so it is disabled by default.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -970,18 +964,15 @@ def read_zarr(
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
     Returns:
-        A :class:`~ray.data.Dataset` where each row contains the selected array
-        path, array metadata, per-dimension chunk slice bounds, and per-dimension
-        trailing padding for one chunk. If ``materialize=True``, each row also
-        contains the chunk data itself.
+        A :class:`~ray.data.Dataset` whose rows are axis-0 slices of the
+        selected arrays. Each row has one column per array.
     """
     datasource = ZarrV2Datasource(
         path=path,
         filesystem=filesystem,
-        chunk_shape=chunk_shape,
+        chunk_size=chunk_size,
         array_paths=array_paths,
         allow_full_metadata_scan=allow_full_metadata_scan,
-        materialize=materialize,
     )
     return read_datasource(
         datasource,
