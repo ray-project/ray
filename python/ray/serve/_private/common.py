@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from starlette.types import Scope
 
@@ -17,9 +17,6 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
-
-if TYPE_CHECKING:
-    pass
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 GANG_PG_NAME_PREFIX = "SERVE_GANG::"

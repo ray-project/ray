@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import ray
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 from ray.util.tpu import SlicePlacementGroup, slice_placement_group
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
