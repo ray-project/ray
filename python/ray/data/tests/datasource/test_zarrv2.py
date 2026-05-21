@@ -34,6 +34,22 @@ def _write_real_zarr_store(
     return store_path
 
 
+def _write_unconsolidated_zarr_store(
+    store_path: Path,
+    arrays: dict,  # {name: (data, chunks)}
+) -> Path:
+    """Write a Zarr v2 store WITHOUT a consolidated ``.zmetadata`` file.
+
+    Exercises the no-``.zmetadata`` code paths (per-array ``.zarray``
+    discovery and full-store walk) — the common shape of real-world stores
+    behind plain HTTPS or other listing-less filesystems.
+    """
+    root = zarr.open_group(str(store_path), mode="w")
+    for name, (data, chunks) in arrays.items():
+        root.create_dataset(name, data=data, chunks=chunks, dtype=data.dtype)
+    return store_path
+
+
 @pytest.fixture
 def zarrv2_group_store(tmp_path) -> Path:
     """Group-rooted store with two arrays aligned on axis 0 (shape[0] == 5)."""
@@ -76,6 +92,18 @@ def misaligned_zarrv2_store(tmp_path) -> Path:
         {
             "images": (np.arange(20, dtype="<i4").reshape(5, 4), (2, 4)),
             "labels": (np.arange(3, dtype="|u1"), (2,)),
+        },
+    )
+
+
+@pytest.fixture
+def unconsolidated_zarrv2_store(tmp_path) -> Path:
+    """Two axis-0-aligned arrays at the store root, no ``.zmetadata``."""
+    return _write_unconsolidated_zarr_store(
+        tmp_path / "unconsolidated.zarr",
+        {
+            "images": (np.arange(20, dtype="<i4").reshape(5, 4), (2, 4)),
+            "nested": (np.arange(5, dtype="|u1"), (2,)),
         },
     )
 
@@ -182,6 +210,124 @@ def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
         )
 
 
+def test_loads_per_array_zarray_without_zmetadata(unconsolidated_zarrv2_store):
+    """No ``.zmetadata`` + explicit ``array_paths`` → per-file ``.zarray`` reads."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(unconsolidated_zarrv2_store),
+        array_paths=["images", "nested"],
+    )
+    assert set(datasource._selected_arrays) == {"images", "nested"}
+
+
+def test_full_scan_discovers_arrays_without_zmetadata(unconsolidated_zarrv2_store):
+    """No ``.zmetadata`` + full-scan opt-in → recursive walk discovers ``.zarray`` files."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(unconsolidated_zarrv2_store),
+        allow_full_metadata_scan=True,
+    )
+    assert set(datasource._selected_arrays) == {"images", "nested"}
+
+
+def test_full_scan_discovers_nested_arrays(tmp_path):
+    """Full scan reports paths relative to the store root for nested groups."""
+    store_path = tmp_path / "nested.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    root.create_dataset("top", data=np.arange(5, dtype="<i4"), chunks=(5,))
+    inner = root.create_group("group")
+    inner.create_dataset("inner", data=np.arange(5, dtype="<i4"), chunks=(5,))
+    # Intentionally no consolidate_metadata — exercise the recursive walk.
+
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(store_path),
+        allow_full_metadata_scan=True,
+    )
+    assert set(datasource._selected_arrays) == {"top", "group/inner"}
+
+
+def test_requires_array_paths_or_full_scan_when_unconsolidated(
+    unconsolidated_zarrv2_store,
+):
+    """No ``.zmetadata`` and neither escape hatch given → clear ``ValueError``."""
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"No array_paths were provided and this Zarr store does not "
+            r"contain \.zmetadata"
+        ),
+    ):
+        zarrv2_datasource.ZarrV2Datasource(str(unconsolidated_zarrv2_store))
+
+
+def test_array_paths_missing_zarray_file_raises_value_error(
+    unconsolidated_zarrv2_store,
+):
+    """Requested array_path with no ``.zarray`` file → translated ``ValueError``."""
+    with pytest.raises(
+        ValueError,
+        match=r"Array path 'missing' not found: no \.zarray file at",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(unconsolidated_zarrv2_store),
+            array_paths=["missing"],
+        )
+
+
+def test_rejects_array_paths_with_dotdot_segment(zarrv2_group_store):
+    """``..`` segments in array_paths bubble up zarr's normalizer ``ValueError``."""
+    with pytest.raises(ValueError, match=r"\.\."):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(zarrv2_group_store),
+            array_paths=["images/../nested"],
+        )
+
+
+def test_rejects_zmetadata_with_malformed_zarray_entry(tmp_path):
+    """A ``.zarray`` entry inside ``.zmetadata`` missing a required key errors."""
+    store_path = tmp_path / "malformed.zarr"
+    store_path.mkdir()
+    (store_path / ".zmetadata").write_text(
+        json.dumps(
+            {
+                "metadata": {
+                    "broken/.zarray": {"shape": [5], "chunks": [2]},  # no dtype
+                }
+            }
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"missing required key\(s\) \['dtype'\]",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(str(store_path))
+
+
+# ---------------------------------------------------------------------------
+# ZarrArrayMeta.from_json
+# ---------------------------------------------------------------------------
+
+
+def test_zarr_array_meta_from_json_parses_required_fields():
+    meta = zarrv2_datasource.ZarrArrayMeta.from_json(
+        {"shape": [5, 3], "chunks": [2, 3], "dtype": "<f8", "extra": "ignored"},
+        "some/path",
+    )
+    assert meta.shape == (5, 3)
+    assert meta.chunks == (2, 3)
+    assert meta.dtype == "<f8"
+
+
+@pytest.mark.parametrize("missing_key", ["shape", "chunks", "dtype"])
+def test_zarr_array_meta_from_json_rejects_missing_key(missing_key):
+    raw = {"shape": [5], "chunks": [2], "dtype": "<i4"}
+    del raw[missing_key]
+    with pytest.raises(
+        ValueError,
+        match=rf"missing required key\(s\) \['{missing_key}'\]",
+    ):
+        zarrv2_datasource.ZarrArrayMeta.from_json(raw, "some/path")
+
+
 # ---------------------------------------------------------------------------
 # chunk_size validation
 # ---------------------------------------------------------------------------
@@ -218,6 +364,18 @@ def test_accepts_pyarrow_fs_filesystem(zarrv2_group_store):
 
     assert isinstance(datasource._fs, AbstractFileSystem)
     assert set(datasource._selected_arrays) == {"images", "nested"}
+
+
+def test_rejects_unsupported_filesystem_type():
+    """Filesystem that's neither pyarrow.fs nor fsspec raises ``TypeError``."""
+    with pytest.raises(
+        TypeError,
+        match=r"filesystem must be pyarrow\.fs\.FileSystem or",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            "/tmp/some.zarr",
+            filesystem="not-a-filesystem",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +476,86 @@ def test_chunk_size_override(tmp_path):
         "records"
     )
     assert [row["data"].shape[0] for row in rows] == [5, 5]
+
+
+# ---------------------------------------------------------------------------
+# _read_array_slice retry behavior
+# ---------------------------------------------------------------------------
+
+
+class _ScriptedArray:
+    """Stand-in for a zarr Array: each ``[slice]`` returns the next scripted item.
+
+    Items can be either an exception (raised) or an ndarray (returned). Used
+    to drive ``_read_array_slice`` through specific retry scenarios without
+    touching the network.
+    """
+
+    def __init__(self, *responses) -> None:
+        self._responses = list(responses)
+
+    def __getitem__(self, key):
+        item = self._responses.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+class _ScriptedRoot:
+    """Stand-in for a zarr Group: name → :class:`_ScriptedArray`."""
+
+    def __init__(self, **arrays) -> None:
+        self._arrays = arrays
+
+    def __getitem__(self, name):
+        return self._arrays[name]
+
+
+def test_read_array_slice_retries_then_succeeds():
+    """Retryable network errors retried with backoff, eventual read succeeds."""
+    expected = np.array([1, 2, 3], dtype="<i4")
+    arr = _ScriptedArray(
+        ConnectionError("Connection reset by peer"),
+        TimeoutError("Read timeout"),
+        expected,
+    )
+    root = _ScriptedRoot(x=arr)
+
+    out = zarrv2_datasource._read_array_slice(
+        root, "x", 0, 3, max_retries=5, base_delay=0
+    )
+    np.testing.assert_array_equal(out, expected)
+
+
+def test_read_array_slice_exhausts_retries():
+    """Retryable error every attempt → ``RuntimeError`` chained from last error."""
+    arr = _ScriptedArray(
+        ConnectionError("Connection reset"),
+        ConnectionError("Connection reset"),
+        ConnectionError("Connection reset"),
+    )
+    root = _ScriptedRoot(x=arr)
+
+    with pytest.raises(RuntimeError, match=r"after 3 attempts") as exc_info:
+        zarrv2_datasource._read_array_slice(
+            root, "x", 0, 3, max_retries=3, base_delay=0
+        )
+    assert isinstance(exc_info.value.__cause__, ConnectionError)
+
+
+def test_read_array_slice_non_retryable_immediately_raises():
+    """A non-retry-keyword error is raised on the first attempt, not retried."""
+    arr = _ScriptedArray(
+        ValueError("array is corrupt"),
+        # A second response that would succeed if retried — should be unreached.
+        np.array([1, 2, 3], dtype="<i4"),
+    )
+    root = _ScriptedRoot(x=arr)
+
+    with pytest.raises(ValueError, match="corrupt"):
+        zarrv2_datasource._read_array_slice(
+            root, "x", 0, 3, max_retries=5, base_delay=0
+        )
 
 
 # ---------------------------------------------------------------------------
