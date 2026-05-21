@@ -4125,6 +4125,25 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                 c_object_id)
 
+    def add_object_out_of_scope_callback(
+            self, ObjectRef object_ref, user_callback: Callable):
+        # Store the Python callback in the global dict keyed by the object ID
+        # binary. The module-level _object_out_of_scope_trampoline C function
+        # will look it up when the object goes out of scope.
+        id_bytes = object_ref.binary()
+        _oos_callback_registry.setdefault(id_bytes, []).append(user_callback)
+        registered = CCoreWorkerProcess.GetCoreWorker() \
+            .AddObjectOutOfScopeOrFreedCallback(
+                object_ref.native(),
+                _object_out_of_scope_trampoline)
+        if not registered:
+            # The object is already out of scope; the trampoline will never fire.
+            # Clean up the entry we just added to avoid a leak.
+            callbacks = _oos_callback_registry.get(id_bytes, [])
+            callbacks.remove(user_callback)
+            if not callbacks:
+                _oos_callback_registry.pop(id_bytes, None)
+
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
@@ -4810,6 +4829,29 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+# Global registry: maps ObjectRef binary bytes -> list of Python callables.
+# Populated by CoreWorker.add_object_out_of_scope_callback and consumed by
+# _object_out_of_scope_trampoline when Core fires the callback.
+_oos_callback_registry: dict = {}
+
+
+cdef void _object_out_of_scope_trampoline(const CObjectID &object_id) nogil:
+    # Module-level C trampoline with the right signature for
+    # AddObjectOutOfScopeOrFreedCallback. C++ implicitly converts a function
+    # pointer of type `void(const ObjectID &)` to std::function.
+    # We acquire the GIL here because we're about to touch Python objects.
+    with gil:
+        id_bytes = object_id.Binary()
+        callbacks = _oos_callback_registry.pop(id_bytes, [])
+        object_ref = ObjectRef(id_bytes)
+        for callback in callbacks:
+            try:
+                callback(object_ref)
+            except Exception:
+                # Only log: this is called from C++ and Cython ignores exceptions.
+                logger.exception("failed to run object_out_of_scope callback")
+
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

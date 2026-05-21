@@ -392,6 +392,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     memory_store_->Delete(deleted);
   }
 
+  /// Register a callback to be invoked when the given object goes out of scope
+  /// or is freed by the language frontend. The callback will not be registered
+  /// (and false is returned) if the object is already out of scope or freed.
+  ///
+  /// \param[in] object_id The object to watch.
+  /// \param[in] callback Invoked with the object_id when it goes out of scope.
+  /// \return Whether the callback was successfully registered.
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
+    return reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, callback);
+  }
+
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
