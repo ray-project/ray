@@ -4834,7 +4834,7 @@ cdef void _object_out_of_scope_trampoline(
     with gil:
         try:
             user_callback = <object>user_callback_ptr
-            user_callback(ObjectRef(object_id.Binary()))
+            user_callback(object_id.Binary())
         except Exception:
             # Only log: this is called from C++ and Cython ignores exceptions.
             logger.exception("failed to run object_out_of_scope callback")
