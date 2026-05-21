@@ -1,10 +1,21 @@
+"""Zarr v2 datasource for Ray Data.
+
+Each output row corresponds to **one chunk of one array** in the store.
+Arrays read in the same call need not share any dimension; they coexist as
+separate rows in the output, distinguished by an ``array`` column. See
+:class:`ZarrV2Datasource` for the row schema and :func:`ray.data.read_zarr`
+for the public API.
+"""
+
 from __future__ import annotations
 
 import json
 import logging
 import math
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from itertools import product
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
@@ -32,6 +43,8 @@ REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
 @dataclass(frozen=True)
 class ZarrArrayMeta:
+    """Validated ``.zarray`` metadata for a single Zarr v2 array."""
+
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
     dtype: str
@@ -55,6 +68,70 @@ class ZarrArrayMeta:
             chunks=tuple(int(x) for x in raw_meta["chunks"]),
             dtype=str(raw_meta["dtype"]),
         )
+
+    @property
+    def rank(self) -> int:
+        return len(self.shape)
+
+    @property
+    def itemsize(self) -> int:
+        """Bytes per element."""
+        return np.dtype(self.dtype).itemsize
+
+    def effective_chunks(
+        self, user_chunk_shape: tuple[int, ...] | None
+    ) -> tuple[int, ...]:
+        """Resolve the user's ``chunk_shape`` against this array's native chunks.
+
+        ``user_chunk_shape`` is treated as a **prefix** that overrides the
+        leading axes; trailing axes keep the array's native chunk values.
+        This lets a single ``chunk_shape=[16]`` apply meaningfully across
+        arrays of different ranks (e.g., 4-D images alongside 2-D poses).
+
+        - ``None`` → use native chunks unchanged.
+        - shorter than rank → override leading axes, keep native for the rest.
+        - same length as rank → use as-is.
+        - longer than rank → ``ValueError``.
+
+        Example with array shape ``(200, 28, 28)``, native chunks ``(50, 28, 28)``:
+
+            user=None              → (50, 28, 28)
+            user=(16,)             → (16, 28, 28)
+            user=(16, 14)          → (16, 14, 28)
+            user=(16, 14, 14)      → (16, 14, 14)
+            user=(16, 14, 14, 1)   → ValueError
+        """
+        if user_chunk_shape is None:
+            return self.chunks
+        if len(user_chunk_shape) > self.rank:
+            raise ValueError(
+                f"chunk_shape has {len(user_chunk_shape)} axes but array of "
+                f"shape {self.shape!r} has rank {self.rank}. chunk_shape may "
+                f"not be longer than any selected array's rank."
+            )
+        return user_chunk_shape + self.chunks[len(user_chunk_shape) :]
+
+    def grid_shape(self, chunks: tuple[int, ...]) -> tuple[int, ...]:
+        """Number of chunks along each axis under the given chunk shape."""
+        return tuple(math.ceil(s / c) for s, c in zip(self.shape, chunks))
+
+    def chunk_slices(
+        self, chunk_index: tuple[int, ...], chunks: tuple[int, ...]
+    ) -> tuple[tuple[int, int], ...]:
+        """Per-axis ``(start, stop)`` for ``array[chunk_index]`` under ``chunks``.
+
+        Trailing-edge chunks are clamped to ``shape[i]``, so they may be
+        shorter than ``chunks[i]``. No padding is applied.
+        """
+        return tuple(
+            (i * c, min((i + 1) * c, s))
+            for i, c, s in zip(chunk_index, chunks, self.shape)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Metadata discovery
+# ---------------------------------------------------------------------------
 
 
 def _load_metadata_from_zmetadata_file(
@@ -139,17 +216,24 @@ def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
     return out
 
 
-def _read_array_slice(
+# ---------------------------------------------------------------------------
+# Chunk reading
+# ---------------------------------------------------------------------------
+
+
+def _read_chunk(
     root: ZarrRoot,
     array_name: str,
-    start: int,
-    stop: int,
+    chunk_slices: tuple[tuple[int, int], ...],
     max_retries: int = 5,
     base_delay: float = 1.0,
 ) -> np.ndarray:
-    """Read ``array[start:stop, ...]`` from a Zarr root with network-retry."""
-    import time
+    """Read ``array[chunk_slices]`` from a Zarr root with network-retry.
 
+    ``chunk_slices`` is an N-tuple of ``(start, stop)`` pairs, one per axis.
+    For a 0-D (scalar) array it is the empty tuple ``()``, which reads the
+    single element.
+    """
     last_error: Optional[BaseException] = None
     retry_keywords = (
         "connection reset",
@@ -159,24 +243,24 @@ def _read_array_slice(
         "socket",
         "http error",
     )
+    indexer = tuple(slice(s, e) for s, e in chunk_slices)
     for attempt in range(max_retries):
         try:
             # Resolve the array inside the retry loop: on remote stores
             # ``root[array_name]`` reads the ``.zarray`` metadata file and
             # can fail transiently the same way the data read can.
             arr = root if array_name == "" else root[array_name]
-            return arr[start:stop, ...]
+            return arr[indexer]
         except Exception as e:
             last_error = e
             error_msg = str(e).lower()
             if any(kw in error_msg for kw in retry_keywords):
                 delay = base_delay * (2**attempt)
                 logger.warning(
-                    "Network error reading array=%s [%s:%s], "
+                    "Network error reading array=%s slices=%s, "
                     "attempt %s/%s, retrying in %.1fs: %s",
                     array_name,
-                    start,
-                    stop,
+                    chunk_slices,
                     attempt + 1,
                     max_retries,
                     delay,
@@ -186,47 +270,83 @@ def _read_array_slice(
             else:
                 raise
     raise RuntimeError(
-        f"Failed to read array={array_name!r} [{start}:{stop}] "
+        f"Failed to read array={array_name!r} slices={chunk_slices} "
         f"after {max_retries} attempts"
     ) from last_error
 
 
+@dataclass(frozen=True)
+class _ChunkDescriptor:
+    """One row's worth of read work: which chunk of which array to read."""
+
+    array_name: str
+    chunk_index: tuple[int, ...]
+    chunk_slices: tuple[tuple[int, int], ...]
+
+
 def _create_read_fn(
-    slices: list[tuple[int, int]],
-    array_names: list[str],
+    batch: list[_ChunkDescriptor],
     root: ZarrRoot,
 ) -> Callable[[], Iterable[pd.DataFrame]]:
-    """Build a read-task callable that materializes one row per axis-0 slice.
+    """Build a read-task callable that materializes one DataFrame for one batch.
 
-    Each output row has one column per array in ``array_names``. The column
-    value is the array's ``[start:stop, ...]`` slice (an ndarray). Edge
-    slices at the trailing boundary may be shorter than the others.
+    Each output row carries ``(array, chunk_index, chunk)``. ``chunk`` is
+    the data at its natural shape — possibly shorter than the nominal chunk
+    shape at trailing boundaries.
+
+    The caller is expected to pass batches whose chunks all come from one
+    array. Arrow's tensor extension requires all tensor elements in a
+    column to share rank, so mixing 4-D image chunks with 1-D label chunks
+    in one block would fail at conversion time.
+    :meth:`ZarrV2Datasource.get_read_tasks` enforces this by allocating one
+    batch per array.
     """
 
     def read_fn() -> Iterable[pd.DataFrame]:
-        columns: dict[str, list] = {name: [] for name in array_names}
-        for start, stop in slices:
-            for name in array_names:
-                columns[name].append(_read_array_slice(root, name, start, stop))
-        yield pd.DataFrame(columns)
+        yield pd.DataFrame(
+            {
+                "array": [d.array_name for d in batch],
+                "chunk_index": [d.chunk_index for d in batch],
+                "chunk": [
+                    _read_chunk(root, d.array_name, d.chunk_slices) for d in batch
+                ],
+            }
+        )
 
     return read_fn
 
 
-class ZarrV2Datasource(Datasource):
-    """Reads chunks of axis-0-aligned arrays from a Zarr v2 store.
+# ---------------------------------------------------------------------------
+# Datasource
+# ---------------------------------------------------------------------------
 
-    Each output row corresponds to one slice along axis 0; the row carries one
-    column per selected array, containing that array's ``[start:stop, ...]``
-    slice. All selected arrays must share ``shape[0]``. See
-    :func:`ray.data.read_zarr` for the public API.
+
+class ZarrV2Datasource(Datasource):
+    """Reads chunks of one or more Zarr v2 arrays as a long-form Dataset.
+
+    Each output row corresponds to **one chunk of one array**:
+
+    * ``array``: the source array's path within the store
+      (e.g., ``"data/camera0_rgb"``, or ``""`` for a root-level array).
+    * ``chunk_index``: the N-D position of this chunk in the array's chunk
+      grid, as a tuple of ints.
+    * ``chunk``: the chunk's data as an ``ndarray``, at its natural shape
+      (possibly shorter than the nominal chunk shape at trailing boundaries —
+      no padding is applied).
+
+    Arrays read in the same call need **not** share any dimension. Different
+    ranks, shapes, dtypes, and chunk shapes coexist as separate rows in the
+    output. Users who want paired/aligned views across arrays should compose
+    with downstream ``zip``/``map_groups`` operations.
+
+    See :func:`ray.data.read_zarr` for the public API.
     """
 
     def __init__(
         self,
         path: str,
         filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
-        chunk_size: Optional[int] = None,
+        chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
     ) -> None:
@@ -267,25 +387,36 @@ class ZarrV2Datasource(Datasource):
                 )
             self._store_path = self.paths[0].rstrip("/")
 
+        # Validate chunk_shape eagerly so the error message comes from this
+        # entry point rather than the per-array resolution loop below.
+        if chunk_shape is not None:
+            if not chunk_shape or any(
+                not isinstance(c, int) or c <= 0 for c in chunk_shape
+            ):
+                raise ValueError(
+                    f"chunk_shape must be a non-empty list of positive "
+                    f"integers, got {chunk_shape!r}"
+                )
+        self.chunk_shape: tuple[int, ...] | None = (
+            tuple(chunk_shape) if chunk_shape is not None else None
+        )
+
         self._selected_arrays = self._load_metadata(array_paths)
         if not self._selected_arrays:
             raise ValueError(
                 f"No arrays discovered in Zarr store at {self.paths[0]!r}."
             )
 
-        self._shape0 = self._validate_axis0_alignment()
-
-        if chunk_size is None:
-            chunk_size = min(meta.chunks[0] for meta in self._selected_arrays.values())
-        if not isinstance(chunk_size, int) or chunk_size <= 0:
-            raise ValueError(
-                f"chunk_size must be a positive integer, got {chunk_size!r}"
-            )
-        self.chunk_size = chunk_size
-        self._slices = [
-            (start, min(start + self.chunk_size, self._shape0))
-            for start in range(0, self._shape0, self.chunk_size)
-        ]
+        # Resolve per-array chunk geometry. ``effective_chunks`` raises a
+        # ``ValueError`` if the user's ``chunk_shape`` is longer than any
+        # selected array's rank — so this loop is also where rank validation
+        # happens.
+        self._array_chunks: dict[str, tuple[int, ...]] = {}
+        self._array_grids: dict[str, tuple[int, ...]] = {}
+        for name, meta in self._selected_arrays.items():
+            chunks = meta.effective_chunks(self.chunk_shape)
+            self._array_chunks[name] = chunks
+            self._array_grids[name] = meta.grid_shape(chunks)
 
         # Lazy zarr import: only needed once we read.
         import zarr
@@ -293,9 +424,9 @@ class ZarrV2Datasource(Datasource):
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        """Total bytes = sum of (full array sizes) across all selected arrays."""
+        """Total bytes = sum over selected arrays of ``prod(shape) * itemsize``."""
         return sum(
-            math.prod(meta.shape) * np.dtype(meta.dtype).itemsize
+            math.prod(meta.shape) * meta.itemsize
             for meta in self._selected_arrays.values()
         )
 
@@ -305,73 +436,55 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """Split the axis-0 chunk list into ``parallelism`` batches and wrap each in a ReadTask.
+        """Enumerate every chunk and split into batches **per array**.
 
-        Each ``ReadTask``'s callable yields a single ``pd.DataFrame`` whose
-        rows are axis-0 slices and whose columns are the selected arrays.
+        Each :class:`ReadTask` processes chunks from a single array and
+        yields one ``DataFrame`` whose rows are ``(array, chunk_index, chunk)``.
+        Per-array batching keeps each block's ``chunk`` column rank-uniform
+        (Arrow's tensor extension requires this).
+
+        ``parallelism`` is treated as a *per-array* budget — each array's
+        chunks are split into ``min(parallelism, n_chunks_for_array)`` tasks.
         """
         read_tasks: List[ReadTask] = []
-        array_names = list(self._selected_arrays)
-
-        n_rows = len(self._slices)
-        if n_rows == 0:
-            return read_tasks
-        actual_parallelism = min(parallelism, n_rows)
-        batch_size = math.ceil(n_rows / actual_parallelism)
-
-        for start in range(0, n_rows, batch_size):
-            batch = self._slices[start : start + batch_size]
-            read_tasks.append(
-                ReadTask(
-                    _create_read_fn(batch, array_names, self.root),
-                    BlockMetadata(
-                        num_rows=len(batch),
-                        size_bytes=self._estimate_batch_mem_size(batch),
-                        input_files=(self.paths[0],),
-                        exec_stats=None,
-                    ),
-                    per_task_row_limit=per_task_row_limit,
+        for name, meta in self._selected_arrays.items():
+            chunks = self._array_chunks[name]
+            grid = self._array_grids[name]
+            descriptors = [
+                _ChunkDescriptor(
+                    array_name=name,
+                    chunk_index=chunk_index,
+                    chunk_slices=meta.chunk_slices(chunk_index, chunks),
                 )
-            )
+                for chunk_index in product(*(range(n) for n in grid))
+            ]
+            if not descriptors:
+                continue
+            n_tasks = min(parallelism, len(descriptors))
+            batch_size = math.ceil(len(descriptors) / n_tasks)
+            for start in range(0, len(descriptors), batch_size):
+                batch = descriptors[start : start + batch_size]
+                read_tasks.append(
+                    ReadTask(
+                        _create_read_fn(batch, self.root),
+                        BlockMetadata(
+                            num_rows=len(batch),
+                            size_bytes=self._estimate_batch_mem_size(batch),
+                            input_files=(self.paths[0],),
+                            exec_stats=None,
+                        ),
+                        per_task_row_limit=per_task_row_limit,
+                    )
+                )
         return read_tasks
 
-    def _estimate_batch_mem_size(self, batch: list[tuple[int, int]]) -> int:
-        """Sum in-memory bytes across all (slice_len × array) pairs in one batch."""
+    def _estimate_batch_mem_size(self, batch: list[_ChunkDescriptor]) -> int:
+        """Sum in-memory bytes across all chunks in one batch."""
         return sum(
-            (stop - start)
-            * (math.prod(meta.shape[1:]) if len(meta.shape) > 1 else 1)
-            * np.dtype(meta.dtype).itemsize
-            for start, stop in batch
-            for meta in self._selected_arrays.values()
+            math.prod(stop - start for start, stop in desc.chunk_slices)
+            * self._selected_arrays[desc.array_name].itemsize
+            for desc in batch
         )
-
-    def _validate_axis0_alignment(self) -> int:
-        """Ensure all selected arrays agree on ``shape[0]``; return that length."""
-        # Reject 0-D (scalar) arrays upfront — they appear in real stores
-        # (e.g., per-experiment hyperparameters in ERA5/CMIP6) but have no
-        # axis 0 to align on. Indexing ``meta.shape[0]`` on them would
-        # raise IndexError with no useful context.
-        scalars = [
-            name for name, meta in self._selected_arrays.items() if not meta.shape
-        ]
-        if scalars:
-            raise ValueError(
-                f"Cannot read 0-dimensional (scalar) arrays via read_zarr; "
-                f"this datasource requires alignment along axis 0. Offending "
-                f"array(s): {scalars!r}. Use array_paths=[...] to exclude them."
-            )
-
-        shape0_by_array = {
-            name: meta.shape[0] for name, meta in self._selected_arrays.items()
-        }
-        sizes = set(shape0_by_array.values())
-        if len(sizes) > 1:
-            raise ValueError(
-                "Arrays in a single read_zarr call must share axis 0 (their "
-                f"first dimension). Got: {shape0_by_array!r}. Use array_paths="
-                "[...] to select a compatible subset."
-            )
-        return sizes.pop()
 
     def _load_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
         """Discover and load ``.zarray`` metadata for the selected arrays.

@@ -829,7 +829,7 @@ def read_zarr(
     filesystem: Optional[
         Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
     ] = None,
-    chunk_size: Optional[int] = None,
+    chunk_shape: Optional[List[int]] = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
     *,
@@ -842,11 +842,19 @@ def read_zarr(
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
-    Each output row is one slice along axis 0 of the store's selected arrays.
-    Every row carries one column per array, holding that array's
-    ``[start:stop, ...]`` slice. All selected arrays must share ``shape[0]``;
-    pass ``array_paths=[...]`` to pick a compatible subset when the store
-    contains arrays with different lengths.
+    Each output row corresponds to **one chunk of one array** in the store:
+
+    * ``array``: the source array's path (e.g., ``"data/camera0_rgb"``, or
+      ``""`` for a root-level array).
+    * ``chunk_index``: the N-D index of this chunk in its array's chunk grid.
+    * ``chunk``: the chunk's data as an ``ndarray`` at its natural shape
+      (possibly shorter at trailing boundaries — no padding is applied).
+
+    Arrays read in the same call need **not** share any dimension. Different
+    ranks, shapes, dtypes, and native chunk sizes coexist as separate rows
+    in the output. Users who want paired views across arrays (e.g., MNIST-style
+    ``(images, labels)`` batches) should compose with downstream ``zip`` or
+    ``map_groups`` operations.
 
     Metadata discovery follows these rules:
 
@@ -875,22 +883,16 @@ def read_zarr(
     ``path``.
 
     Examples:
-        Read a multi-array store. Each row contains a paired slice of every
-        array.
+        Read every array in a store with each array's native chunking.
 
         >>> import ray
         >>> ds = ray.data.read_zarr(
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ... )
-        >>> ds.schema()
-        Column  Type
-        ------  ----
-        images  ArrowTensorTypeV2(shape=(50, 28, 28), dtype=uint8)
-        labels  ArrowTensorTypeV2(shape=(50,), dtype=uint8)
         >>> ds.count()
-        4
+        8
 
-        Select only the ``images`` array; each row holds one image-batch.
+        Select only the ``images`` array.
 
         >>> ds = ray.data.read_zarr(
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
@@ -899,14 +901,16 @@ def read_zarr(
         >>> ds.count()
         4
 
-        Override the axis-0 batch size for read tasks.
+        Override the axis-0 chunk size; trailing axes keep each array's native
+        chunking. ``chunk_shape=[100]`` re-tiles ``images`` (4-D) to chunks
+        of ``(100, 28, 28)`` and ``labels`` (1-D) to ``(100,)``.
 
         >>> ds = ray.data.read_zarr(
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
-        ...     chunk_size=100,
+        ...     chunk_shape=[100],
         ... )
         >>> ds.count()
-        2
+        4
 
     Args:
         path: Path to the Zarr v2 store.
@@ -914,22 +918,27 @@ def read_zarr(
             :class:`pyarrow.fs.FileSystem` (matching other Ray Data
             ``read_*`` APIs) or an :class:`fsspec.spec.AbstractFileSystem`.
             pyarrow filesystems are wrapped internally with
-            :class:`fsspec.implementations.arrow.ArrowFSWrapper`. This is because
-            Zarr's storage layer requires fsspec. Use this for
-            private buckets, custom credentials, anonymous/public cloud
-            access, or any storage backend configuration that shouldn't be
-            inferred internally. Recommended for non-local Zarr stores; for
-            local paths it's usually fine to omit. If omitted, the datasource
-            infers the filesystem from ``path`` using ``fsspec``.
-        chunk_size: Optional number of samples along axis 0 to include in each
-            output row. If unspecified, defaults to the minimum of the selected
-            arrays' axis-0 ``chunks``. The trailing row may be shorter when
-            ``shape[0]`` isn't divisible by ``chunk_size``. This should be treated
-            to adjust I/O, rather than to semantically split the data. Semantic splitting
-            should be done downstream.
+            :class:`fsspec.implementations.arrow.ArrowFSWrapper` because
+            Zarr's storage layer requires fsspec. Use this for private
+            buckets, custom credentials, anonymous/public cloud access, or
+            any storage backend configuration that shouldn't be inferred
+            internally. Recommended for non-local Zarr stores; for local
+            paths it's usually fine to omit. If omitted, the datasource
+            infers the filesystem from ``path``.
+        chunk_shape: Optional override for the chunk geometry along the
+            leading axes. Specified as a list of positive integers; treated
+            as a **prefix** that overrides the leading axes of every selected
+            array, leaving trailing axes at each array's native chunking.
+            For example, ``chunk_shape=[16]`` re-tiles a 4-D array with native
+            chunks ``(1, 224, 224, 3)`` into ``(16, 224, 224, 3)`` chunks
+            while simultaneously re-tiling a 1-D array with native chunks
+            ``(50,)`` into ``(16,)`` chunks. If unspecified (the default),
+            each selected array uses its own native chunking. May not be
+            longer than the smallest selected array's rank. This is an I/O
+            knob — semantic batching belongs downstream (``map_batches``).
         array_paths: Optional list of array paths within the Zarr store to
             read. If unspecified, all arrays discovered in the store are
-            included. All selected arrays must share ``shape[0]``.
+            included.
         allow_full_metadata_scan: If ``True``, recursively scan the store for
             ``.zarray`` files when ``array_paths`` is unspecified and
             ``.zmetadata`` is missing. This may be slow or expensive for large
@@ -950,13 +959,14 @@ def read_zarr(
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
     Returns:
-        A :class:`~ray.data.Dataset` whose rows are axis-0 slices of the
-        selected arrays. Each row has one column per array.
+        A :class:`~ray.data.Dataset` of long-form chunk rows
+        (``array``, ``chunk_index``, ``chunk``) — one row per chunk per
+        selected array.
     """
     datasource = ZarrV2Datasource(
         path=path,
         filesystem=filesystem,
-        chunk_size=chunk_size,
+        chunk_shape=chunk_shape,
         array_paths=array_paths,
         allow_full_metadata_scan=allow_full_metadata_scan,
     )
