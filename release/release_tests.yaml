@@ -297,6 +297,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
@@ -312,11 +313,12 @@
     frequency: weekly
 
     cluster:
+      anyscale_sdk_2026: true
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
       timeout: 3600
-      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 2 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
@@ -327,6 +329,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -342,6 +345,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_cpu_4_aws.yaml
@@ -359,6 +363,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -374,6 +379,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
@@ -389,10 +395,11 @@
     frequency: manual
 
     cluster:
+      anyscale_sdk_2026: true
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
-      script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 2 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
@@ -403,6 +410,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -426,6 +434,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: dreambooth_compute_aws.yaml
@@ -447,6 +456,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: dreambooth_compute_aws.yaml
@@ -463,6 +473,7 @@
   frequency: manual
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_gptj_test.sh
@@ -479,6 +490,7 @@
   frequency: manual
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_dolly_test.sh
@@ -497,6 +509,7 @@
   frequency: manual
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_vicuna_test.sh
@@ -518,6 +531,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_memory_usage_threshold=0.5
@@ -547,6 +561,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -602,10 +617,13 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: tpl_gce_1x16.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -622,6 +640,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -655,6 +674,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -687,6 +707,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -721,6 +742,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -759,6 +781,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -787,6 +810,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -816,6 +840,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
@@ -1360,6 +1385,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_small.yaml
 
   run:
@@ -1389,6 +1415,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -1442,6 +1469,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1470,6 +1498,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1501,6 +1530,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
@@ -1512,6 +1543,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
@@ -1549,6 +1581,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # specifically testing haproxy here because with serve
@@ -1582,6 +1615,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
@@ -1593,6 +1628,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1610,6 +1646,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_throughput_optimized_microbenchmarks
@@ -1621,6 +1659,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
@@ -1643,6 +1682,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_router_benchmark
@@ -1654,6 +1695,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1669,6 +1711,11 @@
   variations:
     # Low-latency / high-throughput workload
     - __suffix__: aws.standard
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+            - RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
       run:
         timeout: 7200
         long_running: false
@@ -1678,6 +1725,7 @@
           --simulated-latency-cap-s 0.1
           --max-ongoing-requests-child 5
           --max-ongoing-requests-parent 5
+          --max-users-per-task 24
           --router-type pow2
     # Supply-constrained workload
     - __suffix__: aws.supply_constraint
@@ -1702,6 +1750,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
@@ -1726,6 +1775,8 @@
       env: gce
       frequency: manual
       cluster:
+        project_id: prj_xqmpk8ps6civt438u1hp5pi88g
+        cloud_id: cld_vy7xqacrvddvbuy95auinvuqmt
         cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
@@ -1750,6 +1801,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
   variations:
@@ -1914,6 +1966,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
 
   variations:
@@ -1947,6 +2000,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
 
   variations:
@@ -1976,6 +2030,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
       type: gpu
       post_build_script: byod_install_torchrec.sh
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
   variations:
@@ -2010,6 +2065,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
   run:
@@ -2026,6 +2082,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_train_persistence_test.sh
     cluster_compute: compute_aws.yaml
@@ -2064,6 +2121,7 @@
   frequency: nightly
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_aws.yaml
@@ -2085,6 +2143,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2108,6 +2167,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_gpu_2x4_aws.yaml
 
   run:
@@ -2123,6 +2183,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_pytorch_lightning_test.sh
@@ -2141,6 +2202,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_huggingface_transformers_test.sh
@@ -2159,6 +2221,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_aws.yaml
@@ -2182,6 +2245,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_aws_{{size}}.yaml
 
   run:
@@ -2207,6 +2271,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_gpu_aws.yaml
 
   run:
@@ -2232,6 +2297,7 @@
   cluster:
     byod:
       type: gpu
+    anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
 
   run:
@@ -2389,7 +2455,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2404,7 +2470,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2421,7 +2487,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2438,7 +2504,7 @@
   python: "3.12"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2457,7 +2523,7 @@
   python: "3.12"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -4210,9 +4276,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4273,9 +4340,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
@@ -4292,9 +4360,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
@@ -4311,9 +4380,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4331,9 +4401,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4351,9 +4422,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4438,6 +4510,7 @@
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
 
   run:
@@ -4458,9 +4531,10 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4479,6 +4553,7 @@
     byod:
       type: llm-cu130
       post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
 
   run:
@@ -4487,8 +4562,7 @@
       pytest -sv test_batch_sglang.py
 
 - name: llm_batch_vllm_multi_node
-  # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
-  frequency: manual
+  frequency: nightly
   python: "3.12"
   group: llm-batch
   team: llm
@@ -4519,6 +4593,7 @@
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
+    anyscale_sdk_2026: true
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
@@ -5114,7 +5189,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
-  frequency: weekly
+  frequency: manual # was weekly
   python: "3.11"
   group: ray-examples
   team: data

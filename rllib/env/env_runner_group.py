@@ -548,6 +548,16 @@ class EnvRunnerGroup:
             if self.local_env_runner is not None and broadcast:
                 self.local_env_runner.set_state(env_runner_states)
 
+            # Move the RLModule weights into the object store exactly once
+            # This avoids having one copy of the weights dict for each worker.
+            if rl_module_state and COMPONENT_RL_MODULE in rl_module_state:
+                module_state = rl_module_state[COMPONENT_RL_MODULE]
+                if not isinstance(module_state, ray.ObjectRef):
+                    rl_module_state = {
+                        **rl_module_state,
+                        COMPONENT_RL_MODULE: ray.put(module_state),
+                    }
+
             # Send the model weights only to remote EnvRunners.
             # In case the local EnvRunner is ever needed for evaluation,
             # RLlib updates its weight right before such an eval step.
@@ -1029,14 +1039,22 @@ class EnvRunnerGroup:
             )
         )
 
-    def probe_unhealthy_env_runners(self) -> List[int]:
+    def probe_unhealthy_env_runners(
+        self, timeout_seconds: Optional[float] = None
+    ) -> List[int]:
         """Checks for unhealthy workers and tries restoring their states.
+
+        Args:
+            timeout_seconds: Per-actor ping timeout. If None (default), uses
+                ``AlgorithmConfig.env_runner_health_probe_timeout_s``.
 
         Returns:
             List of IDs of the workers that were restored.
         """
+        if timeout_seconds is None:
+            timeout_seconds = self._remote_config.env_runner_health_probe_timeout_s
         return self._worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            timeout_seconds=timeout_seconds,
             mark_healthy=True,
         )
 

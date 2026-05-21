@@ -405,7 +405,7 @@ class TestProjectionFusion:
         # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -452,7 +452,7 @@ class TestProjectionFusion:
         # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -492,7 +492,7 @@ class TestProjectionFusion:
         # Verify execution correctness
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -540,7 +540,7 @@ class TestProjectionFusion:
         optimized_plan = rule.apply(ds_with_column._logical_plan)
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds_with_column._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds_with_column, optimized_plan)
 
         # Create dataset using single map_batches (optimal case)
         ds_optimal = ray.data.from_items(input_data)
@@ -593,7 +593,7 @@ class TestProjectionFusion:
         # Verify execution correctness
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset(ds._plan, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -764,6 +764,18 @@ class TestProjectionFusion:
         result_df = result_df[sorted(result_df.columns)]
         expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
+
+    def test_with_column_alias_then_rename_preserves_both_columns(
+        self, ray_start_regular_shared
+    ):
+        """Regression test for alias and rename referencing the same input column."""
+        ds = ray.data.from_items([{"a": 1}])
+        ds = ds.with_column("x", col("a")).rename_columns({"a": "b"})
+
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        assert self._count_project_operators(optimized_plan) == 1
+
+        assert ds.take_all() == [{"x": 1, "b": 1}]
 
     @pytest.mark.parametrize(
         "operations,expected",
@@ -1356,7 +1368,7 @@ def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
     if flavor == "project_after":
         ds = ds.select_columns(["length", "width"])
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
 
