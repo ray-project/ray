@@ -5,6 +5,7 @@ import shutil
 import socket
 import string
 import sys
+import tarfile
 import tempfile
 import types
 import uuid
@@ -19,6 +20,7 @@ import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
 )
+from ray._private.runtime_env import packaging as packaging_module
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
     MAC_OS_ZIP_HIDDEN_DIR_NAME,
@@ -27,17 +29,21 @@ from ray._private.runtime_env.packaging import (
     _get_excludes,
     _get_ignore_file,
     _store_package_in_gcs,
+    create_package,
     download_and_unpack_package,
     get_excludes_from_ignore_files,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
+    get_top_level_dir_from_tar_package,
     get_uri_for_directory,
     get_uri_for_file,
     get_uri_for_package,
+    is_tar_gz_uri,
     is_whl_uri,
     is_zip_uri,
     parse_uri,
     remove_dir_from_filepaths,
+    untar_package,
     unzip_package,
     upload_package_if_needed,
     upload_package_to_gcs,
@@ -281,6 +287,167 @@ class TestUploadPackageIfNeeded:
             uri, tmp_path, random_dir, include_gitignore=True
         )
         assert uploaded
+
+
+class TestCreatePackageSizeWarning:
+    """Regression coverage for GH #45602.
+
+    The per-file warning in `_zip_files` does not fire for a directory of many
+    small files (e.g. `.git`). `create_package` should emit a single warning
+    whenever the resulting zip is at least `PACKAGE_SIZE_WARNING` so that users
+    have an actionable signal before the upload itself fails.
+    """
+
+    @staticmethod
+    def _make_dir_with_many_small_files(root: Path, count: int) -> Path:
+        sub = root / "lots_of_small_files"
+        sub.mkdir(parents=True)
+        # Use incompressible random bytes so the zip cannot shrink them below
+        # the threshold the test enforces.
+        for i in range(count):
+            (sub / f"f{i}.bin").write_bytes(os.urandom(256))
+        return sub
+
+    @staticmethod
+    def _make_capturing_logger() -> tuple:
+        """Return (logger, records_list). Ray's default logger does not
+        propagate to caplog, so capture WARNING records via a list handler."""
+        import logging as _logging
+
+        records: list = []
+
+        class _ListHandler(_logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        logger = _logging.getLogger(
+            "test_runtime_env_packaging.TestCreatePackageSizeWarning"
+        )
+        logger.handlers.clear()
+        logger.setLevel(_logging.WARNING)
+        logger.addHandler(_ListHandler())
+        logger.propagate = False
+        return logger, records
+
+    def test_warns_when_zip_exceeds_threshold(self, tmp_path, monkeypatch):
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        # Force the threshold low enough that this small fixture trips it,
+        # without inflating test runtime.
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert target.exists()
+        # Warning must surface BOTH the local zip path (for inspection) and
+        # the source module_path (since the zip is short-lived and has an
+        # auto-generated name in production code paths).
+        assert any(
+            "approaching the maximum upload size" in record.getMessage()
+            and str(target) in record.getMessage()
+            and str(src) in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_does_not_warn_when_zip_below_threshold(self, tmp_path, monkeypatch):
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=4)
+        # Threshold far above the small fixture's zip size.
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 10 * 1024 * 1024)
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert target.exists()
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_warn_handles_missing_file(self, tmp_path, monkeypatch):
+        # Even if the package vanishes between zip and stat (e.g. concurrent
+        # cleanup), the helper must not raise.
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        logger, records = self._make_capturing_logger()
+        packaging_module._warn_if_package_size_near_limit(
+            tmp_path / "does_not_exist.zip", logger=logger
+        )
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_disables_warning(self, tmp_path, monkeypatch):
+        """`RAY_PACKAGE_SIZE_WARNING_MIB=-1` must silence the warning even
+        when the package is well over the default threshold."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        # Default threshold would normally fire (we set it small here just to
+        # make sure the *only* reason it's silent is the env-var disable).
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        monkeypatch.setenv(packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "-1")
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert target.exists()
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_overrides_threshold_high_disables(self, tmp_path, monkeypatch):
+        """A high env-var threshold must suppress warnings the default would
+        have raised."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        # 10 GiB threshold; small fixture zip will not approach this.
+        monkeypatch.setenv(packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "10240")
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert not any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_overrides_threshold_low_warns(self, tmp_path, monkeypatch):
+        """A low env-var threshold must *raise* warnings the default would
+        have suppressed, and the message must advertise how to disable it."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        # Default threshold (half of GCS_STORAGE_MAX_SIZE) is far above the
+        # small fixture zip, so without the env override no warning would fire.
+        monkeypatch.setenv(packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "0")
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert any(
+            "approaching the maximum upload size" in record.getMessage()
+            and packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
+
+    def test_env_var_malformed_falls_back_to_default(self, tmp_path, monkeypatch):
+        """A malformed env value must not silently disable the warning."""
+        src = self._make_dir_with_many_small_files(tmp_path / "src", count=64)
+        monkeypatch.setattr(packaging_module, "PACKAGE_SIZE_WARNING", 1)
+        monkeypatch.setenv(
+            packaging_module.PACKAGE_SIZE_WARNING_MIB_ENV_VAR, "not-a-number"
+        )
+        target = tmp_path / "pkg.zip"
+        logger, records = self._make_capturing_logger()
+
+        create_package(str(src), target, include_gitignore=False, logger=logger)
+
+        assert any(
+            "approaching the maximum upload size" in record.getMessage()
+            for record in records
+        ), [r.getMessage() for r in records]
 
 
 class TestStorePackageInGcs:
@@ -999,6 +1166,33 @@ class TestDownloadAndUnpackPackage:
             # Check that the file was extracted to the destination directory
             assert (Path(local_dir) / "file.txt").exists()
 
+    async def test_download_and_unpack_package_with_file_uri_tar_gz(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tar_path = Path(temp_dir) / "test-tar-file.tar.gz"
+            with tarfile.open(tar_path, "w:gz") as tar:
+                file_content = b"Hello from tar!"
+                info = tarfile.TarInfo(name="top_level/file.txt")
+                info.size = len(file_content)
+                tar.addfile(info, io.BytesIO(file_content))
+
+                dir_info = tarfile.TarInfo(name="top_level/")
+                dir_info.type = tarfile.DIRTYPE
+                tar.addfile(dir_info)
+
+            from urllib.parse import urljoin
+            from urllib.request import pathname2url
+
+            file_path = pathname2url(str(tar_path))
+            pkg_uri = urljoin("file:", file_path[1:])
+
+            dest_dir = tempfile.mkdtemp()
+            local_dir = await download_and_unpack_package(
+                pkg_uri=pkg_uri, base_directory=dest_dir
+            )
+
+            assert (Path(local_dir) / "file.txt").exists()
+            assert (Path(local_dir) / "file.txt").read_text() == "Hello from tar!"
+
     @pytest.mark.parametrize(
         "protocol",
         [
@@ -1172,11 +1366,200 @@ def test_get_uri_for_package():
     assert get_uri_for_package(Path("/tmp/my-pkg.whl")) == "gcs://my-pkg.whl"
 
 
+def test_get_uri_for_package_tar_gz(tmp_path):
+    tar_path = tmp_path / "my-pkg.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tar_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.gz")
+    assert not uri.endswith(".zip")
+
+
+def test_get_uri_for_package_tgz(tmp_path):
+    tgz_path = tmp_path / "my-pkg.tgz"
+    with tarfile.open(tgz_path, "w:gz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tgz_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.gz")
+    assert not uri.endswith(".zip")
+
+
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
         "base_dir/<working_dir_content_hash>"
     )
+
+
+def test_get_local_dir_from_uri_tar_gz():
+    uri = "s3://bucket/archive.tar.gz"
+    local_dir = get_local_dir_from_uri(uri, "base_dir")
+    assert "tar" not in str(local_dir.name)
+    assert not str(local_dir).endswith(".gz")
+
+
+def test_is_tar_gz_uri():
+    assert is_tar_gz_uri("s3://bucket/archive.tar.gz")
+    assert is_tar_gz_uri("https://example.com/pkg.tar.gz")
+    assert is_tar_gz_uri("s3://bucket/archive.tgz")
+    assert not is_tar_gz_uri("s3://bucket/archive.zip")
+    assert not is_tar_gz_uri("gcs://archive.whl")
+    assert not is_tar_gz_uri("invalid_format")
+
+
+def test_parse_uri_tar_gz():
+    protocol, package_name = parse_uri("s3://bucket/archive.tar.gz")
+    assert package_name.endswith(".tar.gz")
+    assert protocol == Protocol.S3
+
+    protocol, package_name = parse_uri("https://example.com/path/my.pkg.tar.gz")
+    assert package_name.endswith(".tar.gz")
+    assert "_" in package_name
+
+
+def test_untar_package_without_top_level_dir(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"Hello, world!"
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=False,
+        unlink_tar=False,
+    )
+    assert (Path(target_dir) / "file.txt").exists()
+    assert (Path(target_dir) / "file.txt").read_text() == "Hello, world!"
+
+
+def test_untar_package_with_top_level_dir(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="top_level/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"Hello from tar!"
+        info = tarfile.TarInfo(name="top_level/file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=True,
+        unlink_tar=True,
+    )
+    assert (Path(target_dir) / "file.txt").exists()
+    assert (Path(target_dir) / "file.txt").read_text() == "Hello from tar!"
+    assert not tar_path.exists()
+
+
+def test_untar_package_path_traversal(tmp_path):
+    """Verify that path traversal attacks are blocked."""
+    tar_path = tmp_path / "malicious.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"malicious"
+        info = tarfile.TarInfo(name="../../../etc/passwd")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=False,
+        unlink_tar=False,
+    )
+    assert not (Path(target_dir) / "../../../etc/passwd").exists()
+    assert len(os.listdir(target_dir)) == 0
+
+
+def test_get_top_level_dir_from_tar_package(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_dot_slash_prefix(tmp_path):
+    """GNU tar commonly prefixes members with ./ — must not return '.'."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="./myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_dot_slash_no_top_level(tmp_path):
+    """./file.txt at the root means no single top-level directory."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) is None
+
+
+def test_get_top_level_dir_from_tar_package_bare_dot_entry(tmp_path):
+    """Archives with a bare '.' entry should handle it gracefully."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dot_info = tarfile.TarInfo(name=".")
+        dot_info.type = tarfile.DIRTYPE
+        tar.addfile(dot_info)
+
+        dir_info = tarfile.TarInfo(name="./myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_no_top_level(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"content"
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) is None
 
 
 if __name__ == "__main__":

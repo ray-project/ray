@@ -131,6 +131,7 @@
   type: "torch-cu128"
   python: "3.14"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_pyiceberg.sh
     cluster_compute: iceberg_benchmark_compute.yaml
@@ -338,6 +339,47 @@
       run:
         script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
+############
+# Mix tests
+############
+
+- name: mix
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: dataset_mixing/compute_8_cpu.yaml
+  run:
+    timeout: 600
+    wait_for_nodes:
+      num_nodes: 8
+
+  variations:
+    - __suffix__: 8ds_equal
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_equal_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
 ################
 # Training tests
 ################
@@ -348,6 +390,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
     cluster_compute: dataset/multi_node_train_16_workers.yaml
@@ -376,6 +419,9 @@
   type: "torch-cu128"
   python: "3.14"
   working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
 
   variations:
     - __suffix__: s3_parquet_cpu
@@ -471,6 +517,7 @@
   type: "torch-cu128"
   python: "3.14"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -537,7 +584,7 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -547,22 +594,31 @@
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
+# Exercises a 300-column wide output schema (100 scalar float32 +
+# 200 float32[32]) modeled after production reference data. Stresses
+# per-block BlockMetadataWithSchema propagation on the driver, which
+# dominates large-schema production workloads.
 - name: worker_scaling_{{num_workers}}_{{worker_type}}
   type: "torch-cu128"
   python: "3.14"
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_1000_cpu_compute.yaml
+    cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
 
   matrix:
     setup:
-      num_workers: [1000]
+      num_workers: [500, 1000, 2000, 5000]
       worker_type: [actors, tasks]
 
   run:
-    timeout: 1200
-    script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}}
+    timeout: 2700
+    script: >
+      python worker_scaling_benchmark.py
+      --num-workers {{num_workers}}
+      --worker-type {{worker_type}}
+      --num-scalar-cols 200
+      --num-array-cols 400
 
 
 ########################
@@ -913,6 +969,7 @@
   env: gce
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: autoscaling_gpu_g2_gce.yaml
 
   run:
@@ -1248,6 +1305,7 @@
   frequency: manual
   env: gce
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: cross_az_250_350_compute_gce.yaml
 
   run:
@@ -1290,6 +1348,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -1327,6 +1386,7 @@
   frequency: manual
 
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
 

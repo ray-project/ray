@@ -1,23 +1,11 @@
-aiohttp
 anyio
-click
-fastapi
 gradio
-grpcio
 httpx
-numpy
-packaging
-pandas
-protobuf
-pydantic
 pymysql
 pytest
 pytest_asyncio
-PyYAML
 redis
-requests
 SQLAlchemy
-starlette
 typing_extensions
 # TODO(elliot-barn): might need to add vllm for tests
 # vllm
@@ -31,3 +19,4 @@ aioboto3
 tf_keras
 numexpr
 taskiq-redis
+ray-haproxy==2.8.20

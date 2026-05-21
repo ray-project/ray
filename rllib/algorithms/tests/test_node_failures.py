@@ -43,8 +43,16 @@ def cluster():
 
     yield cluster
 
+    # Detach head_node before cluster.shutdown() and kill its processes
+    # directly afterwards. Otherwise cluster.remove_node(head) refuses if a
+    # daemon thread (e.g. APPO/IMPALA's learner thread) called an
+    # auto-init-wrapped Ray API and re-established global_worker.node after
+    # our ray.shutdown(), leaving port 8265 bound for the next test.
     ray.shutdown()
+    head = cluster.head_node
+    cluster.head_node = None
     cluster.shutdown()
+    head.kill_all_processes(check_alive=False, allow_graceful=False, wait=True)
 
 
 def _kill_worker_node(cluster):
