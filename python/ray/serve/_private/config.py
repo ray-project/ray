@@ -347,6 +347,11 @@ class DeploymentConfig(BaseModel):
                         self.accelerator_config.resources_per_bundle
                     )
                 data["accelerator_config"] = serve_pb2.AcceleratorConfig(tpu=tpu_proto)
+            else:
+                raise TypeError(
+                    f"Unsupported accelerator configuration type: {type(self.accelerator_config)}. "
+                    "Currently only TPUAcceleratorConfig is supported."
+                )
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])

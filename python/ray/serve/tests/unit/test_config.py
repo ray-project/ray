@@ -25,6 +25,7 @@ from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
+    AcceleratorConfig,
     AutoscalingConfig,
     ControllerOptions,
     DeploymentActorConfig,
@@ -1692,6 +1693,16 @@ def test_accelerator_config_proto_roundtrip():
 def test_unsupported_accelerator_config_kind():
     with pytest.raises(ValueError, match="Unknown accelerator kind"):
         _resolve_accelerator_config({"kind": "xpu"})
+
+
+def test_unsupported_accelerator_subclass_to_proto():
+    class DummyAcceleratorConfig(AcceleratorConfig):
+        kind: str = "dummy"
+
+    dummy = DummyAcceleratorConfig()
+    config = DeploymentConfig(accelerator_config=dummy)
+    with pytest.raises(TypeError, match="Unsupported accelerator configuration type"):
+        config.to_proto()
 
 
 if __name__ == "__main__":
