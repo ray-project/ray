@@ -658,30 +658,27 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
-        # Prefetch metadata refs across all ready DataOpTasks in one batched
-        # ray.get to amortize per-call overhead. For each task, fully drain
-        # `peek_pending_pair` so every (block_ref, meta_ref) pair currently
-        # surfaced by the streaming generator is included; we then issue ONE
-        # ray.get on the union of meta_refs across every ready task and hand
-        # the resulting bytes back via `cache_prefetched_meta_bytes`. Tasks
-        # whose meta_refs aren't covered by the batched get (e.g. the get
-        # timed out) fall through to the per-ref ray.get inside
-        # `on_data_ready`. This collapses N×~1ms per-call ray.get overhead
-        # per scheduler iteration into one batched call.
+        # Prefetch metadata bytes for all ready DataOpTasks in one batched
+        # ray.get. For each task we drain `peek_pending_pair` (which pulls
+        # every (block_ref, meta_ref) pair currently surfaced by the
+        # streaming generator into the task's queue) and then collect
+        # `uncached_pending_meta_refs` — covering both the freshly-peeked
+        # pairs AND any pairs left queued from a previous iteration whose
+        # batched ray.get timed out. One ray.get fans out across every
+        # ready task; results are handed back via `cache_prefetched_meta_bytes`
+        # and consumed by `on_data_ready`. Collapses N×~1ms per-call ray.get
+        # overhead per scheduler iteration into one batched call.
         meta_refs_by_task: List[Tuple[DataOpTask, List[ray.ObjectRef]]] = []
         meta_refs_to_prefetch: List[ray.ObjectRef] = []
         for ready_tasks in ready_tasks_by_op.values():
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
-                    new_refs: List[ray.ObjectRef] = []
-                    while True:
-                        pair = task.peek_pending_pair()
-                        if pair is None:
-                            break
-                        new_refs.append(pair[1])
-                    if new_refs:
-                        meta_refs_by_task.append((task, new_refs))
-                        meta_refs_to_prefetch.extend(new_refs)
+                    while task.peek_pending_pair() is not None:
+                        pass
+                    refs = task.uncached_pending_meta_refs()
+                    if refs:
+                        meta_refs_by_task.append((task, refs))
+                        meta_refs_to_prefetch.extend(refs)
         if meta_refs_to_prefetch:
             try:
                 bytes_list = ray.get(
@@ -693,11 +690,22 @@ def process_completed_tasks(
                         {ref: prefetched_bytes[ref] for ref in refs}
                     )
             except ray.exceptions.GetTimeoutError:
-                # One or more refs weren't ready in time. Tasks whose meta_ref
-                # didn't get cached will fall back to the per-ref ray.get path
-                # inside `on_data_ready` (which has its own timeout-handling
-                # and retry-next-iteration semantics).
-                pass
+                # One or more refs weren't ready in time. Pairs stay queued
+                # and uncached; the next iteration's batched ray.get will
+                # try again. Surface the failure as a single coarse warning
+                # so users tailing the driver log can diagnose stuck
+                # metadata fetches without a per-ref noise floor.
+                logger.warning(
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for "
+                    f"metadata in batched ray.get "
+                    f"({len(meta_refs_to_prefetch)} refs from "
+                    f"{len(meta_refs_by_task)} operators). Possible causes "
+                    f"include a worker crash, node preemption, or an "
+                    f"overloaded worker or head node. Will retry next "
+                    f"iteration. If this repeats, check the Ray dashboard "
+                    f"and logs for worker crashes, node preemption, or "
+                    f"overload."
+                )
 
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)

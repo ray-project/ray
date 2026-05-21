@@ -1397,7 +1397,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.on_data_ready(None)
+            nbytes_read = data_op_task.fetch_and_drain(None)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1413,7 +1413,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.on_data_ready(None)
+            nbytes_read = data_op_task.fetch_and_drain(None)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(256 * MiB)
@@ -1438,7 +1438,7 @@ class TestDataOpTask:
         with pytest.raises(AssertionError, match="Block generation failed"):
             while not data_op_task.has_finished:
                 ray.wait([streaming_gen], fetch_local=False)
-                data_op_task.on_data_ready(None)
+                data_op_task.fetch_and_drain(None)
 
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
@@ -1453,7 +1453,7 @@ class TestDataOpTask:
         """`peek_pending_pair` surfaces the next (block_ref, meta_ref) pair
         without consuming metadata via `ray.get`. `cache_prefetched_meta_bytes`
         primes the task's cache so `on_data_ready` consumes the cached bytes
-        instead of issuing its own `ray.get`.
+        directly (no ray.get).
         """
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
 
@@ -1481,26 +1481,21 @@ class TestDataOpTask:
         meta_bytes = ray.get(meta_ref)
         data_op_task.cache_prefetched_meta_bytes({meta_ref: meta_bytes})
 
-        # Drive the task to completion. on_data_ready should consume the
-        # cached bytes rather than re-issuing a ray.get.
-        bytes_read = 0
-        while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
-
-        # The cached bytes should have been consumed.
+        # on_data_ready consumes the cached pair without re-issuing ray.get.
+        data_op_task.on_data_ready(None)
         assert meta_ref not in data_op_task._cached_meta_bytes
-        # And a RefBundle was emitted, confirming deserialization via the
-        # cached bytes succeeded.
         assert len(outputs) == 1
 
-    def test_prefetched_meta_bytes_fallback_when_missing(
-        self, ray_start_regular_shared
-    ):
-        """If a meta_ref isn't in the task's cache (e.g. the batched
-        ray.get timed out, or no caller pre-peeked at all), `on_data_ready`
-        must internally peek to populate the queue and fall back to a
-        per-ref `ray.get` for the metadata bytes.
+        # Drive the task to completion via fetch_and_drain (peek picks up
+        # the generator's StopIteration to fire the task-done callback).
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.fetch_and_drain(None)
+
+    def test_fetch_and_drain_when_cache_empty(self, ray_start_regular_shared):
+        """`fetch_and_drain` is the entry point for callers outside
+        `process_completed_tasks`: it peeks, batches one ray.get over any
+        uncached queued meta_refs, then drains via on_data_ready.
         """
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
 
@@ -1509,12 +1504,10 @@ class TestDataOpTask:
             0, streaming_gen, output_ready_callback=outputs.append
         )
 
-        # Don't pre-cache anything. on_data_ready will peek internally and
-        # fall back to per-ref ray.get for the metadata.
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += data_op_task.fetch_and_drain(None)
 
         assert len(outputs) == 1
 
@@ -1550,14 +1543,16 @@ class TestDataOpTask:
         bytes_list = ray.get(meta_refs)
         data_op_task.cache_prefetched_meta_bytes(dict(zip(meta_refs, bytes_list)))
 
-        # Drain the queued pairs via on_data_ready, which should not issue
-        # any further ray.get since every meta_ref is in the cache.
-        while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            data_op_task.on_data_ready(None)
-
+        # on_data_ready consumes all three cached pairs without ray.get.
+        data_op_task.on_data_ready(None)
         assert len(outputs) == 3
         assert data_op_task._cached_meta_bytes == {}
+
+        # Drive the rest to completion (fetch_and_drain calls peek so
+        # the generator's StopIteration is observed).
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.fetch_and_drain(None)
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
@@ -1601,7 +1596,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += data_op_task.fetch_and_drain(None)
 
         # Ensure that we read the expected amount of data. Since the streaming generator
         # yields a single 128 MiB block, we should read 128 MiB.
@@ -1631,7 +1626,7 @@ class TestDataOpTask:
         cluster.remove_node(worker_node)
 
         # The block shouldn't be available anymore, so we shouldn't read any data.
-        bytes_read = data_op_task.on_data_ready(None)
+        bytes_read = data_op_task.fetch_and_drain(None)
         assert bytes_read == 0
 
         # Re-add the worker node, and run the task to completion.
@@ -1639,7 +1634,7 @@ class TestDataOpTask:
         cluster.wait_for_nodes()
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += data_op_task.fetch_and_drain(None)
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1679,20 +1674,20 @@ class TestDataOpTask:
         # 1st backpressure period: 2.5s
         clock = 1.0
         mock_perf_counter.return_value = clock
-        assert data_op_task.on_data_ready(0) == 0
+        assert data_op_task.fetch_and_drain(0) == 0
 
         clock = 3.5
         mock_perf_counter.return_value = clock
 
         # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
         # so it reads exactly one block and stops)
-        data_op_task.on_data_ready(None)
+        data_op_task.fetch_and_drain(None)
         assert not data_op_task.has_finished
 
         # 2nd backpressure period: 1.5s
         clock = 5.0
         mock_perf_counter.return_value = clock
-        data_op_task.on_data_ready(0)
+        data_op_task.fetch_and_drain(0)
 
         clock = 6.5
         mock_perf_counter.return_value = clock
@@ -1700,7 +1695,7 @@ class TestDataOpTask:
         # Drain to completion
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            data_op_task.on_data_ready(None)
+            data_op_task.fetch_and_drain(None)
 
         # Verify stats were captured
         assert captured_stats["exc"] is None
