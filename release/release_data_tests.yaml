@@ -474,6 +474,8 @@
   python: "3.11"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py311-cpu
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
