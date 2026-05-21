@@ -367,6 +367,18 @@ def test_uv_run_parser():
     assert options.module == "my_module.submodule"
     assert command == ["--model", "Qwen/Qwen3-32B"]
 
+    options, command = _parse_args(
+        parser,
+        [
+            "-m",
+            "ray.util.client.server",
+            "--address=172.18.0.2:6379",
+            "--host=127.0.0.1",
+        ],
+    )
+    assert options.module == "ray.util.client.server"
+    assert command == ["--address=172.18.0.2:6379", "--host=127.0.0.1"]
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):

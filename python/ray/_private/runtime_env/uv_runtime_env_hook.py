@@ -241,15 +241,23 @@ def _parse_args(
     by keeping them in the command list instead of erroring and
     discarding them.
     """
-    parser.rargs = args
+    original_args = list(args)
+    parser.rargs = list(args)
     parser.largs = []
     options = parser.get_default_values()
     try:
         parser._process_args(parser.largs, parser.rargs, options)
     except optparse.BadOptionError as err:
-        # If we hit an argument that is not recognized, we put it
-        # back into the unconsumed arguments
-        parser.rargs = [err.opt_str] + parser.rargs
+        # Long options using `--option=value` are split by optparse before
+        # unknown options raise. Restore the original command suffix so callers
+        # can count the consumed `uv run` arguments accurately.
+        command_start = len(original_args) - len(parser.rargs)
+        if command_start < len(original_args) and original_args[
+            command_start
+        ].startswith(f"{err.opt_str}="):
+            parser.rargs = original_args[command_start:]
+        else:
+            parser.rargs = original_args[command_start - 1 :]
     return options, parser.rargs
 
 
