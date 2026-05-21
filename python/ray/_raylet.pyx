@@ -4127,22 +4127,18 @@ cdef class CoreWorker:
 
     def add_object_out_of_scope_callback(
             self, ObjectRef object_ref, user_callback: Callable):
-        # Store the Python callback in the global dict keyed by the object ID
-        # binary. The module-level _object_out_of_scope_trampoline C function
-        # will look it up when the object goes out of scope.
-        id_bytes = object_ref.binary()
-        _oos_callback_registry.setdefault(id_bytes, []).append(user_callback)
+        # NOTE: we need to manually increment the Python reference count to avoid the
+        # callback object being garbage collected before it's called by the core worker.
+        cpython.Py_INCREF(user_callback)
         registered = CCoreWorkerProcess.GetCoreWorker() \
             .AddObjectOutOfScopeOrFreedCallback(
                 object_ref.native(),
-                _object_out_of_scope_trampoline)
+                _object_out_of_scope_trampoline,
+                <void *>user_callback)
         if not registered:
             # The object is already out of scope; the trampoline will never fire.
-            # Clean up the entry we just added to avoid a leak.
-            callbacks = _oos_callback_registry.get(id_bytes, [])
-            callbacks.remove(user_callback)
-            if not callbacks:
-                _oos_callback_registry.pop(id_bytes, None)
+            # Undo the manual INCREF to avoid leaking the callback object.
+            cpython.Py_DECREF(user_callback)
 
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
@@ -4830,27 +4826,22 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
 
-# Global registry: maps ObjectRef binary bytes -> list of Python callables.
-# Populated by CoreWorker.add_object_out_of_scope_callback and consumed by
-# _object_out_of_scope_trampoline when Core fires the callback.
-_oos_callback_registry: dict = {}
-
-
-cdef void _object_out_of_scope_trampoline(const CObjectID &object_id) nogil:
-    # Module-level C trampoline with the right signature for
-    # AddObjectOutOfScopeOrFreedCallback. C++ implicitly converts a function
-    # pointer of type `void(const ObjectID &)` to std::function.
-    # We acquire the GIL here because we're about to touch Python objects.
+cdef void _object_out_of_scope_trampoline(
+        const CObjectID &object_id, void *user_callback_ptr) nogil:
+    # Module-level C trampoline passed to AddObjectOutOfScopeOrFreedCallback.
+    # C++ calls this when the object goes out of scope, forwarding the void*
+    # user_data we registered.
     with gil:
-        id_bytes = object_id.Binary()
-        callbacks = _oos_callback_registry.pop(id_bytes, [])
-        object_ref = ObjectRef(id_bytes)
-        for callback in callbacks:
-            try:
-                callback(object_ref)
-            except Exception:
-                # Only log: this is called from C++ and Cython ignores exceptions.
-                logger.exception("failed to run object_out_of_scope callback")
+        try:
+            user_callback = <object>user_callback_ptr
+            user_callback(ObjectRef(object_id.Binary()))
+        except Exception:
+            # Only log: this is called from C++ and Cython ignores exceptions.
+            logger.exception("failed to run object_out_of_scope callback")
+        finally:
+            # NOTE: we manually increment the Python reference count of the callback
+            # when registering it, so we must decrement here to avoid a leak.
+            cpython.Py_DECREF(<object>user_callback_ptr)
 
 
 cdef void async_callback(shared_ptr[CRayObject] obj,

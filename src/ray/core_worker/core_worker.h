@@ -404,6 +404,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     return reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, callback);
   }
 
+  /// Overload accepting a plain function pointer and user_data, following the
+  /// same convention as GetAsync. Wraps them into a std::function and forwards
+  /// to the reference counter.
+  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                          void (*callback)(const ObjectID &, void *),
+                                          void *user_data) {
+    return reference_counter_->AddObjectOutOfScopeOrFreedCallback(
+        object_id,
+        [callback, user_data](const ObjectID &id) { callback(id, user_data); });
+  }
+
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
