@@ -46,6 +46,8 @@ def main(args):
     benchmark = Benchmark()
     consume_fn = get_consume_fn(args)
 
+    ray.data.DataContext.use_datasource_v2 = False
+
     def benchmark_fn():
         path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
