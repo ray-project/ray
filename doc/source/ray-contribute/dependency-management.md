@@ -247,7 +247,7 @@ pip often hides it behind a generic error.
 
 pip's backtracking resolver has a hardcoded round limit. When two requirements
 can never be satisfied together, pip backtracks until it hits that limit and
-reports `resolution-too-deep`. This usually the symptom of some other problem, not the cause. 
+reports `resolution-too-deep`. This is usually the symptom of some other problem, not the cause.
 
 Re-run the same resolution with uv, which has no such limit and prints the
 actual conflict. Below is an example of how UV can uncover dependency problems.
