@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional,
 
 import ray
 from ray._common.retry import call_with_retry
+from ray.data._internal.datasource.parquet_datasource import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
@@ -493,6 +496,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             _rewrite_iceberg_file.options(
                 memory=int(
                     task.file.file_size_in_bytes
+                    * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
                 ),
                 num_cpus=1
             ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
