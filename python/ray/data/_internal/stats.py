@@ -230,7 +230,7 @@ class Timer:
         return self._total / self._total_count if self._total_count else float("inf")
 
     def approx_percentile(self, p: float) -> float:
-        """Approximate ``p``-th percentile in seconds (0 <= p <= 1).
+        """Approximate ``p``-th percentile in seconds.
 
         Approximation, not an exact percentile: we keep a fixed
         log-spaced histogram instead of the raw samples (O(1) memory
@@ -240,14 +240,27 @@ class Timer:
         1ms-5s range — and tail samples above the largest bound collapse
         into a single overflow bucket.
 
-        Returns the upper bound of the bin the p-th sample falls into,
-        clamped to :meth:`max` so the result is never larger than any
-        observed sample. Samples in the overflow bin are reported as
-        :meth:`max` directly.
+        Args:
+            p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
+                for p90 — not ``90``). Values outside this range raise
+                ``ValueError``; without the check, ``p=90`` would
+                silently return ``max()`` and look like a tail spike.
 
-        Returns 0 if histogram tracking is disabled or no samples have
-        been added.
+        Returns:
+            The upper bound of the bin the p-th sample falls into,
+            clamped to :meth:`max` so the result is never larger than
+            any observed sample. Samples in the overflow bin are
+            reported as :meth:`max` directly. Returns 0 if histogram
+            tracking is disabled or no samples have been added.
+
+        Raises:
+            ValueError: If ``p`` is outside ``[0.0, 1.0]``.
         """
+        if not 0.0 <= p <= 1.0:
+            raise ValueError(
+                f"p must be in [0.0, 1.0], got {p!r}. "
+                "Pass a fraction like 0.9, not a percent like 90."
+            )
         if self._histogram is None or self._total_count == 0:
             return 0
         target = p * self._total_count
@@ -1237,7 +1250,7 @@ class DatasetStats:
         streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
         streaming_exec_schedule_approx_p50_s = schedule_timer.approx_percentile(0.5)
-        streaming_exec_schedule_approx_p75_s = schedule_timer.approx_percentile(0.75)
+        streaming_exec_schedule_approx_p70_s = schedule_timer.approx_percentile(0.7)
         streaming_exec_schedule_approx_p90_s = schedule_timer.approx_percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
@@ -1255,7 +1268,7 @@ class DatasetStats:
             streaming_exec_schedule_avg_s,
             streaming_exec_schedule_max_s,
             streaming_exec_schedule_approx_p50_s,
-            streaming_exec_schedule_approx_p75_s,
+            streaming_exec_schedule_approx_p70_s,
             streaming_exec_schedule_approx_p90_s,
         )
 
@@ -1296,7 +1309,7 @@ class DatasetStatsSummary:
     streaming_exec_schedule_max_s: float
     # Histogram-derived approximations — see ``Timer.approx_percentile``.
     streaming_exec_schedule_approx_p50_s: float
-    streaming_exec_schedule_approx_p75_s: float
+    streaming_exec_schedule_approx_p70_s: float
     streaming_exec_schedule_approx_p90_s: float
 
     def to_string(

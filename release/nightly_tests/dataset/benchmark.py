@@ -106,8 +106,8 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
         "approx_p50_scheduling_loop_duration_s": (
             summary.streaming_exec_schedule_approx_p50_s
         ),
-        "approx_p75_scheduling_loop_duration_s": (
-            summary.streaming_exec_schedule_approx_p75_s
+        "approx_p70_scheduling_loop_duration_s": (
+            summary.streaming_exec_schedule_approx_p70_s
         ),
         "approx_p90_scheduling_loop_duration_s": (
             summary.streaming_exec_schedule_approx_p90_s

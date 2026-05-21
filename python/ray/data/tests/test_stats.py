@@ -2334,7 +2334,7 @@ class TestTimerHistogram:
             # 100 samples, all 5ms — every percentile lands on the 5ms bin
             # (bisect_left returns the index of the 5ms bound).
             (0.5, 0.005),
-            (0.75, 0.005),
+            (0.7, 0.005),
             (0.9, 0.005),
             (0.99, 0.005),
         ],
@@ -2345,12 +2345,12 @@ class TestTimerHistogram:
             t.add(0.005)
         assert t.approx_percentile(p) == pytest.approx(expected)
 
-    def test_mixed_distribution_p50_p75_p90(self):
+    def test_mixed_distribution_p50_p70_p90(self):
         # Three-tier distribution exercising each reported percentile in
         # a different bin: 50 samples at 5ms, 25 at 50ms, 25 at 500ms.
         # Cumulative counts: 50 @ 5ms, 75 @ 50ms, 100 @ 500ms.
         #   p50 → target 50 → 5ms bin
-        #   p75 → target 75 → 50ms bin (sits exactly on the boundary)
+        #   p70 → target 70 → 50ms bin (cum 75 ≥ 70 lands here)
         #   p90 → target 90 → 500ms bin
         t = Timer(track_distribution=True)
         for _ in range(50):
@@ -2360,13 +2360,13 @@ class TestTimerHistogram:
         for _ in range(25):
             t.add(0.5)
         assert t.approx_percentile(0.5) == pytest.approx(0.005)
-        assert t.approx_percentile(0.75) == pytest.approx(0.05)
+        assert t.approx_percentile(0.7) == pytest.approx(0.05)
         assert t.approx_percentile(0.9) == pytest.approx(0.5)
 
     def test_bimodal_distribution(self):
         # 80 samples at 5ms, 20 samples at 200ms — the kind of bimodal
         # shape that motivates a percentile metric in the first place.
-        # p50 and p75 sit in the 5ms bin (target ≤ 80); p90 and p99 land
+        # p50 and p70 sit in the 5ms bin (target ≤ 80); p90 and p99 land
         # in the 200ms bin (target > 80).
         t = Timer(track_distribution=True)
         for _ in range(80):
@@ -2374,7 +2374,7 @@ class TestTimerHistogram:
         for _ in range(20):
             t.add(0.2)
         assert t.approx_percentile(0.5) == pytest.approx(0.005)
-        assert t.approx_percentile(0.75) == pytest.approx(0.005)
+        assert t.approx_percentile(0.7) == pytest.approx(0.005)
         assert t.approx_percentile(0.9) == pytest.approx(0.2)
         assert t.approx_percentile(0.99) == pytest.approx(0.2)
 
@@ -2397,6 +2397,22 @@ class TestTimerHistogram:
         t = Timer(track_distribution=True)
         t.add(0.010)  # exactly the 10ms bound
         assert t.approx_percentile(0.5) == pytest.approx(0.010)
+
+    @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
+    def test_rejects_out_of_range_p(self, bad_p):
+        # Catch the common ``approx_percentile(90)`` typo (instead of 0.9)
+        # — silent clamping would make this look like a tail spike.
+        t = Timer(track_distribution=True)
+        t.add(0.005)
+        with pytest.raises(ValueError, match="p must be in"):
+            t.approx_percentile(bad_p)
+
+    @pytest.mark.parametrize("ok_p", [0.0, 1.0])
+    def test_accepts_boundary_p(self, ok_p):
+        t = Timer(track_distribution=True)
+        t.add(0.005)
+        # Should not raise.
+        t.approx_percentile(ok_p)
 
 
 def test_streaming_exec_schedule_approx_percentiles_populated(
