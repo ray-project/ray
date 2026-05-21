@@ -5,7 +5,13 @@ from typing import Dict
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import AbstractUDFMap, Read, Write
+from ray.data._internal.logical.operators import (
+    AbstractUDFMap,
+    Limit,
+    Read,
+    ReadFiles,
+    Write,
+)
 
 # The dictionary for the operator name and count.
 _recorded_operators = dict()
@@ -33,9 +39,18 @@ _op_name_white_list = [
     "ReadDatabricksUC",
     "ReadLance",
     "ReadHuggingFace",
+    "ReadAudio",
+    "ReadVideo",
+    "ReadMCAP",
+    "ReadIceberg",
+    "ReadHudi",
+    "ReadKafka",
+    "ReadClickHouse",
+    "ReadDeltaSharing",
     "ReadCustom",
     # From
     "FromArrow",
+    "FromBlocks",
     "FromItems",
     "FromNumpy",
     "FromPandas",
@@ -49,12 +64,20 @@ _op_name_white_list = [
     "WriteMongo",
     "WriteWebDataset",
     "WriteSQL",
+    "WriteIceberg",
+    "WriteImage",
+    "WriteClickHouse",
+    "WriteKafka",
+    "WriteLance",
+    "WriteTurbopuffer",
     "WriteCustom",
     # Map
     "Map",
     "MapBatches",
     "Filter",
     "FlatMap",
+    "Project",
+    "StreamingRepartition",
     # All-to-all
     "RandomizeBlockOrder",
     "RandomShuffle",
@@ -64,6 +87,13 @@ _op_name_white_list = [
     # N-ary
     "Zip",
     "Union",
+    "Join",
+    # Other
+    "Count",
+    "Limit",
+    "ListFiles",
+    "ReadFiles",
+    "StreamingSplit",
 ]
 
 
@@ -92,6 +122,14 @@ def _anonymize_op_name(op: LogicalOperator) -> str:
     if isinstance(op, Write):
         name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
         return name if name in _op_name_white_list else "WriteCustom"
+    if isinstance(op, Limit):
+        # Limit's runtime name embeds the limit value (e.g. "limit=10"); collapse
+        # to the class name for telemetry.
+        return "Limit" if "Limit" in _op_name_white_list else "Unknown"
+    if isinstance(op, ReadFiles):
+        # ReadFiles' runtime name embeds the datasource (e.g. "ReadFilesParquet");
+        # collapse to a single bucket for telemetry.
+        return "ReadFiles" if "ReadFiles" in _op_name_white_list else "Unknown"
     name = op.name or ""
     if isinstance(op, AbstractUDFMap):
         # Remove the function name from the map operator name.

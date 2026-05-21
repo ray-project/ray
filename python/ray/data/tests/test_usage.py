@@ -54,6 +54,38 @@ def test_unknown_operators_anonymized(reset_collector):
     assert collector._anonymize_op_name(FakeOp()) == "Unknown"
 
 
+def test_limit_anonymized_to_class_name(reset_collector):
+    """Limit's runtime name embeds the row count (e.g. ``limit=10``); telemetry
+    must collapse it back to ``Limit`` so the value isn't recorded."""
+    ds = ray.data.range(100).limit(10)
+    collector.record_workload("exec-limit", ds._logical_plan)
+    entry = collector._executions["exec-limit"]
+    plan_ops = [op.name for op in entry.workload.ops]
+    assert "Limit" in plan_ops
+    assert not any(op.startswith("limit=") for op in plan_ops)
+
+
+def test_read_files_anonymized_to_class_name(reset_collector):
+    """ReadFiles' runtime name embeds the datasource (e.g. ``ReadFilesParquet``);
+    telemetry collapses it to a single ``ReadFiles`` bucket so the datasource
+    name (which may be user-defined) isn't recorded."""
+    from ray.data._internal.logical.operators import ReadFiles
+
+    class _StubReadFiles(ReadFiles):
+        def __init__(self):
+            pass
+
+        @property
+        def name(self):
+            return "ReadFilesMyCompanyDatasource"
+
+        @property
+        def input_dependencies(self):
+            return []
+
+    assert collector._anonymize_op_name(_StubReadFiles()) == "ReadFiles"
+
+
 def test_does_not_record_when_disabled_via_env_var(
     reset_collector, mock_record, monkeypatch
 ):
