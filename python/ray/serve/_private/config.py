@@ -42,6 +42,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    _resolve_accelerator_config,
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
@@ -328,7 +329,9 @@ class DeploymentConfig(BaseModel):
     def to_proto(self):
         data = self.model_dump()
         if data.get("accelerator_config") is not None:
-            data["accelerator_config"] = cloudpickle.dumps(self.accelerator_config)
+            data[
+                "accelerator_config"
+            ] = self.accelerator_config.model_dump_json().encode("utf-8")
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -438,7 +441,8 @@ class DeploymentConfig(BaseModel):
         needs_pickle = _needs_pickle(deployment_language, is_cross_language)
         if "accelerator_config" in data:
             if data["accelerator_config"] != b"":
-                data["accelerator_config"] = cloudpickle.loads(proto.accelerator_config)
+                config_dict = json.loads(proto.accelerator_config.decode("utf-8"))
+                data["accelerator_config"] = _resolve_accelerator_config(config_dict)
             else:
                 data["accelerator_config"] = None
         if "user_config" in data:
