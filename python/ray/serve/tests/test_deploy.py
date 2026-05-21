@@ -324,6 +324,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         async def __call__(self, request):
             return await self.handler()
 
+    V1 = V1.options(_internal=True, version="1")
+
     def make_nonblocking_calls(expected, expect_blocking=False):
         # Returns dict[val, set(pid)].
         blocking = []
@@ -347,10 +349,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    serve.run(
-        V1.options(_internal=True, version="1", user_config={"test": "1"}).bind(),
-        name="app",
-    )
+    serve.run(V1.options(user_config={"test": "1"}).bind(), name="app")
     wait_for_condition(check_running, app_name="app", timeout=15)
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
@@ -358,9 +357,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
     serve._run(
-        V1.options(_internal=True, version="1", user_config={"test": "2"}).bind(),
-        name="app",
-        _blocking=False,
+        V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False
     )
     # The app is not supposed to be in RUNNING state here as one of the replicas among the two
     # is updating with user_config. This makes the app to be in DEPLOYING state so we don't check
