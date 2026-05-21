@@ -293,6 +293,7 @@ class ZarrV2Datasource(Datasource):
         self.allow_full_metadata_scan = allow_full_metadata_scan
         self.paths = [str(path)]
         self._filesystem = _to_fsspec(filesystem)
+        self._fs, self._store_path = _resolve_store(self.paths[0], self._filesystem)
 
         self._selected_arrays = self._load_metadata(array_paths)
         if not self._selected_arrays:
@@ -316,8 +317,7 @@ class ZarrV2Datasource(Datasource):
         # Lazy zarr import: only needed once we read.
         import zarr
 
-        fs, store_path = _resolve_store(self.paths[0], self._filesystem)
-        self.root = zarr.open(fs.get_mapper(store_path), mode="r")
+        self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
     def _validate_axis0_alignment(self) -> int:
         """Ensure all selected arrays agree on ``shape[0]``; return that length."""
@@ -358,7 +358,7 @@ class ZarrV2Datasource(Datasource):
         any requested paths that aren't present in the store raise a
         ``ValueError`` listing what is available.
         """
-        fs, store_path = _resolve_store(self.paths[0], self._filesystem)
+        fs, store_path = self._fs, self._store_path
 
         z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
         if fs.exists(z_meta_path):
