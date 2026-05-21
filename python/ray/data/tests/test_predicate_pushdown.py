@@ -5,7 +5,6 @@ from typing import Any, List
 import lance
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version, parse as version_parse
@@ -22,8 +21,9 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
+from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.expressions import col
+from ray.data.expressions import col, lit
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
@@ -129,12 +129,12 @@ def test_filter_with_expressions(parquet_ds):
 
 def test_filter_pushdown_source_and_op(ray_start_regular_shared):
     """Test filtering when expressions are provided both in source and operator."""
-    # Test with PyArrow compute expressions
-    source_expr = pc.greater(pc.field("sepal.length"), pc.scalar(5.0))
     filter_expr = "sepal.width > 3.0"
 
-    ds = ray.data.read_parquet("example://iris.parquet", filter=source_expr).filter(
-        expr=filter_expr
+    ds = (
+        ray.data.read_parquet("example://iris.parquet")
+        .filter(expr=col("sepal.length") > lit(5.0))
+        .filter(expr=filter_expr)
     )
     result = ds.take_all()
     assert all(r["sepal.length"] > 5.0 and r["sepal.width"] > 3.0 for r in result)
@@ -167,7 +167,16 @@ def test_chained_filter_with_expressions(parquet_ds):
     [
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        # NOTE: an ``s3_fs`` parametrization was previously listed here, but
+        # it didn't actually exercise S3 — the test uses ``_unwrap_protocol``
+        # to derive a local FS path, which on the moto-mocked ``s3_path``
+        # fixture returns a *relative* path (the fixture strips the leading
+        # ``/`` so the first segment becomes a moto bucket name). The
+        # resulting ``lance.write_dataset(<relative-path>)`` wrote into the
+        # current working directory, polluting the repo on every run.
+        # If S3 lance pushdown ever needs end-to-end coverage, add it
+        # separately and pass an actual ``s3://`` URI plus storage options
+        # through to ``lance.write_dataset``/``ray.data.read_lance``.
     ],
 )
 # Same pylance version gate as tests/datasource/test_lance.py
@@ -310,19 +319,23 @@ def test_filter_mixed_expression_not_readfiles(ray_start_regular_shared):
         ),
         (
             # rename("sepal.length" -> a).filter(a).rename(a -> b)
-            lambda ds: ds.rename_columns({"sepal.length": "a"})
-            .filter(expr=col("a") > 2.0)
-            .rename_columns({"a": "b"}),
+            lambda ds: (
+                ds.rename_columns({"sepal.length": "a"})
+                .filter(expr=col("a") > 2.0)
+                .rename_columns({"a": "b"})
+            ),
             {"b": "sepal.length"},
             col("sepal.length") > 2.0,
             "rename_filter_rename",
         ),
         (
             # rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b)
-            lambda ds: ds.rename_columns({"sepal.length": "a"})
-            .filter(expr=col("a") > 2.0)
-            .rename_columns({"a": "b"})
-            .filter(expr=col("b") < 5.0),
+            lambda ds: (
+                ds.rename_columns({"sepal.length": "a"})
+                .filter(expr=col("a") > 2.0)
+                .rename_columns({"a": "b"})
+                .filter(expr=col("b") < 5.0)
+            ),
             {"b": "sepal.length"},
             (col("sepal.length") > 2.0) & (col("sepal.length") < 5.0),
             "rename_filter_rename_filter",
@@ -330,11 +343,13 @@ def test_filter_mixed_expression_not_readfiles(ray_start_regular_shared):
         (
             # rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b).rename("sepal.width" -> a)
             # Here column a is referred multiple times in rename
-            lambda ds: ds.rename_columns({"sepal.length": "a"})
-            .filter(expr=col("a") > 2.0)
-            .rename_columns({"a": "b"})
-            .filter(expr=col("b") < 5.0)
-            .rename_columns({"sepal.width": "a"}),
+            lambda ds: (
+                ds.rename_columns({"sepal.length": "a"})
+                .filter(expr=col("a") > 2.0)
+                .rename_columns({"a": "b"})
+                .filter(expr=col("b") < 5.0)
+                .rename_columns({"sepal.width": "a"})
+            ),
             {"b": "sepal.length", "a": "sepal.width"},
             (col("sepal.length") > 2.0) & (col("sepal.length") < 5.0),
             "rename_filter_rename_filter_rename",
@@ -354,8 +369,9 @@ def test_pushdown_with_rename_and_filter(
     ds = operations(ray.data.read_parquet(path))
     result = ds.take_all()
 
-    # Check that plan is just the read (filters and renames pushed down/fused)
-    _check_plan_with_flexible_read(ds, "", result)
+    # Filters are pushed into the scan; renames stay as a ``Project`` of
+    # ``AliasExpr``s above the pruned scan.
+    _check_plan_with_flexible_read(ds, "Project[Project]", result)
 
     ds1 = ray.data.read_parquet(path).filter(expr=expected_filter_expr)
     # Convert to pandas to ensure both datasets are fully executed
@@ -590,6 +606,71 @@ class TestPassthroughWithSubstitutionBehavior:
             optimized_plan, Filter
         ), "All filters should be fused, rebound, and pushed into Read"
 
+    def test_rename_with_partition_residual_filter(
+        self, ray_start_regular_shared, tmp_path
+    ):
+        """Residual Filter ends up below a rename Project, in original names.
+
+        When a predicate mixes partition and data columns under OR, the
+        unsplittable part is wrapped in a Filter above ReadFiles by
+        ``ReadFiles.apply_predicate``. The read stage never renames
+        columns (renaming is always carried by a ``Project`` above the
+        read), so the residual Filter — which sits between the rename
+        ``Project`` and ``ReadFiles`` after predicate pushdown — must
+        reference the original on-disk column names that the scanner
+        produces, not the renamed ones the user wrote.
+        """
+        table = pa.table(
+            {
+                "partition_col": [1, 1, 2, 2, 3, 3],
+                "data1": [10, 20, 30, 40, 50, 60],
+                "data2": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            }
+        )
+        pq.write_to_dataset(
+            table, root_path=str(tmp_path), partition_cols=["partition_col"]
+        )
+
+        ds = (
+            ray.data.read_parquet(
+                str(tmp_path),
+                partitioning=Partitioning("hive", field_types={"partition_col": int}),
+            )
+            .rename_columns({"data1": "D1", "data2": "D2"})
+            .filter(
+                expr=((col("D1") > 25) | (col("partition_col") == 1))
+                & (col("D2") < 5.5)
+            )
+        )
+
+        # Equivalent plan without the rename, to validate row-level correctness.
+        expected = ray.data.read_parquet(
+            str(tmp_path),
+            partitioning=Partitioning("hive", field_types={"partition_col": int}),
+        ).filter(
+            expr=((col("data1") > 25) | (col("partition_col") == 1))
+            & (col("data2") < 5.5)
+        )
+
+        # The dataset must execute without binding errors and produce the
+        # expected rows (with renamed column names).
+        result = ds.to_pandas().rename(columns={"D1": "data1", "D2": "data2"})
+        assert rows_same(result, expected.to_pandas())
+
+        # A residual Filter should remain below the rename ``Project``,
+        # and its predicate must reference the original on-disk column
+        # names (``data1``), not the renamed ones the user wrote.
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        residual_filters = get_operators_of_type(optimized_plan, Filter)
+        assert (
+            len(residual_filters) == 1
+        ), f"Expected one residual Filter, got plan: {optimized_plan.dag.dag_str}"
+        residual_expr_str = str(residual_filters[0].predicate_expr)
+        assert "data1" in residual_expr_str and "D1" not in residual_expr_str, (
+            f"Residual Filter predicate should reference original column 'data1', "
+            f"got: {residual_expr_str}"
+        )
+
 
 class TestProjectionWithFilterEdgeCases:
     """Tests for edge cases with select_columns and with_column followed by filters.
@@ -752,12 +833,21 @@ class TestProjectionWithFilterEdgeCases:
         has_filter = plan_has_operator(optimized_plan, Filter)
         has_project = plan_has_operator(optimized_plan, Project)
 
-        # For file-based reads that support predicate pushdown (e.g., parquet),
-        # the filter should be completely pushed into the read operator.
-        # We detect this by checking if the filter is gone after optimization.
+        # Three valid post-optimization shapes:
+        #   1. ``has_filter=False, has_project=False`` — both pushed into a
+        #      legacy Read (rare; happens when neither rename nor filter
+        #      survives optimization).
+        #   2. ``has_filter=False, has_project=True`` - file-based reads
+        #      can push the filter into the scan and leave the rename
+        #      ``Project`` above it.
+        #   3. ``has_filter=True, has_project=True`` — source doesn't
+        #      support predicate pushdown (e.g. in-memory); filter at
+        #      least pushed below the rename ``Project``.
         if not has_filter and not has_project:
             # Filter was pushed into Read - this is the optimal case
-            pass  # Test passes
+            pass
+        elif not has_filter and has_project:
+            pass
         elif has_filter and has_project:
             # For in-memory datasets, filter should at least push through projection
             assert plan_operator_comes_before(

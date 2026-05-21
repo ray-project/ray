@@ -132,8 +132,6 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
-
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -436,6 +434,7 @@ def _read_datasource_v2(
     concurrency: Optional[int] = None,
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    block_udf: Optional[Callable[[Any], Any]] = None,
 ) -> Dataset:
     """Internal entry point for ``DataSourceV2`` reads.
 
@@ -497,6 +496,11 @@ def _read_datasource_v2(
             "configured `partition_filter` or `file_extensions` filters."
         )
     schema = datasource.infer_schema(sample)
+    # NOTE: ``block_udf``'s schema effect (e.g. a
+    # ``tensor_column_schema``-derived cast) is probed lazily in
+    # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
+    # on the scanner so ``FileReader`` hands pyarrow the raw on-disk
+    # types; the UDF runs post-read to produce the transformed types.
     # Resolve any path-discovered partitioning field names from the sample
     # and pass the result through to the scanner. Keeping the discovery
     # here (rather than mutating ``datasource._partitioning`` inside
@@ -527,11 +531,15 @@ def _read_datasource_v2(
         if ctx.target_max_block_size is not None
         else sys.maxsize
     )
+    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
+    # (``-1`` when unset). Honoring it here per-read avoids mutating the
+    # process-global ``DataContext.read_op_min_num_blocks``.
+    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
     partitioner = RoundRobinPartitioner(
         in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
-        num_buckets=ctx.read_op_min_num_blocks,
+        num_buckets=num_buckets,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -559,16 +567,17 @@ def _read_datasource_v2(
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
 
     read_op = ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
+        block_udf=block_udf,
+        input_dependencies=[list_files_op],
     )
 
-    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    stats = DatasetStats(metadata={"ReadFiles": []}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(read_op, context)
 
@@ -1187,14 +1196,17 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col, lit
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            ).select_columns(["sepal.length", "variety"])
+            # Create a Dataset by reading a Parquet file, with column selection and
+            # row filtering pushed down to the file scan.
+            ds = (
+                ray.data.read_parquet(
+                    "s3://anonymous@ray-example-data/iris.parquet",
+                )
+                .filter(expr=col("sepal.length") > lit(5.0))
+                .select_columns(["sepal.length", "variety"])
+            )
 
             ds.show(2)
 
@@ -1219,7 +1231,12 @@ def read_parquet(
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
-            read during the file scan.
+            read during the file scan. Deprecated — use
+            :meth:`~ray.data.Dataset.select_columns` on the returned dataset
+            instead. To downselect when ``include_paths`` and/or
+            ``include_row_hash`` are ``True``, list the synthetic ``'path'``
+            / ``'row_hash'`` columns explicitly in your
+            ``select_columns([...])`` call to retain them.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -1242,13 +1259,19 @@ def read_parquet(
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
-            stored in the ``'path'`` column.
+            stored in the ``'path'`` column. To downselect to fewer columns,
+            use :meth:`~ray.data.Dataset.select_columns` on the returned
+            dataset and include ``'path'`` explicitly in the list to retain
+            it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
             The hash is a uint64 computed from the source file path and the row's
             output position, making it reproducible across repeated reads of the
             same data with the same pipeline configuration. Stored in the
             ``'row_hash'`` column. If a column named ``'row_hash'`` already
-            exists in the file, it will be overwritten.
+            exists in the file, it will be overwritten. To downselect to fewer
+            columns, use :meth:`~ray.data.Dataset.select_columns` on the
+            returned dataset and include ``'row_hash'`` explicitly in the list
+            to retain it.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1289,28 +1312,69 @@ def read_parquet(
 
     ctx = DataContext.get_current()
     if ctx.use_datasource_v2:
-        if _block_udf is not None:
-            raise NotImplementedError(
-                "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-            )
-        if tensor_column_schema is not None:
-            raise NotImplementedError(
-                "`tensor_column_schema` is not yet supported on the DataSourceV2 path."
-            )
+        # ``tensor_column_schema`` is folded into ``_block_udf`` by
+        # ``_resolve_parquet_args`` above; passing that transform through
+        # ``ReadFiles.block_udf`` covers both features.
+        parquet_format_kwargs: dict = {}
         if dataset_kwargs:
-            raise NotImplementedError(
-                "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
+            # V1 spread ``dataset_kwargs`` into ``pq.ParquetDataset(...)``;
+            # V2 reads via ``pds.dataset`` per worker, so route the same
+            # options through ``pds.ParquetFileFormat`` in
+            # ``ParquetFileReader``. ``partitioning`` is set by Ray. Row
+            # predicates belong in Ray (``Dataset.filter``): PyArrow's
+            # ``pq.ParquetDataset`` uses ``filters``; ``pds.Scanner`` uses
+            # ``filter`` — neither is accepted via ``dataset_kwargs``.
+            warnings.warn(
+                "`dataset_kwargs` on `read_parquet` is deprecated. Pass "
+                "PyArrow Parquet options as top-level keyword arguments "
+                "to `read_parquet` instead.",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            parquet_format_kwargs = dict(dataset_kwargs)
+            if "partitioning" in parquet_format_kwargs:
+                raise ValueError(
+                    "The 'partitioning' parameter isn't supported in "
+                    "'dataset_kwargs'. Use the top-level 'partitioning' "
+                    "parameter instead."
+                )
+            if "filters" in parquet_format_kwargs or "filter" in parquet_format_kwargs:
+                raise ValueError(
+                    "Row filtering via 'filters' (pyarrow.parquet.ParquetDataset) "
+                    "or 'filter' (pyarrow.dataset.Scanner) isn't supported in "
+                    "'dataset_kwargs'. Use `.filter(expr=...)` on the returned "
+                    "dataset instead."
+                )
+            # ``pq.ParquetDataset(read_dictionary=[...])`` maps to
+            # ``pds.ParquetFileFormat(dictionary_columns=[...])``.
+            if "read_dictionary" in parquet_format_kwargs:
+                parquet_format_kwargs["dictionary_columns"] = parquet_format_kwargs.pop(
+                    "read_dictionary"
+                )
+        select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
-            # TODO(datasource-v2): remove `columns=` from `read_parquet` once
-            # the projection-pushdown rule dispatches to `ReadFiles`. Callers
-            # should use `ray.data.read_parquet(path).select_columns([...])`
-            # — semantically equivalent on V1, and on V2 the pushdown rule
-            # will fold the projection into the scanner once it lands.
-            raise NotImplementedError(
-                "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
-                "path. Use `ray.data.read_parquet(path).select_columns([...])` "
-                "instead."
+            # V1 ``columns=[...]`` implicitly retained the synthetic
+            # ``"path"`` / ``"row_hash"`` columns when ``include_paths``
+            # / ``include_row_hash`` were set (see
+            # ``ParquetDatasource.get_current_projection``).
+            # ``select_columns([...])`` is literal, so preserve V1's
+            # behavior by appending those columns when applying the
+            # projection on the caller's behalf.
+            select_columns_after_read = list(columns)
+            if include_paths and "path" not in select_columns_after_read:
+                select_columns_after_read.append("path")
+            if include_row_hash and "row_hash" not in select_columns_after_read:
+                select_columns_after_read.append("row_hash")
+            warnings.warn(
+                "`columns=` on `read_parquet` is deprecated. Use "
+                "`ray.data.read_parquet(path).select_columns([...])` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if "filter" in arrow_parquet_args:
+            raise ValueError(
+                "`filter=` on `read_parquet` is not supported. "
+                "Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
 
         from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
@@ -1323,11 +1387,13 @@ def read_parquet(
             partitioning=partitioning,
             file_extensions=file_extensions,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
+            parquet_format_kwargs=parquet_format_kwargs,
         )
-        return _read_datasource_v2(
+        ds = _read_datasource_v2(
             datasource_v2,
             parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
             num_cpus=num_cpus,
@@ -1336,7 +1402,11 @@ def read_parquet(
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
             partition_filter=partition_filter,
+            block_udf=_block_udf,
         )
+        if select_columns_after_read is not None:
+            ds = ds.select_columns(select_columns_after_read)
+        return ds
 
     datasource = ParquetDatasource(
         paths,
@@ -2211,20 +2281,10 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
-
-    .. tip::
-        Using the ``tfx-bsl`` library is more performant when reading large
-        datasets (for example, in production use cases). To use this
-        implementation, you must first install ``tfx-bsl``:
-
-        1. `pip install tfx_bsl --no-dependencies`
-        2. Pass tfx_read_options to read_tfrecords, for example:
-           `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -2292,33 +2352,12 @@ def read_tfrecords(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        tfx_read_options: Specifies read options when reading TFRecord files with TFX.
-            When no options are provided, the default version without tfx-bsl will
-            be used to read the tfrecords.
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
-    import platform
-
-    tfx_read = False
-
-    if tfx_read_options and platform.processor() != "arm":
-        try:
-            import tfx_bsl  # noqa: F401
-
-            tfx_read = True
-        except ModuleNotFoundError:
-            # override the tfx_read_options given that tfx-bsl is not installed
-            tfx_read_options = None
-            logger.warning(
-                "Please install tfx-bsl package with"
-                " `pip install tfx_bsl --no-dependencies`."
-                " This can help speed up the reading of large TFRecord files."
-            )
-
     datasource = TFRecordDatasource(
         paths,
         tf_schema=tf_schema,
@@ -2330,9 +2369,8 @@ def read_tfrecords(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        tfx_read_options=tfx_read_options,
     )
-    ds = read_datasource(
+    return read_datasource(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
@@ -2342,20 +2380,6 @@ def read_tfrecords(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-
-    if (
-        tfx_read_options
-        and tfx_read_options.auto_infer_schema
-        and tfx_read
-        and not tf_schema
-    ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
-            _infer_schema_and_transform,
-        )
-
-        return _infer_schema_and_transform(ds)
-
-    return ds
 
 
 @PublicAPI(stability="alpha")

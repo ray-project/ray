@@ -33,7 +33,7 @@ _LOG_ONCE_DEFAULT_EXCLUDE_PREFIX = "runtime_env_default_exclude:"
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     include_gitignore: bool,
-    scratch_dir: Optional[str] = os.getcwd(),
+    scratch_dir: Optional[str] = None,
     logger: Optional[logging.Logger] = default_logger,
     upload_fn: Optional[Callable[[str, Optional[List[str]], bool], None]] = None,
 ) -> Dict[str, Any]:
@@ -67,8 +67,13 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for remote URIs.")
+        supported_extensions = (".zip", ".tar.gz", ".tgz")
+        if protocol in Protocol.remote_protocols() and not any(
+            path.endswith(ext) for ext in supported_extensions
+        ):
+            raise ValueError(
+                "Only .zip, .tar.gz, and .tgz files supported for remote URIs."
+            )
         return runtime_env
 
     default_excludes = ray_constants.get_runtime_env_default_excludes()
@@ -98,10 +103,15 @@ def upload_working_dir_if_needed(
         )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
-        if not package_path.exists() or package_path.suffix != ".zip":
+        supported_local = (
+            package_path.suffix == ".zip"
+            or package_path.suffix == ".tgz"
+            or package_path.name.endswith(".tar.gz")
+        )
+        if not package_path.exists() or not supported_local:
             raise ValueError(
                 f"directory {package_path} must be an existing "
-                "directory or a zip package"
+                "directory or a supported archive (.zip, .tar.gz, .tgz)"
             )
 
         pkg_uri = get_uri_for_package(package_path)
@@ -117,6 +127,8 @@ def upload_working_dir_if_needed(
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
+        if scratch_dir is None:
+            scratch_dir = os.getcwd()
         try:
             upload_package_if_needed(
                 working_dir_uri,
@@ -155,7 +167,6 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
 
 
 class WorkingDirPlugin(RuntimeEnvPlugin):
-
     name = "working_dir"
 
     # Note working_dir is not following the priority order of other plugins. Instead
