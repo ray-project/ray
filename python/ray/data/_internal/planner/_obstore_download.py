@@ -1,9 +1,14 @@
 import asyncio
+import inspect
 import logging
 import os
+import threading
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 if TYPE_CHECKING:
+    import s3fs  # noqa: F401
+
     from ray.data.context import DataContext
 
 import pyarrow as pa
@@ -113,9 +118,103 @@ def _is_obstore_supported_url(path: str) -> bool:
 
 
 # Credential extraction & store management
+class _S3FSSessionCredentialProvider:
+    """Obstore credential provider backed by an fsspec s3fs session.
+
+    s3fs with Okta / STS / profile-based auth resolves credentials lazily via
+    ``fs.session.get_credentials()`` and rotates them on expiry. A single
+    snapshot becomes stale during long-running jobs, so we install this as
+    obstore's ``credential_provider`` callable instead — obstore will invoke
+    it whenever it needs fresh keys.
+
+    Cached in memory until ``expires_at`` so we don't re-enter the session on
+    every request. Thread-safe via an ``RLock`` because obstore may call this
+    concurrently from its async runtime.
+    """
+
+    _DEFAULT_TTL = timedelta(minutes=30)
+
+    def __init__(self, session: Any, ttl: Optional[timedelta] = None) -> None:
+        self._session = session
+        self._ttl = ttl if ttl is not None else self._DEFAULT_TTL
+        self._lock = threading.RLock()
+        self._cached: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_fsspec_fs(
+        cls, fsspec_fs: "s3fs.S3FileSystem"
+    ) -> Optional["_S3FSSessionCredentialProvider"]:
+        """Build a provider from an s3fs filesystem, or ``None`` if no session."""
+        session = getattr(fsspec_fs, "session", None) or getattr(
+            fsspec_fs, "_session", None
+        )
+        if session is None or not hasattr(session, "get_credentials"):
+            return None
+        return cls(session)
+
+    async def __call__(self) -> Dict[str, Any]:
+        """Return obstore-compatible S3 credentials, refreshing past expiry."""
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            if self._cached is not None and self._cached["expires_at"] > now:
+                return dict(self._cached)
+
+        session_creds = await self._await_maybe(self._session.get_credentials())
+        if session_creds is None:
+            raise RuntimeError("fsspec S3 session returned no credentials")
+        frozen = await self._await_maybe(session_creds.get_frozen_credentials())
+        access_key = getattr(frozen, "access_key", None)
+        if not access_key:
+            raise RuntimeError("fsspec S3 session returned no access key")
+
+        creds: Dict[str, Any] = {
+            "access_key_id": access_key,
+            "secret_access_key": getattr(frozen, "secret_key", None) or "",
+            "expires_at": self._compute_expires_at(session_creds),
+        }
+        token = getattr(frozen, "token", None)
+        if token:
+            creds["token"] = token
+
+        with self._lock:
+            self._cached = creds
+        return dict(creds)
+
+    @staticmethod
+    async def _await_maybe(value: Any) -> Any:
+        """Await *value* if it's awaitable (coroutine, Task, Future, custom)."""
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
+    def _compute_expires_at(self, session_creds: Any) -> datetime:
+        """Read the session's expiry, falling back to now + TTL."""
+        for attr in ("expiry_time", "_expiry_time"):
+            exp = getattr(session_creds, attr, None)
+            if isinstance(exp, datetime):
+                return exp if exp.tzinfo else exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) + self._ttl
+
+    def can_fetch_credentials(self) -> bool:
+        """Return True if a credential fetch succeeds from sync code right now.
+
+        Used by the planner during routing decisions: if the session can't
+        produce a credential set, fall back to the threaded path rather than
+        installing a provider that would fail on first request. Logs at DEBUG
+        so legitimate failures (expired creds, transient session errors) are
+        diagnosable without spamming the user.
+        """
+        try:
+            asyncio.run(self())
+        except Exception as e:
+            logger.debug("Could not fetch fsspec session credentials: %r", e)
+            return False
+        return True
+
+
 def _extract_credentials_from_filesystem(
     filesystem: Optional["pyarrow.fs.FileSystem"],
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """Extract credentials from a PyArrow filesystem for use with obstore.
 
     Maps PyArrow filesystem configuration to obstore keyword arguments.
@@ -131,9 +230,12 @@ def _extract_credentials_from_filesystem(
 
     **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
     (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
-    ``storage_options`` / common instance attributes so obstore can use the
-    same keys the user passed to fsspec. ``anon`` maps to ``skip_signature``;
-    ``region_name`` may appear in ``storage_options`` or ``client_kwargs``.
+    ``storage_options`` / common instance attributes first; if no static key
+    is present, we install a :class:`_S3FSSessionCredentialProvider` callback
+    so obstore can refresh session-backed (Okta/STS/profile) credentials on
+    expiry instead of using a stale snapshot. If both passes come up empty we
+    return ``None`` so the caller routes to the threaded path, keeping the
+    user's fsspec filesystem authoritative.
 
     Other ``PyFileSystem`` handlers (non-fsspec or non-S3 fsspec protocols) are
     not converted here; see :func:`_obstore_filesystem_requires_threaded_download`.
@@ -142,7 +244,9 @@ def _extract_credentials_from_filesystem(
         filesystem: A PyArrow filesystem instance.
 
     Returns:
-        A dict of keyword arguments to pass to obstore's ``from_url``.
+        A dict of keyword arguments for ``obstore.store.from_url``, or
+        ``None`` when the filesystem was recognized as fsspec-S3 but we
+        couldn't pull usable credentials (caller must fall back).
     """
     if filesystem is None:
         return {}
@@ -174,8 +278,9 @@ def _extract_credentials_from_filesystem(
                 kwargs[ob_key] = val
         if getattr(filesystem, "anonymous", False):
             kwargs["skip_signature"] = True
+        return kwargs
 
-    elif GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
+    if GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
         # obstore GCSConfig does not have a project_id field. The only useful
         # attribute PyArrow exposes on GcsFileSystem is `anonymous`, which maps
         # to obstore's `skip_signature`. All other credentials (service account,
@@ -183,14 +288,16 @@ def _extract_credentials_from_filesystem(
         # environment automatically.
         if getattr(filesystem, "anonymous", False):
             kwargs["skip_signature"] = True
+        return kwargs
 
-    elif AzureFileSystem is not None and isinstance(filesystem, AzureFileSystem):
+    if AzureFileSystem is not None and isinstance(filesystem, AzureFileSystem):
         for attr in ("account_name", "account_key"):
             val = getattr(filesystem, attr, None)
             if val:
                 kwargs[attr] = val
+        return kwargs
 
-    elif (
+    if (
         PyFileSystem is not None
         and FSSpecHandler is not None
         and isinstance(filesystem, PyFileSystem)
@@ -199,42 +306,60 @@ def _extract_credentials_from_filesystem(
         # fsspec-backed FS (e.g. s3fs with Okta/STS) wrapped for PyArrow.
         fsspec_fs = getattr(filesystem.handler, "fs", None)
         if fsspec_fs is None:
-            return {}
+            return None
         protocol = getattr(fsspec_fs, "protocol", None)
         if isinstance(protocol, tuple):
             protocol = protocol[0] if protocol else None
-        if protocol in ("s3", "s3a"):
-            opts = getattr(fsspec_fs, "storage_options", None) or {}
-            if not isinstance(opts, dict):
-                opts = {}
-            key = opts.get("key") or getattr(fsspec_fs, "key", None)
-            secret = opts.get("secret") or getattr(fsspec_fs, "secret", None)
-            token = opts.get("token") or getattr(fsspec_fs, "token", None)
-            endpoint = opts.get("endpoint_url") or getattr(
-                fsspec_fs, "endpoint_url", None
-            )
-            client_kwargs = opts.get("client_kwargs") or getattr(
-                fsspec_fs, "client_kwargs", None
-            )
-            if isinstance(client_kwargs, dict):
-                endpoint = endpoint or client_kwargs.get("endpoint_url")
-                region_name = client_kwargs.get("region_name")
-                if region_name:
-                    kwargs["region"] = region_name
-            region_opt = opts.get("region_name")
-            if region_opt:
-                kwargs["region"] = region_opt
-            if key:
-                kwargs["access_key_id"] = key
-            if secret:
-                kwargs["secret_access_key"] = secret
-            if token:
-                kwargs["session_token"] = token
-            if endpoint:
-                kwargs["endpoint"] = endpoint
-            if opts.get("anon") or getattr(fsspec_fs, "anon", False):
-                kwargs["skip_signature"] = True
-    return kwargs
+        if protocol not in ("s3", "s3a"):
+            # Non-S3 fsspec — obstore can't use these. Callers usually filter
+            # this out via _obstore_filesystem_requires_threaded_download, but
+            # direct callers must also route to the threaded path.
+            return None
+        opts = getattr(fsspec_fs, "storage_options", None) or {}
+        if not isinstance(opts, dict):
+            opts = {}
+        key = opts.get("key") or getattr(fsspec_fs, "key", None)
+        secret = opts.get("secret") or getattr(fsspec_fs, "secret", None)
+        token = opts.get("token") or getattr(fsspec_fs, "token", None)
+        endpoint = opts.get("endpoint_url") or getattr(fsspec_fs, "endpoint_url", None)
+        client_kwargs = opts.get("client_kwargs") or getattr(
+            fsspec_fs, "client_kwargs", None
+        )
+        if isinstance(client_kwargs, dict):
+            endpoint = endpoint or client_kwargs.get("endpoint_url")
+            region_name = client_kwargs.get("region_name")
+            if region_name:
+                kwargs["region"] = region_name
+        region_opt = opts.get("region_name")
+        if region_opt:
+            kwargs["region"] = region_opt
+        if key:
+            kwargs["access_key_id"] = key
+        if secret:
+            kwargs["secret_access_key"] = secret
+        if token:
+            kwargs["session_token"] = token
+        if endpoint:
+            kwargs["endpoint"] = endpoint
+        anon = opts.get("anon") or getattr(fsspec_fs, "anon", False)
+        if anon:
+            kwargs["skip_signature"] = True
+
+        # Static attrs didn't yield an access key and the user didn't opt into
+        # anonymous — install a credential_provider so obstore refreshes the
+        # session-backed keys (Okta/STS/profile-based) on expiry instead of
+        # using a stale snapshot.
+        if "access_key_id" not in kwargs and not anon:
+            provider = _S3FSSessionCredentialProvider.from_fsspec_fs(fsspec_fs)
+            if provider is None or not provider.can_fetch_credentials():
+                return None
+            kwargs["credential_provider"] = provider
+        return kwargs
+
+    # Unrecognized non-None filesystem — route to threaded so the user's FS
+    # stays authoritative. Obstore with empty kwargs would silently use its
+    # own credential chain, dropping any configuration on the user's FS.
+    return None
 
 
 def _obstore_filesystem_requires_threaded_download(
@@ -274,6 +399,89 @@ def _obstore_filesystem_requires_threaded_download(
     if protocol in ("s3", "s3a"):
         return False
     return True
+
+
+def _is_fsspec_s3_filesystem(filesystem: "pyarrow.fs.FileSystem") -> bool:
+    """True if *filesystem* is a PyFileSystem wrapping an s3fs ``S3FileSystem``."""
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+    if not isinstance(filesystem, pyarrow.fs.PyFileSystem):
+        return False
+    if not isinstance(filesystem.handler, pyarrow.fs.FSSpecHandler):
+        return False
+    try:
+        from s3fs import S3FileSystem
+    except ImportError:
+        return False
+    return isinstance(filesystem.handler.fs, S3FileSystem)
+
+
+# Per-process dedup for credential-extraction warnings. Keyed by ``id(fs)`` so
+# each distinct filesystem object warns exactly once in a worker.
+_warned_credential_fs_ids: set = set()
+
+
+def _warn_fsspec_s3_credentials_unextractable(
+    filesystem: "pyarrow.fs.FileSystem",
+) -> None:
+    """Emit a one-shot WARNING for fsspec-S3 filesystems with unextractable creds.
+
+    Only call this for filesystems where ``_is_fsspec_s3_filesystem`` is True —
+    the message hardcodes fsspec-specific advice (``storage_options``) and
+    would be misleading for native filesystems like ``LocalFileSystem`` or
+    ``HdfsFileSystem``.
+    """
+    fs_id = id(filesystem)
+    if fs_id in _warned_credential_fs_ids:
+        return
+    _warned_credential_fs_ids.add(fs_id)
+
+    unwrapped = (
+        filesystem.unwrap()
+        if isinstance(filesystem, RetryingPyFileSystem)
+        else filesystem
+    )
+    handler = getattr(unwrapped, "handler", None)
+    inner = getattr(handler, "fs", None)
+    inner_class = type(inner).__name__ if inner is not None else "unknown"
+
+    logger.warning(
+        "Could not extract S3 credentials from user-supplied fsspec "
+        "filesystem (inner: %s); falling back to the PyArrow threaded "
+        "download path so the filesystem's own credential resolution stays "
+        "authoritative. If this is unexpected, pass credentials via fsspec "
+        "``storage_options`` (e.g. key/secret/token) so they can be "
+        "forwarded to obstore.",
+        inner_class,
+    )
+
+
+def _plan_obstore_routing(
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> "tuple[bool, Dict[str, Any]]":
+    """Decide whether to use obstore and return the kwargs to forward.
+
+    Returns ``(True, fs_kwargs)`` if obstore should be used, or ``(False, {})``
+    if the caller must route to the threaded path. Emits a ``WARNING`` only
+    when an fsspec-S3 filesystem was supplied but its credentials couldn't be
+    extracted — routing native / unrecognized filesystems to the threaded
+    path is the expected behavior and is logged at ``DEBUG``.
+    """
+    if _obstore_filesystem_requires_threaded_download(filesystem):
+        return False, {}
+    fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+    if fs_kwargs is None:
+        assert filesystem is not None  # None filesystem always returns {}
+        if _is_fsspec_s3_filesystem(filesystem):
+            _warn_fsspec_s3_credentials_unextractable(filesystem)
+        else:
+            logger.debug(
+                "Routing filesystem %s to the PyArrow threaded download path "
+                "(obstore cannot forward credentials for this filesystem type).",
+                type(filesystem).__name__,
+            )
+        return False, {}
+    return True, fs_kwargs
 
 
 class StoreRegistry:
@@ -401,11 +609,12 @@ def download_bytes_async(
         )
         return
 
-    if _obstore_filesystem_requires_threaded_download(filesystem):
-        logger.debug(
-            "PyArrow PyFileSystem with a non-S3 fsspec backend (or unknown handler); "
-            "using threaded PyArrow download to preserve user filesystem credentials."
-        )
+    # Resolve credentials up front in sync context. This is the only safe place
+    # to call ``_extract_credentials_from_filesystem`` for fsspec sessions that
+    # need ``asyncio.run`` internally — once we're inside ``_download_uris_with_obstore``
+    # we're already in an event loop and that path is unavailable.
+    use_obstore, fs_kwargs = _plan_obstore_routing(filesystem)
+    if not use_obstore:
         yield from _yield_threaded_download_bytes(
             block,
             uri_column_names,
@@ -433,7 +642,10 @@ def download_bytes_async(
 
         uri_bytes = asyncio.run(
             _download_uris_with_obstore(
-                uris, uri_column_name, filesystem=filesystem, file_sizes=file_sizes
+                uris,
+                uri_column_name,
+                fs_kwargs=fs_kwargs,
+                file_sizes=file_sizes,
             )
         )
 
@@ -461,6 +673,7 @@ async def _download_uris_with_obstore(
     uri_column_name: str,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     file_sizes: Optional[List[Optional[int]]] = None,
+    fs_kwargs: Optional[Dict[str, Any]] = None,
 ) -> List[Optional[bytes]]:
     """Download URIs concurrently using obstore's async API.
 
@@ -479,16 +692,36 @@ async def _download_uris_with_obstore(
         uris: URIs to download.
         uri_column_name: Column name (used only for error logging).
         filesystem: Optional PyArrow filesystem whose credentials are
-            forwarded to the obstore store.
+            forwarded to the obstore store. Ignored when *fs_kwargs* is given.
         file_sizes: Optional per-URI file sizes from AsyncPartitionActor.
             ``0`` or ``None`` entries trigger a HEAD request when range
             splitting is enabled.
+        fs_kwargs: Pre-extracted obstore kwargs from the planner. Preferred
+            over *filesystem* because it sidesteps re-extracting credentials
+            from inside the event loop (aiobotocore sessions need ``asyncio.run``).
 
     Returns:
         Downloaded bytes in the same order as *uris*.  ``None`` entries
         indicate failed downloads.
     """
-    fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+    if fs_kwargs is None:
+        # Direct-caller path (tests, internal helpers). Session-backed fsspec
+        # may fail here because we may already be inside an event loop; the
+        # planner path avoids this by pre-extracting upfront and passing
+        # ``fs_kwargs``. Re-extract best-effort, but fail closed if the
+        # filesystem is non-None and extraction signals "not extractable" —
+        # silently handing obstore the ambient credential chain is exactly
+        # the bug the new routing was designed to prevent.
+        extracted = _extract_credentials_from_filesystem(filesystem)
+        if extracted is None:
+            raise RuntimeError(
+                "_download_uris_with_obstore was called with a filesystem whose "
+                f"credentials cannot be statically extracted ({type(filesystem).__name__}). "
+                "Pass ``fs_kwargs`` explicitly, or route through "
+                "``_plan_obstore_routing`` / ``download_bytes_async`` so "
+                "non-extractable filesystems take the threaded PyArrow path."
+            )
+        fs_kwargs = extracted
 
     range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
     range_chunk_size = RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE

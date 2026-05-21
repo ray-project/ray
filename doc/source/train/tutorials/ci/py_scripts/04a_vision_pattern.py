@@ -12,7 +12,7 @@ subprocess.check_call([
     "torch==2.8.0",
     "torchvision==0.23.0",
     "matplotlib==3.10.6",
-    "pyarrow==14.0.2",
+    "pyarrow==17.0.0",
     "datasets==2.19.2",
 ])
 
@@ -23,15 +23,12 @@ subprocess.check_call([
 # ————————————————————————
 import os
 import io
-import tempfile
 import shutil  # file I/O and temp dirs
-import json                      # reading/writing configs
 import random, uuid              # randomness and unique IDs
 
 # ————————————————————————
 # Core Data & Storage Libraries
 # ————————————————————————
-import pandas as pd              # tabular data handling
 import numpy as np               # numerical ops
 import pyarrow as pa             # in-memory columnar format
 import pyarrow.parquet as pq     # reading/writing Parquet files
