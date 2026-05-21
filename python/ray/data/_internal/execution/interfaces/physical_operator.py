@@ -168,7 +168,7 @@ class DataOpTask(OpTask):
         #                           queued pairs (populated by
         #                           ``cache_prefetched_meta_bytes``).
         #
-        # A pair is consumable by ``on_data_ready`` iff its meta_ref is in
+        # A pair is consumable by ``on_data_ready`` if its meta_ref is in
         # the bytes dict; otherwise it sits in the queue until the next
         # batched ``ray.get`` populates the bytes.
         self._pending_pairs: Deque[
