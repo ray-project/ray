@@ -1,4 +1,8 @@
+import os
 import sys
+
+os.environ.setdefault("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "0.1")
+os.environ.setdefault("RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "0.1")
 
 import pytest
 
@@ -16,7 +20,6 @@ class TestScaleDownReplicaSelection:
         return {
             "target_ongoing_requests": 0.01,
             "upscale_delay_s": 0.05,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.5,
             "downscale_delay_s": 2,
             "aggregation_function": "max",

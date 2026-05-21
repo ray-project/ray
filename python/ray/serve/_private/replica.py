@@ -68,6 +68,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
     RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
     RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S,
@@ -360,7 +361,9 @@ class ReplicaMetricsManager:
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
-        self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+        self._cached_metrics_export_interval_s = (
+            RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+        )
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -643,12 +646,12 @@ class ReplicaMetricsManager:
         self._cached_ingress_processing_latencies.clear()
 
     async def _report_cached_metrics_forever(self):
-        assert self._cached_metrics_interval_s > 0
+        assert self._cached_metrics_export_interval_s > 0
 
         consecutive_errors = 0
         while True:
             try:
-                await asyncio.sleep(self._cached_metrics_interval_s)
+                await asyncio.sleep(self._cached_metrics_export_interval_s)
                 self._report_cached_metrics()
                 consecutive_errors = 0
             except Exception:
@@ -671,7 +674,7 @@ class ReplicaMetricsManager:
         self._metrics_pusher.register_or_update_task(
             self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
             self._push_autoscaling_metrics,
-            self._autoscaling_config.metrics_interval_s,
+            RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
         )
         # Collect autoscaling metrics locally periodically.
         record_interval_s = (
@@ -681,7 +684,10 @@ class ReplicaMetricsManager:
         self._metrics_pusher.register_or_update_task(
             self.RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-            min(record_interval_s, self._autoscaling_config.metrics_interval_s),
+            min(
+                record_interval_s,
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+            ),
         )
 
     def should_collect_ongoing_requests(self) -> bool:

@@ -2032,7 +2032,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         # Setup: Deploy two deployments
@@ -2182,7 +2181,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id, d2_id = self._deploy_test_deployments(
@@ -2228,7 +2226,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id, d2_id = self._deploy_test_deployments(
@@ -2273,7 +2270,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id, d2_id = self._deploy_test_deployments(
@@ -2316,7 +2312,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id = DeploymentID(name="d1", app_name="test_app")
@@ -2419,7 +2414,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         # Deploy app1 with two deployments
@@ -2560,7 +2554,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id, d2_id = self._deploy_test_deployments(
@@ -2632,7 +2625,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         # Deploy single deployment
@@ -2699,7 +2691,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id, d2_id = self._deploy_test_deployments(
@@ -2748,7 +2739,6 @@ class TestAutoscale:
             "initial_replicas": 1,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         # Deploy 15 deployments
@@ -2837,7 +2827,6 @@ class TestAutoscale:
             "initial_replicas": 3,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id = DeploymentID(name="d1", app_name="test_app")
@@ -2904,7 +2893,6 @@ class TestAutoscale:
             "initial_replicas": 2,
             "upscale_delay_s": 0,
             "downscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
         }
 
         d1_id, d2_id = self._deploy_test_deployments(
@@ -3354,7 +3342,6 @@ class TestApplicationLevelAutoscaling:
                     "initial_replicas": 1,
                     "upscale_delay_s": 0.0,
                     "downscale_delay_s": 0.0,
-                    "metrics_interval_s": 0.1,
                 },
             ),
             DeploymentSchema(
@@ -3366,7 +3353,6 @@ class TestApplicationLevelAutoscaling:
                     "initial_replicas": 1,
                     "upscale_delay_s": 0.0,
                     "downscale_delay_s": 0.0,
-                    "metrics_interval_s": 0.1,
                 },
             ),
         ]
@@ -4016,7 +4002,6 @@ class TestApplicationLevelAutoscaling:
                     "initial_replicas": 1,
                     "upscale_delay_s": 0.4,
                     "downscale_delay_s": 0.6,
-                    "metrics_interval_s": 0.1,
                 },
             )
         ]

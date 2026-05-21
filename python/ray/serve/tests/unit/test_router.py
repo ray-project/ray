@@ -2267,6 +2267,10 @@ class TestRouterMetricsManager:
         "ray.serve._private.router.RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR",
         0.001,
     )
+    @patch(
+        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
+        0.005,
+    )
     async def test_memory_cleared(self):
         deployment_id = DeploymentID(name="a", app_name="b")
         metrics_manager = RouterMetricsManager(
@@ -2290,9 +2294,7 @@ class TestRouterMetricsManager:
         )
         metrics_manager.update_deployment_config(
             deployment_config=DeploymentConfig(
-                autoscaling_config=AutoscalingConfig(
-                    metrics_interval_s=0.005, look_back_period_s=0.01
-                )
+                autoscaling_config=AutoscalingConfig(look_back_period_s=0.01)
             ),
             curr_num_replicas=0,
         )

@@ -43,17 +43,12 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // [DEPRECATED] The frequency of how long does each replica sending metrics to
-  // autoscaler, but this will be replaced by the environment variables
-  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
-  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
-  double metrics_interval_s = 3;
+  reserved 3, 5, 9, 10;
+  reserved "metrics_interval_s", "smoothing_factor", "upscale_smoothing_factor",
+      "downscale_smoothing_factor";
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
   double look_back_period_s = 4;
-
-  // [DEPRECATED] Use `upscaling_factor` and/or `downscaling_factor` instead.
-  double smoothing_factor = 5;
 
   // How long to wait before scaling down replicas.
   double downscale_delay_s = 6;
@@ -63,12 +58,6 @@ message AutoscalingConfig {
 
   // Initial number of replicas deployment should start with. Must be non-negative.
   optional uint32 initial_replicas = 8;
-
-  // [DEPRECATED] Use `upscaling_factor` instead.
-  optional double upscale_smoothing_factor = 9;
-
-  // [DEPRECATED] Use `downscaling_factor` instead.
-  optional double downscale_smoothing_factor = 10;
 
   // The autoscaling policy definition.
   AutoscalingPolicy policy = 11;

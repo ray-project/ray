@@ -593,15 +593,11 @@ def test_num_replicas_auto_api(serve_instance):
         "max_replicas": 100,
         # Untouched defaults
         "look_back_period_s": 30.0,
-        "metrics_interval_s": 10.0,
         "upscale_delay_s": 30.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
-        "upscale_smoothing_factor": None,
-        "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
-        "smoothing_factor": 1.0,
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
@@ -624,7 +620,6 @@ def test_num_replicas_auto_basic(serve_instance):
                 "num_replicas": "auto",
                 "autoscaling_config": {
                     "look_back_period_s": 2.0,
-                    "metrics_interval_s": 1.0,
                     "upscale_delay_s": 1.0,
                 },
                 "graceful_shutdown_timeout_s": 1,
@@ -652,16 +647,12 @@ def test_num_replicas_auto_basic(serve_instance):
         "max_replicas": 100,
         # Overrided by `autoscaling_config`
         "look_back_period_s": 2.0,
-        "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
-        "upscale_smoothing_factor": None,
-        "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
-        "smoothing_factor": 1.0,
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {

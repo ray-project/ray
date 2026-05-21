@@ -129,22 +129,18 @@ def test_num_replicas():
 def test_autoscaling_config():
     v1 = DeploymentVersion(
         "1",
-        DeploymentConfig(
-            autoscaling_config={"max_replicas": 2, "metrics_interval_s": 10}
-        ),
+        DeploymentConfig(autoscaling_config={"max_replicas": 2}),
         {},
     )
     v2 = DeploymentVersion(
         "1",
-        DeploymentConfig(
-            autoscaling_config={"max_replicas": 5, "metrics_interval_s": 10}
-        ),
+        DeploymentConfig(autoscaling_config={"max_replicas": 5}),
         {},
     )
     v3 = DeploymentVersion(
         "1",
         DeploymentConfig(
-            autoscaling_config={"max_replicas": 2, "metrics_interval_s": 3}
+            autoscaling_config={"max_replicas": 2, "look_back_period_s": 3}
         ),
         {},
     )

@@ -49,6 +49,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
@@ -202,7 +203,9 @@ class RouterMetricsManager:
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
-        self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+        self._cached_metrics_export_interval_s = (
+            RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+        )
         self._cached_metrics_task: Optional[asyncio.Task] = None
 
         if self._cached_metrics_enabled:
@@ -331,13 +334,16 @@ class RouterMetricsManager:
             self.metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
-                min(record_interval_s, autoscaling_config.metrics_interval_s),
+                min(
+                    record_interval_s,
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+                ),
             )
             # Push metrics to the controller periodically.
             self.metrics_pusher.register_or_update_task(
                 self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                 self.push_autoscaling_metrics_to_controller,
-                autoscaling_config.metrics_interval_s,
+                RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
             )
 
         else:
@@ -356,12 +362,12 @@ class RouterMetricsManager:
         )
 
     async def _report_cached_metrics_forever(self):
-        assert self._cached_metrics_interval_s > 0
+        assert self._cached_metrics_export_interval_s > 0
 
         consecutive_errors = 0
         while True:
             try:
-                await asyncio.sleep(self._cached_metrics_interval_s)
+                await asyncio.sleep(self._cached_metrics_export_interval_s)
                 self._report_cached_metrics()
                 consecutive_errors = 0
             except Exception:

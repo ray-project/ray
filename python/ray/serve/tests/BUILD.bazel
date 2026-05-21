@@ -326,6 +326,8 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS": "5",
         "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+        "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.5",
+        "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.5",
     },
     files = [
         "test_deploy_app.py",
@@ -500,6 +502,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
         "name_suffix": "_metr_disab",
     },
@@ -508,6 +511,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
             "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
         "name_suffix": "_metr_agg_at_controller",
     },
@@ -517,6 +521,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
         "name_suffix": "_metr_agg_at_controller_and_replicas",
     },

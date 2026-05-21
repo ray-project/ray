@@ -1,7 +1,11 @@
-import pathlib
-from collections import defaultdict
 import asyncio
+import os
+import pathlib
 import time
+from collections import defaultdict
+
+os.environ.setdefault("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "1")
+os.environ.setdefault("RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "1")
 
 import pytest
 import yaml
@@ -156,7 +160,6 @@ def test_llm_serve_data_parallelism_autoscaling():
             max_replicas=2,
             upscale_delay_s=0.1,
             downscale_delay_s=5,
-            metrics_interval_s=1,
             look_back_period_s=2,
             target_ongoing_requests=1,
         ),

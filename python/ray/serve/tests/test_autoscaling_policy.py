@@ -142,7 +142,6 @@ class TestAutoscalingMetrics:
 
         @serve.deployment(
             autoscaling_config={
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "target_ongoing_requests": 10,
@@ -202,7 +201,6 @@ class TestAutoscalingMetrics:
         config = {
             "autoscaling_config": {
                 "target_ongoing_requests": 10,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "upscale_delay_s": 0,
@@ -278,7 +276,6 @@ class TestAutoscalingMetrics:
         @serve.deployment(
             autoscaling_config={
                 "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
@@ -357,7 +354,6 @@ class TestAutoscalingMetrics:
         @serve.deployment(
             autoscaling_config={
                 "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
@@ -422,7 +418,6 @@ class TestAutoscalingMetrics:
             max_ongoing_requests=5,
             autoscaling_config={
                 "target_ongoing_requests": 1,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "upscale_delay_s": 0.2,
@@ -489,7 +484,6 @@ def test_e2e_scale_up_down_basic(
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": 3,
             "look_back_period_s": 0.2,
@@ -530,11 +524,9 @@ def test_e2e_scale_up_down_basic(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("scaling_factor", [1, 0.2])
-@pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance_with_signal,
     scaling_factor,
-    use_upscale_downscale_config,
 ):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
@@ -542,18 +534,14 @@ def test_e2e_scale_up_down_with_0_replica(
     controller = client._controller
 
     autoscaling_config = {
-        "metrics_interval_s": 0.1,
         "min_replicas": 0,
         "max_replicas": 2,
         "look_back_period_s": 0.2,
         "downscale_delay_s": 0.5,
         "upscale_delay_s": 0,
+        "upscaling_factor": scaling_factor,
+        "downscaling_factor": scaling_factor,
     }
-    if use_upscale_downscale_config:
-        autoscaling_config["upscaling_factor"] = scaling_factor
-        autoscaling_config["downscaling_factor"] = scaling_factor
-    else:
-        autoscaling_config["smoothing_factor"] = scaling_factor
 
     @serve.deployment(
         autoscaling_config=autoscaling_config,
@@ -626,7 +614,6 @@ def test_cold_start_time(serve_instance):
         autoscaling_config={
             "min_replicas": 0,
             "max_replicas": 1,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.2,
         },
     )
@@ -672,7 +659,6 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
             "look_back_period_s": 0.5,
@@ -738,7 +724,6 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 20,
             "look_back_period_s": 0.2,
@@ -780,11 +765,9 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
 
 
 @pytest.mark.parametrize("initial_replicas", [2, 3])
-@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
 def test_downscaling_with_fractional_scaling_factor(
     serve_instance_with_signal,
     initial_replicas: int,
-    use_deprecated_smoothing_factor: bool,
 ):
     client, signal = serve_instance_with_signal
     signal.send.remote(clear=True)
@@ -795,26 +778,19 @@ def test_downscaling_with_fractional_scaling_factor(
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 5,
                     "initial_replicas": initial_replicas,
                     "look_back_period_s": 0.2,
                     "downscale_delay_s": 5,
+                    "downscaling_factor": 0.5,
                 },
                 "graceful_shutdown_timeout_s": 1,
                 "max_ongoing_requests": 1000,
             }
         ],
     }
-    if use_deprecated_smoothing_factor:
-        app_config["deployments"][0]["autoscaling_config"][
-            "downscale_smoothing_factor"
-        ] = 0.5
-    else:
-        app_config["deployments"][0]["autoscaling_config"]["downscaling_factor"] = 0.5
-
-    # Deploy with initial replicas = 2+, smoothing factor = 0.5
+    # Deploy with initial replicas = 2+, downscaling factor = 0.5
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
@@ -829,7 +805,7 @@ def test_downscaling_with_fractional_scaling_factor(
 
     # There is 1 ongoing (blocked) request and 2+ replicas. The
     # deployment should autoscale down to 1 replica despite the
-    # smoothing factor
+    # downscaling factor.
     current_num_replicas = initial_replicas
     while current_num_replicas > 1:
         wait_for_condition(
@@ -857,7 +833,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance_with_signal):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 10,
                     "look_back_period_s": 0.2,
@@ -946,7 +921,6 @@ def test_e2e_raise_min_replicas(serve_instance_with_signal):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 10,
                     "look_back_period_s": 0.2,
@@ -1043,7 +1017,6 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             max_replicas=2,
             downscale_delay_s=600,
             upscale_delay_s=0,
-            metrics_interval_s=1,
             look_back_period_s=2,
         ),
     )
@@ -1107,7 +1080,6 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             max_replicas=5,
             downscale_delay_s=600,
             upscale_delay_s=600,
-            metrics_interval_s=1,
             look_back_period_s=2,
         )
     )
@@ -1158,7 +1130,6 @@ app = g.bind()
                     "max_replicas": 1,
                     "downscale_delay_s": 600,
                     "upscale_delay_s": 0,
-                    "metrics_interval_s": 1,
                     "look_back_period_s": 2,
                 },
             }
@@ -1232,7 +1203,6 @@ def test_max_ongoing_requests_set_to_one(serve_instance_with_signal):
             max_replicas=3,
             upscale_delay_s=0.5,
             downscale_delay_s=0.5,
-            metrics_interval_s=0.5,
             look_back_period_s=2,
         ),
         max_ongoing_requests=1,
@@ -1641,7 +1611,6 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0,
             "policy": policy,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 1,
         },
         # We will send over a lot of queries. This will make sure replicas are
@@ -1766,7 +1735,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -1779,7 +1747,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -1809,7 +1776,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -1848,7 +1814,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -1861,7 +1826,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -1902,7 +1866,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -1965,7 +1928,6 @@ class TestAppLevelAutoscalingPolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -2089,7 +2051,6 @@ class TestAppLevelClassCallablePolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -2102,7 +2063,6 @@ class TestAppLevelClassCallablePolicy:
                     "autoscaling_config": {
                         "min_replicas": 1,
                         "max_replicas": 10,
-                        "metrics_interval_s": 0.1,
                         "upscale_delay_s": 0.1,
                         "downscale_delay_s": 0.5,
                         "look_back_period_s": 1,
@@ -2234,7 +2194,6 @@ def test_class_callable_autoscaling_policy(serve_instance, policy):
             "max_replicas": 5,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 1,
             "policy": policy,
         },
@@ -2282,7 +2241,6 @@ def test_warmup_no_runaway_scaling_with_control_loop(serve_instance):
             "max_replicas": max_replicas,
             "target_ongoing_requests": 1,
             "upscaling_factor": 2.0,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.2,
             "upscale_delay_s": 0,
             "downscale_delay_s": 30,
@@ -2449,7 +2407,6 @@ class TestAutoscalingWithRejection:
                 "target_ongoing_requests": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 8,
-                "metrics_interval_s": 1,
                 "look_back_period_s": 5,
             },
             max_ongoing_requests=4,
@@ -2509,7 +2466,6 @@ class TestAutoscalingWithRejection:
                 "target_ongoing_requests": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 8,
-                "metrics_interval_s": 1,
                 "look_back_period_s": 5,
             },
             max_ongoing_requests=4,

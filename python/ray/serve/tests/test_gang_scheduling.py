@@ -3,6 +3,9 @@ import sys
 import threading
 import time
 
+os.environ.setdefault("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "0.5")
+os.environ.setdefault("RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "0.5")
+
 import pytest
 
 import ray
@@ -1766,7 +1769,6 @@ class TestGangAutoscaling:
             autoscaling_config={
                 "min_replicas": 3,
                 "max_replicas": 9,
-                "metrics_interval_s": 0.5,
                 "upscale_delay_s": 0.1,
                 "downscale_delay_s": 0.1,
                 "look_back_period_s": 1,
@@ -1842,7 +1844,6 @@ class TestGangAutoscaling:
                 "min_replicas": 6,
                 "max_replicas": 9,
                 "initial_replicas": 9,
-                "metrics_interval_s": 0.5,
                 "upscale_delay_s": 5,
                 # Must be long enough for all 9 gang-scheduled replicas to
                 # start before the autoscaler can trigger a downscale.

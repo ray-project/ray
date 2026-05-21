@@ -70,7 +70,6 @@ class TestTaskConsumerQueueAutoscaling:
                 target_ongoing_requests=1,
                 upscale_delay_s=0,
                 downscale_delay_s=0,
-                metrics_interval_s=0.1,
                 look_back_period_s=0.5,
                 policy=AutoscalingPolicy(
                     policy_function="ray.serve.async_inference_autoscaling_policy:AsyncInferenceAutoscalingPolicy",
@@ -162,7 +161,6 @@ class TestTaskConsumerQueueAutoscaling:
                 upscale_delay_s=0,
                 downscale_delay_s=0,
                 downscale_to_zero_delay_s=5,
-                metrics_interval_s=0.1,
                 look_back_period_s=0.5,
                 policy=AutoscalingPolicy(
                     policy_function="ray.serve.async_inference_autoscaling_policy:AsyncInferenceAutoscalingPolicy",

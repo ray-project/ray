@@ -139,14 +139,6 @@ might set `downscale_delay_s = 300` for regular downscaling but
 `downscale_to_zero_delay_s = 1800` to wait 30 minutes before scaling to zero,
 avoiding cold starts for brief periods of inactivity.
 
-* **[`upscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0] (DEPRECATED)**: This parameter
-is renamed to `upscaling_factor`. `upscale_smoothing_factor` will be removed in
-a future release.
-
-* **[`downscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0] (DEPRECATED)**: This
-parameter is renamed to `downscaling_factor`. `downscale_smoothing_factor` will
-be removed in a future release.
-
 * **[`upscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: The multiplicative factor to amplify
 or moderate each upscaling decision. For example, when the application has high
 traffic volume in a short period of time, you can increase `upscaling_factor` to
@@ -159,10 +151,9 @@ application to be less sensitive to drops in traffic and scale down more
 conservatively, you can decrease `downscaling_factor` to slow down the pace of
 downscaling.
 
-* **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=10]**: In future this deployment level
-config will be removed in favor of cross-application level global config.
-  
-This controls how often each replica and handle sends reports on current ongoing requests to the autoscaler.
+* **`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` [default_value=10]**:
+These environment variables control how often each replica and handle sends
+reports on current ongoing requests to the autoscaler.
 ::{note}
 If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds.
 ::
@@ -212,7 +203,7 @@ with its own timing parameters:
 
 Replicas and deployment handles continuously record autoscaling metrics:
 - **What**: Number of ongoing requests (queued + running)
-- **Frequency**: Every 10s (configurable via [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst))
+- **Frequency**: Derived from the autoscaling metric push interval and `RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR`
 - **Storage**: Metrics are stored locally as a timeseries
 
 #### Stage 2: Metric pushing
@@ -304,7 +295,7 @@ and a warning is logged.
 
 * **`RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`** (default: 10.0s): Minimum timeout
 for handle metrics collection. The system uses the maximum of this value and
-`2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to determine when to drop stale handle metrics.
+`2 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` to determine when to drop stale handle metrics.
 
 #### Advanced feature flags
 
@@ -363,7 +354,6 @@ downstream deployments, allocating one fixed `Driver` replica is reasonable.
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -383,7 +373,6 @@ downstream deployments, allocating one fixed `Driver` replica is reasonable.
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -455,7 +444,6 @@ are as follows:
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -475,7 +463,6 @@ are as follows:
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -495,7 +482,6 @@ are as follows:
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
     look_back_period_s: 10
 ```
 
@@ -561,10 +547,10 @@ autoscaler to react more quickly to changes, especially bursts, of traffic.
 autoscaler scales up more aggressively than normal. This setting can allow your
 deployment to be more sensitive to bursts of traffic.
 
-* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst).
-Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to be less than
-or equal to `upscale_delay_s`, otherwise upscaling is delayed because the
-autoscaler doesn't receive fresh information often enough.
+* Lower `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and
+`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`. Set the push intervals
+to be less than or equal to `upscale_delay_s`, otherwise upscaling is delayed
+because the autoscaler doesn't receive fresh information often enough.
 
 * Set a lower `max_ongoing_requests`. If `max_ongoing_requests` is too high
 relative to `target_ongoing_requests`, then when traffic increases, Serve might
@@ -699,7 +685,7 @@ The `record_autoscaling_stats()` method can be either synchronous or asynchronou
 In your policy, access custom metrics via:
 
 * **`ctx.raw_metrics[metric_name]`** — A mapping of replica IDs to lists of raw metric values.
-  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (the metric recording interval).
+  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) window and the autoscaling metric recording interval.
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 

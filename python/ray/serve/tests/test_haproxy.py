@@ -1045,7 +1045,6 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
         autoscaling_config={
             "min_replicas": 0,
             "max_replicas": 1,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 5,
             "upscale_delay_s": 0,

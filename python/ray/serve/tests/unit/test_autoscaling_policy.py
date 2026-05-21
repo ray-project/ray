@@ -404,13 +404,7 @@ def _run_upscale_downscale_flow(
 
 
 class TestReplicaQueueLengthPolicy:
-    @pytest.mark.parametrize(
-        "use_upscale_smoothing_factor,use_upscaling_factor",
-        [(True, True), (True, False), (False, True)],
-    )
-    def test_scaling_factor_scale_up_from_0_replicas(
-        self, use_upscale_smoothing_factor, use_upscaling_factor
-    ):
+    def test_scaling_factor_scale_up_from_0_replicas(self):
         """Test that the scaling factor is respected when scaling up
         from 0 replicas.
         """
@@ -420,8 +414,7 @@ class TestReplicaQueueLengthPolicy:
         config = AutoscalingConfig(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
-            upscale_smoothing_factor=10 if use_upscale_smoothing_factor else None,
-            upscaling_factor=10 if use_upscaling_factor else None,
+            upscaling_factor=10,
         )
         ctx = AutoscalingContext(
             target_num_replicas=0,
@@ -448,26 +441,17 @@ class TestReplicaQueueLengthPolicy:
         # 1 * 10
         assert new_num_replicas == 10
 
-        if use_upscale_smoothing_factor:
-            config.upscale_smoothing_factor = 0.5
-        if use_upscaling_factor:
-            config.upscaling_factor = 0.5
+        config.upscaling_factor = 0.5
 
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
 
         # math.ceil(1 * 0.5)
         assert new_num_replicas == 1
 
-    @pytest.mark.parametrize(
-        "use_downscale_smoothing_factor,use_downscaling_factor",
-        [(True, True), (True, False), (False, True)],
-    )
-    def test_scaling_factor_scale_down_to_0_replicas(
-        self, use_downscale_smoothing_factor, use_downscaling_factor
-    ):
-        """Test that a deployment scales down to 0 for non-default smoothing factors."""
+    def test_scaling_factor_scale_down_to_0_replicas(self):
+        """Test that a deployment scales down to 0 for non-default scaling factors."""
 
-        # With smoothing factor > 1, the desired number of replicas should
+        # With downscaling factor > 1, the desired number of replicas should
         # immediately drop to 0 (while respecting upscale and downscale delay)
         min_replicas = 0
         max_replicas = 5
@@ -475,8 +459,7 @@ class TestReplicaQueueLengthPolicy:
         config = AutoscalingConfig(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
-            downscale_smoothing_factor=10 if use_downscale_smoothing_factor else None,
-            downscaling_factor=10 if use_downscaling_factor else None,
+            downscaling_factor=10,
             upscale_delay_s=0,
             downscale_delay_s=0,
         )
@@ -509,13 +492,10 @@ class TestReplicaQueueLengthPolicy:
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 0
 
-        # With smoothing factor < 1, the desired number of replicas shouldn't
+        # With downscaling factor < 1, the desired number of replicas shouldn't
         # get stuck at a positive number, and instead should eventually drop
         # to zero
-        if use_downscale_smoothing_factor:
-            config.downscale_smoothing_factor = 0.2
-        if use_downscaling_factor:
-            config.downscaling_factor = 0.2
+        config.downscaling_factor = 0.2
 
         # policy_manager = AutoscalingPolicyManager(config)
         num_replicas = 5

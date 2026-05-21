@@ -504,7 +504,6 @@ def test_autoscaling_metrics(metrics_start_shutdown):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 5,
             "target_ongoing_requests": 2,
@@ -753,7 +752,6 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 5,
             "target_ongoing_requests": 2,
@@ -821,7 +819,6 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 5,
             "target_ongoing_requests": 2,

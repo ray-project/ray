@@ -310,16 +310,12 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
-        "metrics_interval_s": 10.0,
         "upscale_delay_s": 30.0,
         "look_back_period_s": 30.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
-        "upscale_smoothing_factor": None,
-        "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
-        "smoothing_factor": 1.0,
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
@@ -343,7 +339,6 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         A = serve.deployment(A).options(
             num_replicas="auto",
             autoscaling_config={
-                "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
                 "look_back_period_s": 2,
             },
@@ -353,7 +348,6 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         A = serve.deployment(
             num_replicas="auto",
             autoscaling_config={
-                "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
                 "look_back_period_s": 2,
             },
@@ -376,17 +370,13 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`
-        "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
         "look_back_period_s": 2.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
-        "upscale_smoothing_factor": None,
-        "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
-        "smoothing_factor": 1.0,
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {

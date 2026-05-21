@@ -300,7 +300,6 @@ def test_controller_recover_target_capacity(
         "downscale_delay_s": 1,
         "upscaling_factor": 4,
         "downscaling_factor": 4,
-        "metrics_interval_s": 1,
         # The default look_back_period_s is 30, which means the test assertions will be
         # slow to respond to changes in metrics. Setting it to 2 makes the test assertions
         # more responsive to changes in metrics, hence reducing flakiness.
@@ -465,7 +464,6 @@ def create_autoscaling_controlled_app(
             initial_replicas=initial_replicas,
             max_replicas=max_replicas,
             target_ongoing_requests=1,
-            metrics_interval_s=0.1,
             look_back_period_s=0.2,
             upscale_delay_s=0.1,
             downscale_delay_s=0.1,
@@ -896,7 +894,6 @@ def create_hang_app(config: Dict) -> Application:
             "initial_replicas": initial_replicas,
             "max_replicas": max_replicas,
             "target_ongoing_requests": 1,
-            "metrics_interval_s": 0.01,
             "downscale_delay_s": 0.01,
         },
         graceful_shutdown_timeout_s=0.01,

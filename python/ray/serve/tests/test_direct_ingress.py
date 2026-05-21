@@ -1861,7 +1861,6 @@ class TestDirectIngressAutoscaling:
 
         @serve.deployment(
             autoscaling_config={
-                "metrics_interval_s": 0.1,
                 "min_replicas": min_replicas,
                 "max_replicas": 3,
                 "look_back_period_s": 0.2,
@@ -1919,7 +1918,6 @@ class TestDirectIngressAutoscaling:
 
         @serve.deployment(
             autoscaling_config={
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 3,
                 "look_back_period_s": 0.2,
@@ -2425,11 +2423,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "initial_replicas": None,
                                     "max_replicas": 10,
                                     "target_ongoing_requests": 2.0,
-                                    "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,
-                                    "smoothing_factor": 1.0,
-                                    "upscale_smoothing_factor": None,
-                                    "downscale_smoothing_factor": None,
                                     "upscaling_factor": None,
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,

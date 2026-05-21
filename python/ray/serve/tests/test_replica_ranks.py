@@ -329,7 +329,6 @@ def test_rank_assignment_with_autoscaling(serve_instance):
     @serve.deployment(
         autoscaling_config={
             "target_ongoing_requests": 1,
-            "metrics_interval_s": 0.1,
             "min_replicas": 2,
             "max_replicas": 4,
             "upscale_delay_s": 1,

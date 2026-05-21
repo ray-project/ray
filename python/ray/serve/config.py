@@ -36,6 +36,8 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -412,9 +414,6 @@ class RequestRouterConfig(BaseModel):
             ) from e
 
 
-DEFAULT_METRICS_INTERVAL_S = 10.0
-
-
 @PublicAPI(stability="alpha")
 class AggregationFunction(str, Enum):
     MEAN = "mean"
@@ -562,29 +561,8 @@ class AutoscalingConfig(BaseModel):
 
     target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
 
-    metrics_interval_s: PositiveFloat = Field(
-        default=DEFAULT_METRICS_INTERVAL_S,
-        description="[DEPRECATED] How often to scrape for metrics. "
-        "Will be replaced by the environment variables "
-        "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
-        "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
-    )
     look_back_period_s: PositiveFloat = Field(
         default=30.0, description="Time window to average over for metrics."
-    )
-
-    smoothing_factor: PositiveFloat = Field(
-        default=1.0,
-        description="[DEPRECATED] Smoothing factor for autoscaling decisions.",
-    )
-    # DEPRECATED: replaced by `downscaling_factor`
-    upscale_smoothing_factor: Optional[PositiveFloat] = Field(
-        default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
-    )
-    # DEPRECATED: replaced by `upscaling_factor`
-    downscale_smoothing_factor: Optional[PositiveFloat] = Field(
-        default=None,
-        description="[DEPRECATED] Please use `downscaling_factor` instead.",
     )
 
     upscaling_factor: Optional[PositiveFloat] = Field(
@@ -648,32 +626,49 @@ class AutoscalingConfig(BaseModel):
 
         return self
 
-    @field_validator("metrics_interval_s")
+    @model_validator(mode="before")
     @classmethod
-    def metrics_interval_s_deprecation_warning(cls, v: PositiveFloat) -> PositiveFloat:
-        if v != DEFAULT_METRICS_INTERVAL_S:
-            warnings.warn(
-                "The `metrics_interval_s` field in AutoscalingConfig is deprecated and "
-                "will be replaced by the environment variables "
-                "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
-                "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
-                DeprecationWarning,
+    def removed_fields_error(cls, data):
+        if isinstance(data, dict) and "metrics_interval_s" in data:
+            raise ValueError(
+                "`metrics_interval_s` in AutoscalingConfig has been removed. "
+                "Set `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` "
+                "and `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` "
+                "instead."
             )
-        return v
+        if isinstance(data, dict) and "smoothing_factor" in data:
+            raise ValueError(
+                "`smoothing_factor` in AutoscalingConfig has been removed. "
+                "Set `upscaling_factor` and `downscaling_factor` instead."
+            )
+        if isinstance(data, dict) and "upscale_smoothing_factor" in data:
+            raise ValueError(
+                "`upscale_smoothing_factor` in AutoscalingConfig has been removed. "
+                "Set `upscaling_factor` instead."
+            )
+        if isinstance(data, dict) and "downscale_smoothing_factor" in data:
+            raise ValueError(
+                "`downscale_smoothing_factor` in AutoscalingConfig has been removed. "
+                "Set `downscaling_factor` instead."
+            )
+        return data
 
     @field_validator("look_back_period_s")
     @classmethod
-    def look_back_period_s_valid(cls, v: PositiveFloat, info):
-        # Get metrics_interval_s from info.data, or use default if not set
-        metrics_interval_s = info.data.get(
-            "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
+    def look_back_period_s_valid(cls, v: PositiveFloat):
+        metrics_push_interval_s = max(
+            RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+            RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
         )
-        if v <= metrics_interval_s:
+        if v <= metrics_push_interval_s:
             # Warns currently, will raise an exception in a future release
             warnings.warn(
-                f"`look_back_period_s` ({v}) must be greater than `metrics_interval_s` "
-                f"({metrics_interval_s}). This will raise an exception in a future "
-                f"release. Please set `look_back_period_s` > `metrics_interval_s`.",
+                f"`look_back_period_s` ({v}) must be greater than the autoscaling "
+                f"metric push interval ({metrics_push_interval_s}). This will raise "
+                f"an exception in a future release. Please set "
+                f"`look_back_period_s` > max("
+                f"`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S`, "
+                f"`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`).",
                 FutureWarning,
             )
         return v
@@ -697,13 +692,13 @@ class AutoscalingConfig(BaseModel):
         if self.upscaling_factor:
             return self.upscaling_factor
 
-        return self.upscale_smoothing_factor or self.smoothing_factor
+        return 1.0
 
     def get_downscaling_factor(self) -> PositiveFloat:
         if self.downscaling_factor:
             return self.downscaling_factor
 
-        return self.downscale_smoothing_factor or self.smoothing_factor
+        return 1.0
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests

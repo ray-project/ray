@@ -249,13 +249,12 @@ class DeploymentVersion:
                     self.deployment_config, option_name
                 )
                 # If autoscaling config was changed, only broadcast to
-                # replicas if metrics_interval_s or look_back_period_s
-                # was changed, because the rest of the fields are only
-                # used in deployment state manager
+                # replicas if look_back_period_s was changed, because the
+                # rest of the fields are only used in deployment state manager.
                 if isinstance(reconfigure_dict[option_name], AutoscalingConfig):
                     reconfigure_dict[option_name] = reconfigure_dict[
                         option_name
-                    ].model_dump(include={"metrics_interval_s", "look_back_period_s"})
+                    ].model_dump(include={"look_back_period_s"})
                 elif isinstance(reconfigure_dict[option_name], BaseModel):
                     reconfigure_dict[option_name] = reconfigure_dict[
                         option_name

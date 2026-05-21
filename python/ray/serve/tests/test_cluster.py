@@ -425,7 +425,6 @@ def test_autoscale_upscaling_stuck_then_healthy(ray_cluster):
             "min_replicas": 1,
             "max_replicas": 2,
             "target_ongoing_requests": 1,
-            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.5,
             "upscale_delay_s": 0,
             # If delay is large then the test will be stuck in UPSCALING state.

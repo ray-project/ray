@@ -19,6 +19,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -285,7 +286,7 @@ class DeploymentAutoscalingState:
         """
 
         timeout_s = max(
-            2 * self._config.metrics_interval_s,
+            2 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
         for handle_id, handle_metric in list(self._handle_requests.items()):
@@ -570,7 +571,7 @@ class DeploymentAutoscalingState:
             mathematically correct totals without arbitrary windowing bias.
 
         Example with Numbers:
-            Assume metrics_interval_s = 0.5s, current time = 2.0s
+            Assume metrics push interval = 0.5s, current time = 2.0s
 
             Step 1: Collect raw timeseries from 2 replicas (r1, r2)
             replica_metrics = [

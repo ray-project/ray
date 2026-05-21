@@ -471,10 +471,6 @@ class DeploymentConfig(BaseModel):
                 **data["request_router_config"]
             )
         if "autoscaling_config" in data:
-            if not data["autoscaling_config"].get("upscale_smoothing_factor"):
-                data["autoscaling_config"]["upscale_smoothing_factor"] = None
-            if not data["autoscaling_config"].get("downscale_smoothing_factor"):
-                data["autoscaling_config"]["downscale_smoothing_factor"] = None
             if not data["autoscaling_config"].get("upscaling_factor"):
                 data["autoscaling_config"]["upscaling_factor"] = None
             if not data["autoscaling_config"].get("downscaling_factor"):

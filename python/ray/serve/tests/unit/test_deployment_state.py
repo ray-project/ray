@@ -4468,7 +4468,6 @@ class TestAutoscaling:
                 "initial_replicas": 3,
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
-                "metrics_interval_s": 100,
                 "look_back_period_s": 200,
             }
         )
@@ -4659,7 +4658,6 @@ class TestAutoscaling:
                 "initial_replicas": 3,
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
-                "metrics_interval_s": 100,
                 "look_back_period_s": 200,
             }
         )
@@ -5018,7 +5016,6 @@ class TestAutoscaling:
                 "initial_replicas": 0,
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
-                "metrics_interval_s": 100,
                 "look_back_period_s": 200,
             }
         )
@@ -5110,7 +5107,6 @@ class TestAutoscaling:
                 "initial_replicas": 1,
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
-                "metrics_interval_s": 100,
                 "look_back_period_s": 200,
             }
         )
@@ -5440,7 +5436,6 @@ class TestAutoscaling:
                 "initial_replicas": 2,
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
-                "metrics_interval_s": 100,
                 "look_back_period_s": 200,
             }
         )

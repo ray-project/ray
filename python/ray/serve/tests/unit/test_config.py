@@ -125,34 +125,26 @@ def test_autoscaling_config_validation():
     )
     assert non_default_autoscaling_config.policy.is_default_policy_function() is False
 
-    # look_back_period_s must be greater than metrics_interval_s
+    # look_back_period_s must be greater than the autoscaling metric push interval.
     with pytest.warns(FutureWarning):
-        AutoscalingConfig(look_back_period_s=5.0, metrics_interval_s=10.0)
+        AutoscalingConfig(look_back_period_s=5.0)
     with pytest.warns(FutureWarning):
-        AutoscalingConfig(look_back_period_s=10.0, metrics_interval_s=10.0)
-    AutoscalingConfig(look_back_period_s=30.0, metrics_interval_s=10.0)
-    AutoscalingConfig(look_back_period_s=20.0, metrics_interval_s=10.0)
+        AutoscalingConfig(look_back_period_s=10.0)
+    AutoscalingConfig(look_back_period_s=30.0)
+    AutoscalingConfig(look_back_period_s=20.0)
 
 
-def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:
-    """Test that the metrics_interval_s deprecation warning is raised."""
-    # Warning is raised if we set metrics_interval_s to a non-default value
-    with pytest.warns(DeprecationWarning):
+def test_autoscaling_config_metrics_interval_s_removed() -> None:
+    assert "metrics_interval_s" not in AutoscalingConfig.model_fields
+
+    with pytest.raises(ValidationError, match="metrics_interval_s.*removed"):
         AutoscalingConfig(metrics_interval_s=5)
 
-    # ... even if the AutoscalingConfig is instantiated implicitly via the @serve.deployment decorator
-    with pytest.warns(DeprecationWarning):
+    with pytest.raises(ValidationError, match="metrics_interval_s.*removed"):
 
         @serve.deployment(autoscaling_config={"metrics_interval_s": 5})
         class Foo:
             ...
-
-    # ... or if it is deserialized from proto as part of a DeploymentConfig (presumably in the Serve Controller)
-    deployment_config_proto_bytes = DeploymentConfig(
-        autoscaling_config=AutoscalingConfig(metrics_interval_s=5)
-    ).to_proto_bytes()
-    with pytest.warns(DeprecationWarning):
-        DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
 
     # Default settings should not raise a warning
     with warnings.catch_warnings():
@@ -907,43 +899,38 @@ class TestAutoscalingConfig:
         assert autoscaling_config.get_upscaling_factor() == 1
         assert autoscaling_config.get_downscaling_factor() == 1
 
-        autoscaling_config = AutoscalingConfig(smoothing_factor=0.4)
-        assert autoscaling_config.get_upscaling_factor() == 0.4
-        assert autoscaling_config.get_downscaling_factor() == 0.4
-
-        autoscaling_config = AutoscalingConfig(upscale_smoothing_factor=0.4)
-        assert autoscaling_config.get_upscaling_factor() == 0.4
-        assert autoscaling_config.get_downscaling_factor() == 1
-
-        autoscaling_config = AutoscalingConfig(downscale_smoothing_factor=0.4)
-        assert autoscaling_config.get_upscaling_factor() == 1
-        assert autoscaling_config.get_downscaling_factor() == 0.4
-
         autoscaling_config = AutoscalingConfig(
-            smoothing_factor=0.4,
-            upscale_smoothing_factor=0.1,
-            downscale_smoothing_factor=0.01,
-        )
-        assert autoscaling_config.get_upscaling_factor() == 0.1
-        assert autoscaling_config.get_downscaling_factor() == 0.01
-
-        autoscaling_config = AutoscalingConfig(
-            smoothing_factor=0.4,
             upscaling_factor=0.5,
             downscaling_factor=0.6,
         )
         assert autoscaling_config.get_upscaling_factor() == 0.5
         assert autoscaling_config.get_downscaling_factor() == 0.6
 
-        autoscaling_config = AutoscalingConfig(
-            smoothing_factor=0.4,
-            upscale_smoothing_factor=0.1,
-            downscale_smoothing_factor=0.01,
-            upscaling_factor=0.5,
-            downscaling_factor=0.6,
-        )
-        assert autoscaling_config.get_upscaling_factor() == 0.5
-        assert autoscaling_config.get_downscaling_factor() == 0.6
+    @pytest.mark.parametrize(
+        "field_name,replacement",
+        [
+            ("smoothing_factor", "upscaling_factor.*downscaling_factor"),
+            ("upscale_smoothing_factor", "upscaling_factor"),
+            ("downscale_smoothing_factor", "downscaling_factor"),
+        ],
+    )
+    def test_smoothing_factor_fields_removed(self, field_name: str, replacement: str):
+        assert field_name not in AutoscalingConfig.model_fields
+
+        with pytest.raises(
+            ValidationError,
+            match=f"{field_name}.*removed.*{replacement}",
+        ):
+            AutoscalingConfig(**{field_name: 0.4})
+
+        with pytest.raises(
+            ValidationError,
+            match=f"{field_name}.*removed.*{replacement}",
+        ):
+
+            @serve.deployment(autoscaling_config={field_name: 0.4})
+            class Foo:
+                ...
 
 
 class TestGangSchedulingConfig:
@@ -1271,20 +1258,16 @@ def test_rolling_update_percentage_proto_roundtrip():
     assert deserialized.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
 
 
-@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
-def test_zero_default_proto(use_deprecated_smoothing_factor):
+def test_zero_default_proto():
     # Test that options set to zero (protobuf default value) still retain their
     # original value after being serialized and deserialized.
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 2,
         "downscale_delay_s": 0,
+        "upscaling_factor": 0.123,
+        "downscaling_factor": 0.123,
     }
-    if use_deprecated_smoothing_factor:
-        autoscaling_config["smoothing_factor"] = 0.123
-    else:
-        autoscaling_config["upscaling_factor"] = 0.123
-        autoscaling_config["downscaling_factor"] = 0.123
 
     config = DeploymentConfig(autoscaling_config=autoscaling_config)
     serialized_config = config.to_proto_bytes()

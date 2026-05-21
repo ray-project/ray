@@ -1,6 +1,10 @@
 import asyncio
+import os
 import sys
 from typing import Dict
+
+os.environ.setdefault("RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "0.1")
+os.environ.setdefault("RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", "0.1")
 
 import pytest
 
@@ -58,7 +62,6 @@ class TestCustomServeMetrics:
                 "max_replicas": 5,
                 "upscale_delay_s": 0.5,
                 "downscale_delay_s": 0.5,
-                "metrics_interval_s": 0.1,
                 "look_back_period_s": 1,
             }
         )
@@ -100,7 +103,6 @@ class TestCustomServeMetrics:
                 "max_replicas": 5,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
-                "metrics_interval_s": 1,
                 "look_back_period_s": 2,
             }
         )
@@ -132,7 +134,6 @@ class TestCustomServeMetrics:
                 "max_replicas": 5,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
-                "metrics_interval_s": 1,
                 "look_back_period_s": 2,
             }
         )
@@ -166,7 +167,6 @@ class TestCustomServeMetrics:
                 "max_replicas": 5,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 1,
-                "metrics_interval_s": 0.1,
                 "look_back_period_s": 1,
                 "target_ongoing_requests": 10,
                 "policy": AutoscalingPolicy(policy_function=custom_autoscaling_policy),
@@ -203,7 +203,6 @@ class TestCustomServeMetrics:
                 "max_replicas": 5,
                 "upscale_delay_s": 0.5,
                 "downscale_delay_s": 0.5,
-                "metrics_interval_s": 0.1,
                 "look_back_period_s": 1,
                 "target_ongoing_requests": 10,
                 "policy": AutoscalingPolicy(
@@ -259,7 +258,6 @@ class TestCustomServeMetrics:
                 "max_replicas": 5,
                 "upscale_delay_s": 0.5,
                 "downscale_delay_s": 0.5,
-                "metrics_interval_s": 0.1,
                 "look_back_period_s": 1,
                 "target_ongoing_requests": 10,
                 "policy": AutoscalingPolicy(
