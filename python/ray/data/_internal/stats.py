@@ -229,13 +229,21 @@ class Timer:
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
 
-    def percentile(self, p: float) -> float:
+    def approx_percentile(self, p: float) -> float:
         """Approximate ``p``-th percentile in seconds (0 <= p <= 1).
+
+        Approximation, not an exact percentile: we keep a fixed
+        log-spaced histogram instead of the raw samples (O(1) memory
+        regardless of sample count, which matters because this is called
+        on every scheduling-loop iteration of every Ray Data job).
+        Resolution is the width of one bin — roughly 2x in the realistic
+        1ms-5s range — and tail samples above the largest bound collapse
+        into a single overflow bucket.
 
         Returns the upper bound of the bin the p-th sample falls into,
         clamped to :meth:`max` so the result is never larger than any
-        observed sample. Samples in the overflow bin (above the last
-        finite bound) are reported as :meth:`max` directly.
+        observed sample. Samples in the overflow bin are reported as
+        :meth:`max` directly.
 
         Returns 0 if histogram tracking is disabled or no samples have
         been added.
@@ -1228,7 +1236,9 @@ class DatasetStats:
         streaming_exec_schedule_s = schedule_timer.get()
         streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
-        streaming_exec_schedule_p90_s = schedule_timer.percentile(0.9)
+        streaming_exec_schedule_approx_p50_s = schedule_timer.approx_percentile(0.5)
+        streaming_exec_schedule_approx_p75_s = schedule_timer.approx_percentile(0.75)
+        streaming_exec_schedule_approx_p90_s = schedule_timer.approx_percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1244,7 +1254,9 @@ class DatasetStats:
             streaming_exec_schedule_s,
             streaming_exec_schedule_avg_s,
             streaming_exec_schedule_max_s,
-            streaming_exec_schedule_p90_s,
+            streaming_exec_schedule_approx_p50_s,
+            streaming_exec_schedule_approx_p75_s,
+            streaming_exec_schedule_approx_p90_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1282,7 +1294,10 @@ class DatasetStatsSummary:
     streaming_exec_schedule_s: float
     streaming_exec_schedule_avg_s: float
     streaming_exec_schedule_max_s: float
-    streaming_exec_schedule_p90_s: float
+    # Histogram-derived approximations — see ``Timer.approx_percentile``.
+    streaming_exec_schedule_approx_p50_s: float
+    streaming_exec_schedule_approx_p75_s: float
+    streaming_exec_schedule_approx_p90_s: float
 
     def to_string(
         self,

@@ -101,7 +101,17 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     return {
         "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
         "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
-        "p90_scheduling_loop_duration_s": summary.streaming_exec_schedule_p90_s,
+        # Histogram-derived approximations; resolution is the bin width
+        # (~2x in the 1ms-5s range). See ``Timer.approx_percentile``.
+        "approx_p50_scheduling_loop_duration_s": (
+            summary.streaming_exec_schedule_approx_p50_s
+        ),
+        "approx_p75_scheduling_loop_duration_s": (
+            summary.streaming_exec_schedule_approx_p75_s
+        ),
+        "approx_p90_scheduling_loop_duration_s": (
+            summary.streaming_exec_schedule_approx_p90_s
+        ),
         "operators": [
             {
                 "operator_name": op.operator_name,
