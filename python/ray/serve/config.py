@@ -4,7 +4,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -27,6 +27,7 @@ from ray.actor import ActorClass
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
+    ACCELERATOR_KIND_TPU,
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -709,6 +710,66 @@ class AutoscalingConfig(BaseModel):
         return self.target_ongoing_requests
 
 
+@PublicAPI(stability="alpha")
+class AcceleratorConfig(BaseModel):
+    """Base class for structured accelerator configurations.
+
+    Use a concrete subclass — e.g. :class:`TPUAcceleratorConfig` — when
+    declaring a deployment's accelerator requirements via
+    ``serve.deployment(accelerator_config=...)``.
+    """
+
+    kind: str = Field(
+        ..., description="Discriminator identifying the accelerator config type."
+    )
+
+    model_config = {"frozen": True, "extra": "forbid"}
+
+
+@PublicAPI(stability="alpha")
+class TPUAcceleratorConfig(AcceleratorConfig):
+    """TPU slice specification for a Serve deployment.
+
+    Mirrors the parameters of :func:`ray.util.tpu.slice_placement_group`.
+    Ray Serve uses this config to provision a TPU slice placement group
+    per replica and to manage its lifecycle through the controller.
+
+    When set on a deployment, this config drives placement-group creation
+    entirely. The deployment's ``placement_group_bundles`` and
+    ``placement_group_strategy`` fields are ignored - the bundles are
+    derived from ``topology`` (or optionally ``resources_per_bundle``),
+    and the strategy is chosen internally to honor slice gang scheduling.
+
+    Example:
+        >>> from ray.serve.config import TPUAcceleratorConfig
+        >>> config = TPUAcceleratorConfig(topology="4x4", accelerator_version="v6e")
+    """
+
+    kind: Literal["tpu"] = ACCELERATOR_KIND_TPU
+
+    topology: str = Field(
+        ..., description="TPU pod topology, e.g. '2x2', '4x4', '2x2x2'."
+    )
+    accelerator_version: str = Field(
+        ..., description="TPU accelerator version, e.g. 'v4', 'v5p', 'v6e'."
+    )
+    num_slices: int = Field(default=1, ge=1, description="Number of slices to reserve.")
+    chips_per_vm: Optional[int] = Field(
+        default=None,
+        description=(
+            "Override for chips per host. Defaults to the canonical value "
+            "for the given accelerator_version."
+        ),
+    )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description=(
+            "Resources to include in every worker bundle. When unspecified, "
+            "SlicePlacementGroup defaults to one bundle per TPU host with "
+            "the bundle resources set to the number of chips on that host. "
+            "See ray.util.tpu.slice_placement_group for details."
+        ),
+    )
 @PublicAPI(stability="stable")
 class ProxyLocation(str, Enum):
     """Config for where to run proxies to receive ingress traffic to the cluster.
@@ -1165,3 +1226,19 @@ class GangSchedulingConfig(BaseModel):
                 "RESTART_REPLICA policy is not yet implemented. File a GitHub issue if you need this feature."
             )
         return v
+
+
+def _resolve_accelerator_config(
+    value: Union[Dict, AcceleratorConfig, None],
+) -> Optional[AcceleratorConfig]:
+
+    if value is None or isinstance(value, AcceleratorConfig):
+        return value
+    if isinstance(value, dict):
+        kind = value.get("kind")
+        if kind == ACCELERATOR_KIND_TPU:
+            return TPUAcceleratorConfig(**value)
+        raise ValueError(f"Unknown accelerator kind {kind!r}. Supported types: 'tpu'.")
+    raise TypeError(
+        f"accelerator_config must be a dict or AcceleratorConfig, got {type(value)}."
+    )

@@ -40,6 +40,7 @@ from ray.serve._private.utils import (
     wait_for_interrupt,
 )
 from ray.serve.config import (
+    AcceleratorConfig,
     AutoscalingConfig,
     ControllerOptions,
     DeploymentActorConfig,
@@ -47,6 +48,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    _resolve_accelerator_config,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -484,6 +486,7 @@ def deployment(
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
+    accelerator_config: Default[Union[Dict, AcceleratorConfig, None]] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -554,6 +557,9 @@ def deployment(
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
             requests). Defaults to -1 (no limit).
+        accelerator_config: Configuration for hardware accelerators, such as TPUs.
+            Can be passed as an unstructured dictionary or a structured `AcceleratorConfig`
+            subclass (e.g. `TPUAcceleratorConfig`). See `AcceleratorConfig` for options.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
@@ -654,11 +660,32 @@ def deployment(
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.model_dump()
 
+    if accelerator_config is not DEFAULT.VALUE and accelerator_config is not None:
+        accelerator_config = _resolve_accelerator_config(accelerator_config)
+
+        if (
+            gang_scheduling_config is not DEFAULT.VALUE
+            and gang_scheduling_config is not None
+        ):
+            # TODO(ryanaoleary@): Revisit this mutual exclusivity restriction once
+            # Data Parallel (DP) attention or more complex multi-slice gang
+            # scheduling is supported for TPUs.
+            #
+            # The only supported accelerator_config currently is for TPU, which utilizes
+            # SlicePlacementGroup internally for atomic scheduling of SPMD workers. This
+            # check can be loosened if additional accelerator configs are added in the
+            # future that don't manage their own gang scheduling.
+            raise ValueError(
+                "Cannot specify both `accelerator_config` and `gang_scheduling_config`. "
+                "Accelerator configurations automatically manage their own gang scheduling."
+            )
+
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
+        accelerator_config=accelerator_config,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,

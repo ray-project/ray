@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
+    AcceleratorConfig,
     AutoscalingConfig,
     AutoscalingPolicy,
     ControllerOptions,
@@ -45,6 +46,7 @@ from ray.serve.config import (
     GangSchedulingConfig,
     ProxyLocation,
     RequestRouterConfig,
+    _resolve_accelerator_config,
 )
 from ray.util.annotations import PublicAPI
 
@@ -478,6 +480,10 @@ class DeploymentSchema(BaseModel):
         gt=0.0,
         le=1.0,
     )
+    accelerator_config: Optional[Union[Dict, AcceleratorConfig]] = Field(
+        default=DEFAULT.VALUE,
+        description="Structured accelerator configuration for the deployment replicas.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -498,6 +504,20 @@ class DeploymentSchema(BaseModel):
         elif num_replicas not in ["auto", None, DEFAULT.VALUE]:
             raise ValueError(
                 f'`num_replicas` must be an int or "auto", but got: {num_replicas}'
+            )
+
+        return values
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_accelerator_config(cls, values):
+        accelerator_config = values.get("accelerator_config", None)
+        if accelerator_config in [None, DEFAULT.VALUE]:
+            return values
+
+        if isinstance(accelerator_config, dict):
+            values["accelerator_config"] = _resolve_accelerator_config(
+                accelerator_config
             )
 
         return values
@@ -627,6 +647,21 @@ class DeploymentSchema(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_accelerator_config_and_gang_scheduling_config(self):
+        accelerator_config = self.accelerator_config
+        gang_scheduling_config = self.gang_scheduling_config
+
+        if accelerator_config not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Cannot specify both `accelerator_config` and `gang_scheduling_config`."
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_max_queued_requests(self):
         max_queued_requests = self.max_queued_requests
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
@@ -688,6 +723,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.gang_scheduling_config = (
             info.deployment_config.gang_scheduling_config.model_dump()
         )
+
+    if info.deployment_config.accelerator_config is not None:
+        schema.accelerator_config = info.deployment_config.accelerator_config
 
     if info.deployment_config.deployment_actors is not None:
         deployment_actors = []
