@@ -12,17 +12,17 @@ Callers supply concrete implementations of these two functions; the operator
 handles all infrastructure concerns:
 
 * Pre-map merge with node-affinity batching (1 GB default threshold).
-* Shard grouping: packs up to ``_MAX_RETURN_GROUPS`` shards per mapper return
+* Shard grouping: packs up to _MAX_RETURN_GROUPS shards per mapper return
   into a single ZSTD-compressed Arrow IPC stream, bounding object-store
   pressure from the M×N intermediate objects.
-* Batched ``ray.get`` (256 refs at a time) in reducers to avoid memory spikes
-  from a single large ``ray.get``.
+* Batched ray.get (256 refs at a time) in reducers to avoid memory spikes
+  from a single large ray.get.
 * Streaming vs. blocking reduce: streaming flushes partition accumulators to
-  ``reduce_fn`` once they reach ``DataContext.target_max_block_size``;
+  reduce_fn once they reach DataContext.target_max_block_size;
   blocking accumulates all shards first.  Output blocks pass through a
   :class:`BlockOutputBuffer` per partition to enforce the same target size.
 * One concurrent reducer per live worker node to prevent object-store flooding.
-* Optional ``runtime_env`` on map workers to isolate shuffle memory.
+* Optional runtime_env on map workers to isolate shuffle memory.
 """
 
 import functools
@@ -87,23 +87,13 @@ logger = logging.getLogger(__name__)
 # Public types
 # ---------------------------------------------------------------------------
 
-# Takes a single, already-defragmented ``pa.Table`` block.
-# Returns a dict mapping partition IDs to shard tables; empty partitions are
-# omitted.  ``num_partitions`` and any other config are bound via closure.
+# Maps rows of a pa.Table block to output partition IDs.  num_partitions
+# and any other config are bound via closure.  The operator filters out empty
+# entries, so implementations don't need to.
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 
-# Takes ``(partition_id, accumulated_shard_tables)`` and yields output blocks.
-#
-# In *streaming* mode the operator calls this function multiple times per
-# partition, each time with a partial list of shards whose total size has
-# reached ``DataContext.target_max_block_size``.  Each call must produce a
-# valid partial result from the given tables alone (concat is the canonical
-# example).  Produced blocks are passed through a per-partition
-# :class:`BlockOutputBuffer` that aggregates across calls and emits blocks
-# shaped to ``target_max_block_size``.
-#
-# In *blocking* mode (``streaming_reduce=False``) the operator accumulates all
-# shards for a partition before calling this function once with the full list.
+# Takes (partition_id, accumulated_shard_tables) and yields output blocks.
+# See :class:`BaseShuffleOperator` for streaming vs. blocking call semantics.
 ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
 
 # ---------------------------------------------------------------------------
@@ -122,8 +112,67 @@ _REDUCE_BATCH_SIZE = 256
 # ---------------------------------------------------------------------------
 
 
+def _partition_blocks_to_shards(
+    blocks: Tuple[Block, ...], partition_fn: PartitionFn
+) -> Dict[int, List[pa.Table]]:
+    """Run partition_fn on each block; collect non-empty shards by pid.
+
+    Each block is partitioned independently so we never materialize a single
+    concatenated table.  partition_fn is responsible for any defragmentation
+    it needs (e.g. hash_partition calls try_combine_chunked_columns).
+    """
+    partition_accumulators: Dict[int, List[pa.Table]] = {}
+    for block in blocks:
+        block = TableBlockAccessor.try_convert_block_type(
+            block, block_type=BlockType.ARROW
+        )
+        if block.num_rows == 0:
+            continue
+        assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
+        block_partitions = partition_fn(block)
+        for pid, shard in block_partitions.items():
+            if shard.num_rows > 0:
+                partition_accumulators.setdefault(pid, []).append(shard)
+        del block, block_partitions
+    return partition_accumulators
+
+
+def _encode_group_ipc(
+    sorted_pids: List[int],
+    pid_tables: Dict[int, pa.Table],
+    ipc_write_options: pa.ipc.IpcWriteOptions,
+) -> pa.Buffer:
+    """ZSTD-encode one group as a single Arrow IPC stream.
+
+    The partition IDs are tagged on the schema metadata as __pids__ so
+    the reducer can route read_next_batch() calls back to the right pid
+    in the same order (see :func:`_read_ipc_group`).
+    """
+    import json as _json
+
+    first_table = pid_tables[sorted_pids[0]]
+    # Copy: schema.metadata is shared across tables that share a schema, and
+    # we don't want to mutate the upstream schema's metadata dict.
+    schema_meta = dict(first_table.schema.metadata or {})
+    schema_meta[b"__pids__"] = _json.dumps(sorted_pids).encode()
+    tagged_schema = first_table.schema.with_metadata(schema_meta)
+
+    sink = pa.BufferOutputStream()
+    writer = pa.ipc.new_stream(sink, tagged_schema, options=ipc_write_options)
+    for pid in sorted_pids:
+        table = pid_tables[pid]
+        # Force a single batch per partition: the reducer reads one batch
+        # per partition ID via reader.read_next_batch().  write_table
+        # would emit one batch per chunk, breaking the routing invariant.
+        if table.num_columns > 0:
+            table = table.combine_chunks()
+        writer.write_batch(table.to_batches()[0])
+    writer.close()
+    return sink.getvalue()
+
+
 @ray.remote
-def _map_task(
+def _shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
     num_partitions: int,
@@ -132,29 +181,29 @@ def _map_task(
     """Map stage: partition one or more blocks and return grouped shards.
 
     Multiple input blocks may be passed when pre-map merge is enabled; they
-    are partitioned individually (to avoid a large ``combine_chunks`` on the
+    are partitioned individually (to avoid a large combine_chunks on the
     merged table) and their shards are accumulated before grouping.
 
-    Must be called with ``num_returns = num_groups + 1`` where
-    ``num_groups = ceil(num_partitions / shard_group_size)``.
+    Must be called with num_returns = num_groups + 1 where
+    num_groups = ceil(num_partitions / shard_group_size).
 
     Args:
         *blocks: One or more input blocks.
-        partition_fn: Callable ``(pa.Table) -> Dict[int, pa.Table]`` that
+        partition_fn: Callable (pa.Table) -> Dict[int, pa.Table] that
             assigns rows to output partitions.
         num_partitions: Total number of output partitions.
         shard_group_size: Number of partitions packed into each return object.
 
     Returns:
-        Tuple of ``num_groups + 1`` values:
+        Tuple of num_groups + 1 values:
 
-        - Index 0: ``(BlockMetadata, Dict)`` — aggregate input metadata and a
-          per-partition ``(rows, bytes)`` size dict (keys are the partitions
+        - Index 0: (BlockMetadata, Dict) — aggregate input metadata and a
+          per-partition (rows, bytes) size dict (keys are the partitions
           that received any rows from this mapper).
         - Index 1 … G: a ZSTD-compressed Arrow IPC stream for the partitions
-          in that shard group, or ``None`` if the group is entirely empty.
+          in that shard group, or None if the group is entirely empty.
     """
-    import json as _json
+    from dataclasses import replace as _dc_replace
 
     stats = BlockExecStats.builder()
     num_groups = (num_partitions + shard_group_size - 1) // shard_group_size
@@ -162,53 +211,26 @@ def _map_task(
     total_rows = sum(b.num_rows for b in blocks)
     total_bytes = sum(b.nbytes for b in blocks)
 
+    # Empty-input fast path.
     if total_rows == 0:
         input_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
             block_exec_stats=stats.build(block_ser_time_s=0),
         )
         return (input_meta, {}), *([None] * num_groups)
 
-    # Partition each block individually to avoid a full-table combine_chunks()
-    # on the merged input.  Per-block combine_chunks() is cheap (~128 MB) and
-    # lets the allocator reuse freed pages across iterations.
-    partition_accumulators: Dict[int, List[pa.Table]] = {}
+    # Step 1: partition each input block into (pid -> [shard_table, ...]).
+    partition_accumulators = _partition_blocks_to_shards(blocks, partition_fn)
 
-    for block in blocks:
-        block = TableBlockAccessor.try_convert_block_type(
-            block, block_type=BlockType.ARROW
-        )
-        if block.num_rows == 0:
-            continue
-
-        assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
-
-        # Defragment chunked columns for faster partitioning.
-        if any(col.num_chunks > 1 for col in block.columns):
-            block = block.combine_chunks()
-
-        block_partitions = partition_fn(block)
-
-        for pid, shard in block_partitions.items():
-            if shard.num_rows > 0:
-                if pid not in partition_accumulators:
-                    partition_accumulators[pid] = []
-                partition_accumulators[pid].append(shard)
-
-        del block, block_partitions
-
-    # Build grouped output: compress one group at a time to bound peak memory.
-    ipc_write_options = pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
-    shard_sizes: Dict[int, Tuple[int, int]] = {}
-    groups = [None] * num_groups
-
-    # Bucket partition accumulators by group, then process one group at a time.
+    # Step 2: bucket pids by their target group_idx.
     group_pid_keys: Dict[int, List[int]] = {}
     for pid in partition_accumulators:
         group_idx = pid // shard_group_size
-        if group_idx not in group_pid_keys:
-            group_pid_keys[group_idx] = []
-        group_pid_keys[group_idx].append(pid)
+        group_pid_keys.setdefault(group_idx, []).append(pid)
 
+    # Step 3: merge per-pid shards and ZSTD-encode each group.
+    ipc_write_options = pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
+    shard_sizes: Dict[int, Tuple[int, int]] = {}
+    groups = [None] * num_groups
     for group_idx, pid_keys in group_pid_keys.items():
         sorted_pids = sorted(pid_keys)
         pid_tables: Dict[int, pa.Table] = {}
@@ -217,29 +239,13 @@ def _map_task(
             merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
             pid_tables[pid] = merged
             shard_sizes[pid] = (merged.num_rows, merged.nbytes)
-
-        # Write all partitions in this group as one compressed IPC stream.
-        # Tag partition IDs in schema metadata so the reducer can route shards.
-        first_table = pid_tables[sorted_pids[0]]
-        # Copy: schema.metadata is shared across tables that share a schema.
-        schema_meta = dict(first_table.schema.metadata or {})
-        schema_meta[b"__pids__"] = _json.dumps(sorted_pids).encode()
-        tagged_schema = first_table.schema.with_metadata(schema_meta)
-        sink = pa.BufferOutputStream()
-        writer = pa.ipc.new_stream(sink, tagged_schema, options=ipc_write_options)
-        for pid in sorted_pids:
-            table = pid_tables[pid]
-            if table.num_columns > 0:
-                table = table.combine_chunks()
-            writer.write_batch(table.to_batches()[0])
-        writer.close()
-        groups[group_idx] = sink.getvalue()
+        groups[group_idx] = _encode_group_ipc(
+            sorted_pids, pid_tables, ipc_write_options
+        )
         del pid_tables
-
     del group_pid_keys
 
-    from dataclasses import replace as _dc_replace
-
+    # Step 4: build aggregate input metadata and return.
     input_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
         block_exec_stats=stats.build(block_ser_time_s=0),
     )
@@ -255,9 +261,9 @@ def _map_task(
 def _read_ipc_group(
     group: pa.Buffer,
 ) -> List[Tuple[int, pa.Table]]:
-    """Decompress one IPC group and return ``(partition_id, table)`` pairs.
+    """Decompress one IPC group and return (partition_id, table) pairs.
 
-    Strips the implementation-only ``__pids__`` metadata key so that downstream
+    Strips the implementation-only __pids__ metadata key so that downstream
     tables don't carry our shard-routing tag in their schema.
     """
     import json as _json
@@ -278,55 +284,63 @@ def _read_ipc_group(
 
 
 @ray.remote
-def _reduce_task(
+def _shuffle_reduce_task(
     group_refs: List[ObjectRef],
     partition_ids: List[int],
     reduce_fn: ReduceFn,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     streaming: bool = True,
 ) -> Generator[Union[Block, bytes], None, None]:
-    """Reduce stage: fetch shards and call ``reduce_fn`` for each partition.
+    """Reduce stage: fetch shards and call reduce_fn for each partition.
 
-    Both modes use batched ``ray.get`` (:data:`_REDUCE_BATCH_SIZE` refs at a
-    time) to avoid memory spikes from a single large dereference.  Output
-    blocks from ``reduce_fn`` are passed through a per-partition
-    :class:`BlockOutputBuffer` so that each emitted block respects
-    ``target_max_block_size``.
+    Both modes use batched ray.get (:data:`_REDUCE_BATCH_SIZE` refs at a
+    time) to avoid memory spikes from a single large dereference.
 
-    Streaming mode (``streaming=True``):
-        Calls ``reduce_fn(partition_id, accumulated_tables)`` whenever a
-        partition's accumulator exceeds ``target_max_block_size``, then pushes
-        the produced blocks through the output buffer.  Peak input accumulator
-        per partition is bounded to ~``target_max_block_size``.  ``reduce_fn``
-        must produce valid output from partial data.
+    Streaming mode (streaming=True):
+        Calls reduce_fn(partition_id, accumulated_tables) whenever a
+        partition's accumulator exceeds target_max_block_size, then pushes
+        the produced blocks through a per-partition :class:`BlockOutputBuffer`
+        so each emitted block respects target_max_block_size.  Peak input
+        accumulator per partition is bounded to ~target_max_block_size.
+        reduce_fn must produce valid output from partial data.
 
-    Blocking mode (``streaming=False``):
+    Blocking mode (streaming=False):
         Accumulates all shards for every partition before calling
-        ``reduce_fn(partition_id, all_tables)`` once per partition.  Use this
-        when ``reduce_fn`` requires the full partition (sort, aggregate).
+        reduce_fn(partition_id, all_tables) once per partition.  Use this
+        when reduce_fn requires the full partition (sort, aggregate).
 
     Args:
         group_refs: ObjectRefs to compressed IPC groups from all mappers.
         partition_ids: Partition IDs this reducer is responsible for.
         reduce_fn: User-supplied reduce callable.
         target_max_block_size: Target output block size (also the streaming
-            flush threshold).  Comes from ``DataContext.target_max_block_size``.
+            flush threshold).  Comes from DataContext.target_max_block_size,
+            or ``None`` when the operator was constructed with
+            ``disallow_block_splitting=True`` — in that case the reducer skips
+            output reshaping and the streaming-flush check (one block per
+            partition, blocking-style).
         streaming: Whether to flush partitions incrementally (True) or
             accumulate all shards before reducing (False).
 
     Returns:
-        Generator yielding output blocks shaped to ``target_max_block_size``,
-        each followed by a serialized ``BlockMetadataWithSchema``.
+        Generator yielding output blocks, each followed by a serialized
+        BlockMetadataWithSchema.
     """
     start_time_s = time.perf_counter()
 
+    # Empty-input fast path.
     if not group_refs or not partition_ids:
         return
 
+    # Per-partition state.
+    # accum_tables / accum_bytes: input-side shard accumulators, used
+    # to decide when to call reduce_fn in streaming mode.
+    # output_buffers: output-side, one per touched partition.  Lazily
+    # allocated on first reduce_fn call to avoid empty-block emission for
+    # partitions this reducer received no rows for.
     partition_ids_set = set(partition_ids)
     accum_tables: Dict[int, List[pa.Table]] = {pid: [] for pid in partition_ids}
     accum_bytes: Dict[int, int] = {pid: 0 for pid in partition_ids}
-    # Lazy-allocated per-partition output buffer (created on first add).
     output_buffers: Dict[int, BlockOutputBuffer] = {}
 
     def _yield_with_stats(block: Block):
@@ -348,10 +362,17 @@ def _reduce_task(
         )
 
     def _reduce_into_buffer(pid: int, tables: List[pa.Table]):
-        """Call reduce_fn, push outputs through buffer, yield ready blocks."""
+        """Call reduce_fn, push outputs through buffer, yield ready blocks.
+
+        When ``target_max_block_size`` is None, :meth:`OutputBlockSizeOption.of`
+        returns None, and a :class:`BlockOutputBuffer` constructed with that
+        emits exactly one block per partition (no slicing / coalescing).
+        """
         if pid not in output_buffers:
             output_buffers[pid] = BlockOutputBuffer(
-                OutputBlockSizeOption(target_max_block_size=target_max_block_size)
+                OutputBlockSizeOption.of(
+                    target_max_block_size=target_max_block_size,
+                )
             )
         buf = output_buffers[pid]
         for block in reduce_fn(pid, tables):
@@ -359,6 +380,10 @@ def _reduce_task(
             while buf.has_next():
                 yield from _yield_with_stats(buf.next())
 
+    # Step 1: fetch group refs in batches, decompress, route shards to their
+    # partition accumulators.  In streaming mode, when a partition's
+    # accumulator reaches target_max_block_size, flush it through
+    # reduce_fn and yield any blocks the output buffer is ready to emit.
     for batch_start in range(0, len(group_refs), _REDUCE_BATCH_SIZE):
         batch = group_refs[batch_start : batch_start + _REDUCE_BATCH_SIZE]
         batch_groups = ray.get(batch)
@@ -372,7 +397,11 @@ def _reduce_task(
                 accum_tables[pid].append(table)
                 accum_bytes[pid] += table.nbytes
 
-                if streaming and accum_bytes[pid] >= target_max_block_size:
+                if (
+                    streaming
+                    and target_max_block_size is not None
+                    and accum_bytes[pid] >= target_max_block_size
+                ):
                     tables = accum_tables[pid]
                     accum_tables[pid] = []
                     accum_bytes[pid] = 0
@@ -380,12 +409,15 @@ def _reduce_task(
 
         del batch_groups
 
-    # Final flush: drain any remaining accumulated shards through reduce_fn.
+    # Step 2: all input groups consumed.  Drain any remaining accumulated
+    # shards through reduce_fn — this is the only reduce_fn call per
+    # partition in blocking mode, and the tail-flush in streaming mode.
     for pid in sorted(partition_ids):
         if accum_tables[pid]:
             yield from _reduce_into_buffer(pid, accum_tables[pid])
 
-    # Finalize each touched buffer and drain remaining shaped blocks.
+    # Step 3: finalize each touched output buffer to flush any partial block
+    # that hasn't reached target_max_block_size yet, then yield it.
     for pid in sorted(output_buffers):
         buf = output_buffers[pid]
         buf.finalize()
@@ -426,29 +458,37 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     reduce_fn:
         Callable that combines shard tables for one partition into blocks.
     streaming_reduce:
-        If ``True`` (default), call ``reduce_fn`` incrementally as a
-        partition's accumulator reaches ``data_context.target_max_block_size``.
-        If ``False``, accumulate all shards before calling ``reduce_fn`` once
-        — required for sort or aggregate.
+        If True (default), call reduce_fn incrementally as a
+        partition's accumulator reaches data_context.target_max_block_size.
+        If False, accumulate all shards before calling reduce_fn once
+        — required for sort or aggregate.  Implicitly forced to False when
+        disallow_block_splitting=True.
+    disallow_block_splitting:
+        If True, output blocks from reduce_fn are emitted as-is without being
+        reshaped to data_context.target_max_block_size.  Required for hash-
+        shuffle semantics, where every row sharing a key must end up in the
+        same output block (groupby, map_groups, repartition with keys).
+        Forces blocking-mode reduce (no streaming-flush mid-partition).
+        Defaults to False.
     pre_map_merge_threshold:
         Byte threshold per node at which buffered blocks are merged into a
         single map task.  Set to 0 to disable pre-map merging.
     map_runtime_env:
-        Optional ``runtime_env`` dict passed to each map task via
-        ``@ray.remote(...).remote()``.  Use to isolate map workers into a
+        Optional runtime_env dict passed to each map task via
+        @ray.remote(...).remote().  Use to isolate map workers into a
         dedicated pool.
     map_cpus:
         CPU request per map task.
     reduce_cpus:
-        CPU request per reduce task.  If ``None``, auto-derived from partition
+        CPU request per reduce task.  If None, auto-derived from partition
         sizes and cluster shape (1.0 for streaming, memory-proportional for
         blocking).
     name:
         Display name shown in progress bars and logs.
     """
 
-    _DEFAULT_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_REDUCE_TASK_NUM_CPUS = 1.0
+    _DEFAULT_shuffle_map_task_NUM_CPUS = 1.0
+    _DEFAULT_shuffle_reduce_task_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
@@ -460,9 +500,10 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         partition_fn: PartitionFn,
         reduce_fn: ReduceFn,
         streaming_reduce: bool = True,
+        disallow_block_splitting: bool = False,
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
-        map_cpus: float = _DEFAULT_MAP_TASK_NUM_CPUS,
+        map_cpus: float = _DEFAULT_shuffle_map_task_NUM_CPUS,
         reduce_cpus: Optional[float] = None,
         name: str = "Shuffle",
     ):
@@ -475,7 +516,12 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
         self._reduce_fn: ReduceFn = reduce_fn
-        self._streaming_reduce: bool = streaming_reduce
+        self._disallow_block_splitting: bool = disallow_block_splitting
+        # When block-splitting is disallowed, the reducer must see the entire
+        # partition before emitting (matches legacy semantics; see the
+        # ``disallow_block_splitting`` docstring).  Force blocking mode so we
+        # never streaming-flush mid-partition.
+        self._streaming_reduce: bool = streaming_reduce and not disallow_block_splitting
 
         # -- Shard grouping --------------------------------------------------
         # Cap at _MAX_RETURN_GROUPS return objects per mapper.
@@ -488,12 +534,12 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         ) // self._shard_group_size
 
         # -- Map task config -------------------------------------------------
-        self._map_task_num_cpus: float = map_cpus
+        self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
 
         # -- Map task tracking -----------------------------------------------
-        self._next_map_task_idx: int = 0
-        self._map_tasks: Dict[int, MetadataOpTask] = {}
+        self._next_shuffle_map_task_idx: int = 0
+        self._shuffle_map_tasks: Dict[int, MetadataOpTask] = {}
         self._map_resource_usage = ExecutionResources.zero()
 
         # -- Per-partition stats (driver bookkeeping) ------------------------
@@ -515,9 +561,11 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
         # -- Reduce task config & tracking -----------------------------------
-        self._reduce_task_num_cpus_override: Optional[float] = reduce_cpus
-        self._reduce_task_num_cpus: float = self._DEFAULT_REDUCE_TASK_NUM_CPUS
-        self._reduce_tasks: Dict[int, DataOpTask] = {}
+        self._shuffle_reduce_task_num_cpus_override: Optional[float] = reduce_cpus
+        self._shuffle_reduce_task_num_cpus: float = (
+            self._DEFAULT_shuffle_reduce_task_NUM_CPUS
+        )
+        self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._pending_reduce_group_ids: Set[int] = set(range(self._num_groups))
 
         # -- Output queue ----------------------------------------------------
@@ -578,7 +626,7 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             for block_ref, block_metadata in zip(
                 input_bundle.block_refs, input_bundle.metadata
             ):
-                self._submit_map_task([block_ref], [input_bundle])
+                self._submit_shuffle_map_task([block_ref], [input_bundle])
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
@@ -592,14 +640,14 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
         bundles = self._merge_buffer_bundles_by_node.pop(node_id, [])
         estimated_bytes = self._merge_buffer_bytes_by_node.pop(node_id, 0)
-        self._submit_map_task(
+        self._submit_shuffle_map_task(
             block_refs,
             bundles,
             estimated_bytes=estimated_bytes,
             target_node_id=node_id if node_id != "unknown" else None,
         )
 
-    def _submit_map_task(
+    def _submit_shuffle_map_task(
         self,
         block_refs: List[ObjectRef],
         input_bundles: List[RefBundle],
@@ -617,10 +665,10 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             target_node_id: If set, pin the task to this node (soft) to avoid
                 cross-node object transfers.
         """
-        cur_task_idx = self._next_map_task_idx
-        self._next_map_task_idx += 1
+        cur_task_idx = self._next_shuffle_map_task_idx
+        self._next_shuffle_map_task_idx += 1
 
-        task_resources: Dict[str, Any] = {"num_cpus": self._map_task_num_cpus}
+        task_resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         # For merged map tasks, request 2× input bytes: partition shards from
         # table.take() (~1×) plus hash arrays and serialisation overhead.
         if estimated_bytes > 0 and len(block_refs) > 1:
@@ -638,7 +686,7 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         if self._map_runtime_env is not None:
             remote_opts["runtime_env"] = self._map_runtime_env
 
-        map_refs = _map_task.options(**remote_opts).remote(
+        map_refs = _shuffle_map_task.options(**remote_opts).remote(
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
@@ -647,60 +695,15 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         metadata_ref = map_refs[0]
         group_refs = list(map_refs[1:])
 
-        def _on_map_done(task_idx: int, g_refs: List[ObjectRef]) -> None:
-            task = self._map_tasks.pop(task_idx)
-            self._map_resource_usage = self._map_resource_usage.subtract(
-                task.get_requested_resource_bundle()
-            )
-
-            input_meta, shard_sizes = ray.get(task.get_waitable(), timeout=60)
-
-            for pid, (rows, nbytes) in shard_sizes.items():
-                self._partition_row_counts[pid] += rows
-                self._partition_bytes[pid] += nbytes
-
-            # Append all group refs; reducer skips entries that resolve to None.
-            for group_idx, ref in enumerate(g_refs):
-                self._group_buffers[group_idx].append(ref)
-
-            del g_refs
-
-            for bundle in input_bundles:
-                bundle.destroy_if_owned()
-
-            self._total_input_rows += input_meta.num_rows or 0
-            self._total_input_bytes += input_meta.size_bytes or 0
-            self._map_blocks_stats.append(input_meta.to_stats())
-
-            for bundle in input_bundles:
-                self._map_metrics.on_output_taken(bundle)
-            self._map_metrics.on_task_output_generated(
-                cur_task_idx,
-                RefBundle(
-                    [(task.get_waitable(), input_meta)],
-                    schema=None,
-                    owns_blocks=False,
-                ),
-            )
-            self._map_metrics.on_task_finished(
-                cur_task_idx,
-                None,
-                task_exec_stats=None,
-                task_exec_driver_stats=None,
-            )
-
-            if self._map_bar is not None:
-                self._map_bar.update(increment=input_meta.num_rows or 0)
-
         task = MetadataOpTask(
             task_index=cur_task_idx,
             object_ref=metadata_ref,
             task_done_callback=functools.partial(
-                _on_map_done, cur_task_idx, group_refs
+                self._handle_map_done, cur_task_idx, group_refs, input_bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(task_resources),
         )
-        self._map_tasks[cur_task_idx] = task
+        self._shuffle_map_tasks[cur_task_idx] = task
         self._map_resource_usage = self._map_resource_usage.add(
             task.get_requested_resource_bundle()
         )
@@ -728,6 +731,61 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             )
             self._map_bar.update(total=num_rows)
 
+    def _handle_map_done(
+        self,
+        task_idx: int,
+        group_refs: List[ObjectRef],
+        input_bundles: List[RefBundle],
+    ) -> None:
+        """Callback when a map task finishes.
+
+        Bound onto :class:`MetadataOpTask` via functools.partial in
+        :meth:`_submit_shuffle_map_task`.  Updates partition-level bookkeeping,
+        installs the task's group refs into _group_buffers, frees input
+        bundles, and updates map-phase metrics / progress bar.
+        """
+        task = self._shuffle_map_tasks.pop(task_idx)
+        self._map_resource_usage = self._map_resource_usage.subtract(
+            task.get_requested_resource_bundle()
+        )
+
+        input_meta, shard_sizes = ray.get(task.get_waitable(), timeout=60)
+
+        for pid, (rows, nbytes) in shard_sizes.items():
+            self._partition_row_counts[pid] += rows
+            self._partition_bytes[pid] += nbytes
+
+        # Append all group refs; reducer skips entries that resolve to None.
+        for group_idx, ref in enumerate(group_refs):
+            self._group_buffers[group_idx].append(ref)
+
+        for bundle in input_bundles:
+            bundle.destroy_if_owned()
+
+        self._total_input_rows += input_meta.num_rows or 0
+        self._total_input_bytes += input_meta.size_bytes or 0
+        self._map_blocks_stats.append(input_meta.to_stats())
+
+        for bundle in input_bundles:
+            self._map_metrics.on_output_taken(bundle)
+        self._map_metrics.on_task_output_generated(
+            task_idx,
+            RefBundle(
+                [(task.get_waitable(), input_meta)],
+                schema=None,
+                owns_blocks=False,
+            ),
+        )
+        self._map_metrics.on_task_finished(
+            task_idx,
+            None,
+            task_exec_stats=None,
+            task_exec_driver_stats=None,
+        )
+
+        if self._map_bar is not None:
+            self._map_bar.update(increment=input_meta.num_rows or 0)
+
     # -----------------------------------------------------------------------
     # Output handling (Reduce phase)
     # -----------------------------------------------------------------------
@@ -748,23 +806,25 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # -----------------------------------------------------------------------
 
     def get_active_tasks(self) -> List[OpTask]:
-        return list(self._map_tasks.values()) + list(self._reduce_tasks.values())
+        return list(self._shuffle_map_tasks.values()) + list(
+            self._shuffle_reduce_tasks.values()
+        )
 
     # -----------------------------------------------------------------------
     # Reduce scheduling
     # -----------------------------------------------------------------------
 
     def _is_map_done(self) -> bool:
-        return self._inputs_complete and len(self._map_tasks) == 0
+        return self._inputs_complete and len(self._shuffle_map_tasks) == 0
 
     def _is_all_reduce_submitted(self) -> bool:
         return len(self._pending_reduce_group_ids) == 0
 
     def _auto_derive_reduce_cpus(self) -> float:
-        """Derive ``reduce_task_num_cpus`` from partition sizes and cluster shape.
+        """Derive shuffle_reduce_task_num_cpus from partition sizes and cluster shape.
 
         For streaming reduce, memory per partition is bounded by
-        ``target_max_block_size`` (typically 128 MB), so 1 CPU maximises
+        target_max_block_size (typically 128 MB), so 1 CPU maximises
         concurrency.  For blocking reduce, peak heap is proportional to the
         largest group's uncompressed bytes, so CPUs are scaled to bound
         co-located heap usage.
@@ -772,10 +832,10 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         import math
 
         if self._streaming_reduce:
-            return self._DEFAULT_REDUCE_TASK_NUM_CPUS
+            return self._DEFAULT_shuffle_reduce_task_NUM_CPUS
 
         if not self._partition_bytes:
-            return self._DEFAULT_REDUCE_TASK_NUM_CPUS
+            return self._DEFAULT_shuffle_reduce_task_NUM_CPUS
 
         max_group_bytes = 0
         for group_idx in range(self._num_groups):
@@ -787,7 +847,7 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             max_group_bytes = max(max_group_bytes, group_bytes)
 
         if max_group_bytes == 0:
-            return self._DEFAULT_REDUCE_TASK_NUM_CPUS
+            return self._DEFAULT_shuffle_reduce_task_NUM_CPUS
 
         reducer_heap = max_group_bytes * 2  # decompressed input + output
 
@@ -837,8 +897,8 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         downstream can drain).  As each reducer finishes, the next wave is
         scheduled by :meth:`_try_reduce`.
 
-        Override via ``DataContext`` config key
-        ``map_reduce_max_concurrent_reducers``.
+        Override via DataContext config key
+        map_reduce_max_concurrent_reducers.
         """
         override = self._data_context.get_config(
             "map_reduce_max_concurrent_reducers", None
@@ -855,34 +915,11 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         if self._reduce_start_time is None:
-            self._log_partition_stats()
-            self._reduce_start_time = time.perf_counter()
-            map_elapsed = self._reduce_start_time - self._start_time
+            self._init_reduce_phase()
 
-            try:
-                self._num_nodes = sum(
-                    1
-                    for n in ray.nodes()
-                    if n.get("Alive", False)
-                    and "node:__internal_head__" not in n.get("Resources", {})
-                )
-            except Exception:
-                self._num_nodes = 1
-            self._num_nodes = max(1, self._num_nodes)
-
-            if self._reduce_task_num_cpus_override is not None:
-                self._reduce_task_num_cpus = self._reduce_task_num_cpus_override
-            else:
-                self._reduce_task_num_cpus = self._auto_derive_reduce_cpus()
-
-            logger.info(
-                f"Reduce starting: map_elapsed={map_elapsed:.1f}s, "
-                f"maps={self._next_map_task_idx}, "
-                f"reduce_cpus={self._reduce_task_num_cpus}, "
-                f"num_nodes={self._num_nodes}"
-            )
-
-        slots_available = self._get_reduce_concurrency_limit() - len(self._reduce_tasks)
+        slots_available = self._get_reduce_concurrency_limit() - len(
+            self._shuffle_reduce_tasks
+        )
 
         for group_id in list(self._pending_reduce_group_ids):
             if slots_available <= 0:
@@ -897,59 +934,11 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 self._pending_reduce_group_ids.discard(group_id)
                 continue
 
-            def _on_bundle_ready(gid: int, bundle: RefBundle) -> None:
-                self._output_queue.append(bundle)
-                self._reduce_metrics.on_output_queued(bundle)
-                self._reduce_metrics.on_task_output_generated(
-                    task_index=gid, output=bundle
-                )
-                _, num_outputs, num_rows = estimate_total_num_of_blocks(
-                    gid + 1,
-                    self.upstream_op_num_outputs(),
-                    self._reduce_metrics,
-                    total_num_tasks=self._num_groups,
-                )
-                self._estimated_num_output_bundles = num_outputs
-                self._estimated_output_num_rows = num_rows
-                if self._reduce_bar is not None:
-                    self._reduce_bar.update(
-                        increment=bundle.num_rows() or 0,
-                        total=self.num_output_rows_total(),
-                    )
-
-            def _on_reduce_done(
-                gid: int,
-                exc: Optional[Exception],
-                task_exec_stats: Optional[TaskExecWorkerStats],
-                task_exec_driver_stats: Optional[TaskExecDriverStats],
-            ) -> None:
-                if gid in self._reduce_tasks:
-                    self._reduce_tasks.pop(gid)
-                    self._reduce_metrics.on_task_finished(
-                        task_index=gid,
-                        exception=exc,
-                        task_exec_stats=task_exec_stats,
-                        task_exec_driver_stats=task_exec_driver_stats,
-                    )
-                    if exc:
-                        logger.error(
-                            f"Reduce of group {gid} failed: {exc}", exc_info=exc
-                        )
-
-            estimated_bytes = sum(
-                self._partition_bytes.get(pid, 0) for pid in partition_ids
+            reduce_resources, estimated_bytes = self._compute_reduce_resources(
+                partition_ids
             )
-            cluster_res = ray.cluster_resources()
-            num_nodes = max(len(ray.nodes()), 1)
-            node_memory = cluster_res.get("memory", 30e9) / num_nodes
-            reduce_resources: Dict[str, Any] = {"num_cpus": self._reduce_task_num_cpus}
-            if estimated_bytes > 0:
-                requested_memory = estimated_bytes * 2
-                if requested_memory > node_memory:
-                    requested_memory = 0
-                reduce_resources["memory"] = requested_memory
 
-            block_gen = _reduce_task.options(
+            block_gen = _shuffle_reduce_task.options(
                 **reduce_resources,
                 num_returns="streaming",
                 scheduling_strategy="SPREAD",
@@ -957,24 +946,34 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 group_refs,
                 partition_ids=partition_ids,
                 reduce_fn=self._reduce_fn,
-                target_max_block_size=self.data_context.target_max_block_size,
+                # ``None`` tells the reducer to emit blocks as-is (no
+                # BlockOutputBuffer reshaping, no streaming flush).
+                target_max_block_size=(
+                    None
+                    if self._disallow_block_splitting
+                    else self.data_context.target_max_block_size
+                ),
                 streaming=self._streaming_reduce,
             )
 
             data_task = DataOpTask(
                 task_index=group_id,
                 streaming_gen=block_gen,
-                output_ready_callback=functools.partial(_on_bundle_ready, group_id),
-                task_done_callback=functools.partial(_on_reduce_done, group_id),
+                output_ready_callback=functools.partial(
+                    self._handle_reduce_output_ready, group_id
+                ),
+                task_done_callback=functools.partial(
+                    self._handle_reduce_done, group_id
+                ),
                 task_resource_bundle=ExecutionResources(
-                    cpu=self._reduce_task_num_cpus,
+                    cpu=self._shuffle_reduce_task_num_cpus,
                     memory=estimated_bytes,
                     object_store_memory=estimated_bytes,
                 ),
                 operator_name=self.name,
             )
 
-            self._reduce_tasks[group_id] = data_task
+            self._shuffle_reduce_tasks[group_id] = data_task
             self._pending_reduce_group_ids.discard(group_id)
             slots_available -= 1
 
@@ -985,6 +984,113 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._reduce_metrics.on_task_submitted(
                 group_id, empty_bundle, task_id=data_task.get_task_id()
             )
+
+    def _init_reduce_phase(self) -> None:
+        """One-shot init when the first reduce task is about to be launched.
+
+        Logs partition stats, computes the per-task CPU request (auto or
+        override), and snapshots the cluster's worker-node count for use by
+        :meth:`_get_reduce_concurrency_limit`.
+        """
+        self._log_partition_stats()
+        self._reduce_start_time = time.perf_counter()
+        map_elapsed = self._reduce_start_time - self._start_time
+
+        try:
+            self._num_nodes = sum(
+                1
+                for n in ray.nodes()
+                if n.get("Alive", False)
+                and "node:__internal_head__" not in n.get("Resources", {})
+            )
+        except Exception:
+            self._num_nodes = 1
+        self._num_nodes = max(1, self._num_nodes)
+
+        if self._shuffle_reduce_task_num_cpus_override is not None:
+            self._shuffle_reduce_task_num_cpus = (
+                self._shuffle_reduce_task_num_cpus_override
+            )
+        else:
+            self._shuffle_reduce_task_num_cpus = self._auto_derive_reduce_cpus()
+
+        logger.info(
+            f"Reduce starting: map_elapsed={map_elapsed:.1f}s, "
+            f"maps={self._next_shuffle_map_task_idx}, "
+            f"reduce_cpus={self._shuffle_reduce_task_num_cpus}, "
+            f"num_nodes={self._num_nodes}"
+        )
+
+    def _compute_reduce_resources(
+        self, partition_ids: List[int]
+    ) -> Tuple[Dict[str, Any], int]:
+        """Build the options(...) dict for one reduce task.
+
+        Returns (resources_kwargs, estimated_bytes).  Memory is requested
+        proportional to the input partitions' uncompressed bytes (×2 for
+        decompressed input + output overhead).  If that exceeds a single
+        worker node's memory, fall back to no explicit request.
+        """
+        estimated_bytes = sum(
+            self._partition_bytes.get(pid, 0) for pid in partition_ids
+        )
+        cluster_res = ray.cluster_resources()
+        num_nodes = max(len(ray.nodes()), 1)
+        node_memory = cluster_res.get("memory", 30e9) / num_nodes
+        reduce_resources: Dict[str, Any] = {
+            "num_cpus": self._shuffle_reduce_task_num_cpus
+        }
+        if estimated_bytes > 0:
+            requested_memory = estimated_bytes * 2
+            if requested_memory > node_memory:
+                requested_memory = 0
+            reduce_resources["memory"] = requested_memory
+        return reduce_resources, estimated_bytes
+
+    def _handle_reduce_output_ready(self, group_id: int, bundle: RefBundle) -> None:
+        """Callback when a reduce task emits a new bundle.
+
+        Queues the bundle for downstream consumption and refreshes our
+        estimate of total output size for the progress bar.
+        """
+        self._output_queue.append(bundle)
+        self._reduce_metrics.on_output_queued(bundle)
+        self._reduce_metrics.on_task_output_generated(
+            task_index=group_id, output=bundle
+        )
+        _, num_outputs, num_rows = estimate_total_num_of_blocks(
+            group_id + 1,
+            self.upstream_op_num_outputs(),
+            self._reduce_metrics,
+            total_num_tasks=self._num_groups,
+        )
+        self._estimated_num_output_bundles = num_outputs
+        self._estimated_output_num_rows = num_rows
+        if self._reduce_bar is not None:
+            self._reduce_bar.update(
+                increment=bundle.num_rows() or 0,
+                total=self.num_output_rows_total(),
+            )
+
+    def _handle_reduce_done(
+        self,
+        group_id: int,
+        exc: Optional[Exception],
+        task_exec_stats: Optional[TaskExecWorkerStats],
+        task_exec_driver_stats: Optional[TaskExecDriverStats],
+    ) -> None:
+        """Callback when a reduce task finishes (with or without exception)."""
+        if group_id not in self._shuffle_reduce_tasks:
+            return
+        self._shuffle_reduce_tasks.pop(group_id)
+        self._reduce_metrics.on_task_finished(
+            task_index=group_id,
+            exception=exc,
+            task_exec_stats=task_exec_stats,
+            task_exec_driver_stats=task_exec_driver_stats,
+        )
+        if exc:
+            logger.error(f"Reduce of group {group_id} failed: {exc}", exc_info=exc)
 
     # -----------------------------------------------------------------------
     # Completion
@@ -1020,8 +1126,8 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             f"map={map_elapsed:.1f}s, reduce={reduce_elapsed:.1f}s"
         )
         super()._do_shutdown(force)
-        self._map_tasks.clear()
-        self._reduce_tasks.clear()
+        self._shuffle_map_tasks.clear()
+        self._shuffle_reduce_tasks.clear()
         self._group_buffers.clear()
         self._merge_buffer_refs_by_node.clear()
         self._merge_buffer_bundles_by_node.clear()
@@ -1051,11 +1157,13 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         return self._total_input_rows if self._total_input_rows > 0 else None
 
     def current_logical_usage(self) -> ExecutionResources:
-        reduce_cpu = len(self._reduce_tasks) * self._reduce_task_num_cpus
+        reduce_cpu = (
+            len(self._shuffle_reduce_tasks) * self._shuffle_reduce_task_num_cpus
+        )
         return self._map_resource_usage.add(ExecutionResources(cpu=reduce_cpu))
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(cpu=self._map_task_num_cpus)
+        return ExecutionResources(cpu=self._shuffle_map_task_num_cpus)
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()
@@ -1065,10 +1173,10 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # -----------------------------------------------------------------------
 
     def progress_str(self) -> str:
-        maps_done = self._next_map_task_idx - len(self._map_tasks)
+        maps_done = self._next_shuffle_map_task_idx - len(self._shuffle_map_tasks)
         reduces_submitted = self._num_groups - len(self._pending_reduce_group_ids)
-        reduces_done = reduces_submitted - len(self._reduce_tasks)
-        parts = [f"map: {maps_done}/{self._next_map_task_idx}"]
+        reduces_done = reduces_submitted - len(self._shuffle_reduce_tasks)
+        parts = [f"map: {maps_done}/{self._next_shuffle_map_task_idx}"]
         total_merge_buf = sum(
             len(refs) for refs in self._merge_buffer_refs_by_node.values()
         )

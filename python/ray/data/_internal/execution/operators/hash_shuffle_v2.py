@@ -153,6 +153,10 @@ class HashShuffleOperatorV2(BaseShuffleOperator):
             partition_fn=partition_fn,
             reduce_fn=reduce_fn,
             streaming_reduce=not blocking_reduce,
+            # Hash shuffle's contract: every row sharing a key lands in the
+            # same output block.  Reshaping by target_max_block_size would
+            # violate that for groupby / map_groups / repartition consumers.
+            disallow_block_splitting=True,
             map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
             name=(
                 f"HashShuffleV2(keys={key_columns}, "
