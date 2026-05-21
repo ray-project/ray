@@ -1689,7 +1689,7 @@ def test_accelerator_config_proto_roundtrip():
     assert deserialized.accelerator_config is None
 
 
-def test_unsupported_kind():
+def test_unsupported_accelerator_config_kind():
     with pytest.raises(ValueError, match="Unknown accelerator kind"):
         _resolve_accelerator_config({"kind": "xpu"})
 
