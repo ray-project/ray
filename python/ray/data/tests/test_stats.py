@@ -2426,10 +2426,10 @@ def test_streaming_exec_schedule_approx_percentiles_populated(
     ds.materialize()
     summary = ds.get_stats_summary(detail=True)
     p50 = summary.streaming_exec_schedule_approx_p50_s
-    p75 = summary.streaming_exec_schedule_approx_p75_s
+    p70 = summary.streaming_exec_schedule_approx_p70_s
     p90 = summary.streaming_exec_schedule_approx_p90_s
     schedule_max = summary.streaming_exec_schedule_max_s
-    assert 0 <= p50 <= p75 <= p90 <= schedule_max
+    assert 0 <= p50 <= p70 <= p90 <= schedule_max
 
 
 if __name__ == "__main__":
