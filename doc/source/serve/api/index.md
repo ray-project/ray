@@ -446,6 +446,8 @@ Content-Type: application/json
    schema.Target
    schema.DeploymentNode
    schema.DeploymentTopology
+   schema.ControllerHealthMetrics
+   schema.DurationStats
 
 .. autosummary::
    :nosignatures:
