@@ -44,11 +44,9 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
-from ray.serve.config import TPUAcceleratorConfig
+from ray.serve.config import ControllerOptions, TPUAcceleratorConfig
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 from ray.util.tpu import SlicePlacementGroup, slice_placement_group
-
-logger = logging.getLogger(__name__)
 
 # NOTE: Please read carefully before changing!
 #
@@ -349,10 +347,17 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     )
 
 
-def get_controller_impl():
+def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
+    """Build the Ray actor class for the Serve controller.
+
+    ``controller_options`` is the validated ``ControllerOptions`` model from
+    ``serve.start`` / ``serve.run`` / the YAML schema. Today only its
+    ``runtime_env`` field is consumed; future fields (num_cpus, resources,
+    max_concurrency overrides) slot in here.
+    """
     from ray.serve._private.controller import ServeController
 
-    controller_impl = ray.remote(
+    actor_options = dict(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
@@ -362,9 +367,13 @@ def get_controller_impl():
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    )(ServeController)
+    )
+    if controller_options is not None and controller_options.runtime_env:
+        # The validator on ControllerOptions guarantees this is a dict
+        # containing only the ``env_vars`` key with str->str entries.
+        actor_options["runtime_env"] = controller_options.runtime_env
 
-    return controller_impl
+    return ray.remote(**actor_options)(ServeController)
 
 
 def get_proxy_actor_class():

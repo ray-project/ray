@@ -839,6 +839,7 @@ py_test_module_list_with_env_variants(
     files = [
         "test_haproxy.py",
         "test_haproxy_api.py",
+        "test_haproxy_metrics.py",
         "test_metrics_haproxy.py",
     ],
     tags = [

@@ -42,12 +42,12 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies.
 
@@ -422,7 +422,7 @@ class AggregationFunction(str, Enum):
     MIN = "min"
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
@@ -619,7 +619,7 @@ class AutoscalingConfig(BaseModel):
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
     policy: AutoscalingPolicy = Field(
         default_factory=AutoscalingPolicy,
-        description="The autoscaling policy for the deployment. This option is experimental.",
+        description="The autoscaling policy for the deployment.",
     )
 
     @model_validator(mode="after")
@@ -771,14 +771,6 @@ class TPUAcceleratorConfig(AcceleratorConfig):
     )
 
 
-# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
-@Deprecated
-class DeploymentMode(str, Enum):
-    NoServer = "NoServer"
-    HeadOnly = "HeadOnly"
-    EveryNode = "EveryNode"
-
-
 @PublicAPI(stability="stable")
 class ProxyLocation(str, Enum):
     """Config for where to run proxies to receive ingress traffic to the cluster.
@@ -797,44 +789,18 @@ class ProxyLocation(str, Enum):
     EveryNode = "EveryNode"
 
     @classmethod
-    def _to_deployment_mode(
-        cls, proxy_location: Union["ProxyLocation", str]
-    ) -> DeploymentMode:
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
-        elif not isinstance(proxy_location, ProxyLocation):
-            raise TypeError(
-                f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}."
-            )
-
-        if proxy_location == ProxyLocation.Disabled:
-            return DeploymentMode.NoServer
-        else:
-            return DeploymentMode(proxy_location.value)
-
-    @classmethod
-    def _from_deployment_mode(
-        cls, deployment_mode: Optional[Union[DeploymentMode, str]]
+    def _normalize(
+        cls, location: Optional[Union["ProxyLocation", str]]
     ) -> Optional["ProxyLocation"]:
-        """Converts DeploymentMode enum into ProxyLocation enum.
-
-        DeploymentMode is a deprecated version of ProxyLocation that's still
-        used internally throughout Serve.
-        """
-
-        if deployment_mode is None:
+        if location is None:
             return None
-        elif isinstance(deployment_mode, str):
-            deployment_mode = DeploymentMode(deployment_mode)
-        elif not isinstance(deployment_mode, DeploymentMode):
-            raise TypeError(
-                f"Must be a `DeploymentMode` or str, got: {type(deployment_mode)}."
-            )
-
-        if deployment_mode == DeploymentMode.NoServer:
-            return ProxyLocation.Disabled
-        else:
-            return ProxyLocation(deployment_mode.value)
+        if isinstance(location, cls):
+            return location
+        if isinstance(location, str):
+            if location in {"Disabled", "NoServer"}:
+                return cls.Disabled
+            return cls(location)
+        raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(location)}.")
 
 
 @PublicAPI(stability="stable")
@@ -866,7 +832,7 @@ class HTTPOptions(BaseModel):
           assumes the head node is the node you executed serve.start
           on. This is the default.
         - "EveryNode": start one HTTP server per node.
-        - "NoServer": disable HTTP server.
+        - "Disabled": disable HTTP server.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
       internal Serve HTTP proxy actor.
@@ -875,7 +841,7 @@ class HTTPOptions(BaseModel):
     host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    location: Optional[ProxyLocation] = ProxyLocation.HeadOnly
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
@@ -888,11 +854,16 @@ class HTTPOptions(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
+    @field_validator("location", mode="before")
+    @classmethod
+    def normalize_location(cls, v):
+        return ProxyLocation._normalize(v)
+
     @model_validator(mode="after")
     def location_backfill_no_server(self):
         if self.host is None or self.location is None:
             # Use object.__setattr__ since the model may have frozen=True behavior
-            object.__setattr__(self, "location", DeploymentMode.NoServer)
+            object.__setattr__(self, "location", ProxyLocation.Disabled)
         return self
 
     @field_validator("ssl_certfile")
@@ -925,7 +896,7 @@ class HTTPOptions(BaseModel):
         return v
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptions(BaseModel):
     """gRPC options for the proxies. Supported fields:
 
@@ -974,6 +945,83 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+_ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS = frozenset({"env_vars"})
+
+
+@PublicAPI(stability="alpha")
+class ControllerOptions(BaseModel):
+    """Options for the Serve controller actor.
+
+    Symmetric with ``HTTPOptions`` and ``gRPCOptions``: pass to
+    ``serve.start(controller_options=...)`` / ``serve.run`` from Python, or
+    as a top-level ``controller_options:`` block in ``serve run foo.yaml``.
+
+    v0 scope is intentionally narrow: only ``runtime_env`` is exposed, and
+    inside ``runtime_env`` only ``env_vars`` is accepted. Other
+    ``runtime_env`` fields (``pip``, ``working_dir``, ``py_modules``,
+    ``container``, ...) would mutate Serve's own dependencies on a
+    detached, long-lived actor and are intentionally rejected by the
+    validator. Per-replica runtime environments belong on the deployment
+    (``serve.deployment(runtime_env=...)``) instead.
+
+    Like ``HTTPOptions``, these options only take effect when the
+    controller is first created. If a Serve controller is already running
+    in the cluster, ``serve.start`` warns and ignores the new options.
+    """
+
+    runtime_env: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Runtime environment for the controller actor. Only the "
+            "``env_vars`` key is supported; other keys are rejected."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("runtime_env")
+    @classmethod
+    def _validate_runtime_env(
+        cls, v: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        # All errors raised as ValueError so pydantic aggregates them into a
+        # single ValidationError. TypeError from a field_validator escapes
+        # unwrapped in pydantic v2.
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise ValueError(f"runtime_env must be a dict, got {type(v).__name__}.")
+
+        disallowed = sorted(set(v) - _ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS)
+        if disallowed:
+            raise ValueError(
+                "ControllerOptions.runtime_env only supports "
+                f"{sorted(_ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS)} in this version; "
+                f"got disallowed keys {disallowed}. Per-replica runtime_env "
+                "belongs on the deployment "
+                "(``serve.deployment(runtime_env=...)``), not on the "
+                "controller actor."
+            )
+
+        if "env_vars" not in v:
+            return v
+        env_vars = v["env_vars"]
+        if not isinstance(env_vars, dict):
+            raise ValueError(
+                "runtime_env.env_vars must be a dict[str, str], got "
+                f"{type(env_vars).__name__}."
+            )
+        for k, val in env_vars.items():
+            if not isinstance(k, str) or not k:
+                raise ValueError(f"env_vars key must be a non-empty str, got {k!r}.")
+            if not isinstance(val, str):
+                raise ValueError(
+                    f"env_vars[{k!r}] must be str (got {type(val).__name__}); "
+                    "coerce explicitly."
+                )
+        return v
 
 
 @PublicAPI(stability="alpha")
