@@ -156,23 +156,30 @@ class DataOpTask(OpTask):
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
 
-        # Queue of (block_ref, meta_ref) pairs already pulled from the
-        # streaming generator by ``peek_pending_pair`` but not yet consumed by
-        # ``on_data_ready``. Populated lazily and drained in order.
+        # The streaming generator is a one-way stream: pulling a ref off it
+        # is destructive, so once ``peek_pending_pair`` has pulled a pair we
+        # have to track it on the task until it's emitted as a RefBundle —
+        # even if its metadata bytes haven't been fetched yet. That's why
+        # the per-pair state is split into two fields:
+        #
+        #   _pending_pairs        — (block_ref, meta_ref) pairs pulled from
+        #                           the generator, awaiting consumption.
+        #   _cached_meta_bytes    — metadata bytes for some subset of the
+        #                           queued pairs (populated by
+        #                           ``cache_prefetched_meta_bytes``).
+        #
+        # A pair is consumable by ``on_data_ready`` iff its meta_ref is in
+        # the bytes dict; otherwise it sits in the queue until the next
+        # batched ``ray.get`` populates the bytes.
         self._pending_pairs: Deque[
             Tuple[ray.ObjectRef[Block], ray.ObjectRef[BlockMetadata]]
         ] = deque()
-        # When ``peek_pending_pair`` pulled a block_ref but the matching
-        # meta_ref isn't ready yet, stash the block here and try again on the
+        self._cached_meta_bytes: Dict[ray.ObjectRef, bytes] = {}
+        # If ``peek_pending_pair`` pulled a block_ref but the matching
+        # meta_ref isn't ready yet, stash the block here and pair it on the
         # next peek. (The generator yields block then metadata; the two can
         # arrive in separate scheduler ticks.)
         self._partial_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
-        # Pre-fetched metadata bytes (from a batched ``ray.get`` in
-        # ``process_completed_tasks``) keyed by their ``meta_ref``. Cached on
-        # the task so they survive across iterations when ``on_data_ready``
-        # can't drain every pair in one call (e.g. ``max_bytes_to_read``
-        # budget exhaustion). Consumed in lockstep with ``_pending_pairs``.
-        self._cached_meta_bytes: Dict[ray.ObjectRef, bytes] = {}
         # Termination flags set by ``peek_pending_pair`` when it detects the
         # generator is done. ``on_data_ready`` handles them after fully
         # draining ``_pending_pairs``.
@@ -193,9 +200,7 @@ class DataOpTask(OpTask):
     ) -> Optional[Tuple[ray.ObjectRef, ray.ObjectRef]]:
         """Pull one (block_ref, meta_ref) pair from the streaming generator
         into ``_pending_pairs``, or return ``None`` if none is immediately
-        ready. Call in a loop to fully drain. Does not ``ray.get`` metadata;
-        generator termination is recorded via internal flags consumed by
-        ``on_data_ready``.
+        ready. Call in a loop to fully drain.
         """
         if (
             self._has_finished
@@ -261,10 +266,9 @@ class DataOpTask(OpTask):
         self._cached_meta_bytes.update(bytes_by_ref)
 
     def uncached_pending_meta_refs(self) -> List[ray.ObjectRef]:
-        """Return ``meta_ref`` for every pair in the queue whose bytes
-        aren't cached yet. ``process_completed_tasks`` uses this to also
-        re-batch queued-but-uncached pairs from previous iterations (when
-        a prior batched ``ray.get`` timed out).
+        """Return ``meta_ref`` for every queued pair whose bytes aren't in
+        ``_cached_meta_bytes`` yet — i.e. every pair still needing a
+        ``ray.get`` to become consumable.
         """
         return [
             meta_ref
@@ -273,13 +277,17 @@ class DataOpTask(OpTask):
         ]
 
     def fetch_and_drain(self, max_bytes_to_read: Optional[int]) -> int:
-        """Convenience for direct callers (tests, debugging): drain
-        ``peek_pending_pair``, issue one batched ``ray.get`` over uncached
-        meta_refs, then consume via ``on_data_ready``. Equivalent to what
-        ``process_completed_tasks`` does for one task in isolation.
+        """Drain pairs from the generator into the queue, fetch any
+        missing metadata bytes in one batched ``ray.get``, then consume
+        via ``on_data_ready``. Mirrors what ``process_completed_tasks``
+        does for one task in isolation.
         """
         while self.peek_pending_pair() is not None:
             pass
+        # The same call covers two cases: pairs we just peeked (never
+        # fetched), and pairs left queued from a previous call whose
+        # batched ray.get timed out. Both states look identical — the
+        # ref is in _pending_pairs but absent from _cached_meta_bytes.
         uncached = self.uncached_pending_meta_refs()
         if uncached:
             try:
