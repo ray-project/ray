@@ -20,6 +20,7 @@ class GlobalConfig(TypedDict):
     release_image_step_ray_cuda: str
     release_image_step_ray_ml: str
     release_image_step_ray_llm: str
+    release_image_step_ray_torch_cuda: str
 
 
 config = None
@@ -101,6 +102,9 @@ def _init_global_config(config_file: str):
         release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
             "ray_llm"
         ),
+        release_image_step_ray_torch_cuda=config_content.get(
+            "release_image_step", {}
+        ).get("ray_torch_cuda"),
     )
     # setup GCP workload identity federation
     os.environ[

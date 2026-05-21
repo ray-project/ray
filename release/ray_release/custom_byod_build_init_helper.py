@@ -215,6 +215,9 @@ def get_prerequisite_step(
         else:
             bare_key = config["release_image_step_ray_cuda"]
 
+    if image_name == "ray-torch":
+        bare_key = config["release_image_step_ray_torch_cuda"]
+
     if py_index is None:
         return bare_key
 
