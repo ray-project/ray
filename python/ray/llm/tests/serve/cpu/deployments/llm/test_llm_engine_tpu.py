@@ -269,7 +269,7 @@ def test_tpu_serve_deployment_default_host_level_bundles(ray_tpu_cluster):
     # 4x4 topology = 16 chips. Default is 4 bundles of 4 TPUs (per-host).
     assert len(worker_pg["bundles"]) == 4
     for bundle in worker_pg["bundles"].values():
-        assert bundle.get("TPU", 0) == 4.0
+        assert bundle.get("TPU", 0) == 4
 
     serve.shutdown()
 
