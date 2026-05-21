@@ -191,18 +191,11 @@ class DataOpTask(OpTask):
     def peek_pending_pair(
         self,
     ) -> Optional[Tuple[ray.ObjectRef, ray.ObjectRef]]:
-        """Drain ONE more (block_ref, meta_ref) pair from the streaming
-        generator into ``_pending_pairs`` and return it. Returns ``None`` if
-        no complete pair is immediately ready.
-
-        Callable in a loop to fully drain whatever the generator has surfaced
-        so far — the caller (``process_completed_tasks``) does exactly that,
-        then issues one batched ``ray.get`` across the union of meta_refs
-        from every ready task. Does NOT call ``ray.get`` on metadata.
-
-        Termination of the generator is detected here and surfaced via the
-        ``_gen_exhausted`` / ``_gen_errored_block`` flags; ``on_data_ready``
-        handles those after draining any pairs still in the queue.
+        """Pull one (block_ref, meta_ref) pair from the streaming generator
+        into ``_pending_pairs``, or return ``None`` if none is immediately
+        ready. Call in a loop to fully drain. Does not ``ray.get`` metadata;
+        generator termination is recorded via internal flags consumed by
+        ``on_data_ready``.
         """
         if (
             self._has_finished
@@ -309,18 +302,17 @@ class DataOpTask(OpTask):
 
             meta_with_schema_bytes = self._cached_meta_bytes.pop(meta_ref, None)
             if meta_with_schema_bytes is None:
+                # Cache-miss fallback. Reached when (1) the batched ray.get
+                # in process_completed_tasks raised GetTimeoutError so no
+                # bytes were cached for this iteration, or (2) on_data_ready
+                # was called outside process_completed_tasks (tests / direct
+                # callers) so nothing pre-peeked. Preserves the per-ref
+                # timeout + retry-next-iteration semantics from before.
                 try:
-                    # The timeout for `ray.get` includes the time required to
-                    # ship the block metadata to this node. So, if we set the
-                    # timeout to 0, `ray.get` will timeout and possibly cancel
-                    # the download. Use a small non-zero value instead.
                     meta_with_schema_bytes = ray.get(
                         meta_ref, timeout=METADATA_GET_TIMEOUT_S
                     )
                 except ray.exceptions.GetTimeoutError:
-                    # The metadata object isn't available (e.g., the worker
-                    # died after producing it). Leave the pair queued and
-                    # retry next iteration.
                     logger.warning(
                         f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
                         f"operator '{self._operator_name}' "
