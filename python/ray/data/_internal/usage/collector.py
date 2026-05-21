@@ -24,15 +24,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class _OpConfig:
     """Configuration for an operator"""
+
     batch_format: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class _Op:
     """An operator in the plan"""
+
     name: str
     config: Optional[_OpConfig] = None
 
@@ -40,6 +43,7 @@ class _Op:
 @dataclass(frozen=True)
 class _Workload:
     """The plan and operators in the plan"""
+
     plan: str
     ops: List[_Op]
 
