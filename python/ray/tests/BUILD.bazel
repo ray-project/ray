@@ -77,6 +77,7 @@ py_test_module_list(
         "test_runtime_env_agent.py",
         "test_runtime_env_agent_auth.py",
         "test_state_api_2.py",
+        "test_state_api_summary.py",
         "test_task_events_3.py",
         "test_tpu.py",
         "test_unavailable_actors.py",
@@ -333,7 +334,6 @@ py_test_module_list(
         "test_nested_task.py",
         "test_node_labels.py",
         "test_node_manager.py",
-        "test_object_assign_owner.py",
         "test_object_store_metrics.py",
         "test_placement_group_2.py",
         "test_placement_group_4.py",
@@ -572,7 +572,6 @@ py_test_module_list(
         "test_runtime_env_get_wheel_names.py",
         "test_runtime_env_py_executable.py",
         "test_state_api_manager.py",
-        "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
         "test_task_metrics_reconstruction.py",
@@ -743,7 +742,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler_e2e.py",
-        "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+        "test_autoscaler_fake_multinode.py",
         "test_submission_client_auth.py",
     ],
     tags = [
