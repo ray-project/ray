@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
 import pandas as pd
-from fsspec.spec import AbstractFileSystem
 
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow
+    from fsspec.spec import AbstractFileSystem
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
