@@ -1678,6 +1678,25 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+            - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+      run:
+        timeout: 7200
+        long_running: false
+        # HAProxy is HTTP-only and does not proxy the gRPC server bound by
+        # gRPCOptions(port=9000); --run-grpc would crash with connection refused
+        # under RAY_SERVE_ENABLE_HA_PROXY=1. Run the HAProxy-proxied transports
+        # only.
+        script: >-
+          python workloads/microbenchmarks.py
+          --run-http --run-handle --run-latency --run-throughput
+          --run-streaming
     - __suffix__: gce
       env: gce
       frequency: manual
