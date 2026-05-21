@@ -351,7 +351,6 @@ def test_with_column_udf_multiple_udfs(
             ],  # ((id + 1) * 2) / 3
         }
     )
-    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(result_df, expected_df)
 
@@ -395,7 +394,6 @@ def test_with_column_mixed_udf_and_regular_expressions(
             "comparison": [False, False, False, False, False],  # times_three > plus_ten
         }
     )
-    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(result_df, expected_df)
 
@@ -616,7 +614,6 @@ def test_with_column_alias_expressions(
 
     # Ensure column order matches expected_columns
     expected_df = expected_df[expected_columns]
-    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     # Assert the entire DataFrame is equal
     pd.testing.assert_frame_equal(result_df, expected_df)
