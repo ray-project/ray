@@ -15,10 +15,17 @@ _last_logged = 0.0
 
 
 @DeveloperAPI
-def log_once(key):
+def log_once(key: str) -> bool:
     """Returns True if this is the "first" call for a given key.
 
     Various logging settings can adjust the definition of "first".
+
+    Args:
+        key: A unique identifier for the call site.
+
+    Returns:
+        True if this is the first call for ``key`` (subject to the current
+        ``log_once`` settings), False otherwise.
 
     Example:
 
