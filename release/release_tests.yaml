@@ -2471,7 +2471,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
@@ -2488,7 +2488,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: experimental/compute_gpu_2x1_aws.yaml
 
   run:
@@ -2543,7 +2543,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
@@ -2599,7 +2599,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
@@ -3829,7 +3829,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
       runtime_env:
         - RAY_INTERNAL_MEM_PROFILE_COMPONENTS=dashboard_agent
       post_build_script: byod_agent_stress_test.sh
