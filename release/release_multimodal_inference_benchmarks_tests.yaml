@@ -82,7 +82,6 @@
 
 
 - name: audio_transcription
-  python: "3.14"
 
   cluster:
     anyscale_sdk_2026: true
@@ -91,7 +90,7 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
-      type: torch-cu128
+      type: gpu
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: audio_transcription_py3.10.lock
 

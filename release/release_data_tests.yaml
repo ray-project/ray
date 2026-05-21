@@ -24,8 +24,7 @@
 ###############
 
 - name: "read_parquet_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -42,8 +41,7 @@
       --iter-bundles
 
 - name: "read_large_parquet_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -65,8 +63,7 @@
       --iter-bundles
 
 - name: "read_images_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -82,8 +79,7 @@
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 - name: read_tfrecords
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   run:
@@ -94,8 +90,7 @@
       --iter-bundles
 
 - name: "read_from_uris_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -113,8 +108,7 @@
 ###############
 
 - name: write_parquet
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   run:
@@ -128,8 +122,7 @@
 ###############
 
 - name: "iceberg_benchmark_{{mode}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -149,8 +142,7 @@
 ###################
 
 - name: "count_parquet_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -191,8 +183,7 @@
 # TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
 
 - name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -212,8 +203,7 @@
 
 
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -256,8 +246,7 @@
 #
 
 - name: joins_{{dataset}}_{{join_type}}
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_100_cpu_compute.yaml
@@ -283,8 +272,7 @@
 ###############
 
 - name: wide_schema_pipeline_{{data_type}}
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -312,8 +300,7 @@
 #######################
 
 - name: streaming_split
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   run:
@@ -385,8 +372,7 @@
 ################
 
 - name: distributed_training
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   working_dir: nightly_tests
 
   cluster:
@@ -416,8 +402,7 @@
           "_RayTrainWorker__execute.get_next"
 
 - name: training_ingest_benchmark
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   working_dir: nightly_tests
 
   cluster:
@@ -486,8 +471,7 @@
 #################
 
 - name: "iter_batches_{{format}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   matrix:
@@ -502,8 +486,7 @@
       --iter-batches {{format}}
 
 - name: to_tf
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   run:
@@ -514,8 +497,7 @@
       --to-tf image image
 
 - name: iter_torch_batches
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
@@ -532,8 +514,7 @@
 ###########
 
 - name: map
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   run:
@@ -541,8 +522,7 @@
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
   run:
@@ -550,8 +530,7 @@
     script: python map_benchmark.py --api flat_map --sf 100
 
 - name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       # Fixed-size task tests with different formats.
@@ -599,8 +578,7 @@
 # per-block BlockMetadataWithSchema propagation on the driver, which
 # dominates large-schema production workloads.
 - name: worker_scaling_{{num_workers}}_{{worker_type}}
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
@@ -626,8 +604,7 @@
 ########################
 
 - name: "random_shuffle_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       # This release test consistently fails on autoscaling clusters. So, we only run
@@ -645,8 +622,7 @@
 
 
 - name: random_shuffle_chaos
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   working_dir: nightly_tests
 
   cluster:
@@ -669,8 +645,7 @@
 
 
 - name: "sort_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: ["fixed_size"]
@@ -687,8 +662,7 @@
 
 
 - name: sort_chaos
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   working_dir: nightly_tests
 
   # TODO(ray-data): https://github.com/anyscale/ray/issues/546
@@ -720,8 +694,7 @@
 # can consume it. The global object store threshold is the sum of all nodes,
 # so CPU stages may not trigger backpressure even when CPU nodes are full.
 - name: heterogeneous_memory_batch_inference
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: nightly
   group: data-batch-inference
 
@@ -741,8 +714,7 @@
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   group: data-batch-inference
 
   cluster:
@@ -765,8 +737,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: image_classification_chaos
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
@@ -798,8 +769,7 @@
 # non-default configurations and writes to cloud storage. After some period of time,
 # we should remove the legacy `image_classification` test and only keep this one.
 - name: "image_classification_from_parquet_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   group: data-batch-inference
 
   cluster:
@@ -822,8 +792,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: image_embedding_from_uris_{{case}}
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: weekly
   group: data-batch-inference
 
@@ -864,8 +833,7 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: "{{frequency}}"
   group: data-batch-inference
 
@@ -962,8 +930,7 @@
 # - Metadata column passthrough
 # - Extra output columns
 - name: multi_stage_batch_inference
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: weekly
   group: data-batch-inference
   env: gce
@@ -987,8 +954,7 @@
 ##############
 
 - name: "tpch_q1_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1002,8 +968,7 @@
     script: python tpch/tpch_q1.py --sf 1000
 
 - name: "tpch_q2_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1017,8 +982,7 @@
     script: python tpch/tpch_q2.py --sf 100
 
 - name: "tpch_q3_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1032,8 +996,7 @@
     script: python tpch/tpch_q3.py --sf 100
 
 - name: "tpch_q4_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1047,8 +1010,7 @@
     script: python tpch/tpch_q4.py --sf 100
 
 - name: "tpch_q5_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1062,8 +1024,7 @@
     script: python tpch/tpch_q5.py --sf 100
 
 - name: "tpch_q6_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1077,8 +1038,7 @@
     script: python tpch/tpch_q6.py --sf 100
 
 - name: "tpch_q7_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1092,8 +1052,7 @@
     script: python tpch/tpch_q7.py --sf 100
 
 - name: "tpch_q8_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1107,8 +1066,7 @@
     script: python tpch/tpch_q8.py --sf 100
 
 - name: "tpch_q9_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: "{{frequency}}"
   matrix:
     setup:
@@ -1131,8 +1089,7 @@
     script: python tpch/tpch_q9.py --sf 100
 
 - name: "tpch_q10_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1146,8 +1103,7 @@
     script: python tpch/tpch_q10.py --sf 100
 
 - name: "tpch_q11_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1161,8 +1117,7 @@
     script: python tpch/tpch_q11.py --sf 100
 
 - name: "tpch_q12_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1176,8 +1131,7 @@
     script: python tpch/tpch_q12.py --sf 100
 
 - name: "tpch_q13_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1191,8 +1145,7 @@
     script: python tpch/tpch_q13.py --sf 100
 
 - name: "tpch_q14_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1206,8 +1159,7 @@
     script: python tpch/tpch_q14.py --sf 100
 
 - name: "tpch_q15_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1221,8 +1173,7 @@
     script: python tpch/tpch_q15.py --sf 100
 
 - name: "tpch_q17_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1236,8 +1187,7 @@
     script: python tpch/tpch_q17.py --sf 100
 
 - name: "tpch_q18_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1251,8 +1201,7 @@
     script: python tpch/tpch_q18.py --sf 100
 
 - name: "tpch_q20_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1266,8 +1215,7 @@
     script: python tpch/tpch_q20.py --sf 100
 
 - name: "tpch_q21_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1281,8 +1229,7 @@
     script: python tpch/tpch_q21.py --sf 100
 
 - name: "tpch_q22_{{scaling}}"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1300,8 +1247,6 @@
 #################################################
 
 - name: "cross_az_map_batches_autoscaling"
-  type: "torch-cu128"
-  python: "3.14"
   frequency: manual
   env: gce
   cluster:
@@ -1341,8 +1286,7 @@
  #       cluster_compute: cross_az_250_350_compute_aws.yaml
 
 - name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
-  type: "torch-cu128"
-  python: "3.14"
+  python: "3.10"
   frequency: weekly
   env: gce
   working_dir: nightly_tests
@@ -1378,8 +1322,6 @@
 ###################
 
 - name: does_not_over_provision
-  type: "torch-cu128"
-  python: "3.14"
   group: data-autoscaling
   # Set to manual because this is expected to fail with the
   # `DefaultClusterAutoscalerV2`.
