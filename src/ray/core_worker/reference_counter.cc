@@ -791,8 +791,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
-  // NOTE(swang): We have to publish failure to subscribers in case they
-  // subscribe after the ref is already deleted.
+  // It is possible that when ref count reaches zero, there are still subscribers.
+  // See https://github.com/ray-project/ray/pull/63560 for details
   object_info_publisher_->PublishFailure(
       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
 
@@ -1745,9 +1745,8 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING).WithField(object_id)
-        << "Object locations requested for object, but ref already removed. This may be "
-           "a bug in the distributed "
-           "reference counting protocol.";
+        << "Object locations requested for object, but ref already removed. See "
+           "https://github.com/ray-project/ray/pull/63560 for details.";
     // First let subscribers handle this error.
     rpc::PubMessage pub_message;
     pub_message.set_key_id(object_id.Binary());
