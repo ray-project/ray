@@ -629,7 +629,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
-    cluster_compute: "fixed_size_{{num_workers}}_cpu_compute.yaml"
+    cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
 
   matrix:
     setup:
@@ -637,13 +637,13 @@
       worker_type: [actors, tasks]
 
   run:
-    timeout: 1800
+    timeout: 2700
     script: >
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
-      --num-scalar-cols 100
-      --num-array-cols 200
+      --num-scalar-cols 200
+      --num-array-cols 400
 
 
 ########################
