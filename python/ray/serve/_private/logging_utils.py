@@ -1,7 +1,10 @@
 import builtins
 import logging
+import logging.handlers
 import os
 import sys
+import threading
+import time
 import traceback
 from typing import Any, Optional
 
@@ -14,6 +17,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_CLIENT_ADDRESS,
     RAY_SERVE_LOG_TO_STDERR,
+    RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -252,6 +256,101 @@ def get_component_logger_file_path() -> Optional[str]:
                 return absolute_path[len(ray_logs_dir) :]
 
 
+class IdleTimeoutMemoryHandler(logging.handlers.MemoryHandler):
+    """MemoryHandler that flushes when buffered logs become idle.
+
+    This preserves the standard MemoryHandler flush triggers, while adding a
+    timer for sparse traffic where buffered INFO logs may otherwise stay in
+    memory indefinitely. The timeout measures inactivity since the most recent
+    emit; continuous traffic still flushes through the normal capacity,
+    ERROR-level, explicit flush, and close paths.
+    """
+
+    def __init__(self, *args, flush_timeout_s: float = 0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.flush_timeout_s = flush_timeout_s
+        self._flush_timer: Optional[threading.Timer] = None
+        self._last_emit_time: Optional[float] = None
+        self._closed = False
+
+    def emit(self, record: logging.LogRecord):
+        super().emit(record)
+
+        if self.flush_timeout_s <= 0:
+            return
+
+        self.acquire()
+        try:
+            self._last_emit_time = time.monotonic()
+            if self.buffer:
+                if self._flush_timer is None:
+                    self._schedule_flush_locked(self.flush_timeout_s)
+            else:
+                self._cancel_flush_timer_locked()
+        finally:
+            self.release()
+
+    def flush(self):
+        self.acquire()
+        try:
+            super().flush()
+            if not self.buffer:
+                self._cancel_flush_timer_locked()
+        finally:
+            self.release()
+
+    def close(self):
+        self.acquire()
+        try:
+            self._closed = True
+            self._cancel_flush_timer_locked()
+        finally:
+            self.release()
+
+        super().close()
+
+    def _schedule_flush_locked(self, delay_s: float):
+        if self._closed or self.flush_timeout_s <= 0:
+            return
+
+        self._flush_timer = threading.Timer(delay_s, self._flush_if_idle)
+        self._flush_timer.daemon = True
+        self._flush_timer.start()
+
+    def _cancel_flush_timer_locked(self):
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+            self._flush_timer = None
+
+    def _flush_if_idle(self):
+        self.acquire()
+        try:
+            self._flush_timer = None
+            if self._closed or not self.buffer:
+                return
+
+            assert self._last_emit_time is not None
+            idle_time_s = time.monotonic() - self._last_emit_time
+            remaining_s = self.flush_timeout_s - idle_time_s
+            if remaining_s <= 0:
+                self.flush()
+            else:
+                self._schedule_flush_locked(remaining_s)
+        finally:
+            self.release()
+
+
+def _close_handler(handler: logging.Handler):
+    target = None
+    if isinstance(handler, logging.handlers.MemoryHandler):
+        target = handler.target
+
+    handler.close()
+
+    if target is not None:
+        target.close()
+
+
 class StreamToLogger(object):
     """
     Fake file-like stream object that redirects writes to a logger instance.
@@ -354,7 +453,9 @@ def configure_component_logger(
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
-    logger.handlers.clear()
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        _close_handler(handler)
 
     serve_formatter = ServeFormatter(component_name, component_id)
     json_formatter = JSONFormatter()
@@ -410,11 +511,19 @@ def configure_component_logger(
     # Create a memory handler that buffers log records and flushes to file handler
     # Buffer capacity: buffer_size records
     # Flush triggers: buffer full, ERROR messages, or explicit flush
-    memory_handler = logging.handlers.MemoryHandler(
-        capacity=buffer_size,
-        target=file_handler,
-        flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
-    )
+    if RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S > 0:
+        memory_handler = IdleTimeoutMemoryHandler(
+            capacity=buffer_size,
+            target=file_handler,
+            flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
+            flush_timeout_s=RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S,
+        )
+    else:
+        memory_handler = logging.handlers.MemoryHandler(
+            capacity=buffer_size,
+            target=file_handler,
+            flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
+        )
     # Add filters directly to the memory handler effective for both buffered and non buffered cases
     if logging_config.encoding == EncodingType.JSON:
         memory_handler.addFilter(ServeCoreContextFilter())

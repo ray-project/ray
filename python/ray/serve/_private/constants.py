@@ -674,6 +674,12 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
     "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1
 )
 
+# The idle timeout for flushing buffered request path logs. Setting to 0
+# preserves the standard MemoryHandler behavior.
+RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S = get_env_float_non_negative(
+    "RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S", 10
+)
+
 # Feature flag to fail the deployment if the rank is not set.
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
