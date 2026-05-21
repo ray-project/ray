@@ -79,6 +79,8 @@ class DeploymentVersion:
             or self.max_replicas_per_node != new_version.max_replicas_per_node
             or self.gang_scheduling_config_hash
             != new_version.gang_scheduling_config_hash
+            or self.accelerator_config_hash
+            != new_version.accelerator_config_hash
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -124,6 +126,12 @@ class DeploymentVersion:
             else {}
         )
         self.gang_scheduling_config_hash = crc32(serialized_gang_scheduling_config)
+        serialized_accelerator_config = _serialize(
+            self.deployment_config.accelerator_config.model_dump()
+            if self.deployment_config.accelerator_config is not None
+            else {}
+        )
+        self.accelerator_config_hash = crc32(serialized_accelerator_config)
         # Include app-level route prefix in the version hashes so changing
         # it triggers an in-place reconfigure of running replicas.
         serialized_route_prefix = _serialize(self.route_prefix)
@@ -152,6 +160,7 @@ class DeploymentVersion:
                 ]
             )
             + serialized_gang_scheduling_config
+            + serialized_accelerator_config
         )
 
     def to_proto(self) -> bytes:

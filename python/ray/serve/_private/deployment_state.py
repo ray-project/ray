@@ -10,15 +10,12 @@ from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
 from ray.actor import ActorHandle
-
-if TYPE_CHECKING:
-    from ray.serve._private.default_impl import ReplicaPlacementGroup
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -79,6 +76,7 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.placement_group_utils import ReplicaPlacementGroup
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -1542,7 +1540,9 @@ class ActorReplicaWrapper:
                             ray.util.remove_placement_group(self._gang_placement_group)
                         except ValueError:
                             # Already removed by another replica in this gang.
-                            pass
+                            logger.debug(
+                                f"Gang placement group for {self._replica_id} was already removed."
+                            )
 
                     # Replicas with accelerator/wrapper PGs handle their own shutdown.
                     elif self._replica_pg is not None:

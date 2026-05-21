@@ -2,6 +2,7 @@ import pytest
 
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.deployment_state import DeploymentVersion
+from ray.serve.config import TPUAcceleratorConfig
 
 
 def test_validation():
@@ -404,6 +405,52 @@ def test_requires_long_poll_broadcast():
     v1 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=5), {})
     v2 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=10), {})
     assert not v1.requires_long_poll_broadcast(v2)
+
+
+def test_accelerator_config():
+    v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            accelerator_config=TPUAcceleratorConfig(
+                topology="4x4", accelerator_version="v6e"
+            )
+        ),
+        {"num_cpus": 0.1},
+    )
+    v3 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            accelerator_config=TPUAcceleratorConfig(
+                topology="4x4", accelerator_version="v6e"
+            )
+        ),
+        {"num_cpus": 0.1},
+    )
+    v4 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            accelerator_config=TPUAcceleratorConfig(
+                topology="2x2", accelerator_version="v6e"
+            )
+        ),
+        {"num_cpus": 0.1},
+    )
+
+    # Changing accelerator_config from None -> TPUAcceleratorConfig triggers restart
+    assert v1 != v2
+    assert hash(v1) != hash(v2)
+    assert v1.requires_actor_restart(v2)
+
+    # Same TPUAcceleratorConfig does not trigger restart
+    assert v2 == v3
+    assert hash(v2) == hash(v3)
+    assert not v2.requires_actor_restart(v3)
+
+    # Changing topology from 4x4 -> 2x2 triggers restart
+    assert v3 != v4
+    assert hash(v3) != hash(v4)
+    assert v3.requires_actor_restart(v4)
 
 
 if __name__ == "__main__":

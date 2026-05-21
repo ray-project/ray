@@ -14,7 +14,6 @@ from ray._raylet import node_labels_match_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     GANG_PG_NAME_PREFIX,
-    CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
     GangReservationResult,
@@ -26,6 +25,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
+)
+from ray.serve._private.placement_group_utils import (
+    CreatePlacementGroupRequest,
+    ReplicaPlacementGroup,
 )
 from ray.serve.config import AcceleratorConfig
 from ray.util.placement_group import PlacementGroup
@@ -681,8 +684,7 @@ class DeploymentScheduler(ABC):
                         accelerator_config=scheduling_request.accelerator_config,
                     ),
                 )
-                # Import ReplicaPlacementGroup inline here to avoid circular dependency with default_impl
-                from ray.serve._private.default_impl import ReplicaPlacementGroup
+                # Statically imported from placement_group_utils
 
                 if isinstance(pg_result, ReplicaPlacementGroup):
                     placement_group = pg_result.placement_group
@@ -909,9 +911,7 @@ class DeploymentScheduler(ABC):
                 # Unwrap the ReplicaPlacementGroup to get the underyling PlacementGroup.
                 # Gang scheduling currently does not support accelerator_config (since it's
                 # handled by the specific accelerator backend), so we don't need the
-                # wrapper. Inline import here is required to avoid circular dependencies.
-                from ray.serve._private.default_impl import ReplicaPlacementGroup
-
+                # wrapper.
                 if isinstance(pg_result, ReplicaPlacementGroup):
                     pg = pg_result.placement_group
                 else:

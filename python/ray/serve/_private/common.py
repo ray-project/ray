@@ -19,7 +19,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
 if TYPE_CHECKING:
-    from ray.serve.config import AcceleratorConfig
+    pass
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 GANG_PG_NAME_PREFIX = "SERVE_GANG::"
@@ -894,27 +894,6 @@ class ReplicaQueueLengthInfo:
     num_ongoing_requests: int
 
 
-@dataclass(frozen=True)
-class CreatePlacementGroupRequest:
-    """Internal request for creating a per-replica placement group.
-
-    Either ``bundles`` or ``accelerator_config`` must be provided:
-    - For plain CPU/GPU deployments, the caller provides ``bundles`` and the
-      default path creates a standard PlacementGroup.
-    - For accelerator deployments (e.g. TPU), the caller provides
-      ``accelerator_config`` and the dispatch derives bundles from the
-      structured config (e.g. TPU topology -> per-host bundles).
-    """
-
-    bundles: Optional[List[Dict[str, float]]] = None
-    strategy: str = "PACK"
-    target_node_id: Optional[str] = None
-    name: str = ""
-    runtime_env: Optional[str] = None
-    bundle_label_selector: Optional[List[Dict[str, str]]] = None
-    fallback_strategy: Optional[List[Dict[str, Any]]] = None
-    accelerator_config: Optional["AcceleratorConfig"] = None
-    lifetime: Optional[str] = "detached"
 
 
 @dataclass

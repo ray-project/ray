@@ -40,6 +40,7 @@ from ray.serve._private.utils import (
     wait_for_interrupt,
 )
 from ray.serve.config import (
+    ACCELERATOR_KIND_TPU,
     AcceleratorConfig,
     AutoscalingConfig,
     ControllerOptions,
@@ -477,7 +478,7 @@ def _resolve_accelerator_config(
         return value
     if isinstance(value, dict):
         kind = value.get("kind")
-        if kind == "tpu":
+        if kind == ACCELERATOR_KIND_TPU:
             return TPUAcceleratorConfig(**value)
         raise ValueError(
             f"Unknown accelerator kind {kind!r}. Supported types: 'tpu'."
@@ -685,6 +686,10 @@ def deployment(
             gang_scheduling_config is not DEFAULT.VALUE
             and gang_scheduling_config is not None
         ):
+            # TODO(ryanaoleary@): Revisit this mutual exclusivity restriction once
+            # Data Parallel (DP) attention or more complex multi-slice gang
+            # scheduling is supported for TPUs.
+            #
             # The only supported accelerator_config currently is for TPU, which utilizes
             # SlicePlacementGroup internally for atomic scheduling of SPMD workers. This
             # check can be loosened if additional accelerator configs are added in the

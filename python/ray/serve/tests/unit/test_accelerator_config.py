@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from ray.serve._private.common import CreatePlacementGroupRequest
-from ray.serve._private.default_impl import (
+from ray.serve._private.placement_group_utils import (
+    CreatePlacementGroupRequest,
     ReplicaPlacementGroup,
     _create_replica_placement_group,
 )
@@ -115,7 +115,7 @@ def test_placement_group_creation_types(with_accelerator):
         mock_slice_pg = MagicMock()
         mock_slice_pg.placement_group = mock_pg
         with patch(
-            "ray.serve._private.default_impl.slice_placement_group",
+            "ray.serve._private.placement_group_utils.slice_placement_group",
             return_value=mock_slice_pg,
         ):
             result = _create_replica_placement_group(request)
@@ -159,7 +159,7 @@ def test_replica_pg_shutdown_idempotent(with_accelerator):
         adapter = ReplicaPlacementGroup(placement_group=mock_pg)
 
         with patch(
-            "ray.serve._private.default_impl.remove_placement_group"
+            "ray.serve._private.placement_group_utils.remove_placement_group"
         ) as mock_remove:
             adapter.shutdown()
             mock_remove.assert_called_once_with(mock_pg)
@@ -201,7 +201,7 @@ def test_create_replica_placement_group_tpu_ignores_bundles():
     mock_slice_pg.placement_group = MagicMock(spec=PlacementGroup)
 
     with patch(
-        "ray.serve._private.default_impl.slice_placement_group",
+        "ray.serve._private.placement_group_utils.slice_placement_group",
         return_value=mock_slice_pg,
     ) as mock_slice_pg_func:
         result = _create_replica_placement_group(request)
@@ -223,7 +223,7 @@ def test_tpu_config_resources_per_bundle_forwarded_to_slice_pg(monkeypatch):
         return mock
 
     monkeypatch.setattr(
-        "ray.serve._private.default_impl.slice_placement_group",
+        "ray.serve._private.placement_group_utils.slice_placement_group",
         mock_slice_pg,
     )
 

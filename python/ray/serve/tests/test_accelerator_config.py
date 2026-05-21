@@ -6,8 +6,8 @@ import pytest
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve._private.common import CreatePlacementGroupRequest
-from ray.serve._private.default_impl import (
+from ray.serve._private.placement_group_utils import (
+    CreatePlacementGroupRequest,
     ReplicaPlacementGroup,
     _create_replica_placement_group,
 )
@@ -69,7 +69,6 @@ def test_tpu_accelerator_config_integration(mock_tpu_cluster):
         target_node_id=None,
         name="test-tpu-pg",
         accelerator_config=tpu_config,
-        lifetime="detached",
     )
 
     # This should call _create_tpu_placement_group and return a wrapper
@@ -104,7 +103,6 @@ def test_tpu_accelerator_config_partial_failure_cleanup(mock_tpu_cluster):
         target_node_id=None,
         name="test-tpu-timeout-pg",
         accelerator_config=tpu_config,
-        lifetime="detached",
     )
 
     # Patch remove_placement_group where it is USED (ray.util.tpu)
