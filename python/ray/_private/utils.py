@@ -154,7 +154,7 @@ def publish_error_to_driver(
     error_type: str,
     message: str,
     gcs_client: "ray._raylet.GcsClient",
-    job_id: Optional[ray.JobID] = None,
+    job_id: Optional["ray.JobID"] = None,
 ):
     """Push an error message to the driver to be printed in the background.
 
