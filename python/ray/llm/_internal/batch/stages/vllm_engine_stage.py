@@ -403,10 +403,6 @@ class vLLMEngineWrapper:
                     "populate it automatically from chat messages."
                 )
                 self._image_row_column_warning_logged = True
-            # Use len() rather than truthiness — `if legacy_image:` raises on
-            # numpy arrays ("ambiguous truth value"), and we want empty
-            # containers to behave like "no image" (matches pre-deprecation
-            # behavior where an empty list never reached the engine).
             if legacy_image is not None and len(legacy_image) > 0:
                 if multimodal_data is None:
                     multimodal_data = {"image": legacy_image}
