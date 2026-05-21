@@ -2,12 +2,12 @@
 
 The callback is constructor-injected with the logical plan
 during planning. The callback records the workload entry (DAG, env, configs)
-before execution starts, and also records performance and error info after execution finishes.
+before execution starts, and also records performance info after execution finishes.
 """
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.usage.collector import (
@@ -37,15 +37,15 @@ class UsageCallback(ExecutionCallback):
             logger.debug("Usage record_workload failed", exc_info=True)
 
     def after_execution_succeeds(self, executor: "StreamingExecutor") -> None:
-        self._finish(error=None)
+        self._finish()
 
     def after_execution_fails(
         self, executor: "StreamingExecutor", error: Exception
     ) -> None:
-        self._finish(error=error)
+        self._finish()
 
-    def _finish(self, error: Optional[BaseException]) -> None:
+    def _finish(self) -> None:
         try:
-            record_execution_result(self._execution_id, error)
+            record_execution_result(self._execution_id)
         except Exception:
             logger.debug("Usage record_execution_result failed", exc_info=True)

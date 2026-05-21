@@ -70,9 +70,8 @@ def record_workload(
 
 def record_execution_result(
     execution_id: str,
-    error: Optional[BaseException],
 ) -> None:
-    """Fill in performance, error for a previously recorded execution and flush.
+    """Fill in performance for a previously recorded execution and flush.
 
     Set ``RAY_DATA_USAGE_DISABLED=1`` to short-circuit all collection.
     """
@@ -135,8 +134,7 @@ def _walk_operators(op: LogicalOperator) -> List[dict]:
 
 
 def _anonymize_op_name(op: LogicalOperator) -> str:
-    """Anonymize an operator name against the whitelist from ``logical/util.py``.
-    """
+    """Anonymize an operator name against the whitelist from ``logical/util.py``."""
     if isinstance(op, Read):
         name = f"Read{op.datasource.get_name()}"
         return name if name in _op_name_white_list else "ReadCustom"
@@ -161,10 +159,6 @@ def _collect_pipeline_perf(
     ``store_stats.spilled_bytes_total`` (same path ``plan.py:259-265`` uses
     for ``global_bytes_spilled``). ``spilled_now`` is computed by the caller
     outside the lock — it's a synchronous gRPC.
-
-    OOM / worker / node death counts are emitted as ``None`` — the underlying
-    counters (``WORKER_CRASH_OOM``, ``WORKER_CRASH_SYSTEM_ERROR``) are
-    C++-only with no Python read API. Follow-up will wire them.
     """
     if spilled_at_start is None or spilled_now is None:
         bytes_spilled = None
