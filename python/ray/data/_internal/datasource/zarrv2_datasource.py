@@ -4,7 +4,8 @@ import json
 import logging
 import math
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any, List, Optional, TypedDict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -25,39 +26,35 @@ if TYPE_CHECKING:
 
     ZarrRoot = ZarrGroup | ZarrArray
 
+
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
 
-class ZarrArrayMeta(TypedDict):
+@dataclass(frozen=True)
+class ZarrArrayMeta:
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
     dtype: str
 
+    @classmethod
+    def from_json(cls, raw_meta: dict[str, Any], array_path: str) -> ZarrArrayMeta:
+        """Validate and parse a ``.zarray`` JSON object into a ZarrArrayMeta.
 
-def _zarr_array_meta_from_json(raw_meta: Any, array_path: str) -> ZarrArrayMeta:
-    """Validate and parse a ``.zarray`` JSON object into a :class:`ZarrArrayMeta`.
-
-    Raises ``ValueError`` if ``raw_meta`` is not a JSON object or is missing
-    any of :data:`REQUIRED_ZARRAY_KEYS`. ``array_path`` is included in the
-    error message so callers don't have to thread context themselves.
-    """
-    if not isinstance(raw_meta, dict):
-        raise ValueError(
-            f"Invalid .zarray metadata for array path {array_path!r}: "
-            f"expected a JSON object, got {type(raw_meta).__name__}."
+        Raises ``ValueError`` if any of ``shape``/``chunks``/``dtype`` is
+        missing. ``array_path`` is included in the error message so callers
+        don't have to thread context themselves.
+        """
+        missing = [k for k in REQUIRED_ZARRAY_KEYS if k not in raw_meta]
+        if missing:
+            raise ValueError(
+                f"Invalid .zarray metadata for array path {array_path!r}: "
+                f"missing required key(s) {missing}."
+            )
+        return cls(
+            shape=tuple(int(x) for x in raw_meta.shape),
+            chunks=tuple(int(x) for x in raw_meta.chunks),
+            dtype=str(raw_meta.dtype),
         )
-    missing = [key for key in REQUIRED_ZARRAY_KEYS if key not in raw_meta]
-    if missing:
-        raise ValueError(
-            f"Invalid .zarray metadata for array path {array_path!r}: "
-            f"missing required key(s) {missing}. "
-            f"Expected keys: {list(REQUIRED_ZARRAY_KEYS)}."
-        )
-    return {
-        "shape": tuple(int(x) for x in raw_meta["shape"]),
-        "chunks": tuple(int(x) for x in raw_meta["chunks"]),
-        "dtype": str(raw_meta["dtype"]),
-    }
 
 
 def _load_metadata_from_zmetadata_file(
@@ -75,7 +72,7 @@ def _load_metadata_from_zmetadata_file(
         if not key.endswith(".zarray"):
             continue
         array_path = "" if key == ".zarray" else key[: -len("/.zarray")]
-        out[array_path] = _zarr_array_meta_from_json(value, array_path)
+        out[array_path] = ZarrArrayMeta.from_json(value, array_path)
     return out
 
 
@@ -106,7 +103,7 @@ def _load_metadata_from_array_paths(
             raise ValueError(
                 f"Array path {raw!r} not found: no .zarray file at {zarray_path}"
             ) from e
-        out[normalized] = _zarr_array_meta_from_json(raw_meta, normalized)
+        out[normalized] = ZarrArrayMeta.from_json(raw_meta, normalized)
     return out
 
 
@@ -129,7 +126,7 @@ def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
                 raw = json.load(f)
         except FileNotFoundError:
             continue
-        out[array_path] = _zarr_array_meta_from_json(raw, array_path)
+        out[array_path] = ZarrArrayMeta.from_json(raw, array_path)
     return out
 
 
@@ -304,9 +301,7 @@ class ZarrV2Datasource(Datasource):
         self._shape0 = self._validate_axis0_alignment()
 
         if chunk_size is None:
-            chunk_size = min(
-                meta["chunks"][0] for meta in self._selected_arrays.values()
-            )
+            chunk_size = min(meta.chunks[0] for meta in self._selected_arrays.values())
         if not isinstance(chunk_size, int) or chunk_size <= 0:
             raise ValueError(
                 f"chunk_size must be a positive integer, got {chunk_size!r}"
@@ -323,10 +318,10 @@ class ZarrV2Datasource(Datasource):
         """Ensure all selected arrays agree on ``shape[0]``; return that length."""
         # Reject 0-D (scalar) arrays upfront — they appear in real stores
         # (e.g., per-experiment hyperparameters in ERA5/CMIP6) but have no
-        # axis 0 to align on. Indexing ``meta["shape"][0]`` on them would
+        # axis 0 to align on. Indexing ``meta.shape[0]`` on them would
         # raise IndexError with no useful context.
         scalars = [
-            name for name, meta in self._selected_arrays.items() if not meta["shape"]
+            name for name, meta in self._selected_arrays.items() if not meta.shape
         ]
         if scalars:
             raise ValueError(
@@ -336,7 +331,7 @@ class ZarrV2Datasource(Datasource):
             )
 
         shape0_by_array = {
-            name: meta["shape"][0] for name, meta in self._selected_arrays.items()
+            name: meta.shape[0] for name, meta in self._selected_arrays.items()
         }
         sizes = set(shape0_by_array.values())
         if len(sizes) > 1:
@@ -415,16 +410,14 @@ class ZarrV2Datasource(Datasource):
         """In-memory bytes for one output row carrying ``slice_len`` along axis 0."""
         total = 0
         for meta in self._selected_arrays.values():
-            non_axis0_numel = (
-                math.prod(meta["shape"][1:]) if len(meta["shape"]) > 1 else 1
-            )
-            total += slice_len * non_axis0_numel * np.dtype(meta["dtype"]).itemsize
+            non_axis0_numel = math.prod(meta.shape[1:]) if len(meta.shape) > 1 else 1
+            total += slice_len * non_axis0_numel * np.dtype(meta.dtype).itemsize
         return total
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Total bytes = sum of (full array sizes) across all selected arrays."""
         return sum(
-            math.prod(meta["shape"]) * np.dtype(meta["dtype"]).itemsize
+            math.prod(meta.shape) * np.dtype(meta.dtype).itemsize
             for meta in self._selected_arrays.values()
         )
 

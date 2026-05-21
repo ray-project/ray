@@ -908,22 +908,6 @@ def read_zarr(
         >>> ds.count()
         2
 
-        Pass an explicit filesystem for private/authenticated storage.
-
-        >>> import fsspec
-        >>> fs = fsspec.filesystem("s3")  # doctest: +SKIP
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "s3://bucket/path/to/store.zarr",
-        ...     filesystem=fs,
-        ... )
-
-        Explicitly allow a full-store scan when no ``.zmetadata`` is present.
-
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "/path/to/store",
-        ...     allow_full_metadata_scan=True,
-        ... )
-
     Args:
         path: Path to the Zarr v2 store.
         filesystem: Optional preconfigured filesystem. Accepts either a
@@ -940,7 +924,9 @@ def read_zarr(
         chunk_size: Optional number of samples along axis 0 to include in each
             output row. If unspecified, defaults to the minimum of the selected
             arrays' axis-0 ``chunks``. The trailing row may be shorter when
-            ``shape[0]`` isn't divisible by ``chunk_size``.
+            ``shape[0]`` isn't divisible by ``chunk_size``. This should be treated
+            to adjust I/O, rather than to semantically split the data. Semantic splitting
+            should be done downstream.
         array_paths: Optional list of array paths within the Zarr store to
             read. If unspecified, all arrays discovered in the store are
             included. All selected arrays must share ``shape[0]``.
