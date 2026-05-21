@@ -23,6 +23,7 @@ class Test:
     def __call__(self, *args):
         return open("hello").read()
 
+Test = Test.options(_internal=True, version="1")
 handle = serve.run(Test.bind())
 assert handle.remote().result() == "world"
 """
@@ -46,6 +47,7 @@ class Test:
     def __call__(self, *args):
         return open("hello").read()
 
+Test = Test.options(_internal=True, version="2")
 handle = serve.run(Test.bind())
 assert handle.remote().result() == "world2"
 serve.delete(SERVE_DEFAULT_APP_NAME)
