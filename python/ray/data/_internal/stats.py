@@ -1,3 +1,4 @@
+import bisect
 import collections
 import copy
 import logging
@@ -158,13 +159,44 @@ class _StatsAccumulator:
 
 
 class Timer:
-    """Helper class for tracking accumulated time (in seconds)."""
+    """Helper class for tracking accumulated time (in seconds).
 
-    def __init__(self):
+    When ``track_distribution=True``, also maintains a fixed-bound
+    histogram so percentiles can be computed without retaining raw
+    samples. The histogram is O(1) memory and adds one bisect per
+    :meth:`add` call. Disabled by default to keep the per-add cost of
+    the many ``Timer`` instances scattered across the stats path
+    identical to before.
+    """
+
+    # Log-spaced upper bin bounds (seconds) — ~2x resolution covering
+    # 1 ms to 5 s, which is the realistic range for the scheduling-loop
+    # step. Samples above the last bound land in an overflow slot;
+    # ``percentile()`` reports ``max()`` for that case so the tail is
+    # never under-reported as the last finite bound.
+    _HIST_BOUNDS_S: Tuple[float, ...] = (
+        0.001,
+        0.002,
+        0.005,
+        0.010,
+        0.020,
+        0.050,
+        0.100,
+        0.200,
+        0.500,
+        1.0,
+        2.0,
+        5.0,
+    )
+
+    def __init__(self, track_distribution: bool = False):
         self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
+        self._histogram: Optional[List[int]] = (
+            [0] * (len(self._HIST_BOUNDS_S) + 1) if track_distribution else None
+        )
 
     @contextmanager
     def timer(self) -> None:
@@ -181,6 +213,9 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
+        if self._histogram is not None:
+            idx = bisect.bisect_left(self._HIST_BOUNDS_S, value)
+            self._histogram[idx] += 1
 
     def get(self) -> float:
         return self._total
@@ -193,6 +228,29 @@ class Timer:
 
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
+
+    def percentile(self, p: float) -> float:
+        """Approximate ``p``-th percentile in seconds (0 <= p <= 1).
+
+        Returns the upper bound of the bin the p-th sample falls into,
+        clamped to :meth:`max` so the result is never larger than any
+        observed sample. Samples in the overflow bin (above the last
+        finite bound) are reported as :meth:`max` directly.
+
+        Returns 0 if histogram tracking is disabled or no samples have
+        been added.
+        """
+        if self._histogram is None or self._total_count == 0:
+            return 0
+        target = p * self._total_count
+        cum = 0
+        for i, count in enumerate(self._histogram):
+            cum += count
+            if cum >= target:
+                if i < len(self._HIST_BOUNDS_S):
+                    return min(self._HIST_BOUNDS_S[i], self._max)
+                return self._max
+        return self._max
 
 
 class _DatasetStatsBuilder:
@@ -1037,8 +1095,13 @@ class DatasetStats:
         self.dataset_uuid: str = UNKNOWN_UUID
         self.time_total_s: float = 0
 
-        # Streaming executor stats
-        self.streaming_exec_schedule_s: Timer = Timer()
+        # Streaming executor stats. Track the per-iteration distribution
+        # so we can report p90/p99 on the scheduling-loop step duration —
+        # this is the only Timer in the stats path that runs unboundedly
+        # often (once per scheduling-loop iteration of every Ray Data
+        # job), so percentile resolution matters and a raw-sample list
+        # would grow without bound.
+        self.streaming_exec_schedule_s: Timer = Timer(track_distribution=True)
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -1165,6 +1228,7 @@ class DatasetStats:
         streaming_exec_schedule_s = schedule_timer.get()
         streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
+        streaming_exec_schedule_p90_s = schedule_timer.percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1180,6 +1244,7 @@ class DatasetStats:
             streaming_exec_schedule_s,
             streaming_exec_schedule_avg_s,
             streaming_exec_schedule_max_s,
+            streaming_exec_schedule_p90_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1217,6 +1282,7 @@ class DatasetStatsSummary:
     streaming_exec_schedule_s: float
     streaming_exec_schedule_avg_s: float
     streaming_exec_schedule_max_s: float
+    streaming_exec_schedule_p90_s: float
 
     def to_string(
         self,

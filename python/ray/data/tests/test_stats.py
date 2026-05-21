@@ -35,6 +35,7 @@ from ray.data._internal.stats import (
     NodeMetrics,
     OperatorStatsSummary,
     StatsSummary,
+    Timer,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -2305,6 +2306,91 @@ ray.shutdown()
             f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
             f"but found {len(datasets)}"
         )
+
+
+class TestTimerHistogram:
+    """Tests for Timer's opt-in histogram + percentile()."""
+
+    def test_disabled_by_default(self):
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        # Existing behavior preserved.
+        assert t.get() == pytest.approx(1.111)
+        assert t.max() == pytest.approx(1.0)
+        assert t.avg() == pytest.approx(0.27775)
+        # Percentile is a no-op when distribution tracking is off.
+        assert t.percentile(0.9) == 0
+
+    def test_zero_samples(self):
+        t = Timer(track_distribution=True)
+        assert t.percentile(0.5) == 0
+        assert t.percentile(0.9) == 0
+        assert t.percentile(0.99) == 0
+
+    @pytest.mark.parametrize(
+        "p, expected",
+        [
+            # 100 samples, all 5ms — every percentile lands on the 5ms bin
+            # (bisect_left returns the index of the 5ms bound).
+            (0.5, 0.005),
+            (0.9, 0.005),
+            (0.99, 0.005),
+        ],
+    )
+    def test_uniform_samples(self, p, expected):
+        t = Timer(track_distribution=True)
+        for _ in range(100):
+            t.add(0.005)
+        assert t.percentile(p) == pytest.approx(expected)
+
+    def test_mixed_distribution_p90(self):
+        # 80 samples at 5ms, 20 samples at 200ms — the kind of bimodal
+        # shape that motivates a percentile metric in the first place.
+        # p50 and p70 sit in the 5ms bin (target ≤ 80); p90 and p99 land
+        # in the 200ms bin (target > 80).
+        t = Timer(track_distribution=True)
+        for _ in range(80):
+            t.add(0.005)
+        for _ in range(20):
+            t.add(0.2)
+        assert t.percentile(0.5) == pytest.approx(0.005)
+        assert t.percentile(0.7) == pytest.approx(0.005)
+        assert t.percentile(0.9) == pytest.approx(0.2)
+        assert t.percentile(0.99) == pytest.approx(0.2)
+
+    def test_overflow_bin_reports_max(self):
+        # Force p90 into the overflow bin: 50 small samples + 51 large
+        # samples above the largest histogram bound. p90 = 0.9 * 101 =
+        # 90.9 → falls past the 1ms bin (cum 50) into overflow (cum 101).
+        # Should be reported as max(), not the last finite bin edge.
+        t = Timer(track_distribution=True)
+        for _ in range(50):
+            t.add(0.001)
+        for _ in range(51):
+            t.add(30.0)
+        assert t.max() == pytest.approx(30.0)
+        assert t.percentile(0.9) == pytest.approx(30.0)
+
+    def test_bin_boundaries(self):
+        # Sample on a bin edge should be counted in that edge's bin
+        # (bisect_left semantics), not the next one up.
+        t = Timer(track_distribution=True)
+        t.add(0.010)  # exactly the 10ms bound
+        assert t.percentile(0.5) == pytest.approx(0.010)
+
+
+def test_streaming_exec_schedule_p90_populated(ray_start_regular_shared):
+    # Smoke test: after running a dataset to completion, the p90 field on
+    # the summary is set (non-negative) — i.e. the histogram is wired
+    # end-to-end through the streaming executor.
+    ds = ray.data.range(100).map(lambda r: r)
+    ds.materialize()
+    summary = ds.get_stats_summary(detail=True)
+    assert summary.streaming_exec_schedule_p90_s >= 0
+    assert (
+        summary.streaming_exec_schedule_p90_s <= summary.streaming_exec_schedule_max_s
+    )
 
 
 if __name__ == "__main__":
