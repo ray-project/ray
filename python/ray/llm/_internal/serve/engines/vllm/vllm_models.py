@@ -193,7 +193,6 @@ class VLLMEngineConfig(BaseModelExtended):
             mirror_config = llm_config.model_loading_config.model_source
 
         all_engine_kwargs = llm_config.engine_kwargs.copy()
-
         engine_kwargs = {}
         frontend_kwargs = {}
 
