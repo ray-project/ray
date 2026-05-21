@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
 import pandas as pd
+from fsspec.spec import AbstractFileSystem
 
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
@@ -18,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow
-    from fsspec.spec import AbstractFileSystem
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
@@ -109,19 +109,27 @@ def _load_metadata_from_array_paths(
 
 
 def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
-    """Recursively walk ``store_path`` for ``.zarray`` files."""
+    """Recursively walk ``store_path`` for ``.zarray`` files.
+
+    Each discovered relative path is canonicalized via
+    :func:`zarr.util.normalize_storage_path` so the output keys match the
+    format used by the other metadata-loading paths regardless of whether
+    the underlying ``fs.walk`` yields trailing slashes.
+    """
+    from zarr.util import normalize_storage_path
+
     store_root = store_path.rstrip("/")
     store_prefix = store_root + "/"
     out: dict[str, ZarrArrayMeta] = {}
     for dirpath, _, filenames in fs.walk(store_path):
         if ".zarray" not in filenames:
             continue
-        array_path = (
-            ""
-            if dirpath.rstrip("/") == store_root
-            else dirpath.removeprefix(store_prefix)
-        )
-        zarray_path = f"{dirpath.rstrip('/')}/.zarray"
+        dirpath = dirpath.rstrip("/")
+        if dirpath == store_root:
+            array_path = ""
+        else:
+            array_path = normalize_storage_path(dirpath.removeprefix(store_prefix))
+        zarray_path = f"{dirpath}/.zarray"
         try:
             with fs.open(zarray_path, "r") as f:
                 raw = json.load(f)

@@ -242,6 +242,34 @@ def test_full_scan_discovers_nested_arrays(tmp_path):
         allow_full_metadata_scan=True,
     )
     assert set(datasource._selected_arrays) == {"top", "group/inner"}
+    # Keys must be in canonical form: no trailing slashes, no double slashes.
+    for key in datasource._selected_arrays:
+        assert not key.endswith("/")
+        assert "//" not in key
+
+
+def test_full_scan_handles_trailing_slash_dirpaths(unconsolidated_zarrv2_store):
+    """``fs.walk`` yielding trailing-slash dirpaths still produces canonical keys.
+
+    Some fsspec implementations (older s3fs versions) return ``walk()``
+    dirpaths with trailing slashes. The full-scan loader must strip these
+    so the output keys match the format used elsewhere in the codebase.
+    """
+    from fsspec.implementations.local import LocalFileSystem
+
+    class _TrailingSlashLocalFs(LocalFileSystem):
+        def walk(self, path, *args, **kwargs):
+            for dirpath, dirs, files in super().walk(path, *args, **kwargs):
+                yield dirpath.rstrip("/") + "/", dirs, files
+
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(unconsolidated_zarrv2_store),
+        filesystem=_TrailingSlashLocalFs(skip_instance_cache=True),
+        allow_full_metadata_scan=True,
+    )
+    assert set(datasource._selected_arrays) == {"images", "nested"}
+    for key in datasource._selected_arrays:
+        assert not key.endswith("/")
 
 
 def test_requires_array_paths_or_full_scan_when_unconsolidated(
