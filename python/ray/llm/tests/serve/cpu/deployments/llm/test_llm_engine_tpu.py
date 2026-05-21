@@ -27,6 +27,7 @@ def test_tpu_slice_placement_group_creation_default_resources(ray_tpu_cluster):
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
         accelerator_config=TPUConfig(kind="tpu", topology="4x4"),
+        engine_kwargs={"tensor_parallel_size": 16},
     )
 
     engine_config = llm_config.get_engine_config()
@@ -234,12 +235,11 @@ def test_tpu_serve_deployment_default_host_level_bundles(ray_tpu_cluster):
     Verifies that a Serve deployment created for a multi-host TPU slice defaults
     to host-level bundles when no placement_group_config is specified.
     """
-    from ray.llm._internal.serve.core.configs.accelerators import TPUConfig
-
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
         accelerator_config=TPUConfig(kind="tpu", topology="4x4"),
+        engine_kwargs={"tensor_parallel_size": 16},
     )
 
     app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
@@ -284,6 +284,7 @@ def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
         accelerator_type="TPU-V6E",
         accelerator_config=TPUConfig(kind="tpu", topology="4x4"),
         placement_group_config={"bundle_per_worker": {"TPU": 4}},
+        engine_kwargs={"tensor_parallel_size": 16},
     )
 
     app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
@@ -323,8 +324,6 @@ def test_tpu_serve_deployment_explicit_per_chip_bundles(ray_tpu_cluster):
     Verifies that a user can explicitly request chip-level bundles (1 TPU per bundle)
     for a full multi-host TPU slice via placement_group_config.
     """
-    from ray.llm._internal.serve.core.configs.accelerators import TPUConfig
-
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",

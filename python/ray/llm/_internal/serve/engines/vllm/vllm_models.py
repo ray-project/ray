@@ -23,7 +23,6 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUAccelerator,
     TPUConfig,
     format_ray_accelerator_resource,
-    get_inferred_tensor_parallel_size,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -194,18 +193,6 @@ class VLLMEngineConfig(BaseModelExtended):
             mirror_config = llm_config.model_loading_config.model_source
 
         all_engine_kwargs = llm_config.engine_kwargs.copy()
-
-        # If tensor_parallel_size is not specified, try to infer it from topology
-        if "tensor_parallel_size" not in all_engine_kwargs:
-            if isinstance(llm_config.accelerator_config, TPUConfig):
-                total_chips = get_inferred_tensor_parallel_size(
-                    llm_config.accelerator_config.topology
-                )
-                if total_chips is not None:
-                    all_engine_kwargs["tensor_parallel_size"] = total_chips
-                    logger.info(
-                        f"Inferred tensor_parallel_size={total_chips} from TPUConfig."
-                    )
 
         engine_kwargs = {}
         frontend_kwargs = {}

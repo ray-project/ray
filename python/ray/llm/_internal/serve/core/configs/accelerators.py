@@ -10,7 +10,6 @@ from ray._private.accelerators.tpu import get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import (
-    get_num_chips_from_topology,
     get_tpu_version_from_type,
     slice_placement_group,
 )
@@ -30,21 +29,6 @@ TPU_ACCELERATOR_VALUES = {
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
     """Formats the accelerator type into a Ray custom resource string."""
     return f"accelerator_type:{accelerator_type_str}"
-
-
-def get_inferred_tensor_parallel_size(topology: Optional[str]) -> Optional[int]:
-    """Infers the tensor parallel size from the TPU topology."""
-    if not topology:
-        return None
-
-    try:
-        return get_num_chips_from_topology(topology)
-    except ValueError as e:
-        logger.warning(
-            f"Failed to infer tensor_parallel_size from topology '{topology}': {e}. "
-            "Defaulting to None."
-        )
-        return None
 
 
 def infer_hardware_kind_from_bundles(
