@@ -262,7 +262,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const size_t data_size,
                     const c_vector[CObjectID] &contained_object_ids,
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
-                    const unique_ptr[CAddress] &owner_address,
                     c_bool inline_small_object,
                     const optional[c_string] &tensor_transport)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
@@ -289,8 +288,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
                 const CObjectID &object_id,
                 const c_vector[CReaderRefInfo] &remote_reader_ref_info)
-        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
-                             const unique_ptr[CAddress] &owner_address)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)

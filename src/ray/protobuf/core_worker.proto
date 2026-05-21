@@ -406,21 +406,6 @@ message ExitReply {
   bool success = 1;
 }
 
-message AssignObjectOwnerRequest {
-  // The ID of added object.
-  bytes object_id = 1;
-  // The size of the object in bytes.
-  uint64 object_size = 2;
-  // The IDs of contained objects.
-  repeated bytes contained_object_ids = 3;
-  // The borrower address.
-  Address borrower_address = 4;
-  // Description of the call site where the reference was created.
-  string call_site = 5;
-}
-
-message AssignObjectOwnerReply {}
-
 message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
@@ -576,10 +561,6 @@ service CoreWorkerService {
   // Request for a worker to exit from its raylet.
   // Failure: Should not fail, always from local raylet.
   rpc Exit(ExitRequest) returns (ExitReply);
-
-  // Assign the owner of an object to the intended worker.
-  // Failure: TODO: Needs failure behavior.
-  rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
 
   // From gcs job manager to get the number of pending tasks.
   // Failure: Logs a warning on failure, gcs request can be retried by dashboard or state

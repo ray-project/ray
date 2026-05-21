@@ -519,8 +519,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] owner_address The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \param[in] tensor_transport The tensor transport to use for the object.
@@ -532,7 +530,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true,
       const std::optional<std::string> &tensor_transport = std::nullopt);
 
@@ -564,12 +561,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
-  /// \param[in] The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id,
-                   bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+  Status SealOwned(const ObjectID &object_id, bool pin_object);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -1282,11 +1275,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                   rpc::SendReplyCallback send_reply_callback);
 
   // Set local worker as the owner of object.
-  // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
-                               rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback);
-
   // Get the number of pending tasks.
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
