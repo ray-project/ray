@@ -66,7 +66,7 @@ class ReplicaPlacementGroup:
     plain CPU/GPU PG or a TPU slice reservation.
     """
 
-    placement_group: PlacementGroup
+    placement_group: Optional[PlacementGroup]
     _slice_pg: Optional[SlicePlacementGroup] = None
 
     def release_reservation_holders(self) -> None:
