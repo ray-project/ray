@@ -1091,14 +1091,30 @@ bool NodeManager::UpdateResourceUsage(
 void NodeManager::HandleClientConnectionError(
     const std::shared_ptr<ClientConnection> &client,
     const boost::system::error_code &error) {
-  const std::string err_msg = absl::StrCat(
+  std::string err_msg = absl::StrCat(
       "Worker unexpectedly exits with a connection error code ",
       error.value(),
       ". ",
       error.message(),
       ". Some common causes include: (1) the process was killed by the OOM killer "
       "due to high memory usage, (2) ray stop --force was called, or (3) the worker "
-      "crashed unexpectedly due to SIGSEGV or another unexpected error.");
+      "crashed unexpectedly due to SIGSEGV or another unexpected error. "
+      "If the process was killed by the kernel OOM killer (verifiable by "
+      "checking for OOM in dmesg of the OOMing node), ");
+  if (initial_config_.enable_resource_isolation) {
+    absl::StrAppend(&err_msg,
+                    "the system processes may be occupying more memory than what's "
+                    "reserved for them. "
+                    "Please consider passing a higher system reserved memory value via "
+                    "--system-reserved-memory "
+                    "in resource isolation mode.");
+  } else {
+    absl::StrAppend(
+        &err_msg,
+        "consider enabling resource isolation via --enable-resource-isolation "
+        "to prevent node deaths by resource contention and significant loss of "
+        "progress by uninformed kernel OOM killing.");
+  }
 
   // Disconnect the client and don't process more messages.
   DisconnectClient(
@@ -3068,12 +3084,12 @@ void NodeManager::ReleaseKillWorkerInProgress() {
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this]() {
+  return [this](std::string trigger_reason) {
     if (!MarkKillWorkerInProgress()) {
       return;
     }
     io_service_.post(
-        [this]() {
+        [this, trigger_reason = std::move(trigger_reason)]() {
           std::vector<std::shared_ptr<WorkerInterface>> workers =
               worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                    /* filter_io_workers */ true);
@@ -3116,25 +3132,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             return;
           }
 
-          // Compute the memory usage threshold
-          int64_t total_memory_bytes = memory_usage_snapshot.total_bytes;
-          int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-              total_memory_bytes,
-              RayConfig::instance().memory_usage_threshold(),
-              RayConfig::instance().min_memory_free_bytes(),
-              initial_config_.enable_resource_isolation,
-              *cgroup_manager_);
-          float computed_threshold_fraction =
-              static_cast<float>(computed_threshold_bytes) /
-              static_cast<float>(total_memory_bytes);
-
           std::string oom_kill_details = CreateOomKillMessageDetails(
               workers_to_kill_and_should_retry,
               self_node_id_,
               memory_usage_snapshot,
               store_client_->GetMemoryUsage().value_or("Not available"),
               process_memory_snapshot,
-              computed_threshold_fraction);
+              trigger_reason);
           std::string oom_kill_suggestions =
               CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
@@ -3204,7 +3208,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
     const MemoryUsageSnapshot &memory_usage_snapshot,
     const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    float usage_threshold) const {
+    const std::string &trigger_reason) const {
   if (workers_to_kill.empty()) {
     return "";
   }
@@ -3261,8 +3265,8 @@ std::string NodeManager::CreateOomKillMessageDetails(
   }
 
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f), "
-      "which exceeds the memory usage threshold of %f; "
+      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f); "
+      "OOM kill reason: %s; "
       "Object store memory usage: [%s]; "
       "Ray killed %d worker(s) based on the killing policy: "
       "[%s]; "
@@ -3274,7 +3278,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       used_bytes_gb,
       total_bytes_gb,
       usage_fraction,
-      usage_threshold,
+      trigger_reason,
       absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
       workers_to_kill.size(),
       absl::StrJoin(worker_details, "; "),
@@ -3333,7 +3337,11 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "determining worker to oom kill based on owner group size or only "
       "selecting a single worker to kill at a time, set the environment "
       "variable `RAY_worker_killing_policy_by_group` to true before "
-      "starting Ray.",
+      "starting Ray. If the idle workers have a non-trivial memory footprint "
+      "at the time of OOM (check via the top 10 memory users debug log), "
+      "consider setting the environment variable "
+      "`RAY_idle_worker_killing_memory_threshold_bytes` to a lower value "
+      "to consider idle workers with lower memory footprint for killing.",
       not_retriable_recommendation_ss.str());
 }
 

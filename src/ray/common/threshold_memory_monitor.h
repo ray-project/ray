@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include "ray/asio/periodical_runner.h"
@@ -83,16 +84,18 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    *
    * @return True if the memory usage is above the threshold.
    */
-  bool IsHostMemoryThresholdExceeded();
+  /// Returns the memory snapshot if the host memory usage exceeds the threshold,
+  /// or std::nullopt otherwise.
+  std::optional<MemoryUsageSnapshot> IsHostMemoryThresholdExceeded();
 
   /**
    * @brief Checks if the memory usage across all user slice processes,
    *        including their object store usage, exceeds their allowed
    *        threshold under resource isolation mode on this node.
    *
-   * @return True if the user process memory usage is above the threshold.
+   * @return The memory snapshot if above threshold, std::nullopt otherwise.
    */
-  bool IsResourceIsolationThresholdExceeded();
+  std::optional<MemoryUsageSnapshot> IsResourceIsolationThresholdExceeded();
 
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.

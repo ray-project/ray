@@ -38,7 +38,7 @@ Head Node
 Every Ray cluster has one node which is designated as the *head node* of the cluster.
 The head node is identical to other worker nodes, except that it also runs singleton processes responsible for cluster management such as the
 :ref:`autoscaler <cluster-autoscaler>`, :term:`GCS <GCS / Global Control Service>` and the Ray driver processes
-:ref:`which run Ray jobs <cluster-clients-and-jobs>`. Ray may schedule
+which run :ref:`Ray jobs <cluster-clients-and-jobs>`. Ray may schedule
 tasks and actors on the head node just like any other worker node, which is not desired in large-scale clusters.
 See :ref:`vms-large-cluster-configure-head-node` for the best practice in large-scale clusters.
 
@@ -46,12 +46,12 @@ See :ref:`vms-large-cluster-configure-head-node` for the best practice in large-
 
 Worker Node
 ------------
-*Worker nodes* do not run any head node management processes, and serve only to run user code in Ray tasks and actors. They participate in distributed scheduling, as well as the storage and distribution of Ray objects in :ref:`cluster memory <memory>`.
+*Worker nodes* do not run any head node management processes, and serve only to run user code in Ray tasks and actors. They participate in distributed scheduling, as well as the storage and distribution of Ray objects in :ref:`cluster memory <objects-in-ray>`.
 
 .. _cluster-autoscaler:
 
-Autoscaling
------------
+Autoscaler
+----------
 
 The *Ray autoscaler* is a process that runs on the :ref:`head node <cluster-head-node>` (or as a sidecar container in the head pod if :ref:`using Kubernetes <kuberay-index>`).
 When the resource demands of the Ray workload exceed the

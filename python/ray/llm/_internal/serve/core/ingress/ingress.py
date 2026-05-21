@@ -76,6 +76,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
     get_lora_model_metadata,
 )
 from ray.llm._internal.serve.utils.server_utils import replace_prefix
+from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
@@ -515,6 +516,28 @@ class OpenAiIngress(DeploymentProtocol):
         """Calls the model deployment and returns the stream."""
         model_id = await self._get_model_id(body.model)
         model_handle = self._get_configured_serve_handle(model_id)
+
+        # Propagate the session id from the client request to the downstream
+        # LLMServer handle. The Serve HTTP proxy attaches session_id to the
+        # *ingress* deployment handle (proxy.py:_setup_request_context), but
+        # that does NOT carry over to a second handle hop (here -> LLMServer).
+        # Re-read the configured session header from the raw request and apply
+        # it via .options(session_id=...) so session-aware request routers
+        # (e.g. ConsistentHashRouter) on the LLMServer deployment see it.
+        # Uses the same case-insensitive, separator-tolerant matcher as
+        # proxy.py so a `-`/`_` rewrite by an intermediate proxy doesn't
+        # silently drop session affinity on this second hop.
+        if raw_request is not None:
+            session_id = next(
+                (
+                    v
+                    for k, v in raw_request.headers.items()
+                    if _matches_session_id_header(k)
+                ),
+                None,
+            )
+            if session_id:
+                model_handle = model_handle.options(session_id=session_id)
 
         # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
         # for tool calling ValidatorIterator serialization issue.

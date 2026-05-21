@@ -1515,6 +1515,26 @@ void GcsActorManager::RestartActor(
     }
     auto new_num_restarts = num_restarts + 1;
     mutable_actor_table_data->set_num_restarts(new_num_restarts);
+
+    // Invoke creation callbacks early for actors that are already created.
+    // This enforces the strict sequence that the callback is invoked with the
+    // original created actor's address and borrowed_refs, before clearing the address.
+    // Note that only borrowed_refs needs to be populated in the reconstructed
+    // PushTaskReply because the callback implementation extracts other fields
+    // (like actor_address) directly from the GcsActor instance.
+    auto create_callback_iter = actor_to_create_callbacks_.find(actor_id);
+    if (create_callback_iter != actor_to_create_callbacks_.end() &&
+        actor->GetState() == rpc::ActorTableData::ALIVE) {
+      RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+          << "Invoking pending creation callbacks early in RestartActor before "
+             "clearing the actor address to enforce the strict sequence that the "
+             "callback is invoked with the original created actor's address and "
+             "borrowed_refs.";
+      rpc::PushTaskReply reply;
+      reply.mutable_borrowed_refs()->CopyFrom(actor->GetBorrowedRefsAtCreation());
+      RunAndClearActorCreationCallbacks(actor, reply, Status::OK());
+    }
+
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
     // Make sure to reset the address before flushing to GCS. Otherwise,
@@ -1668,6 +1688,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     mutable_actor_table_data->set_start_time(time);
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
+  actor->SetBorrowedRefsAtCreation(reply.borrowed_refs());
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.

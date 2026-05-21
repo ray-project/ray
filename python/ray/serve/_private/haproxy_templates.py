@@ -19,9 +19,7 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
-    log 127.0.0.1:{{ config.syslog_port }} local0 debug
+    log {{ config.log_target }} local0 debug
     {%- if config.log_access_to_stderr %}
     # Mirror access logs to stderr (off by default; flip
     # RAY_SERVE_HAPROXY_LOG_ACCESS_TO_STDERR=1 to enable).
@@ -36,6 +34,8 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
     {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
+    {%- else %}
+    tune.bufsize {{ config.bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
@@ -63,6 +63,8 @@ defaults
     option redispatch
     retries {{ config.retries }}
     retry-on conn-failure empty-response 503
+    option splice-request
+    option splice-response
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
@@ -86,6 +88,14 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if ingress_request_router_metrics_enabled and has_ingress_request_router %}
+    log global
+    # Per-request metrics for the ingress request router. Goes only to the
+    # rfc5424 target below; the inherited rfc3164 targets do not include the
+    # SD section, so their byte stream is unchanged.
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
@@ -184,12 +194,23 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     # HAProxy holding unread server-side FINs under a burst while worker
     # threads are still routing other requests.
     http-reuse always
-    # use-server falls through to LB if the pinned server is DOWN.
+    # use-server falls through to LB if the pinned server is DOWN. Combined
+    # with `retry-on` below (when configured), this lets HAProxy redispatch
+    # a slow-first-byte request to a different replica instead of head-of-
+    # line-blocking on the original pick.
     option redispatch
+    {%- if config.ingress_retry_on %}
+    retry-on {{ config.ingress_retry_on }}
+    {%- endif %}
+    {%- if config.ingress_retries is not none %}
+    retries {{ config.ingress_retries }}
+    {%- endif %}
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
+    {%- if config.ingress_timeout_server_s is not none %}
+    timeout server {{ config.ingress_timeout_server_s }}s
+    {%- elif backend.timeout_server_s is not none %}
     timeout server {{ backend.timeout_server_s }}s
     {%- endif %}
     {%- if backend.timeout_http_keep_alive_s is not none %}
