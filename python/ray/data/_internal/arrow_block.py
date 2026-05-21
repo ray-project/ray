@@ -295,6 +295,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 t
             ):
                 return None
+            if (
+                pyarrow.types.is_integer(t)
+                or pyarrow.types.is_floating(t)
+                or pyarrow.types.is_boolean(t)
+            ):
+                return None
             return pd.ArrowDtype(t)
 
         df = self._table.to_pandas(
