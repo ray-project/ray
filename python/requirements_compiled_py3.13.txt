@@ -39,7 +39,9 @@ aimrecords==0.0.7
 aimrocks==0.5.2
     # via aim
 aioboto3==12.1.0
-    # via -r python/requirements/ml/py313/data-requirements.txt
+    # via
+    #   -r python/requirements/ml/py313/data-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 aiobotocore==2.8.0
     # via
     #   aioboto3
@@ -97,6 +99,7 @@ antlr4-python3-runtime==4.13.2
     # via moto
 anyio==4.13.0
     # via
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   gradio
     #   httpx
     #   jupyter-server
@@ -712,7 +715,9 @@ googleapis-common-protos==1.74.0
 gpytorch==1.15.2
     # via botorch
 gradio==5.50.0 ; platform_system != "Windows"
-    # via -r python/requirements/py313/test-requirements.txt
+    # via
+    #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 gradio-client==1.14.0
     # via gradio
 graphemeu==0.7.2
@@ -800,6 +805,7 @@ httplib2==0.20.4
 httpx==0.28.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   gradio
     #   gradio-client
     #   jupyterlab
@@ -1265,6 +1271,7 @@ numexpr==2.14.1
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   pymars
 numpy==2.2.6
     # via
@@ -1776,6 +1783,8 @@ pymoo==0.6.1.6
     # via botorch
 pymunk==6.2.1
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
+pymysql==1.1.3
+    # via -r python/requirements/serve/serve-test-requirements.txt
 pynacl==1.6.0
     # via paramiko
 pyopengl==3.1.10
@@ -1825,6 +1834,7 @@ pytest==7.4.4
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   pytest-aiohttp
     #   pytest-asyncio
     #   pytest-docker-tools
@@ -1846,6 +1856,7 @@ pytest-asyncio==0.17.2
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   pytest-aiohttp
 pytest-docker-tools==3.1.3
     # via -r python/requirements/py313/test-requirements.txt
@@ -1973,10 +1984,15 @@ pyzmq==27.1.0
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
+ray-haproxy==2.8.20
+    # via -r python/requirements/serve/serve-test-requirements.txt
 raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 redis==4.5.4
-    # via -r python/requirements/py313/test-requirements.txt
+    # via
+    #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
+    #   taskiq-redis
 referencing==0.36.2
     # via
     #   jsonschema
@@ -2236,6 +2252,7 @@ spinners==0.0.24
     # via halo
 sqlalchemy==2.0.49
     # via
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   aim
     #   alembic
     #   jupyter-cache
@@ -2277,9 +2294,13 @@ tabulate==0.10.0
     #   jupyter-cache
     #   knack
 taskiq==0.12.2
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   taskiq-redis
 taskiq-dependencies==1.5.7
     # via taskiq
+taskiq-redis==0.4.0
+    # via -r python/requirements/serve/serve-test-requirements.txt
 tblib==3.2.2
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
@@ -2305,6 +2326,7 @@ tensorflow==2.20.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   tf-keras
 tensorflow-datasets==4.9.3 ; python_version < "3.12"
     # via
@@ -2319,7 +2341,9 @@ tensorflow-metadata==1.17.3
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   tensorflow-datasets
 tensorflow-probability==0.24.0
-    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    # via
+    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 termcolor==3.3.0
     # via
     #   halo
@@ -2343,6 +2367,7 @@ tf-keras==2.20.0
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
     #   -r python/requirements/ml/py313/rllib-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -2376,6 +2401,7 @@ torch==2.7.0
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   accelerate
     #   botorch
     #   deepspeed
@@ -2417,6 +2443,7 @@ torchvision==0.22.0
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   mosaicml
     #   timm
 tornado==6.5.5
@@ -2475,6 +2502,7 @@ transformers==4.36.2
     # via
     #   -r python/requirements/ml/py313/core-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 triad==1.0.2
     # via
     #   adagio
@@ -2498,6 +2526,7 @@ types-urllib3==1.26.25.14
 typing-extensions==4.15.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   aiosignal
     #   alembic
     #   anyio
@@ -2637,6 +2666,7 @@ websocket-client==1.9.0
 websockets==15.0.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
     #   aim
     #   gradio-client
 werkzeug==2.3.8

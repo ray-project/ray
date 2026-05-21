@@ -84,7 +84,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     is_grpc_enabled,
 )
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -208,7 +208,7 @@ class ServeController:
                 "on head node only."
             )
 
-            http_options.location = DeploymentMode.HeadOnly
+            http_options.location = ProxyLocation.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
@@ -537,6 +537,7 @@ class ServeController:
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
             self._health_metrics_tracker.num_control_loops = num_loops
+            self._health_metrics_tracker.last_control_loop_time = time.time()
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
@@ -1053,6 +1054,12 @@ class ServeController:
                 protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
                 for the application.
         """
+        if self._shutting_down:
+            logger.warning(
+                "Ignoring deploy_applications request because Serve controller is shutting down."
+            )
+            return
+
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
             deployment_args_deserialized = []
@@ -1116,6 +1123,12 @@ class ServeController:
 
         If `deployment_time` is not provided, `time.time()` is used.
         """
+        if self._shutting_down:
+            logger.warning(
+                "Ignoring apply_config request because Serve controller is shutting down."
+            )
+            return
+
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
@@ -1326,7 +1339,7 @@ class ServeController:
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
+            proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=(
@@ -1336,6 +1349,7 @@ class ServeController:
             ),
             applications=applications,
             target_groups=self.get_target_groups(),
+            controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:

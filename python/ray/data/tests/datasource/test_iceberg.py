@@ -340,7 +340,7 @@ def test_predicate_pushdown():
 
     # Verify the filter is pushed down to the read operation
     # by checking the optimized logical plan
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Filter operator
@@ -386,7 +386,7 @@ def test_predicate_pushdown_with_initial_filter():
     filtered_ds = ds.filter(expr=col("col_c") >= 5)
 
     # Verify both filters are pushed down
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # No Filter operator should remain in the plan
@@ -430,7 +430,7 @@ def test_projection_pushdown():
     projected_ds = ds.select_columns(["col_a", "col_c"])
 
     # Verify the projection is pushed down to the read operation
-    logical_plan = projected_ds._plan._logical_plan
+    logical_plan = projected_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Project operator
@@ -513,7 +513,7 @@ def test_projection_and_predicate_pushdown(
         filtered_ds = projected_ds
 
     # Verify both optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down
@@ -599,12 +599,15 @@ def test_projection_and_predicate_pushdown(
             pyi_expr.GreaterThanOrEqual("col_c", 5),
             {"col_a", "col_b"},
         ),
-        # Test 7: Rename + Select + Filter (all three together)
+        # Test 7: Rename + Select + Filter (all three together).
+        # Filter references a selected column (the renamed ``column_a``);
+        # filtering on a column the select dropped is not a valid plan
+        # after projection pushdown.
         (
             {"col_a": "column_a", "col_b": "column_b"},
             ["column_a", "column_b"],
-            col("col_c") >= 5,
-            pyi_expr.GreaterThanOrEqual("col_c", 5),
+            col("column_a") >= 50,
+            pyi_expr.GreaterThanOrEqual("col_a", 50),
             {"column_a", "column_b"},
         ),
         # Test 8: Complex rename + select with multiple renames
@@ -651,18 +654,26 @@ def test_rename_select_filter_combinations(
         ds = ds.filter(expr=filter_expr)
 
     # Verify optimizations are applied
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
-    # Both Filter and Project should be pushed down (when applicable)
+    # Filter, when present, should always be pushed into the scan.
     if filter_expr is not None:
         assert not _has_operator_type(
             optimized_plan, Filter
         ), f"Filter should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
-    if select_cols is not None or rename_map is not None:
+
+    # Pure column selection (no renames) is subsumed by the scan's column
+    # pruning, so no ``Project`` remains. Renames stay as a ``Project`` of
+    # ``AliasExpr``s above the pruned scan after filter pushdown.
+    if rename_map is not None:
+        assert _has_operator_type(
+            optimized_plan, Project
+        ), f"Renames should remain as a Project above the scan, got operators: {_get_operator_types(optimized_plan)}"
+    elif select_cols is not None:
         assert not _has_operator_type(
             optimized_plan, Project
-        ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
+        ), f"Pure column selection should be pushed into the scan, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results
     result = ds.to_pandas()
@@ -732,7 +743,7 @@ def test_predicate_pushdown_complex_expression():
     result = filtered_ds.to_pandas()
 
     # Verify optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     assert not _has_operator_type(

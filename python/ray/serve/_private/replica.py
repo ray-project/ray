@@ -33,7 +33,6 @@ import grpc
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
-from starlette.applications import Starlette
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
@@ -93,6 +92,9 @@ from ray.serve._private.constants import (
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    USER_HEALTH_CHECK_PROBE_INTERVAL_S,
+    USER_HEALTH_CHECK_PROBE_MAX_FAIL,
+    USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
 )
 from ray.serve._private.default_impl import (
     create_replica_impl,
@@ -187,6 +189,8 @@ from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
 
 def _wrap_grpc_call(f):
@@ -1181,13 +1185,41 @@ class Replica:
         self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
 
         self._num_queued_requests = 0
+        self._reserved_slots: Set[str] = set()
 
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
     def get_num_ongoing_requests(self) -> int:
-        return self._metrics_manager.get_num_ongoing_requests()
+        return self._metrics_manager.get_num_ongoing_requests() + len(
+            self._reserved_slots
+        )
+
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve replica capacity for a future dispatch call."""
+        if request_metadata.is_direct_ingress:
+            raise RuntimeError(
+                "Slot reservation is not supported for direct-ingress requests."
+            )
+
+        if not self._can_accept_request(request_metadata):
+            return False, self.get_num_ongoing_requests()
+
+        await self._semaphore.acquire()
+        self._reserved_slots.add(slot_token)
+        return True, self.get_num_ongoing_requests()
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release replica capacity reserved by choose_replica()."""
+        if slot_token not in self._reserved_slots:
+            return False, self.get_num_ongoing_requests()
+
+        self._reserved_slots.remove(slot_token)
+        self._semaphore.release()
+        return True, self.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -1744,6 +1776,9 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._user_callable_wrapper.start_user_loop_watchdog(
+                        self._event_loop
+                    )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
                             self._user_callable_wrapper._callable.docs_path
@@ -1864,12 +1899,25 @@ class Replica:
 
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
-        async with self._semaphore:
+        reserved_slot_token = request_metadata._reserved_slot_token
+        if reserved_slot_token:
+            if reserved_slot_token not in self._reserved_slots:
+                raise RuntimeError(
+                    "Request tried to consume an unknown reserved slot "
+                    f"{reserved_slot_token}."
+                )
+            self._reserved_slots.remove(reserved_slot_token)
+        else:
+            await self._semaphore.acquire()
+
+        try:
             try:
                 self._metrics_manager.inc_num_ongoing_requests(request_metadata)
                 yield
             finally:
                 self._metrics_manager.dec_num_ongoing_requests(request_metadata)
+        finally:
+            self._semaphore.release()
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
@@ -1882,7 +1930,7 @@ class Replica:
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            num_ongoing_requests = self.get_num_ongoing_requests()
             if num_ongoing_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
@@ -1897,6 +1945,7 @@ class Replica:
 
     async def shutdown(self):
         try:
+            self._user_callable_wrapper.stop_user_loop_watchdog()
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
@@ -1944,8 +1993,11 @@ class Replica:
 
     async def check_health(self):
         try:
-            # If there's no user-defined health check, nothing runs on the user code event
-            # loop and no future is returned.
+            # Runs the user-defined check_health on the user code loop if defined.
+            # Otherwise, if the background watchdog has detected the user loop is
+            # unresponsive, raises immediately. If the watchdog is disabled
+            # (MAX_FAIL=0) or the fail counter hasn't reached the threshold yet,
+            # returns None.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -2534,8 +2586,12 @@ class Replica:
             return
 
         # If the HTTP path does not match the deployment route prefix,
-        # it is invalid and we should not serve it.
-        if not route.startswith(self._route_prefix):
+        # it is invalid and we should not serve it. Ingress request router
+        # peer deployments (e.g. LLMRouter) have no route prefix; fall
+        # back to "" so any path (including the empty-path ASGI edge case)
+        # matches and downstream user code dispatches.
+        route_prefix = self._route_prefix or ""
+        if not route.startswith(route_prefix):
             for msg in convert_object_to_asgi_messages(
                 f"Path '{route}' not found. "
                 "Ping http://.../-/routes for available routes.",
@@ -2754,6 +2810,16 @@ class ReplicaActor:
         """
         return self._replica_impl.get_num_ongoing_requests()
 
+    async def reserve_slot(
+        self, request_metadata: RequestMetadata, slot_token: str
+    ) -> Tuple[bool, int]:
+        """Reserve capacity for a future choose_replica/dispatch request."""
+        return await self._replica_impl.reserve_slot(request_metadata, slot_token)
+
+    def release_slot(self, slot_token: str) -> Tuple[bool, int]:
+        """Release capacity reserved by choose_replica()."""
+        return self._replica_impl.release_slot(slot_token)
+
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
 
@@ -2776,6 +2842,20 @@ class ReplicaActor:
             ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
+
+    async def was_initialized(self) -> bool:
+        """Whether this replica's user callable has finished initializing.
+
+        Used by the controller during recovery to detect actors that were
+        created but never received their initial
+        ``initialize_and_get_metadata(rank=...)`` call (e.g., because the
+        previous controller crashed mid-startup). Such an actor has neither a
+        rank nor a fully-initialized user callable, and recovering it would
+        silently complete its initialization with ``rank=None``, breaking
+        rank tracking. The controller can call this method first and skip /
+        kill the actor when it returns False.
+        """
+        return self._replica_impl._user_callable_initialized
 
     def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         return self._replica_impl.list_outbound_deployments()
@@ -2979,6 +3059,9 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._user_health_check: Optional[Callable] = None
+        self._user_loop_probe_consecutive_fail_count: int = 0
+        self._user_loop_probe_task: Optional[asyncio.Task] = None
         self._deployment_config = deployment_config
         self._ray_actor_options = ray_actor_options or {}
         self._user_code_threadpool: Optional[
@@ -3027,6 +3110,72 @@ class UserCallableWrapper:
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
+
+    def _user_loop_watchdog_enabled(self) -> bool:
+        """Whether we run the optional background user-loop probe (and may fast-fail HC)."""
+        return (
+            self._run_user_code_in_separate_thread
+            and self._user_health_check is None
+            and USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0
+        )
+
+    def start_user_loop_watchdog(self, main_loop: asyncio.AbstractEventLoop) -> None:
+        """Periodically probe the user code loop from the replica main loop (opt-in).
+
+        With user code on a separate thread, a wedged asyncio loop can queue health
+        probes indefinitely. If ``RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL`` > 0,
+        repeated timeouts fail ``check_health`` without waiting for the controller
+        RPC timeout. Applies even when ``RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1``: async
+        work on that loop stays observable regardless of sync thread-pool idle/busy mix.
+        """
+        if not self._user_loop_watchdog_enabled():
+            return
+        if self._user_loop_probe_task is not None:
+            return
+        self._user_loop_probe_task = main_loop.create_task(self._user_loop_probe_loop())
+
+    def stop_user_loop_watchdog(self) -> None:
+        if self._user_loop_probe_task is not None:
+            self._user_loop_probe_task.cancel()
+            self._user_loop_probe_task = None
+        # Reset so a subsequent start_user_loop_watchdog() doesn't begin with a stale
+        # fail count that would immediately trip call_user_health_check().
+        self._user_loop_probe_consecutive_fail_count = 0
+
+    async def _user_loop_probe_loop(self) -> None:
+        while True:
+            await asyncio.sleep(USER_HEALTH_CHECK_PROBE_INTERVAL_S)
+
+            fut = asyncio.run_coroutine_threadsafe(
+                asyncio.sleep(0), self._user_code_event_loop
+            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.wrap_future(fut),
+                    timeout=USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe timed out "
+                    f"(failed {self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL} before health check fails). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+            except Exception as e:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe failed: "
+                    f"{e} ({self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL}). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+
+            self._user_loop_probe_consecutive_fail_count = 0
 
     def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
         num_cpus = self._ray_actor_options.get("num_cpus")
@@ -3215,17 +3364,37 @@ class UserCallableWrapper:
     async def _initialize_asgi_callable(self) -> None:
         self._callable: ASGIAppReplicaWrapper
 
-        app: Starlette = self._callable.app
+        build_asgi_app = getattr(self._callable, SERVE_BUILD_ASGI_APP_METHOD, None)
+        is_late_bound = not hasattr(self._callable, "_asgi_app")
+        if is_late_bound and build_asgi_app is None:
+            raise TypeError(
+                f"ASGI app was not provided to the wrapper and "
+                f"`{SERVE_BUILD_ASGI_APP_METHOD}` is not defined on the deployment."
+            )
+        if build_asgi_app is not None:
+            app, _ = await self._call_func_or_gen(
+                build_asgi_app,
+                run_sync_methods_in_threadpool_override=False,
+            )
+            if app is None:
+                raise TypeError(
+                    f"`{SERVE_BUILD_ASGI_APP_METHOD}` must return an ASGI app."
+                )
+            self._callable._set_asgi_app(app)
 
-        # The reason we need to do this is because BackPressureError is a serve internal exception
-        # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-        # With same reasoning, we are not handling TimeoutError because it's a generic exception
-        # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
-        def handle_exception(_: Request, exc: Exception):
-            return self.handle_exception(exc)
+        app: ASGIApp = self._callable.app
 
-        for exc in self.service_unavailable_exceptions:
-            app.add_exception_handler(exc, handle_exception)
+        if hasattr(app, "add_exception_handler"):
+            # The reason we need to do this is because BackPressureError is a serve
+            # internal exception and FastAPI doesn't know how to handle it, so it
+            # treats it as a 500 error. With same reasoning, we are not handling
+            # TimeoutError because it's a generic exception the FastAPI knows how
+            # to handle. See https://www.starlette.io/exceptions/
+            def handle_exception(_: Request, exc: Exception):
+                return self.handle_exception(exc)
+
+            for exc in self.service_unavailable_exceptions:
+                app.add_exception_handler(exc, handle_exception)
 
         await self._callable._run_asgi_lifespan_startup()
 
@@ -3306,11 +3475,21 @@ class UserCallableWrapper:
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
-        # To avoid this issue for basic cases without a user-defined health check, skip
-        # interacting with the user callable entirely.
+        # When there is no user-defined health check, health is determined by the
+        # optional watchdog fail counter.
+        if (
+            self._user_loop_watchdog_enabled()
+            and self._user_loop_probe_consecutive_fail_count
+            >= USER_HEALTH_CHECK_PROBE_MAX_FAIL
+        ):
+            raise RuntimeError(
+                "User event loop unresponsive: probe failed "
+                f"{self._user_loop_probe_consecutive_fail_count} consecutive times "
+                f"(limit {USER_HEALTH_CHECK_PROBE_MAX_FAIL})."
+            )
+
         if self._user_health_check is not None:
             return self._call_user_health_check()
-
         return None
 
     @property
