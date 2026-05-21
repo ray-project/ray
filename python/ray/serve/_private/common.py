@@ -712,6 +712,10 @@ class DeploymentTargetInfo:
     running_replicas: List[RunningReplicaInfo]
 
 
+class ServeDeployMode(str, Enum):
+    MULTI_APP = "MULTI_APP"
+
+
 class ServeComponentType(str, Enum):
     REPLICA = "replica"
 

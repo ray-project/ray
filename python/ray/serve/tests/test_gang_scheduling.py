@@ -1466,6 +1466,7 @@ class TestGangScaling:
                 gc = ctx.gang_context
                 return {"pid": os.getpid(), "gang_id": gc.gang_id if gc else None}
 
+        D = D.options(_internal=True, version="v1")
         handle = serve.run(D.bind(), name="app")
         wait_for_condition(check_apps_running, apps=["app"])
 
@@ -1920,6 +1921,7 @@ class TestGangMigration:
                     "node_id": ray.get_runtime_context().get_node_id(),
                 }
 
+        D = D.options(_internal=True, version="v1")
         handle = serve.run(D.bind(), name="app")
         wait_for_condition(check_apps_running, apps=["app"])
 
