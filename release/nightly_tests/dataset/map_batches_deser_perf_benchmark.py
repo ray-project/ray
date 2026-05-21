@@ -92,7 +92,7 @@ def collect_deser_stats(events: List[Dict[str, Any]]) -> Dict[str, float]:
     n = len(durs_ms)
     return {
         "n": n,
-        "p50": durs_ms[n // 2],
+        "p50": durs_ms[int((n - 1) * 0.5)],
         "p90": durs_ms[int((n - 1) * 0.9)],
         "max": durs_ms[-1],
     }
