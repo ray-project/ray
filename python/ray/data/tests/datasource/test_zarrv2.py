@@ -139,6 +139,26 @@ def test_requires_consolidated_metadata(tmp_path):
         zarrv2_datasource.ZarrV2Datasource(str(store_path))
 
 
+def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
+    """``allow_full_metadata_scan=True`` against a store the filesystem can't
+    walk (or that genuinely has no arrays) raises a specific error pointing
+    the user at ``array_paths=[...]`` as the workaround.
+
+    Pins the diagnosis we surface for the real-world HTTPS-without-listing
+    case (e.g., the vitessce anndata-zarr store hosted on plain HTTPS where
+    fsspec's HTTPFileSystem can't walk).
+    """
+    empty_store = tmp_path / "empty.zarr"
+    empty_store.mkdir()  # no .zmetadata, no .zarray files anywhere
+
+    with pytest.raises(
+        ValueError, match=r"Full-store scan of .* found no \.zarray files.*"
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(empty_store), allow_full_metadata_scan=True
+        )
+
+
 # ---------------------------------------------------------------------------
 # chunk_size validation
 # ---------------------------------------------------------------------------

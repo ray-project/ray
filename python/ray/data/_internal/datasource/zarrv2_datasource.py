@@ -356,6 +356,19 @@ class ZarrV2Datasource(Datasource):
                 "executing full scan of Zarr store metadata"
             )
             all_arrays = _load_metadata_full_scan(fs, store_path)
+            if not all_arrays:
+                # ``fs.walk`` silently returns nothing on filesystems without
+                # directory-listing support (most commonly plain HTTP/HTTPS).
+                # That's distinct from "store exists but has no arrays", so
+                # surface the likely cause.
+                raise ValueError(
+                    f"Full-store scan of {self.paths[0]!r} found no .zarray "
+                    "files. This can occur if the filesystem does not "
+                    "support recursive directory listing (e.g., plain "
+                    "HTTP/HTTPS without an object-store listing API). Pass "
+                    "array_paths=[...] with explicit array names to read "
+                    "from this kind of store."
+                )
         else:
             raise ValueError(
                 "No array_paths were provided and this Zarr store does not "
