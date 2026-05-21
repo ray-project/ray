@@ -526,6 +526,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"FURIOSA": 2})
+
+            @ray.remote(resources={"FURIOSA": 1})
+            class RNGDActor:
+                def ping(self):
+                    print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+                    print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+            @ray.remote(resources={"FURIOSA": 1})
+            def rngd_task():
+                print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+                print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+            rngd_actor = RNGDActor.remote()
+            ray.get(rngd_actor.ping.remote())
+            # The actor uses the first RNGD so the task uses the second one.
+            ray.get(rngd_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (RNGDActor pid=52420) RNGD IDs: ['0']
+            (RNGDActor pid=52420) FURIOSA_DEVICES: npu:0
+            (rngd_task pid=51830) RNGD IDs: ['1']
+            (rngd_task pid=51830) FURIOSA_DEVICES: npu:1
+
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
 Typically, it is not necessary to call ``get_accelerator_ids()`` because Ray
@@ -695,6 +734,11 @@ so multiple tasks and actors can share the same accelerator.
             # The four tasks created here can execute concurrently
             # and share the same GPU.
             ray.get([f.remote() for _ in range(4)])
+
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        FuriosaAI doesn't support fractional resources.
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
