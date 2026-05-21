@@ -476,7 +476,7 @@ class ClusterStatusFormatter:
         return "\n".join(node_usage_report_lines)
 
     @staticmethod
-    def _header_info(data: ClusterStatus, verbose: bool) -> (str, int):
+    def _header_info(data: ClusterStatus, verbose: bool) -> Tuple[str, int]:
         # Get the request timestamp or default to the current time
         time = (
             datetime.fromtimestamp(data.stats.request_ts_s)

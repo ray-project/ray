@@ -977,10 +977,9 @@ def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
         config: config to bootstrap
 
     Returns:
-        The input config with all launch template
-        data merged into the node config of all available node types. If no
-        launch template data is found, then the config is returned
-        unchanged.
+        The input config with all launch template data merged into the node
+        config of all available node types. If no launch template data is
+        found, then the config is returned unchanged.
 
     Raises:
         ValueError: When no launch template is found for the given launch template
@@ -1008,10 +1007,9 @@ def _configure_node_type_from_launch_template(
         node_type: node type config to bootstrap
 
     Returns:
-        The input config with all launch template
-        data merged into the node config of the input node type. If no
-        launch template data is found, then the config is returned
-        unchanged.
+        The input config with all launch template data merged into the node
+        config of the input node type. If no launch template data is found,
+        then the config is returned unchanged.
 
     Raises:
         ValueError: When no launch template is found for the given launch template
@@ -1050,9 +1048,8 @@ def _configure_node_cfg_from_launch_template(
         node_cfg: node config to bootstrap
 
     Returns:
-        The input node config merged with all launch
-        template data. If no launch template data is found, then the node
-        config is returned unchanged.
+        The input node config merged with all launch template data. If no
+        launch template data is found, then the node config is returned unchanged.
 
     Raises:
         ValueError: When no launch template is found for the given launch template
@@ -1093,10 +1090,9 @@ def _configure_from_network_interfaces(config: Dict[str, Any]) -> Dict[str, Any]
         config: config to bootstrap
 
     Returns:
-        The input config with all network interface
-        subnet and security group IDs copied into the node config of all
-        available node types. If no network interfaces are found, then the
-        config is returned unchanged.
+        The input config with all network interface subnet and security group
+        IDs copied into the node config of all available node types. If no
+        network interfaces are found, then the config is returned unchanged.
 
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
@@ -1123,10 +1119,9 @@ def _configure_node_type_from_network_interface(
         node_type: node type config to bootstrap
 
     Returns:
-        The input config with all network interface
-        subnet and security group IDs copied into the node config of the
-        given node type. If no network interfaces are found, then the
-        config is returned unchanged.
+        The input config with all network interface subnet and security group
+        IDs copied into the node config of the given node type. If no network
+        interfaces are found, then the config is returned unchanged.
 
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
@@ -1155,8 +1150,7 @@ def _configure_subnets_and_groups_from_network_interfaces(
         node_cfg: node config to bootstrap
 
     Returns:
-        node config with all copied network
-        interface subnet and security group IDs
+        node config with all copied network interface subnet and security group IDs
 
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
@@ -1218,10 +1212,9 @@ def _security_groups_in_network_config(config: Dict[str, Any]) -> List[List[str]
         config: node config
 
     Returns:
-        List of security group ID lists
-        for all network interfaces, or an empty list if no network interfaces
-        are defined. An empty list is returned for each missing network
-        interface security group list.
+        List of security group ID lists for all network interfaces, or an
+        empty list if no network interfaces are defined. An empty list is
+        returned for each missing network interface security group list.
     """
     return [ni.get("Groups", []) for ni in config.get("NetworkInterfaces", [])]
 

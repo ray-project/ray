@@ -66,7 +66,6 @@ class UtilizationScore:
 
     This isn't just a `float`. In the case of the default scorer, it's a
     `Tuple[float, float]` which is quite difficult to map to a single number.
-
     """
 
     @abstractmethod
@@ -146,7 +145,7 @@ class ResourceDemandScheduler:
         """Updates the class state variables.
 
         For legacy yamls, it merges previous state and new state to make sure
-        inferered resources are not lost.
+        inferred resources are not lost.
         """
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
@@ -175,7 +174,7 @@ class ResourceDemandScheduler:
         max_resources_by_ip: Dict[NodeIP, ResourceDict],
         ensure_min_cluster_size: List[ResourceDict],
         node_availability_summary: NodeAvailabilitySummary,
-    ) -> (Dict[NodeType, int], List[ResourceDict]):
+    ) -> Tuple[Dict[NodeType, int], List[ResourceDict]]:
         """Given resource demands, return node types to add to the cluster.
 
         This method:
@@ -461,7 +460,7 @@ class ResourceDemandScheduler:
         self,
         non_terminated_nodes: List[NodeID],
         connected_nodes: List[NodeIP],
-    ) -> (Dict[NodeType, int], Dict[NodeType, int]):
+    ) -> Tuple[Dict[NodeType, int], Dict[NodeType, int]]:
         """Splits connected and non terminated nodes to pending & running."""
 
         running_nodes = collections.defaultdict(int)
@@ -482,7 +481,7 @@ class ResourceDemandScheduler:
         nodes: List[NodeID],
         pending_nodes: Dict[NodeID, int],
         unused_resources_by_ip: Dict[str, ResourceDict],
-    ) -> (List[ResourceDict], Dict[NodeType, int]):
+    ) -> Tuple[List[ResourceDict], Dict[NodeType, int]]:
         """Returns node resource list and node type counts.
 
         Counts the running nodes, pending nodes.
@@ -644,7 +643,7 @@ def _add_min_workers_nodes(
     utilization_scorer: Callable[
         [NodeResources, ResourceDemands, str], Optional[UtilizationScore]
     ],
-) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]):
+) -> Tuple[List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]]:
     """Updates resource demands to respect the min_workers and
     request_resources() constraints.
 
@@ -737,7 +736,7 @@ def get_nodes_for(
         [NodeResources, ResourceDemands, str], Optional[UtilizationScore]
     ],
     strict_spread: bool = False,
-) -> (Dict[NodeType, int], List[ResourceDict]):
+) -> Tuple[Dict[NodeType, int], List[ResourceDict]]:
     """Determine nodes to add given resource demands and constraints.
 
     Args:
@@ -883,7 +882,7 @@ def get_bin_pack_residual(
     node_resources: List[ResourceDict],
     resource_demands: List[ResourceDict],
     strict_spread: bool = False,
-) -> (List[ResourceDict], List[ResourceDict]):
+) -> Tuple[List[ResourceDict], List[ResourceDict]]:
     """Return a subset of resource_demands that cannot fit in the cluster.
 
     TODO(ekl): this currently does not guarantee the resources will be packed

@@ -148,32 +148,20 @@ def _format_msg(
     Args:
         msg: The message to format.
         *args: `.format` arguments for `msg`.
-        no_format:
-            If `no_format` is `True`,
-            `.format` will not be called on the message.
-
-            Useful if the output is user-provided or may otherwise
+        no_format: If `no_format` is `True`, `.format` will not be called on
+            the message. Useful if the output is user-provided or may otherwise
             contain an unexpected formatting string (e.g. "{}").
-        _tags:
-            key-value pairs to display at the end of
-            the message in square brackets.
-
-            If a tag is set to `True`, it is printed without the value,
-            the presence of the tag treated as a "flag".
+        _tags: key-value pairs to display at the end of the message in
+            square brackets. If a tag is set to `True`, it is printed without
+            the value, the presence of the tag treated as a "flag".
 
             E.g. `_format_msg("hello", _tags=dict(from=mom, signed=True))`
                  `hello [from=Mom, signed]`
-        _numbered:
-            `(brackets, i, n)`
-
-            The `brackets` string is composed of two "bracket" characters,
-            `i` is the index, `n` is the total.
-
+        _numbered: `(brackets, i, n)` The `brackets` string is composed of
+            two "bracket" characters, `i` is the index, `n` is the total.
             The string `{i}/{n}` surrounded by the "brackets" is
-            prepended to the message.
-
-            This is used to number steps in a procedure, with different
-            brackets specifying different major tasks.
+            prepended to the message. This is used to number steps in a
+            procedure, with different brackets specifying different major tasks.
 
             E.g. `_format_msg("hello", _numbered=("[]", 0, 5))`
                  `[0/5] hello`
@@ -245,20 +233,12 @@ class _CliLogger:
     to 'record' style logging.
 
     Attributes:
-        color_mode (str):
-            Can be "true", "false", or "auto".
-
-            Enables or disables `colorful`.
-
-            If `color_mode` is "auto", is set to `not stdout.isatty()`
-        indent_level (int):
-            The current indentation level.
-
-            All messages will be indented by prepending `"  " * indent_level`
-        vebosity (int):
-            Output verbosity.
-
-            Low verbosity will disable `verbose` and `very_verbose` messages.
+        color_mode (str): Can be "true", "false", or "auto". Enables or disables
+            `colorful`. If `color_mode` is "auto", is set to `not stdout.isatty()`
+        indent_level (int): The current indentation level. All messages will
+            be indented by prepending `"  " * indent_level`
+        _verbosity (int): Output verbosity. Low verbosity will disable
+            `verbose` and `very_verbose` messages.
     """
 
     color_mode: str
@@ -380,9 +360,8 @@ class _CliLogger:
         Args:
             msg: Message to print.
             _level_str: Log level label used by the non-pretty formatter.
-            _linefeed:
-                If `_linefeed` is `False` no linefeed is printed at the
-                end of the message.
+            _linefeed: If `_linefeed` is `False` no linefeed is printed at
+                the end of the message.
             end: String appended after the last value, passed to print().
         """
         if self.pretty:
@@ -628,15 +607,11 @@ class _CliLogger:
                         and continue without waiting for user input.
             msg: The prompt message to display. See `_format_msg`.
             *args: Additional positional args forwarded to `_format_msg`.
-            _abort:
-                If `_abort` is `True`,
-                "no" means aborting the program.
-            _default:
-                The default action to take if the user just presses enter
-                with no input.
-            _timeout_s:
-                If user has no input within _timeout_s seconds, the default
-                action is taken. None means no timeout.
+            _abort: If `_abort` is `True`, "no" means aborting the program.
+            _default: The default action to take if the user just presses
+                enter with no input.
+            _timeout_s: If user has no input within _timeout_s seconds,
+                the default action is taken. None means no timeout.
             **kwargs: Additional keyword args forwarded to `_format_msg`.
 
         Returns:
@@ -755,7 +730,7 @@ class _CliLogger:
         """Prompt the user for some text input.
 
         Args:
-            msg: The mesage to display to the user before the prompt.
+            msg: The message to display to the user before the prompt.
             *args: Additional positional args forwarded to `_format_msg`.
             **kwargs: Additional keyword args forwarded to `_format_msg`.
 

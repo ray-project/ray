@@ -75,8 +75,7 @@ def list_ec2_instances(
         aws_credentials: AWS credentials to use for the boto3 client.
 
     Returns:
-        A list of instances. An example of one element in
-        the list:
+        A list of instances. An example of one element in the list:
             {'InstanceType': 'm5a.xlarge', 'ProcessorInfo':
             {'SupportedArchitectures': ['x86_64'], 'SustainedClockSpeedInGhz':
             2.5},'VCpuInfo': {'DefaultVCpus': 4, 'DefaultCores': 2,

@@ -205,12 +205,12 @@ def request_resources(
         num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made.
-        bundles: Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made.
-        bundle_label_selectors: Optional label selectors
-            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}])
-            The elements in the bundle_label_selectors should be one-to-one mapping
+        bundles: Scale the cluster to ensure this set of resource shapes can
+            fit. This request is persistent until another call to
+            request_resources() is made.
+        bundle_label_selectors: Optional label selectors that new nodes
+            must satisfy (e.g. [{"accelerator-type": "A100"}]). The elements
+            in the bundle_label_selectors should be one-to-one mapping
             to the elements in bundles.
     """
     if not ray.is_initialized():
@@ -1388,10 +1388,9 @@ def rsync(
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
-        ip_address: Address of node. Raise Exception
-            if both ip_address and 'all_nodes' are provided.
-        use_internal_ip: Whether the provided ip_address is
-            public or private.
+        ip_address: Address of node. Raise Exception if both ip_address
+            and 'all_nodes' are provided.
+        use_internal_ip: Whether the provided ip_address is public or private.
         no_config_cache: whether to skip the config cache when bootstrapping.
         all_nodes: whether to sync worker nodes in addition to the head node
         should_bootstrap: whether to bootstrap cluster config before syncing
