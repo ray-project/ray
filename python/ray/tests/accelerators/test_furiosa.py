@@ -90,11 +90,18 @@ class TestFuriosaAcceleratorManager:
     @pytest.mark.parametrize(
         "arch_name,expected",
         [
-            # Real Furiosa SMI arch enum values (from furiosa-smi-go types.go).
-            # In-development SKUs (RngdMax / RngdS / RngdPlus and their
-            # Arch::ToString variants) are intentionally omitted until the
-            # product names are finalized upstream.
+            # PyO3 enum form (CamelCase).
             ("Rngd", "FURIOSA_RNGD"),
+            ("RngdMax", "FURIOSA_RNGDMAX"),
+            ("RngdS", "FURIOSA_RNGDS"),
+            ("RngdPlus", "FURIOSA_RNGDPLUS"),
+            # ``Arch::ToString`` form is also accepted, and both forms must
+            # resolve to the same label.
+            ("rngd-max", "FURIOSA_RNGDMAX"),
+            # ``+`` must NOT be silently stripped, since that would collapse
+            # ``rngd+`` into ``rngd`` and collide with the base RNGD SKU; it
+            # is mapped to ``plus`` so the label matches ``RngdPlus``.
+            ("rngd+", "FURIOSA_RNGDPLUS"),
         ],
     )
     def test_get_current_node_accelerator_type_dynamic(
