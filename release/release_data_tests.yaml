@@ -649,6 +649,33 @@
       --num-array-cols 400
 
 
+######################
+# Backpressure tests
+######################
+
+- name: backpressure_fast_producer_slow_consumer
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python backpressure_benchmark.py --case fast-producer-slow-consumer
+
+- name: backpressure_training_prefetch
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python backpressure_benchmark.py --case training-prefetch
+
+
 ########################
 # Sort and shuffle tests
 ########################
