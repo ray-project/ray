@@ -4238,6 +4238,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4284,6 +4285,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4329,6 +4331,7 @@
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
@@ -4556,6 +4559,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4601,6 +4605,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
