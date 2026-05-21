@@ -439,6 +439,8 @@ py_test_run_all_subdirectory(
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
+        # TODO: remove after CI has torchft / consider using gloo
+        "source/train/doc_code/torchft.py",
     ],
     extra_srcs = [],
     tags = [
