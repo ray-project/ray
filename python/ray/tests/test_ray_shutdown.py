@@ -8,7 +8,7 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition, SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private import ray_constants
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
@@ -59,7 +59,9 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
 
     num_cpus = int(ray.available_resources()["CPU"])
     [f.remote() for _ in range(num_cpus)]  # noqa
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == num_cpus)
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == num_cpus
+    )
     assert len(get_all_ray_worker_processes()) > 0
 
     ray.shutdown()
