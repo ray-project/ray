@@ -59,3 +59,7 @@ pyOpenSSL
 celery
 taskiq
 mmh3
+
+cupy-cuda12x==14.0.1; sys_platform != 'darwin' and python_version == '3.14'
+llvmlite==0.46.0; python_version == '3.14'
+numba==0.63.0; python_version == '3.14'
