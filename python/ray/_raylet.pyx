@@ -3284,8 +3284,6 @@ cdef class CoreWorker:
             if isinstance(ref_or_generator, ObjectRef):
                 wait_ids.push_back((<ObjectRef>ref_or_generator).native())
             elif isinstance(ref_or_generator, ObjectRefGenerator):
-                # Push the next id binary directly to skip a per-generator
-                # Python ObjectRef allocation.
                 wait_ids.push_back(
                     CObjectID.FromBinary(
                         ref_or_generator._get_next_object_id_binary()))
@@ -4810,10 +4808,7 @@ cdef class CoreWorker:
                 c_object_ref_and_is_ready_pair.second)
 
     def peek_next_object_id_binary(self, ObjectRef generator_id):
-        """Return the binary form of the next object id in the stream.
-
-        Cheaper than peek_object_ref_stream when only the id is needed.
-        """
+        """Return the binary form of the next object id in the stream."""
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectID c_next_object_id

@@ -176,10 +176,7 @@ class ObjectRefGenerator:
     # Private APIs
 
     def _get_next_object_id_binary(self) -> bytes:
-        """Return the binary id of the next object in the stream.
-
-        Avoids allocating a Python ObjectRef when only the id is needed.
-        """
+        """Return the binary id of the next object in the stream."""
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
