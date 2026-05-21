@@ -1497,7 +1497,7 @@ class Reconciler:
             instance: The instance to handle.
             timeout_s: The timeout in seconds.
             new_status: The new status to transition to.
-            **update_kwargs: The update kwargs for InstanceUpdateEvent.
+            **update_kwargs: Keyword arguments for InstanceUpdateEvent.
 
         Returns:
             Instance update to the new status: if the instance is stuck in the status

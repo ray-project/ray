@@ -233,11 +233,11 @@ class _CliLogger:
     to 'record' style logging.
 
     Attributes:
-        color_mode (str): Can be "true", "false", or "auto". Enables or disables
+        color_mode: Can be "true", "false", or "auto". Enables or disables
             `colorful`. If `color_mode` is "auto", is set to `not stdout.isatty()`
-        indent_level (int): The current indentation level. All messages will
+        indent_level: The current indentation level. All messages will
             be indented by prepending `"  " * indent_level`
-        _verbosity (int): Output verbosity. Low verbosity will disable
+        _verbosity: Output verbosity. Low verbosity will disable
             `verbose` and `very_verbose` messages.
     """
 
