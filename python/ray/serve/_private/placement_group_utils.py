@@ -49,16 +49,6 @@ class ReplicaPlacementGroup:
     placement_group: Optional[PlacementGroup]
     _slice_pg: Optional[SlicePlacementGroup] = None
 
-    def release_reservation_holders(self) -> None:
-        """Call after ``placement_group.ready()`` resolves successfully.
-
-        Releases any internal reservation-holder PGs (e.g. TPU head PGs)
-        that were only needed to claim resources during scheduling. No-op
-        for non-accelerator deployments.
-        """
-        if self._slice_pg is not None:
-            self._slice_pg.release_head_pgs()
-
     def shutdown(self) -> None:
         """Tear down the replica's PG(s). Idempotent."""
         if self._slice_pg is not None:
