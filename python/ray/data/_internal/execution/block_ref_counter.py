@@ -62,8 +62,9 @@ class BlockRefCounter:
             # Object was already out of scope when we tried to register;
             # the trampoline will never fire. Undo the bytes we just added.
             with self._lock:
-                self._registered_ids.discard(id_binary)
-                self._bytes_by_producer[producer_id] -= size_bytes
+                if id_binary in self._registered_ids:
+                    self._registered_ids.discard(id_binary)
+                    self._bytes_by_producer[producer_id] -= size_bytes
 
     def get_object_store_memory_usage(self, producer_id: str) -> int:
         """Total bytes of live blocks attributed to producer_id."""

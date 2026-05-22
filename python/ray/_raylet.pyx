@@ -4116,6 +4116,7 @@ cdef class CoreWorker:
             # The object is already out of scope; the trampoline will never fire.
             # Undo the manual INCREF to avoid leaking the callback object.
             cpython.Py_DECREF(user_callback)
+        return bool(registered)
 
     def get_owner_address(self, ObjectRef object_ref):
         cdef:

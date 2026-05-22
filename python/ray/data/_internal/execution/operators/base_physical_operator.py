@@ -186,8 +186,9 @@ class AllToAllOperator(
         # randomize_blocks) forward input ObjectRefs unchanged to the output.
         # We only call on_block_produced for genuinely new refs to avoid
         # double-counting; forwarded refs stay attributed to their original producer.
-        input_refs = {ref for bundle in self._input_buffer for ref, _ in bundle.blocks}
-        output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
+        input_bundles = self._input_buffer.to_list()
+        input_refs = {ref for bundle in input_bundles for ref, _ in bundle.blocks}
+        output_buffer, self._stats = self._bulk_fn(input_bundles, ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
         assert (
