@@ -5,7 +5,7 @@ import ray
 import ray.data
 from ray.data.expressions import download
 import torch
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 
 import uuid

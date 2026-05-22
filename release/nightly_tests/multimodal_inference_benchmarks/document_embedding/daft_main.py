@@ -6,7 +6,7 @@ import uuid
 
 import pymupdf
 import torch
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import daft
 from daft import col
 import ray
