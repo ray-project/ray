@@ -231,7 +231,9 @@ const PlacementGroupTable = ({
                           topology_assignments[0].assignments &&
                           Object.keys(topology_assignments[0].assignments)
                             .length > 0
-                            ? JSON.stringify(topology_assignments[0].assignments)
+                            ? JSON.stringify(
+                                topology_assignments[0].assignments,
+                              )
                             : "-"}
                         </div>
                       </Box>
