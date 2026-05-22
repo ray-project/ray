@@ -122,6 +122,10 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         assert input_index == 0
         self._map_metrics.on_input_received(input_bundle)
 
+        if not input_bundle.block_refs:
+            input_bundle.destroy_if_owned()
+            return
+
         if self._pre_map_merge_threshold > 0:
             preferred_locs = input_bundle.get_preferred_object_locations()
             node_id = (
@@ -158,10 +162,14 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
 
     def _flush_merge_buffer(self, node_id: str) -> None:
         block_refs = self._merge_buffer_refs_by_node.pop(node_id, [])
-        if not block_refs:
-            return
         bundles = self._merge_buffer_bundles_by_node.pop(node_id, [])
         estimated_bytes = self._merge_buffer_bytes_by_node.pop(node_id, 0)
+        if not block_refs:
+            # Nothing to map.  Release any owned bundles that were buffered
+            # for this node so we don't leak refs.
+            for bundle in bundles:
+                bundle.destroy_if_owned()
+            return
         self._submit_shuffle_map_task(
             block_refs,
             bundles,

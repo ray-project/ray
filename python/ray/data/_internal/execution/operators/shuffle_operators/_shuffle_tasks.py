@@ -127,6 +127,12 @@ def _shuffle_map_task(
 
     stats = BlockExecStats.builder()
 
+    if not blocks:
+        empty_meta = BlockAccessor.for_block(pa.table({})).get_metadata(
+            block_exec_stats=stats.build(block_ser_time_s=0)
+        )
+        return (empty_meta, {}), *([None] * num_partitions)
+
     # Use BlockAccessor so we work for non-Arrow block types (pandas, numpy)
     # whose num_rows / nbytes attributes aren't named the same.
     accessors = [BlockAccessor.for_block(b) for b in blocks]

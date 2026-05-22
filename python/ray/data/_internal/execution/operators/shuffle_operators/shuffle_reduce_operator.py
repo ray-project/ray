@@ -221,10 +221,15 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         for partition_id in list(self._pending_partition_ids):
             if slots_available <= 0:
                 break
+
+            if self._partition_bytes.get(partition_id, 0) == 0:
+                self._pending_partition_ids.discard(partition_id)
+                self._partition_buffers.pop(partition_id, None)
+                continue
+
             shard_refs = self._partition_buffers.get(partition_id, [])
 
             if not shard_refs:
-                # No mapper produced anything for this partition — skip.
                 self._pending_partition_ids.discard(partition_id)
                 continue
 

@@ -266,6 +266,28 @@ def test_pre_map_merge_buffer(
     assert submitted == expected_submitted_block_counts
 
 
+@pytest.mark.parametrize("threshold", [0, 1024])
+def test_map_op_short_circuits_empty_bundles(monkeypatch, threshold):
+    """Empty input bundles must not reach _shuffle_map_task; passing an empty
+    *blocks tuple there hits IndexError on the empty-input fast path."""
+    monkeypatch.setattr(RefBundle, "get_preferred_object_locations", lambda self: {})
+    op = _make_map_op(pre_map_merge_threshold=threshold)
+    submitted: List[int] = []
+    monkeypatch.setattr(
+        op,
+        "_submit_shuffle_map_task",
+        lambda block_refs, _bundles, **kw: submitted.append(len(block_refs)),
+    )
+    empty_bundle = RefBundle([], schema=None, owns_blocks=False)
+    op._add_input_inner(empty_bundle, input_index=0)
+    op.all_inputs_done()
+    assert submitted == []
+    # Internal buffers should be empty — no stale bundle/byte entries.
+    assert not op._merge_buffer_refs_by_node
+    assert not op._merge_buffer_bundles_by_node
+    assert not op._merge_buffer_bytes_by_node
+
+
 # ===========================================================================
 # ShuffleReduceOp: bundle routing by block position
 # ===========================================================================
@@ -297,6 +319,47 @@ def test_reduce_op_rejects_bundle_with_wrong_block_count():
     bundle = _make_bundle(num_blocks=3)  # wrong: should be 4
     with pytest.raises(ValueError, match="expected 4 blocks"):
         op._add_input_inner(bundle, input_index=0)
+
+
+def test_reduce_op_skips_empty_partitions(monkeypatch):
+    """Partitions where every mapper produced zero rows should be skipped
+    without scheduling a no-op reduce task.  ShuffleMapOp emits one ref per
+    partition per bundle (with ``None`` for empty slots), so the skip must
+    be driven by the upstream byte snapshot, not by ``_partition_buffers``
+    emptiness.
+    """
+    num_partitions = 4
+    op = _make_reduce_op(num_partitions=num_partitions)
+
+    # Populate buffers as ShuffleMapOp would (one ref per partition, even
+    # for empty partitions).
+    refs = [ray.ObjectRef(bytes([i]) * 28) for i in range(num_partitions)]
+    metas = [
+        BlockMetadata(num_rows=0, size_bytes=0, exec_stats=None, input_files=None)
+        for _ in range(num_partitions)
+    ]
+    op._add_input_inner(
+        RefBundle(list(zip(refs, metas)), schema=None, owns_blocks=False),
+        input_index=0,
+    )
+
+    # Mark inputs complete and snapshot an "all empty" byte map.
+    op._inputs_complete = True
+    op._partition_bytes = {}  # all 4 partitions empty
+    op._reduce_phase_initialized = True
+    op._num_nodes = 1
+
+    # If the skip is working we should never reach _compute_reduce_resources.
+    def _should_not_run(_partition_id):  # pragma: no cover
+        raise AssertionError("empty partition should have been skipped")
+
+    monkeypatch.setattr(op, "_compute_reduce_resources", _should_not_run)
+
+    op._try_reduce()
+
+    # All partitions should be drained from the pending set and buffers.
+    assert op._pending_partition_ids == set()
+    assert op._partition_buffers == {}
 
 
 # ===========================================================================
