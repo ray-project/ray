@@ -18,45 +18,39 @@ from ray.data.context import DataContext
 
 
 def test_average_max_uss_per_task():
-    # No tasks submitted yet.
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
     assert metrics.average_max_uss_per_task is None
 
-    def create_bundle(uss_bytes: int):
-        block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats(
-            max_uss_bytes=uss_bytes,
-            wall_time_s=0,
-            block_ser_time_s=0,
-        )
-        metadata = BlockMetadata(
-            num_rows=0,
-            size_bytes=0,
-            input_files=None,
-            exec_stats=stats,
-        )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
-    # Submit two tasks.
-    bundle = create_bundle(uss_bytes=0)
-    metrics.on_task_submitted(0, bundle)
-    metrics.on_task_submitted(1, bundle)
-    assert metrics.average_max_uss_per_task is None
+    # Submit and finish first task with USS of 100 bytes.
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(
+        0,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.average_max_uss_per_task == 100
 
-    # Generate one output for the first task.
-    bundle = create_bundle(uss_bytes=1)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 1
-
-    # Generate one output for the second task.
-    bundle = create_bundle(uss_bytes=3)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 2  # (1 + 3) / 2 = 2
+    # Submit and finish second task with USS of 300 bytes.
+    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_finished(
+        1,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=300),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
 
 
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different completion times
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -98,7 +92,9 @@ def test_block_completion_time_histogram():
 
     Block completion time = (cum_block_gen_time_s + cum_block_ser_time_s) / num_outputs
     """
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -170,7 +166,6 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         stats = BlockExecStats(
             wall_time_s=gen_time_s,
             block_ser_time_s=ser_time_s,
-            max_uss_bytes=0,
         )
         metadata = BlockMetadata(
             num_rows=1,
@@ -279,12 +274,13 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats(
-            max_uss_bytes=0,
             wall_time_s=0,
             block_ser_time_s=0,
         )
@@ -328,12 +324,13 @@ def test_block_size_bytes_histogram():
 
 def test_block_size_rows_histogram():
     """Test block size rows histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats(
-            max_uss_bytes=0,
             wall_time_s=0,
             block_ser_time_s=0,
         )

@@ -1,3 +1,4 @@
+import logging
 import os
 import pickle
 import random
@@ -10,6 +11,8 @@ from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -46,6 +49,7 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
+    OutputBackpressureGuard,
     build_streaming_topology,
     format_op_state_summary,
     get_eligible_operators,
@@ -54,7 +58,13 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators import MapRows, Read, Write
+from ray.data._internal.logical.operators import (
+    ListFiles,
+    MapRows,
+    Read,
+    ReadFiles,
+    Write,
+)
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
@@ -147,6 +157,13 @@ def test_disallow_non_unique_operators(ray_start_regular_shared):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
 
+def _make_disabled_guard() -> MagicMock:
+    """Return a stub guard whose escape hatch never fires."""
+    guard = MagicMock(spec=OutputBackpressureGuard)
+    guard.should_unblock.return_value = False
+    return guard
+
+
 @pytest.fixture
 def sleep_task_ref():
     sleep_task_ref = sleep.remote()
@@ -166,7 +183,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -178,7 +195,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
@@ -193,7 +210,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o1.mark_execution_finished = MagicMock()
     o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -215,7 +232,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
 
@@ -239,7 +256,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     # First, populate the upstream output queues by processing some tasks
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
 
     # Verify that o1 (upstream) has output in its queue
@@ -473,16 +490,75 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
 
     # Call process_completed_tasks which tracks output policies
-    process_completed_tasks(topo, policies, max_errored_blocks=0)
+    process_completed_tasks(
+        topo,
+        policies,
+        max_errored_blocks=0,
+        output_backpressure_guard=_make_disabled_guard(),
+    )
 
     # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
     assert o2._task_output_backpressure_policy == "Limiting"
 
     # Now test with no output backpressure
-    process_completed_tasks(topo, [NonLimitingPolicy()], max_errored_blocks=0)
+    process_completed_tasks(
+        topo,
+        [NonLimitingPolicy()],
+        max_errored_blocks=0,
+        output_backpressure_guard=_make_disabled_guard(),
+    )
 
     # Check that o2 is no longer in output backpressure
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
+def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_limit(
+    ray_start_regular_shared,
+):
+    """Test that the escape hatch fires when a non-resource-budget policy drives the aggregated output limit to 0."""
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions())
+
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        DataContext.get_current(),
+    )
+    guard = OutputBackpressureGuard(topo, resource_manager)
+
+    # Fake policy that returns 0 for o2
+    class ZeroLimitPolicy:
+        @property
+        def name(self):
+            return "ZeroLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None
+
+    process_completed_tasks(
+        topo,
+        [ZeroLimitPolicy()],
+        max_errored_blocks=0,
+        output_backpressure_guard=guard,
+    )
+
+    # o2 is terminal with no downstream eligible ops and no external
+    # consumer — the guard's terminal-op branch should unblock, bumping
+    # the limit from 0 to 1, so o2 is NOT flagged as in output backpressure
+    # and the policy attribution should be cleared.
     assert o2._in_task_output_backpressure is False
     assert o2._task_output_backpressure_policy is None
 
@@ -1062,6 +1138,7 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
+    pq.write_table(pa.table({"value": [1]}), input_path / "data.parquet")
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
@@ -1078,25 +1155,48 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     # Test inspecting the metadata of each operator.
     # E.g., the original input and output paths and the UDF.
     assert _executor is not None
-    assert len(_executor._topology) == 2
     physical_ops = list(_executor._topology.keys())
     assert isinstance(physical_ops[0], InputDataBuffer)
-    assert isinstance(physical_ops[1], MapOperator)
-    logical_ops = physical_ops[1]._logical_operators
+    if ctx.use_datasource_v2:
+        # V2 splits read into a ``ListFiles`` source op and a fused
+        # ``ReadFiles->Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
+        assert isinstance(physical_ops[1], MapOperator)
+        assert isinstance(physical_ops[2], MapOperator)
+        list_files_logical_ops = physical_ops[1]._logical_operators
+        assert len(list_files_logical_ops) == 1
+        assert isinstance(list_files_logical_ops[0], ListFiles)
 
-    assert len(logical_ops) == 3
-    assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0].datasource
-    assert isinstance(datasource, ParquetDatasource)
-    assert datasource._source_paths == input_path
+        read_logical_ops = physical_ops[2]._logical_operators
+        assert len(read_logical_ops) == 3
+        assert isinstance(read_logical_ops[0], ReadFiles)
+        assert read_logical_ops[0].datasource_name == "ParquetV2"
 
-    assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1].fn == udf
+        assert isinstance(read_logical_ops[1], MapRows)
+        assert read_logical_ops[1].fn == udf
 
-    assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2].datasink_or_legacy_datasource
-    assert isinstance(datasink, ParquetDatasink)
-    assert datasink.unresolved_path == output_path
+        assert isinstance(read_logical_ops[2], Write)
+        datasink = read_logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
+    else:
+        assert len(_executor._topology) == 2
+        assert isinstance(physical_ops[1], MapOperator)
+        logical_ops = physical_ops[1]._logical_operators
+
+        assert len(logical_ops) == 3
+        assert isinstance(logical_ops[0], Read)
+        datasource = logical_ops[0].datasource
+        assert isinstance(datasource, ParquetDatasource)
+        assert datasource._source_paths == input_path
+
+        assert isinstance(logical_ops[1], MapRows)
+        assert logical_ops[1].fn == udf
+
+        assert isinstance(logical_ops[2], Write)
+        datasink = logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
 
 
 def test_create_topology_metadata():
@@ -1500,6 +1600,27 @@ class TestDataOpTask:
         # Total backpressure = 2.5s + 1.5s = 4.0s
         bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
         assert bp_time == pytest.approx(4.0)
+
+
+def test_streaming_executor_logs_relevant_env_vars(
+    monkeypatch, caplog, propagate_logs, ray_start_regular_shared
+):
+    monkeypatch.setenv("RAY_DATA_TEST_FOO", "bar")
+    monkeypatch.setenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.3")
+
+    ctx = DataContext.get_current()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    dag = InputDataBuffer(ctx, inputs)
+
+    executor = StreamingExecutor(ctx)
+    with caplog.at_level(
+        logging.DEBUG,
+        logger="ray.data._internal.execution.streaming_executor",
+    ):
+        executor.execute(dag)
+
+    assert "RAY_DATA_TEST_FOO=bar" in caplog.text
+    assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
 
 
 if __name__ == "__main__":

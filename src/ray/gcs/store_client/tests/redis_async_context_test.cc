@@ -19,9 +19,10 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/redis_context.h"
+#include "ray/util/clock.h"
 #include "ray/util/logging.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -70,8 +71,9 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
   redisAsyncCommand(ac, GetCallback, nullptr, "GET key");
 
+  ray::Clock clock;
   std::shared_ptr<RedisContext> shard_context =
-      std::make_shared<RedisContext>(io_service);
+      std::make_shared<RedisContext>(io_service, clock);
   ASSERT_TRUE(shard_context
                   ->Connect(std::string("127.0.0.1"),
                             TEST_REDIS_SERVER_PORTS.front(),
