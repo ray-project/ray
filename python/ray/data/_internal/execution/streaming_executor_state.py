@@ -690,22 +690,12 @@ def process_completed_tasks(
                         {ref: prefetched_bytes[ref] for ref in refs}
                     )
             except ray.exceptions.GetTimeoutError:
-                # One or more refs weren't ready in time. Pairs stay queued
-                # and uncached; the next iteration's batched ray.get will
-                # try again. Surface the failure as a single coarse warning
-                # so users tailing the driver log can diagnose stuck
-                # metadata fetches without a per-ref noise floor.
-                logger.warning(
-                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for "
-                    f"metadata in batched ray.get "
-                    f"({len(meta_refs_to_prefetch)} refs from "
-                    f"{len(meta_refs_by_task)} operators). Possible causes "
-                    f"include a worker crash, node preemption, or an "
-                    f"overloaded worker or head node. Will retry next "
-                    f"iteration. If this repeats, check the Ray dashboard "
-                    f"and logs for worker crashes, node preemption, or "
-                    f"overload."
-                )
+                # One or more refs weren't ready in time. Pairs stay
+                # queued and uncached; on_data_ready's per-ref fallback
+                # will retry them and emit a per-ref warning if they
+                # still aren't available, with retry-next-iteration
+                # semantics.
+                pass
 
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)

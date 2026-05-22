@@ -321,27 +321,25 @@ class DataOpTask(OpTask):
         # fetched), and pairs left queued from a previous call whose
         # batched ray.get timed out. Both states look identical — the
         # ref is in _pending_pairs but absent from _cached_meta_bytes.
+        # On batched timeout the pairs stay uncached; on_data_ready's
+        # per-ref fallback will retry them and surface the per-ref
+        # warning if they're still unavailable.
         uncached = self.uncached_pending_meta_refs()
         if uncached:
             try:
                 bytes_list = ray.get(uncached, timeout=METADATA_GET_TIMEOUT_S)
                 self.cache_prefetched_meta_bytes(dict(zip(uncached, bytes_list)))
             except ray.exceptions.GetTimeoutError:
-                logger.warning(
-                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for "
-                    f"metadata from operator '{self._operator_name}' "
-                    f"({len(uncached)} refs). Possible causes include a "
-                    f"worker crash, node preemption, or an overloaded worker "
-                    f"or head node. Will retry next iteration."
-                )
+                pass
         return self.on_data_ready(max_bytes_to_read)
 
     def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
         """Consume ``_pending_pairs`` using cached metadata bytes (populated
-        by ``cache_prefetched_meta_bytes``). Cache misses break the loop;
-        the missing refs stay queued and ``process_completed_tasks`` is
-        expected to refresh the cache on its next iteration. Direct
-        callers (tests, debugging) should use ``fetch_and_drain``.
+        by ``cache_prefetched_meta_bytes``). On cache miss — i.e. the
+        batched ``ray.get`` in ``process_completed_tasks`` timed out for
+        this ref, or the caller didn't pre-fetch — fall back to a per-ref
+        ``ray.get`` so a worker crash / node preemption surfaces as a
+        per-ref warning with retry-next-iteration semantics.
 
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all
@@ -359,9 +357,22 @@ class DataOpTask(OpTask):
             block_ref, meta_ref = self._pending_pairs[0]
             meta_with_schema_bytes = self._cached_meta_bytes.pop(meta_ref, None)
             if meta_with_schema_bytes is None:
-                # Cache miss: leave the pair queued for the next
-                # process_completed_tasks iteration to refresh.
-                break
+                # Cache miss: per-ref fallback. Surfaces the failure as
+                # a per-ref warning if the metadata still isn't ready.
+                try:
+                    meta_with_schema_bytes = ray.get(
+                        meta_ref, timeout=METADATA_GET_TIMEOUT_S
+                    )
+                except ray.exceptions.GetTimeoutError:
+                    logger.warning(
+                        f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                        f"operator '{self._operator_name}' "
+                        f"(metadata_ref={meta_ref.hex()}). "
+                        f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
+                        f"Will retry next iteration. "
+                        f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
+                    )
+                    break
 
             # Bytes are in hand — consume the pair from the queue.
             self._pending_pairs.popleft()
