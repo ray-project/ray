@@ -172,7 +172,11 @@ async def serve_start_async(
         return client
 
     await ray.remote(_start_controller).options(num_cpus=0).remote(
-        http_options, grpc_options, global_logging_config, **kwargs
+        http_options,
+        grpc_options,
+        global_logging_config,
+        controller_options=controller_options,
+        **kwargs,
     )
 
     controller = ray.get_actor(name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
@@ -264,7 +268,11 @@ def serve_start(
         return client
 
     _start_controller(
-        http_options, grpc_options, global_logging_config, **kwargs
+        http_options,
+        grpc_options,
+        global_logging_config,
+        controller_options=controller_options,
+        **kwargs,
     )
 
     controller = ray.get_actor(name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
