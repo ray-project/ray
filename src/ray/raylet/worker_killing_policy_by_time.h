@@ -33,6 +33,8 @@ namespace raylet {
  *    with granted lease. Note that workers that have never been granted a lease
  *    (i.e. cold start idle workers) are only considered for killing if their
  *    memory footprint exceeds the idle worker killing memory threshold.
+ * 2. Between the workers without leases, the worker with
+ *    the largest memory footprint is selected as tie-breaker
  *
  * Workers with lease Policy:
  * 1. For workers with lease, retriable tasks are first prioritized
@@ -40,9 +42,6 @@ namespace raylet {
  * 2. Among workers with lease with the same retriability, most recent workers are
  *    selected next (newest granted lease time)
  *
- * Tie-breaker:
- * 1. Finally, for either workers with lease or workers without lease, the worker with
- *    the largest memory footprint is selected as tie-breaker
  * The policy will select enough workers to kill to put the system back
  * under the memory usage threshold - kill_buffer_bytes.
  */

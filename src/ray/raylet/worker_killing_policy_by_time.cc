@@ -135,33 +135,28 @@ TimeBasedWorkerKillingPolicy::Policy(
 
           absl::Time left_granted_lease_time = left->GetLastGrantedLeaseTime().value();
           absl::Time right_granted_lease_time = right->GetLastGrantedLeaseTime().value();
-          if (left_granted_lease_time != right_granted_lease_time) {
-            return left_granted_lease_time > right_granted_lease_time;
+          return left_granted_lease_time >= right_granted_lease_time;
+        } else {
+          StatusSetOr<int64_t, StatusT::NotFound> left_memory_or =
+              MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                            left->GetProcess().GetId());
+          StatusSetOr<int64_t, StatusT::NotFound> right_memory_or =
+              MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                            right->GetProcess().GetId());
+          int64_t left_memory = 0;
+          if (left_memory_or.has_value()) {
+            left_memory = left_memory_or.value();
+          } else {
+            RAY_LOG_EVERY_MS(WARNING, 60000) << left_memory_or.message();
           }
+          int64_t right_memory = 0;
+          if (right_memory_or.has_value()) {
+            right_memory = right_memory_or.value();
+          } else {
+            RAY_LOG_EVERY_MS(WARNING, 60000) << right_memory_or.message();
+          }
+          return left_memory > right_memory;
         }
-        // At this point, both workers are either workers with lease and the same
-        // retriability and lease grant time, or workers without lease.
-        // In these cases, we tiebreak by the memory footprint.
-
-        StatusSetOr<int64_t, StatusT::NotFound> left_memory_or =
-            MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
-                                                          left->GetProcess().GetId());
-        StatusSetOr<int64_t, StatusT::NotFound> right_memory_or =
-            MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
-                                                          right->GetProcess().GetId());
-        int64_t left_memory = 0;
-        if (left_memory_or.has_value()) {
-          left_memory = left_memory_or.value();
-        } else {
-          RAY_LOG_EVERY_MS(WARNING, 60000) << left_memory_or.message();
-        }
-        int64_t right_memory = 0;
-        if (right_memory_or.has_value()) {
-          right_memory = right_memory_or.value();
-        } else {
-          RAY_LOG_EVERY_MS(WARNING, 60000) << right_memory_or.message();
-        }
-        return left_memory > right_memory;
       });
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill;

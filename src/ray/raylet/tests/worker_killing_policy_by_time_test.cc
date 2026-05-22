@@ -461,6 +461,41 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   }
 }
 
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestIdleWorkersWithoutLeaseSortedByLargestMemoryFootprint) {
+  TimeBasedWorkerKillingPolicy policy(
+      THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
+
+  std::shared_ptr<WorkerInterface> idle_small = CreateWorkerWithNoLease(port_, 1001);
+  std::shared_ptr<WorkerInterface> idle_large = CreateWorkerWithNoLease(port_, 1002);
+  std::shared_ptr<WorkerInterface> idle_medium = CreateWorkerWithNoLease(port_, 1003);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(idle_small);
+  workers.push_back(idle_large);
+  workers.push_back(idle_medium);
+
+  int64_t small_mem = IDLE_WORKER_KILLING_THRESHOLD_BYTES + 100;
+  int64_t medium_mem = IDLE_WORKER_KILLING_THRESHOLD_BYTES + 300;
+  int64_t large_mem = IDLE_WORKER_KILLING_THRESHOLD_BYTES + 500;
+
+  // Memory to free: 4000 - 1000 + 100 = 3100 bytes.
+  // All three workers exceed the idle threshold so all are candidates.
+  // Total candidate memory = 1500 + 1300 + 1100 = 3900 > 3100, so all
+  // three must be selected. The policy should order them by largest memory first.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(4000);
+  ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
+      {{idle_small, small_mem}, {idle_large, large_mem}, {idle_medium, medium_mem}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  ASSERT_EQ(workers_to_kill.size(), 3);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), idle_large->WorkerId());
+  ASSERT_EQ(workers_to_kill[1].first->WorkerId(), idle_medium->WorkerId());
+  ASSERT_EQ(workers_to_kill[2].first->WorkerId(), idle_small->WorkerId());
+}
+
 }  // namespace raylet
 
 }  // namespace ray
