@@ -107,7 +107,7 @@ class ObjectManagerInterface {
   virtual int64_t PullManagerNumInactivePullsByTaskName(
       const TaskMetricsKey &task_key) const = 0;
   virtual int GetServerPort() const = 0;
-  virtual void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) = 0;
+  virtual void FreeObjects(const std::vector<ObjectID> &object_ids) = 0;
   virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
   virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
       const WorkerID &worker_id) const = 0;
@@ -153,15 +153,6 @@ class ObjectManager : public ObjectManagerInterface,
   void HandlePull(rpc::PullRequest request,
                   rpc::PullReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle free objects request
-  ///
-  /// \param request Free objects request
-  /// \param reply Reply
-  /// \param send_reply_callback
-  void HandleFreeObjects(rpc::FreeObjectsRequest request,
-                         rpc::FreeObjectsReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const override { return object_manager_server_.GetPort(); }
@@ -238,12 +229,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
-  /// Free a list of objects from object store.
+  /// Free a list of objects from the local object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  /// \param local_only Whether keep this request with local object store
-  ///                   or send it to all the object stores.
-  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
+  void FreeObjects(const std::vector<ObjectID> &object_ids) override;
 
   /// Cancel all pushes that have not yet been sent to the removed node and erases the
   /// associated client if it exists.
@@ -287,21 +276,11 @@ class ObjectManager : public ObjectManagerInterface,
 
  private:
   friend class TestObjectManager;
-  friend uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager);
 
   /// Return IDs of local plasma-resident objects whose ObjectInfo satisfies
   /// `matches`.
   std::vector<ObjectID> GetLocalObjectsMatchedBy(
       const std::function<bool(const ObjectInfo &)> &matches) const;
-
-  /// Spread the Free request to all objects managers.
-  ///
-  /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectsRequest(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<
-          std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
-          &rpc_clients);
 
   /// Pushing a known local object to a remote object manager.
   ///
@@ -421,15 +400,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_id Object id
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
-
-  /// Retry free objects request
-  ///
-  /// \param node_id Remote node id
-  /// \param attempt_number Attempt number
-  /// \param free_objects_request Free objects request
-  void RetryFreeObjects(const NodeID &node_id,
-                        uint32_t attempt_number,
-                        const rpc::FreeObjectsRequest &free_objects_request);
 
   /// Get the rpc client according to the node ID
   ///

@@ -1193,7 +1193,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     auto object_ids = FlatbufferToObjectIds(*message->object_ids());
     // Clean up objects from the object store.
-    object_manager_.FreeObjects(object_ids, message->local_only());
+    object_manager_.FreeObjects(object_ids);
   } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);

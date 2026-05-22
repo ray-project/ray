@@ -37,10 +37,7 @@ class MockObjectManager : public ObjectManagerInterface {
               (const TaskMetricsKey &task_key),
               (const, override));
   MOCK_METHOD(int, GetServerPort, (), (const, override));
-  MOCK_METHOD(void,
-              FreeObjects,
-              (const std::vector<ObjectID> &object_ids, bool local_only),
-              (override));
+  MOCK_METHOD(void, FreeObjects, (const std::vector<ObjectID> &object_ids), (override));
   MOCK_METHOD(bool, IsPlasmaObjectSpillable, (const ObjectID &object_id), (override));
   MOCK_METHOD(int64_t, GetUsedMemory, (), (const, override));
   MOCK_METHOD(bool, PullManagerHasPullsQueued, (), (const, override));

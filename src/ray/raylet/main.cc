@@ -890,8 +890,7 @@ int main(int argc, char *argv[]) {
         /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
         /*on_objects_freed*/
         [&](const std::vector<ray::ObjectID> &object_ids) {
-          object_manager->FreeObjects(object_ids,
-                                      /*local_only=*/true);
+          object_manager->FreeObjects(object_ids);
         },
         /*is_plasma_object_spillable*/
         [&](const ray::ObjectID &object_id) {
