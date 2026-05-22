@@ -1683,6 +1683,20 @@ py_test(
 )
 
 py_test(
+    name = "test_block_ref_counter",
+    size = "small",
+    srcs = ["tests/test_block_ref_counter.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_streaming_executor_errored_blocks",
     size = "small",
     srcs = ["tests/test_streaming_executor_errored_blocks.py"],
