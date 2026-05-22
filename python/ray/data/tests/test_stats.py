@@ -2440,6 +2440,27 @@ class TestTimerHistogram:
         # Bin mean is naturally bounded by max.
         assert t.approx_percentile(0.9) <= t.max()
 
+    def test_robust_to_float_imprecision_in_target(self):
+        # Defensive test: ``p * N`` is computed in IEEE 754 and can
+        # land slightly above the ideal integer target. For
+        # ``p=0.55, N=100`` Python evaluates the product as
+        # ``55.00000000000001``; without the epsilon guard, the cum=55
+        # case (the correct stop) fails ``cum >= target`` and the
+        # percentile silently inflates by one bin width.
+        assert 0.55 * 100 > 55.0, (
+            "Test premise: 0.55 * 100 must be slightly above 55.0 in "
+            "IEEE 754 to exercise the imprecision-handling path."
+        )
+        t = Timer(track_distribution=True)
+        # 55 samples at 5ms (cum reaches exactly 55) + 45 samples at
+        # 500ms. p=0.55 must report the 5ms bin's mean, not the 500ms
+        # bin's mean.
+        for _ in range(55):
+            t.add(0.005)
+        for _ in range(45):
+            t.add(0.5)
+        assert t.approx_percentile(0.55) == pytest.approx(0.005)
+
     def test_worker_scaling_regression_case(self):
         # Regression test for the worker_scaling-scale workload where
         # avg=11.6s, max=37.7s, and all percentiles previously collapsed

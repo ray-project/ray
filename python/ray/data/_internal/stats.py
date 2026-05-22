@@ -313,7 +313,14 @@ class Timer:
                 # match on the first empty bin and divide by zero.
                 continue
             cum += count
-            if cum >= target:
+            # Add a small tolerance to absorb IEEE 754 imprecision in
+            # ``p * self._total_count``. Without it, e.g. p=0.1, N=100
+            # produces target ≈ 10.000000000000002, so cum=10 (the
+            # correct stop) fails the >= check and we silently advance
+            # to the next bin — inflating the reported percentile by
+            # one bin width. ``cum`` is always an integer count, so
+            # 1e-9 is comfortably below any meaningful gap.
+            if cum + 1e-9 >= target:
                 return self._hist_sum[i] / count
         return self._max
 
