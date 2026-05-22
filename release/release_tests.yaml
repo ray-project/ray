@@ -1275,7 +1275,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
