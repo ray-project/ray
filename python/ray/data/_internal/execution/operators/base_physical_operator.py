@@ -181,8 +181,22 @@ class AllToAllOperator(
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
+
+        # Snapshot input refs before calling bulk_fn. Some bulk_fns (e.g.
+        # randomize_blocks) forward input ObjectRefs unchanged to the output.
+        # We only call on_block_produced for genuinely new refs to avoid
+        # double-counting; forwarded refs stay attributed to their original producer.
+        input_refs = {ref for bundle in self._input_buffer for ref, _ in bundle.blocks}
         output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
+
+        if self._block_ref_counter is not None:
+            for bundle in self._output_buffer:
+                for ref, meta in bundle.blocks:
+                    if ref not in input_refs:
+                        self._block_ref_counter.on_block_produced(
+                            ref, meta.size_bytes or 0, self.id
+                        )
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()
