@@ -45,14 +45,38 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
 
 
 def test_unknown_operators_anonymized(reset_collector):
-    """Privacy: operators not on the whitelist must collapse to ``Unknown``
-    so user-defined names never leak into the payload."""
+    """Custom, user-defined operators / datasources / datasinks defined outside
+    ``ray.data.*`` must collapse to sentinel names (``Unknown`` /
+    ``ReadCustom`` / ``WriteCustom``) so user-defined class names never
+    leak into the payload."""
+    from ray.data._internal.logical.operators import Read, Write
+    from ray.data.datasource.datasink import Datasink
+    from ray.data.datasource.datasource import Datasource
 
+    # Arbitrary LogicalOperator subclass defined in user code.
     class FakeOp:
-        name = "MyCompanySecretOp"
+        name = "FakeOp"
         input_dependencies = []
 
     assert collector.anonymize_op_name(FakeOp()) == "Unknown"
+
+    # User-defined Datasource: real class living outside ray.data.* should
+    # appear as "ReadCustom", not "FakeDatasource".
+    class FakeDatasource(Datasource):
+        pass
+
+    read_op = Read.__new__(Read)
+    object.__setattr__(read_op, "datasource", FakeDatasource())
+    assert collector.anonymize_op_name(read_op) == "ReadCustom"
+
+    # User-defined Datasink: same guarantee on the write side.
+    class FakeDatasink(Datasink):
+        def write(self, blocks, ctx):
+            pass
+
+    write_op = Write.__new__(Write)
+    object.__setattr__(write_op, "datasink_or_legacy_datasource", FakeDatasink())
+    assert collector.anonymize_op_name(write_op) == "WriteCustom"
 
 
 def test_limit_anonymized_to_class_name(reset_collector):
@@ -64,27 +88,6 @@ def test_limit_anonymized_to_class_name(reset_collector):
     plan_ops = [op.name for op in entry.workload.ops]
     assert "Limit" in plan_ops
     assert not any(op.startswith("limit=") for op in plan_ops)
-
-
-def test_read_files_anonymized_to_class_name(reset_collector):
-    """ReadFiles' runtime name embeds the datasource (e.g. ``ReadFilesParquet``);
-    telemetry collapses it to a single ``ReadFiles`` bucket so the datasource
-    name (which may be user-defined) isn't recorded."""
-    from ray.data._internal.logical.operators import ReadFiles
-
-    class _StubReadFiles(ReadFiles):
-        def __init__(self):
-            pass
-
-        @property
-        def name(self):
-            return "ReadFilesMyCompanyDatasource"
-
-        @property
-        def input_dependencies(self):
-            return []
-
-    assert collector._anonymize_op_name(_StubReadFiles()) == "ReadFiles"
 
 
 def test_does_not_record_when_disabled_via_env_var(

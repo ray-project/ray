@@ -1,100 +1,24 @@
 import json
-import re
 import threading
 from typing import Dict
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import (
-    AbstractUDFMap,
-    Limit,
-    Read,
-    ReadFiles,
-    Write,
-)
+from ray.data._internal.logical.operators import Read, ReadFiles, Write
 
 # The dictionary for the operator name and count.
 _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
 
-# The white list of operator names allowed to be recorded.
-_op_name_white_list = [
-    # Read
-    "ReadBigQuery",
-    "ReadRange",
-    "ReadMongo",
-    "ReadParquet",
-    "ReadParquetBulk",
-    "ReadImage",
-    "ReadJSON",
-    "ReadCSV",
-    "ReadText",
-    "ReadNumpy",
-    "ReadTFRecord",
-    "ReadBinary",
-    "ReadTorch",
-    "ReadAvro",
-    "ReadWebDataset",
-    "ReadSQL",
-    "ReadDatabricksUC",
-    "ReadLance",
-    "ReadHuggingFace",
-    "ReadAudio",
-    "ReadVideo",
-    "ReadMCAP",
-    "ReadIceberg",
-    "ReadHudi",
-    "ReadKafka",
-    "ReadClickHouse",
-    "ReadDeltaSharing",
-    "ReadCustom",
-    # From
-    "FromArrow",
-    "FromBlocks",
-    "FromItems",
-    "FromNumpy",
-    "FromPandas",
-    # Write
-    "WriteBigQuery",
-    "WriteParquet",
-    "WriteJSON",
-    "WriteCSV",
-    "WriteTFRecord",
-    "WriteNumpy",
-    "WriteMongo",
-    "WriteWebDataset",
-    "WriteSQL",
-    "WriteIceberg",
-    "WriteImage",
-    "WriteClickHouse",
-    "WriteKafka",
-    "WriteLance",
-    "WriteTurbopuffer",
-    "WriteCustom",
-    # Map
-    "Map",
-    "MapBatches",
-    "Filter",
-    "FlatMap",
-    "Project",
-    "StreamingRepartition",
-    # All-to-all
-    "RandomizeBlockOrder",
-    "RandomShuffle",
-    "Repartition",
-    "Sort",
-    "Aggregate",
-    # N-ary
-    "Zip",
-    "Union",
-    "Join",
-    # Other
-    "Count",
-    "Limit",
-    "ListFiles",
-    "ReadFiles",
-    "StreamingSplit",
-]
+
+def _is_builtin_cls(cls: type) -> bool:
+    """Return True if ``cls`` is defined under the ``ray.data`` package.
+
+    Used to gate which operator / datasource / datasink class names are safe
+    to surface in telemetry. Anything outside ``ray.data.*`` is treated as
+    user-defined and anonymized.
+    """
+    return (cls.__module__ or "").startswith("ray.data.")
 
 
 def record_operators_usage(op: LogicalOperator):
@@ -112,30 +36,36 @@ def record_operators_usage(op: LogicalOperator):
 
 
 def anonymize_op_name(op: LogicalOperator) -> str:
-    """Return an op name suitable for telemetry, anonymized against
-    ``_op_name_white_list``. User-defined datasources/datasinks collapse to
-    ``ReadCustom``/``WriteCustom``
+    """Return an op name suitable for telemetry.
+
+    Read/Write surface their datasource/datasink suffix (``ReadParquet``,
+    ``WriteIceberg``) when the underlying class ships under ``ray.data.*``;
+    user-defined datasources/datasinks collapse to ``ReadCustom`` /
+    ``WriteCustom``. ``ReadFiles`` (the V2 file-read op) surfaces its
+    format via ``datasource_name`` (e.g. ``ReadFilesParquetV2``) when the
+    scanner class is built-in; user-defined scanners collapse to
+    ``ReadFilesCustom``. All other built-in operators emit their class
+    name (``Sort``, ``MapBatches``, ``Limit``, …); user-defined
+    ``LogicalOperator`` subclasses collapse to ``Unknown``.
     """
     if isinstance(op, Read):
-        name = f"Read{op.datasource.get_name()}"
-        return name if name in _op_name_white_list else "ReadCustom"
+        if _is_builtin_cls(type(op.datasource)):
+            return f"Read{op.datasource.get_name()}"
+        return "ReadCustom"
     if isinstance(op, Write):
-        name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
-        return name if name in _op_name_white_list else "WriteCustom"
-    if isinstance(op, Limit):
-        # Limit's runtime name embeds the limit value (e.g. "limit=10"); collapse
-        # to the class name for telemetry.
-        return "Limit" if "Limit" in _op_name_white_list else "Unknown"
+        sink = op.datasink_or_legacy_datasource
+        if _is_builtin_cls(type(sink)):
+            return f"Write{sink.get_name()}"
+        return "WriteCustom"
     if isinstance(op, ReadFiles):
-        # ReadFiles' runtime name embeds the datasource (e.g. "ReadFilesParquet");
-        # collapse to a single bucket for telemetry.
-        return "ReadFiles" if "ReadFiles" in _op_name_white_list else "Unknown"
-    name = op.name or ""
-    if isinstance(op, AbstractUDFMap):
-        # Remove the function name from the map operator name.
-        # E.g., Map(<lambda>) -> Map
-        name = re.sub(r"\(.*\)$", "", name)
-    return name if name in _op_name_white_list else "Unknown"
+        # Gate on the scanner class — the string ``datasource_name`` field
+        # could be set to anything by a user-defined V2 datasource, so it's
+        # not safe to surface on its own.
+        if _is_builtin_cls(type(op.scanner)):
+            return f"ReadFiles{op.datasource_name}"
+        return "ReadFilesCustom"
+    cls = type(op)
+    return cls.__name__ if _is_builtin_cls(cls) else "Unknown"
 
 
 def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
