@@ -5,4 +5,4 @@
 set -exo pipefail
 
 # Update accelerate version
-pip3 install accelerate==0.32.0 peft==0.10.0 evaluate
+pip3 install accelerate==1.10.1 evaluate

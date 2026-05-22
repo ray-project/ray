@@ -281,6 +281,7 @@ langchain-core==1.4.0 \
     --hash=sha256:23cbbdb46e38ddd1dd5247e6167e96013eae74bea4c5949c550809970a9e565c
     # via
     #   langchain
+    #   langchain-text-splitters
     #   langgraph
     #   langgraph-checkpoint
     #   langgraph-prebuilt
@@ -288,6 +289,10 @@ langchain-protocol==0.0.15 \
     --hash=sha256:461eb794358f83d5e42635a5797799ffec7b4702314e34edf73ac21e75d3ef79 \
     --hash=sha256:9ab2d11ee73944754f10e037e717098d3a6796f0e58afa9cadda6154e7655ade
     # via langchain-core
+langchain-text-splitters==1.1.2 \
+    --hash=sha256:782a723db0a4746ac91e251c7c1d57fd23636e4f38ed733074e28d7a86f41627 \
+    --hash=sha256:a2de0d799ff31886429fd6e2e0032df275b60ec817c19059a7b46181cc1c2f10
+    # via -r document_embedding/requirements.in
 langgraph==1.2.1 \
     --hash=sha256:28314f844678d9d307cbd63e7b48b0145bf17177d84b40ee2921061e07b6f966 \
     --hash=sha256:5cc4020de8f1e2a048d773f6e9128646a2af8c68a8067ab9cab177a2fcc8d221

@@ -1,12 +1,12 @@
 import tempfile
 
 import torch
+from torch.optim import AdamW
 import evaluate
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
-    AdamW,
     get_linear_schedule_with_warmup,
 )
 from accelerate import Accelerator

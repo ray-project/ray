@@ -3,8 +3,6 @@
 
 set -exo pipefail
 
-sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && sudo rm -rf /var/lib/apt/lists/*
+conda install -y -c conda-forge "ffmpeg"
 
 uv pip install -r python_depset.lock --system --no-deps --index-strategy unsafe-best-match
