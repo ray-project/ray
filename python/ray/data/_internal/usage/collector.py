@@ -203,7 +203,8 @@ def _cluster_spilled_bytes() -> Optional[int]:
     """
     try:
         reply = get_memory_info_reply(
-            get_state_from_address(ray.get_runtime_context().gcs_address)
+            get_state_from_address(ray.get_runtime_context().gcs_address),
+            timeout_seconds=10.0
         )
         return int(reply.store_stats.spilled_bytes_total)
     except Exception:
@@ -221,4 +222,4 @@ def reset_for_testing() -> None:
 def get_executions() -> "OrderedDict[str, _Entry]":
     """Get the current executions. Tests only."""
     with _lock:
-        return _executions
+        return _executions.copy()
