@@ -9,10 +9,17 @@ from ray._private.ray_constants import env_bool
 logger = logging.getLogger(__name__)
 
 # Ray uses ``FURIOSA_DEVICES`` to track which Furiosa NPUs are assigned to a
-# worker/actor process. The value uses the same ``npu:<index>`` notation that
-# ``furiosa-llm``'s ``--devices`` CLI flag expects (e.g., ``npu:0,npu:3``),
-# so the variable can be passed straight through to ``furiosa-llm`` without
-# reformatting. Bare integer IDs are also accepted on read for convenience.
+# worker/actor process. The value uses ``npu:<index>`` notation. Ray's
+# scheduler operates at the device level, so the value Ray writes is always
+# the device-level form (e.g. ``npu:0,npu:3``). Bare integer IDs are also
+# accepted on read for convenience.
+#
+# Note that ``furiosa-llm``'s Python API does not honor ``FURIOSA_DEVICES``
+# automatically; callers must pass ``devices=os.environ["FURIOSA_DEVICES"]``
+# (or an equivalent list) explicitly to ``furiosa_llm.LLM(...)``. The
+# ``furiosa-llm`` CLI does read the value but accepts a richer
+# ``npu:X:Y`` (PE-level) form that Ray does not currently preserve through
+# worker scheduling; see ``_strip_npu_prefix`` below.
 FURIOSA_VISIBLE_DEVICES_ENV_VAR = "FURIOSA_DEVICES"
 NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_FURIOSA_DEVICES"
 
@@ -55,8 +62,12 @@ def _strip_npu_prefix(token: str) -> str:
     token = token.strip()
     if token.startswith(_FURIOSA_DEVICE_PREFIX):
         token = token[len(_FURIOSA_DEVICE_PREFIX) :]
-    # ``furiosa-llm`` allows ``npu:0:0-3`` to address a core range; we keep
-    # only the device index, which is what Ray's scheduler operates on.
+    # ``furiosa-llm`` accepts both ``npu:X`` (whole NPU) and ``npu:X:Y``
+    # (PE-level, e.g. ``npu:0:0-3`` for fused PE 0-3 of NPU 0). Ray's
+    # scheduler currently operates at the device level only, so we keep
+    # the device index and drop any trailing PE selector. Round-tripping
+    # PE-level partitioning through worker scheduling is tracked as a
+    # follow-up enhancement.
     return token.split(":", 1)[0]
 
 
@@ -74,10 +85,14 @@ class FuriosaAcceleratorManager(AcceleratorManager):
     ``furiosa_smi_py``.
 
     Device visibility is tracked through the ``FURIOSA_DEVICES``
-    environment variable, formatted as ``npu:<id>`` tokens to match
-    ``furiosa-llm``'s ``--devices`` flag. This lets user code pass the
-    value directly to ``furiosa-llm`` (e.g.,
-    ``furiosa-llm --devices "$FURIOSA_DEVICES"``) without reformatting.
+    environment variable, formatted as ``npu:<id>`` tokens. The value
+    can be passed to the ``furiosa-llm`` CLI (e.g.,
+    ``furiosa-llm serve --devices "$FURIOSA_DEVICES" ...``). When
+    invoking the ``furiosa_llm.LLM`` Python API directly, the assigned
+    devices must be passed explicitly, e.g.
+    ``LLM(model_path, devices=os.environ["FURIOSA_DEVICES"])``;
+    ``LLM(devices=None)`` allocates all visible NPUs and would bypass
+    Ray's per-worker isolation.
     """
 
     @staticmethod

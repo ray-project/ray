@@ -152,14 +152,24 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
         .. tip::
 
             You can set the ``FURIOSA_DEVICES`` environment variable before starting a Ray node
-            to limit the FuriosaAI NPUs that are visible to Ray.
-            The value uses the same ``npu:<id>`` notation accepted by
-            ``furiosa-llm --devices``, so it can be passed straight through to the runtime.
+            to limit the FuriosaAI NPUs that are visible to Ray, using ``npu:<id>`` tokens.
             For example, ``FURIOSA_DEVICES=npu:1,npu:3 ray start --head``
-            lets Ray only see devices 1 and 3 (Ray auto-detects the count),
-            and a worker can run
-            ``furiosa-llm serve --devices "$FURIOSA_DEVICES" ...`` without reformatting.
+            lets Ray only see devices 1 and 3 (Ray auto-detects the count).
             Bare integer IDs (e.g., ``FURIOSA_DEVICES=1,3``) are also accepted on read.
+
+        .. note::
+
+            When using the ``furiosa_llm.LLM`` Python API inside a Ray task or actor,
+            pass the assigned devices explicitly; ``LLM(devices=None)`` would
+            allocate all visible NPUs and bypass Ray's per-worker isolation::
+
+                from furiosa_llm import LLM
+                llm = LLM(model_path, devices=os.environ["FURIOSA_DEVICES"])
+
+            ``furiosa-llm`` also accepts the PE-level form ``npu:X:Y``
+            (e.g., ``npu:0:0-3`` for fused PE 0-3 of NPU 0), but Ray currently
+            treats each NPU as a single resource and does not preserve PE
+            ranges through worker scheduling.
 .. note::
 
   There's nothing preventing you from specifying a larger number of
