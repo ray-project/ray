@@ -1377,6 +1377,22 @@ class AsyncioRouter:
                 # otherwise the gauge leaks for the lifetime of the process.
                 self._metrics_manager.dec_reserved_slots()
 
+    def _record_gap_and_mark_dispatched(self, selection: ReplicaSelection) -> None:
+        """Synchronously record the gap metric and mark the selection dispatched.
+
+        Must be called before scheduling _dispatch_to_marked_selection so that
+        selection._dispatched is True before choose_replica's finally block runs.
+
+        Args:
+            selection: The replica selection to mark dispatched.
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+        """
+        gap_ms = (time.monotonic() - selection.selection_start_time) * 1000
+        self._selection_dispatch_gap_ms.observe(gap_ms)
+        selection._mark_dispatched()
+
     async def dispatch(
         self,
         selection: ReplicaSelection,
@@ -1399,9 +1415,7 @@ class AsyncioRouter:
             RuntimeError: If the selection has already been dispatched.
             ReplicaUnavailableError: If the replica is no longer available.
         """
-        gap_ms = (time.monotonic() - selection.selection_start_time) * 1000
-        self._selection_dispatch_gap_ms.observe(gap_ms)
-        selection._mark_dispatched()
+        self._record_gap_and_mark_dispatched(selection)
         return await self._dispatch_to_marked_selection(
             selection, request_meta, *request_args, **request_kwargs
         )
@@ -1831,8 +1845,15 @@ class SingletonThreadRouter(Router):
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Dispatch request to a previously selected replica."""
+        try:
+            self._asyncio_router._record_gap_and_mark_dispatched(selection)
+        except Exception as exc:
+            future = concurrent.futures.Future()
+            future.set_exception(exc)
+            return future
+
         return self._wrap_asyncio_call_in_future(
-            self._asyncio_router.dispatch(
+            self._asyncio_router._dispatch_to_marked_selection(
                 selection, request_meta, *request_args, **request_kwargs
             )
         )
@@ -2057,8 +2078,15 @@ class CurrentLoopRouter(Router):
 
         Returns an asyncio.Future wrapping the async dispatch call.
         """
+        try:
+            self._asyncio_router._record_gap_and_mark_dispatched(selection)
+        except Exception as exc:
+            future = self._asyncio_loop.create_future()
+            future.set_exception(exc)
+            return future
+
         return self._asyncio_loop.create_task(
-            self._asyncio_router.dispatch(
+            self._asyncio_router._dispatch_to_marked_selection(
                 selection, request_meta, *request_args, **request_kwargs
             )
         )
