@@ -2386,12 +2386,14 @@ def print_worker_logs(
                 print(
                     f"{message_for(data, line)}",
                     file=print_file,
+                    flush=True,
                 )
             else:
                 print(
                     f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
                     f"{message_for(data, line)}",
                     file=print_file,
+                    flush=True,
                 )
 
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
