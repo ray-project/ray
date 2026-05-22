@@ -277,11 +277,20 @@ def _read_chunk(
 
 @dataclass(frozen=True)
 class _ChunkDescriptor:
-    """One row's worth of read work: which chunk of which array to read."""
+    """One long-form row's worth of read work: which chunk of which array."""
 
     array_name: str
     chunk_index: tuple[int, ...]
     chunk_slices: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class _AlignedChunkDescriptor:
+    """One wide-row's worth of read work: a global axis-0 range across N aligned arrays."""
+
+    chunk_index: int
+    t_start: int
+    t_stop: int
 
 
 def _create_read_fn(
@@ -317,33 +326,131 @@ def _create_read_fn(
     return read_fn
 
 
+def _create_aligned_read_fn(
+    batch: list[_AlignedChunkDescriptor],
+    aligned_array_names: list[str],
+    root: ZarrRoot,
+) -> Callable[[], Iterable[pd.DataFrame]]:
+    """Build a read-task callable for aligned (wide-row) reads.
+
+    Each output row carries ``t_start``, ``t_stop``, and one column per
+    aligned array holding that array's ``[t_start:t_stop, ...]`` slice at
+    its natural shape (edge rows may be shorter). All arrays in one row
+    share the same axis-0 range.
+    """
+
+    def read_fn() -> Iterable[pd.DataFrame]:
+        cols: dict[str, list] = {
+            "t_start": [d.t_start for d in batch],
+            "t_stop": [d.t_stop for d in batch],
+        }
+        for name in aligned_array_names:
+            cols[name] = [
+                _read_chunk(root, name, ((d.t_start, d.t_stop),)) for d in batch
+            ]
+        yield pd.DataFrame(cols)
+
+    return read_fn
+
+
+def _resolve_chunk_shape_for_array(
+    array_name: str,
+    chunk_shape: tuple[int, ...] | dict[str, list[int] | None] | None,
+) -> tuple[int, ...] | None:
+    """Resolve the user's ``chunk_shape`` argument to a per-array prefix.
+
+    - ``None`` → return ``None`` (use the array's native chunks).
+    - ``tuple[int, ...]`` (validated global form) → return as-is.
+    - ``dict`` → return the prefix for the first glob pattern that matches
+      ``array_name``; fall back to ``"default"`` if no pattern matches.
+      Patterns use :mod:`fnmatch` semantics (``*``, ``?``, ``[abc]``).
+    """
+    if chunk_shape is None or isinstance(chunk_shape, tuple):
+        return chunk_shape  # type: ignore[return-value]
+
+    import fnmatch
+
+    for pattern, prefix in chunk_shape.items():
+        if pattern == "default":
+            continue
+        if fnmatch.fnmatch(array_name, pattern):
+            return tuple(prefix) if prefix is not None else None
+    default = chunk_shape.get("default")
+    return tuple(default) if default is not None else None
+
+
+def _validate_chunk_shape_arg(chunk_shape) -> None:
+    """Validate the user-supplied ``chunk_shape`` (list, dict, or None)."""
+    if chunk_shape is None:
+        return
+    if isinstance(chunk_shape, list):
+        if not chunk_shape or any(
+            not isinstance(c, int) or c <= 0 for c in chunk_shape
+        ):
+            raise ValueError(
+                f"chunk_shape must be a non-empty list of positive integers, "
+                f"got {chunk_shape!r}"
+            )
+        return
+    if isinstance(chunk_shape, dict):
+        for pattern, prefix in chunk_shape.items():
+            if not isinstance(pattern, str):
+                raise ValueError(
+                    f"chunk_shape dict keys must be strings (glob patterns), "
+                    f"got {pattern!r}"
+                )
+            if prefix is None:
+                continue
+            if (
+                not isinstance(prefix, list)
+                or not prefix
+                or any(not isinstance(c, int) or c <= 0 for c in prefix)
+            ):
+                raise ValueError(
+                    f"chunk_shape[{pattern!r}] must be None or a non-empty "
+                    f"list of positive integers, got {prefix!r}"
+                )
+        return
+    raise TypeError(
+        f"chunk_shape must be a list, dict, or None, got "
+        f"{type(chunk_shape).__name__}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Datasource
 # ---------------------------------------------------------------------------
 
 
 class ZarrV2Datasource(Datasource):
-    """Reads chunks of one or more Zarr v2 arrays as a long-form Dataset.
+    """Reads one or more Zarr v2 arrays into a Ray Data ``Dataset``.
 
-    Each output row corresponds to **one chunk of one array**:
+    Two output schemas, selected at the call site via ``align_axis_0``:
+
+    **Long-form (default, ``align_axis_0=None``)** — one row per chunk per
+    array. Columns:
 
     * ``array``: the source array's path within the store
       (e.g., ``"data/camera0_rgb"``, or ``""`` for a root-level array).
     * ``chunk_index``: the N-D position of this chunk in the array's chunk
       grid, as a tuple of ints.
     * ``chunk_slices``: per-axis ``(start, stop)`` of this chunk in the
-      source array's coordinate space — the global slice the chunk
-      occupies. Lets downstream code map chunks back to original
-      positions (e.g., for episode-aware processing) without recomputing
-      from ``chunk_index`` and the chunk shape.
-    * ``chunk``: the chunk's data as an ``ndarray``, at its natural shape
-      (possibly shorter than the nominal chunk shape at trailing boundaries —
-      no padding is applied).
+      source array's coordinate space.
+    * ``chunk``: the chunk's data as an ``ndarray`` at its natural shape
+      (possibly shorter at trailing boundaries — no padding).
 
-    Arrays read in the same call need **not** share any dimension. Different
-    ranks, shapes, dtypes, and chunk shapes coexist as separate rows in the
-    output. Users who want paired/aligned views across arrays should compose
-    with downstream ``zip``/``map_groups`` operations.
+    Arrays in the same call need not share any dimension; they coexist as
+    separate rows distinguished by ``array``.
+
+    **Wide-form (opt-in, ``align_axis_0=[...]`` or ``True``)** — one row per
+    axis-0 chunk, with one column per aligned array. Columns:
+
+    * ``t_start`` / ``t_stop``: global axis-0 range of this row.
+    * ``<array_name>``: that array's ``[t_start:t_stop, ...]`` slice
+      (one column per aligned array).
+
+    Aligned arrays must share ``shape[0]`` and must end up with the same
+    axis-0 chunk size after :paramref:`chunk_shape` resolution.
 
     See :func:`ray.data.read_zarr` for the public API.
     """
@@ -352,9 +459,10 @@ class ZarrV2Datasource(Datasource):
         self,
         path: str,
         filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
-        chunk_shape: List[int] | None = None,
+        chunk_shape: List[int] | dict[str, List[int] | None] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
+        align_axis_0: List[str] | bool | None = None,
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
@@ -362,11 +470,17 @@ class ZarrV2Datasource(Datasource):
         self.allow_full_metadata_scan = allow_full_metadata_scan
         self.paths = [str(path)]
 
-        # Resolve filesystem (zarr requires fsspec) and store path. When no
-        # filesystem is provided, delegate URL resolution to Ray Data's
-        # standard helper so we get the same handling as every other
-        # ``read_*`` API (e.g., ``s3://anonymous@<bucket>/...`` URLs).
-        if filesystem is None:
+        # Resolve filesystem + store path. The order of precedence:
+        #   1. Explicit ``filesystem=`` always wins.
+        #   2. ``.zip`` URL/path → auto-wrap with fsspec's ZipFileSystem.
+        #   3. Otherwise delegate to Ray Data's standard URL→filesystem
+        #      helper (the same one every other ``read_*`` API uses).
+        if filesystem is None and self.paths[0].endswith(".zip"):
+            import fsspec
+
+            self._fs = fsspec.filesystem("zip", fo=self.paths[0])
+            self._store_path = ""
+        elif filesystem is None:
             from fsspec.implementations.arrow import ArrowFSWrapper
 
             from ray.data.datasource.path_util import (
@@ -393,25 +507,29 @@ class ZarrV2Datasource(Datasource):
                 )
             self._store_path = self.paths[0].rstrip("/")
 
-        # Validate chunk_shape eagerly so the error message comes from this
-        # entry point rather than the per-array resolution loop below.
-        if chunk_shape is not None:
-            if not chunk_shape or any(
-                not isinstance(c, int) or c <= 0 for c in chunk_shape
-            ):
-                raise ValueError(
-                    f"chunk_shape must be a non-empty list of positive "
-                    f"integers, got {chunk_shape!r}"
-                )
-        self.chunk_shape: tuple[int, ...] | None = (
-            tuple(chunk_shape) if chunk_shape is not None else None
-        )
+        _validate_chunk_shape_arg(chunk_shape)
+        # Canonicalize the global-list form to a tuple so the
+        # per-array resolver returns hashable values; dicts stay as-is.
+        if isinstance(chunk_shape, list):
+            self.chunk_shape: (
+                tuple[int, ...] | dict[str, List[int] | None] | None
+            ) = tuple(chunk_shape)
+        else:
+            self.chunk_shape = chunk_shape
 
         self._selected_arrays = self._load_metadata(array_paths)
         if not self._selected_arrays:
             raise ValueError(
                 f"No arrays discovered in Zarr store at {self.paths[0]!r}."
             )
+
+        # Aligned-mode setup: validate the alignment request and filter
+        # ``self._selected_arrays`` down to the aligned subset. The
+        # per-array effective-chunks loop below then validates that all
+        # aligned arrays have the same axis-0 chunk.
+        self._aligned_array_names: list[str] | None = self._resolve_align_axis_0(
+            align_axis_0
+        )
 
         # Resolve per-array chunk geometry. ``effective_chunks`` raises a
         # ``ValueError`` if the user's ``chunk_shape`` is longer than any
@@ -420,14 +538,81 @@ class ZarrV2Datasource(Datasource):
         self._array_chunks: dict[str, tuple[int, ...]] = {}
         self._array_grids: dict[str, tuple[int, ...]] = {}
         for name, meta in self._selected_arrays.items():
-            chunks = meta.effective_chunks(self.chunk_shape)
+            user_prefix = _resolve_chunk_shape_for_array(name, self.chunk_shape)
+            chunks = meta.effective_chunks(user_prefix)
             self._array_chunks[name] = chunks
             self._array_grids[name] = meta.grid_shape(chunks)
+
+        # If aligned, all listed arrays must share the same axis-0 chunk size
+        # so each wide row corresponds to one axis-0 step across every array.
+        if self._aligned_array_names is not None:
+            axis_0_chunks = {
+                name: self._array_chunks[name][0] for name in self._aligned_array_names
+            }
+            unique = set(axis_0_chunks.values())
+            if len(unique) > 1:
+                raise ValueError(
+                    f"Aligned arrays must share the same axis-0 chunk size. "
+                    f"Got: {axis_0_chunks}. Pass chunk_shape=[N] (or a "
+                    f"per-array chunk_shape dict that resolves all aligned "
+                    f"arrays to the same axis-0 prefix) to re-tile them."
+                )
 
         # Lazy zarr import: only needed once we read.
         import zarr
 
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
+
+    def _resolve_align_axis_0(
+        self, align_axis_0: List[str] | bool | None
+    ) -> list[str] | None:
+        """Validate ``align_axis_0``, filter ``_selected_arrays``, return aligned list.
+
+        Returns ``None`` when alignment is off (long-form mode). Returns the
+        ordered list of aligned array names otherwise; ``_selected_arrays`` is
+        filtered down to exactly those keys.
+        """
+        if align_axis_0 is None or align_axis_0 is False:
+            return None
+
+        if align_axis_0 is True:
+            aligned_names = list(self._selected_arrays.keys())
+        else:
+            missing = [n for n in align_axis_0 if n not in self._selected_arrays]
+            if missing:
+                available = sorted(self._selected_arrays.keys())
+                raise ValueError(
+                    f"align_axis_0 names not found in store: {missing!r}. "
+                    f"Available: {available!r}."
+                )
+            aligned_names = list(align_axis_0)
+
+        # Filter to aligned subset (drops non-listed arrays from the output).
+        self._selected_arrays = {
+            name: self._selected_arrays[name] for name in aligned_names
+        }
+
+        # Validate shape[0] alignment, with a helpful subset hint on mismatch.
+        shape0_by_array = {
+            name: meta.shape[0] if meta.shape else 0
+            for name, meta in self._selected_arrays.items()
+        }
+        if len(set(shape0_by_array.values())) > 1:
+            from collections import Counter
+
+            most_common_size, _ = Counter(shape0_by_array.values()).most_common(1)[0]
+            aligned_subset = sorted(
+                n for n, s in shape0_by_array.items() if s == most_common_size
+            )
+            raise ValueError(
+                f"Arrays in align_axis_0 must share shape[0]. Got: "
+                f"{shape0_by_array}. Largest aligned subset has "
+                f"shape[0]={most_common_size}: {aligned_subset}. Pass that "
+                f"subset to align_axis_0, or read mismatched arrays in "
+                f"separate read_zarr calls."
+            )
+
+        return aligned_names
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Total bytes = sum over selected arrays of ``prod(shape) * itemsize``."""
@@ -442,16 +627,22 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """Enumerate every chunk and split into batches **per array**.
+        """Enumerate every chunk and wrap it (or batches of chunks) in ReadTasks.
 
-        Each :class:`ReadTask` processes chunks from a single array and
-        yields one ``DataFrame`` whose rows are ``(array, chunk_index, chunk)``.
+        Long-form mode (default): one task per per-array chunk batch.
         Per-array batching keeps each block's ``chunk`` column rank-uniform
-        (Arrow's tensor extension requires this).
+        (Arrow's tensor extension requires this). ``parallelism`` is treated
+        as a *per-array* budget.
 
-        ``parallelism`` is treated as a *per-array* budget — each array's
-        chunks are split into ``min(parallelism, n_chunks_for_array)`` tasks.
+        Aligned mode (``align_axis_0`` set): one task per batch of aligned
+        axis-0 chunks. Each yielded row carries ``t_start``, ``t_stop``, and
+        one column per aligned array.
         """
+        if self._aligned_array_names is not None:
+            return self._get_aligned_read_tasks(
+                parallelism, per_task_row_limit, data_context
+            )
+
         read_tasks: List[ReadTask] = []
         for name, meta in self._selected_arrays.items():
             chunks = self._array_chunks[name]
@@ -490,6 +681,73 @@ class ZarrV2Datasource(Datasource):
             math.prod(stop - start for start, stop in desc.chunk_slices)
             * self._selected_arrays[desc.array_name].itemsize
             for desc in batch
+        )
+
+    def _get_aligned_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        """Wide-row task generation for ``align_axis_0`` mode.
+
+        Each row corresponds to one axis-0 chunk; columns are ``t_start``,
+        ``t_stop``, and one per aligned array carrying that array's
+        ``[t_start:t_stop, ...]`` slice.
+        """
+        assert self._aligned_array_names is not None
+        # All aligned arrays share the same axis-0 chunk size (validated in
+        # ``__init__``) and the same shape[0]. Read the geometry off the first.
+        first_name = self._aligned_array_names[0]
+        axis_0_chunk = self._array_chunks[first_name][0]
+        shape0 = self._selected_arrays[first_name].shape[0]
+
+        descriptors = [
+            _AlignedChunkDescriptor(
+                chunk_index=i,
+                t_start=i * axis_0_chunk,
+                t_stop=min((i + 1) * axis_0_chunk, shape0),
+            )
+            for i in range(math.ceil(shape0 / axis_0_chunk))
+        ]
+        if not descriptors:
+            return []
+
+        n_tasks = min(parallelism, len(descriptors))
+        batch_size = math.ceil(len(descriptors) / n_tasks)
+
+        read_tasks: List[ReadTask] = []
+        for start in range(0, len(descriptors), batch_size):
+            batch = descriptors[start : start + batch_size]
+            read_tasks.append(
+                ReadTask(
+                    _create_aligned_read_fn(
+                        batch, self._aligned_array_names, self.root
+                    ),
+                    BlockMetadata(
+                        num_rows=len(batch),
+                        size_bytes=self._estimate_aligned_batch_mem_size(batch),
+                        input_files=(self.paths[0],),
+                        exec_stats=None,
+                    ),
+                    per_task_row_limit=per_task_row_limit,
+                )
+            )
+        return read_tasks
+
+    def _estimate_aligned_batch_mem_size(
+        self, batch: list[_AlignedChunkDescriptor]
+    ) -> int:
+        """Sum bytes across all (row × aligned-array) pairs in a wide-row batch."""
+        assert self._aligned_array_names is not None
+        return sum(
+            (desc.t_stop - desc.t_start)
+            * (math.prod(meta.shape[1:]) if len(meta.shape) > 1 else 1)
+            * meta.itemsize
+            for desc in batch
+            for meta in (
+                self._selected_arrays[name] for name in self._aligned_array_names
+            )
         )
 
     def _load_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:

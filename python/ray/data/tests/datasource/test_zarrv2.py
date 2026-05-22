@@ -140,6 +140,56 @@ def unconsolidated_zarrv2_store(tmp_path) -> Path:
     )
 
 
+@pytest.fixture
+def aligned_zarrv2_store(tmp_path) -> Path:
+    """Three arrays sharing ``shape[0]=8``, different ranks and native chunks.
+
+    Models the UMI-style case where data arrays co-stride on the timestep
+    axis but differ in everything else.
+    """
+    store_path = tmp_path / "aligned.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    root.create_dataset(
+        "img",
+        data=np.arange(8 * 4 * 4 * 3, dtype="|u1").reshape(8, 4, 4, 3),
+        chunks=(2, 4, 4, 3),
+    )
+    root.create_dataset(
+        "state",
+        data=np.arange(8 * 3, dtype="<f4").reshape(8, 3),
+        chunks=(4, 3),  # different native axis-0 chunks than img
+    )
+    root.create_dataset(
+        "label",
+        data=np.arange(8, dtype="<i8"),
+        chunks=(8,),
+    )
+    zarr.consolidate_metadata(str(store_path))
+    return store_path
+
+
+@pytest.fixture
+def zarr_zip_store(tmp_path) -> Path:
+    """A small Zarr store packed into a ``.zip`` for URL-detection tests."""
+    src = tmp_path / "src.zarr"
+    _write_real_zarr_store(
+        src,
+        {
+            "data": (np.arange(12, dtype="<i4").reshape(6, 2), (3, 2)),
+        },
+    )
+    zip_path = tmp_path / "store.zarr.zip"
+    import shutil
+
+    shutil.make_archive(
+        base_name=str(tmp_path / "store.zarr"),
+        format="zip",
+        root_dir=str(src),
+    )
+    assert zip_path.exists()
+    return zip_path
+
+
 # ---------------------------------------------------------------------------
 # Metadata discovery
 # ---------------------------------------------------------------------------
@@ -409,6 +459,58 @@ def test_rejects_invalid_chunk_shape(zarrv2_group_store, chunk_shape):
         )
 
 
+def test_chunk_shape_dict_glob_pattern(aligned_zarrv2_store):
+    """Dict ``chunk_shape`` resolves per-array via fnmatch glob patterns."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        chunk_shape={"img": [4], "state": [4], "label": [4]},
+    )
+    assert datasource._array_chunks["img"][0] == 4
+    assert datasource._array_chunks["state"][0] == 4
+    assert datasource._array_chunks["label"][0] == 4
+
+
+def test_chunk_shape_dict_default_fallback(aligned_zarrv2_store):
+    """``"default"`` is used for arrays that match no glob pattern."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        chunk_shape={"img": [4], "default": [2]},
+    )
+    assert datasource._array_chunks["img"][0] == 4
+    assert datasource._array_chunks["state"][0] == 2
+    assert datasource._array_chunks["label"][0] == 2
+
+
+def test_chunk_shape_dict_none_keeps_native(aligned_zarrv2_store):
+    """A ``None`` prefix in the dict form means keep native chunks."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        chunk_shape={"img": [4], "default": None},
+    )
+    assert datasource._array_chunks["img"][0] == 4
+    # state native chunk[0]=4, label native chunk[0]=8.
+    assert datasource._array_chunks["state"][0] == 4
+    assert datasource._array_chunks["label"][0] == 8
+
+
+def test_chunk_shape_dict_rejects_invalid_prefix(aligned_zarrv2_store):
+    with pytest.raises(
+        ValueError, match=r"chunk_shape\['img'\] must be None or a non-empty list"
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(aligned_zarrv2_store),
+            chunk_shape={"img": [-1]},
+        )
+
+
+def test_chunk_shape_rejects_non_list_non_dict(aligned_zarrv2_store):
+    with pytest.raises(TypeError, match="chunk_shape must be a list, dict, or None"):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(aligned_zarrv2_store),
+            chunk_shape="invalid",
+        )
+
+
 def test_default_chunk_shape_uses_each_arrays_native_chunks(
     heterogeneous_zarrv2_store,
 ):
@@ -437,6 +539,111 @@ def test_chunk_shape_prefix_broadcast_across_mixed_rank(heterogeneous_zarrv2_sto
         "data/robot0_eef_pos": (5, 3),  # 2-D: axis 0 overridden, rest native
         "meta/episode_ends": (5,),  # 1-D: axis 0 overridden
     }
+
+
+# ---------------------------------------------------------------------------
+# align_axis_0 (wide-form mode)
+# ---------------------------------------------------------------------------
+
+
+def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
+    """Wide-row schema: ``t_start``, ``t_stop``, one column per aligned array."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=["img", "state", "label"],
+        chunk_shape=[4],
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    assert list(df.columns) == ["t_start", "t_stop", "img", "state", "label"]
+    # shape[0]=8, chunk_shape=[4] -> 2 rows.
+    assert len(df) == 2
+    # Reconstruct each array by concatenating slices in order.
+    img_recon = np.concatenate(list(df["img"]), axis=0)
+    assert img_recon.shape == (8, 4, 4, 3)
+    state_recon = np.concatenate(list(df["state"]), axis=0)
+    assert state_recon.shape == (8, 3)
+    label_recon = np.concatenate(list(df["label"]), axis=0)
+    assert label_recon.shape == (8,)
+    # t_start/t_stop are correct.
+    starts = sorted(df["t_start"].tolist())
+    stops = sorted(df["t_stop"].tolist())
+    assert starts == [0, 4]
+    assert stops == [4, 8]
+
+
+def test_align_axis_0_true_aligns_all_selected(aligned_zarrv2_store):
+    """``align_axis_0=True`` aligns every selected array."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=True,
+        chunk_shape=[4],
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    assert set(df.columns) == {"t_start", "t_stop", "img", "state", "label"}
+
+
+def test_align_axis_0_filters_non_listed_arrays(aligned_zarrv2_store):
+    """Arrays not in ``align_axis_0=[...]`` are dropped from the output."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=["img", "state"],
+        chunk_shape=[4],
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    assert "label" not in df.columns
+    assert set(df.columns) == {"t_start", "t_stop", "img", "state"}
+
+
+def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
+    """Misalignment raises and suggests the largest aligned subset."""
+    with pytest.raises(
+        ValueError,
+        match=r"Largest aligned subset has shape\[0\]=20: "
+        r"\['data/camera0_rgb', 'data/robot0_eef_pos'\]",
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(heterogeneous_zarrv2_store),
+            align_axis_0=True,
+            chunk_shape=[5],
+        )
+
+
+def test_align_axis_0_rejects_missing_array_name(aligned_zarrv2_store):
+    with pytest.raises(
+        ValueError, match=r"align_axis_0 names not found in store: \['nope'\]"
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(aligned_zarrv2_store),
+            align_axis_0=["img", "nope"],
+        )
+
+
+def test_align_axis_0_rejects_divergent_axis_0_chunks(aligned_zarrv2_store):
+    """If aligned arrays end up with different axis-0 chunks, error clearly.
+
+    The native chunks differ (img=2, state=4, label=8) — without a
+    ``chunk_shape`` re-tile they all stay at native, and the validator
+    catches the mismatch.
+    """
+    with pytest.raises(
+        ValueError, match="Aligned arrays must share the same axis-0 chunk size"
+    ):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(aligned_zarrv2_store),
+            align_axis_0=True,
+        )
+
+
+def test_align_axis_0_with_per_pattern_chunk_shape(aligned_zarrv2_store):
+    """A dict ``chunk_shape`` can resolve all aligned arrays to the same prefix."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=True,
+        chunk_shape={"img": [4], "state": [4], "label": [4]},
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    # 2 rows.
+    assert len(df) == 2
 
 
 def test_chunk_shape_rejected_when_longer_than_smallest_array(
@@ -479,6 +686,22 @@ def test_rejects_unsupported_filesystem_type():
             "/tmp/some.zarr",
             filesystem="not-a-filesystem",
         )
+
+
+# ---------------------------------------------------------------------------
+# .zarr.zip URL support
+# ---------------------------------------------------------------------------
+
+
+def test_reads_zarr_zip_local_path(zarr_zip_store):
+    """A local ``.zarr.zip`` path auto-wires fsspec's ZipFileSystem."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(zarr_zip_store))
+    # The store has one array "data" of shape (6, 2) chunks (3, 2) -> 2 chunks.
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=2))
+    assert len(df) == 2
+    assert set(df["array"]) == {"data"}
+    recon = _reconstruct_array(df, "data")
+    np.testing.assert_array_equal(recon, np.arange(12, dtype="<i4").reshape(6, 2))
 
 
 # ---------------------------------------------------------------------------
@@ -744,6 +967,7 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
         chunk_shape=[4],
         array_paths=["nested"],
         allow_full_metadata_scan=False,
+        align_axis_0=None,
     )
     mock_read_datasource.assert_called_once()
     args, kwargs = mock_read_datasource.call_args
