@@ -95,7 +95,6 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         # -- Per-partition stats (driver bookkeeping) ------------------------
         # Exposed to downstream ShuffleReduceOp via get_partition_bytes() so
         # it can size reducer memory hints.
-        self._partition_row_counts: Dict[int, int] = defaultdict(int)
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
         # -- Output queue (one bundle per completed map task, containing one
@@ -263,8 +262,7 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         # this ``ray.get`` is just local deserialization.
         input_meta, shard_sizes = ray.get(task.get_waitable())
 
-        for pid, (rows, nbytes) in shard_sizes.items():
-            self._partition_row_counts[pid] += rows
+        for pid, (_rows, nbytes) in shard_sizes.items():
             self._partition_bytes[pid] += nbytes
 
         for bundle in input_bundles:
@@ -334,10 +332,6 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         """Per-partition uncompressed byte count.  Used by ShuffleReduceOp
         to size each reducer's memory hint."""
         return dict(self._partition_bytes)
-
-    def get_partition_row_counts(self) -> Dict[int, int]:
-        """Per-partition row count.  Used for logging / diagnostics."""
-        return dict(self._partition_row_counts)
 
     # -----------------------------------------------------------------------
     # Task tracking
