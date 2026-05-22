@@ -216,7 +216,7 @@ class FileReader(Reader[FileManifest]):
         # and downstream concat handles unification.
         dataset = pds.dataset(
             source=paths,
-            format=self._format.value,
+            format=self._make_format(),
             filesystem=filesystem,
             schema=self._file_dataset_schema,
             ignore_prefixes=self._ignore_prefixes,
@@ -342,6 +342,16 @@ class FileReader(Reader[FileManifest]):
         Subclasses override this to inject format-specific options.
         """
         return {}
+
+    def _make_format(self) -> Any:
+        """Format passed to ``pds.dataset(format=...)``.
+
+        Defaults to the format string (e.g. ``"parquet"``); subclasses
+        override to return a configured ``pds.FileFormat`` instance when
+        format-specific options (read options, fragment scan options) need
+        to be threaded through.
+        """
+        return self._format.value
 
     def _read_fragment_batches(
         self,

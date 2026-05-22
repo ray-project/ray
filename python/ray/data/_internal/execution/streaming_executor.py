@@ -31,6 +31,7 @@ from ray.data._internal.execution.resource_manager import (
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
+    OutputBackpressureGuard,
     Topology,
     build_streaming_topology,
     format_op_state_summary,
@@ -221,6 +222,12 @@ class StreamingExecutor(Executor, threading.Thread):
         counter = self._resource_manager.block_ref_counter
         for op in self._topology:
             op.set_block_ref_counter(counter)
+
+        # Constructed once per executor (not per scheduling iteration) so the
+        # guard's idle-detection state accumulates across scheduling iterations.
+        self._output_backpressure_guard = OutputBackpressureGuard(
+            self._topology, self._resource_manager
+        )
 
         # Setup progress manager
         self._progress_manager = get_progress_manager(
@@ -478,6 +485,7 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             self._backpressure_policies,
             self._max_errored_blocks,
+            output_backpressure_guard=self._output_backpressure_guard,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

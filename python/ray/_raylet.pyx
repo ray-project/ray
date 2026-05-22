@@ -386,18 +386,6 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     return result
 
 
-def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
-    cdef:
-        CActorTableData data
-
-    data.ParseFromString(actor_table_data)
-
-    if data.address().worker_id() == b"":
-        return None
-    else:
-        return data.address().SerializeAsString()
-
-
 def compute_task_id(ObjectRef object_ref):
     return TaskID(object_ref.native().TaskId().Binary())
 
@@ -879,7 +867,7 @@ cdef prepare_args_internal(
                 put_id = CObjectID.FromBinary(
                         (<CoreWorker>worker.core_worker).put_serialized_object_and_increment_local_ref(
                             serialized_arg, c_tensor_transport, pin_object=True,
-                            owner_address=None, inline_small_object=False))
+                            inline_small_object=False))
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(
                             put_id,
@@ -3189,7 +3177,6 @@ cdef class CoreWorker:
             serialized_object,
             *,
             c_bool pin_object,
-            owner_address,
             c_bool inline_small_object,
             c_bool _is_experimental_channel,
             tensor_transport: Optional[str] = None,
@@ -3205,9 +3192,8 @@ cdef class CoreWorker:
             c_tensor_transport.emplace(move(c_tensor_transport_str))
 
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, c_tensor_transport, pin_object, owner_address, inline_small_object, _is_experimental_channel)
-        if owner_address is None:
-            owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
+            serialized_object, c_tensor_transport, pin_object, inline_small_object, _is_experimental_channel)
+        owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
         # skip_adding_local_ref is True because it's already added through the call to
         # put_serialized_object_and_increment_local_ref.
@@ -3223,7 +3209,6 @@ cdef class CoreWorker:
             serialized_object,
             optional[c_string] c_tensor_transport,
             c_bool pin_object=True,
-            owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
         ):
@@ -3232,8 +3217,6 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata = string_to_buffer(
                 serialized_object.metadata)
-            unique_ptr[CAddress] c_owner_address = self._convert_python_address(
-                owner_address)
             c_vector[CObjectID] contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
@@ -3247,7 +3230,6 @@ cdef class CoreWorker:
                     contained_object_ids,
                     &c_object_id,
                     &data,
-                    c_owner_address,
                     inline_small_object,
                     c_tensor_transport))
 
@@ -3266,8 +3248,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealOwned(
                             c_object_id,
-                            pin_object,
-                            move(c_owner_address)))
+                            pin_object))
 
         return c_object_id.Binary()
 
@@ -3280,30 +3261,26 @@ cdef class CoreWorker:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
 
-        object_refs = []
         for ref_or_generator in object_refs_or_generators:
-            if (not isinstance(ref_or_generator, ObjectRef)
-                    and not isinstance(ref_or_generator, ObjectRefGenerator)):
+            if isinstance(ref_or_generator, ObjectRef):
+                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
+            elif isinstance(ref_or_generator, ObjectRefGenerator):
+                wait_ids.push_back(
+                    CObjectID.FromBinary(
+                        ref_or_generator._get_next_object_id_binary()))
+            else:
                 raise TypeError(
                     "wait() expected a list of ray.ObjectRef "
                     "or ObjectRefGenerator, "
                     f"got list containing {type(ref_or_generator)}"
                 )
 
-            if isinstance(ref_or_generator, ObjectRefGenerator):
-                # Before calling wait,
-                # get the next reference from a generator.
-                object_refs.append(ref_or_generator._get_next_ref())
-            else:
-                object_refs.append(ref_or_generator)
-
-        wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results, fetch_local)
         check_status(op_status)
 
-        assert len(results) == len(object_refs)
+        assert len(results) == len(object_refs_or_generators)
 
         ready, not_ready = [], []
         for i, object_ref_or_generator in enumerate(object_refs_or_generators):
@@ -4826,6 +4803,19 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
 
+    def peek_next_object_id_binary(self, ObjectRef generator_id):
+        """Return the binary form of the next object id in the stream."""
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            CObjectID c_next_object_id
+
+        with nogil:
+            c_next_object_id = (
+                CCoreWorkerProcess.GetCoreWorker().PeekObjectIdStream(
+                    c_generator_id))
+
+        return c_next_object_id.Binary()
+
 cdef void _object_out_of_scope_trampoline(
         const CObjectID &object_id, void *user_callback_ptr) nogil:
     # Module-level C trampoline passed to AddObjectOutOfScopeOrFreedCallback.
@@ -4842,7 +4832,6 @@ cdef void _object_out_of_scope_trampoline(
             # NOTE: we manually increment the Python reference count of the callback
             # when registering it, so we must decrement here to avoid a leak.
             cpython.Py_DECREF(<object>user_callback_ptr)
-
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
