@@ -201,7 +201,7 @@ def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
 
 
 def _walk_operators(op: LogicalOperator) -> List[_Op]:
-    """Post-order walk producing anonymized op names + per-op config."""
+    """Post-order walk producing a flat list of the anonymized operators, containing op names, per-op config."""
     ops: List[_Op] = []
     for child in op.input_dependencies:
         ops.extend(_walk_operators(child))
