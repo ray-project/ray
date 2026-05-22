@@ -215,14 +215,14 @@ Next, configure the VLM processor with the essential settings:
 
 Ray Data LLM forwards ``mm_processor_kwargs`` to vLLM, which invokes
 the model's HuggingFace processor with it. The accepted keys are
-defined by the HF processor and differ by model family (e.g.
-``max_pixels`` on Qwen2-VL, ``size`` on Qwen3-VL). Refer to the HF
+defined by the HF processor and differ by model family, for example
+``max_pixels`` on Qwen2-VL, ``size`` on Qwen3-VL. Refer to the HF
 processor source for your model, for example `Qwen3VLVideoProcessor
 <https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L86>`_.
 
 .. note::
 
-   Understanding multimodal arguments used above:
+   Understanding multimodal arguments:
 
    - ``engine_kwargs.limit_mm_per_prompt={"video": 1}``: caps the number of videos per request.
    - ``engine_kwargs.mm_processor_kwargs.size``: per-frame resize budget;
