@@ -329,17 +329,22 @@ class TestPackScheduling:
     def test_high_priority_memory_schedules_before_cpu_hogs(
         self, ray_cluster, monkeypatch
     ):
-        """Memory-priority pack scheduling should place the memory hog first.
+        """Memory in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES overrides CPU priority.
 
-        Ten deployments each request all schedulable CPUs on a single node.
-        Only one can run. With RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES=memory,
-        the deployment that requests high memory should be the only one running;
-        the nine CPU-only deployments stay pending.
+        Pack scheduling sorts pending replicas by ``Resources.__lt__``. By default
+        CPU is compared before memory, so a deployment with higher ``num_cpus``
+        is scheduled first when only one replica fits on the node.
+
+        Here each ``cpu_i`` requests ``replica_cpus`` CPUs while ``memory_hog``
+        requests ``replica_cpus - 1`` CPUs plus most of the node memory. Without
+        the env var, a ``cpu_i`` deployment would win; with
+        ``RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES=memory``, ``memory_hog`` must
+        be the only deployment that reaches RUNNING.
         """
         monkeypatch.setenv("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "memory")
 
         cluster = ray_cluster
-        cluster.add_node(num_cpus=10, object_store_memory=100 * 1024 * 1024)
+        cluster.add_node(num_cpus=4)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
@@ -361,13 +366,16 @@ class TestPackScheduling:
         # Reserve head/proxy CPU by measuring what Serve leaves available.
         serve.start()
         replica_cpus = int(ray.available_resources()["CPU"])
-        assert replica_cpus >= 1
+        assert replica_cpus >= 2, "Need at least 2 CPUs for cpu vs memory_hog split"
+
+        memory_hog_cpus = replica_cpus - 1
 
         deployments = []
         for i in range(9):
             deployments.append(
                 replica_fn.options(
                     name=f"cpu_{i}",
+                    # Higher CPU than memory_hog: would sort first by default.
                     ray_actor_options={"num_cpus": replica_cpus},
                 ).bind()
             )
@@ -375,7 +383,7 @@ class TestPackScheduling:
             replica_fn.options(
                 name="memory_hog",
                 ray_actor_options={
-                    "num_cpus": replica_cpus,
+                    "num_cpus": memory_hog_cpus,
                     "memory": high_memory,
                 },
             ).bind()
