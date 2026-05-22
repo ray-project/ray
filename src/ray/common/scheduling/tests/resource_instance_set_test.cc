@@ -939,6 +939,89 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultiplePgResourceAndNoBundle
   }
 }
 
+TEST_F(NodeResourceInstanceSetTest, TestCanAllocate) {
+  // 1. Test non-unit resource (CPU): single-instance, scalar comparison.
+  {
+    NodeResourceInstanceSet r1 = NodeResourceInstanceSet(NodeResourceSet({{"CPU", 2}}));
+
+    // Demand <= available: should succeed.
+    ASSERT_TRUE(r1.CanAllocate(ResourceSet({{"CPU", FixedPoint(1)}})));
+    ASSERT_TRUE(r1.CanAllocate(ResourceSet({{"CPU", FixedPoint(2)}})));
+    ASSERT_TRUE(r1.CanAllocate(ResourceSet({{"CPU", FixedPoint(1.5)}})));
+
+    // Demand > available: should fail.
+    ASSERT_FALSE(r1.CanAllocate(ResourceSet({{"CPU", FixedPoint(3)}})));
+    ASSERT_FALSE(r1.CanAllocate(ResourceSet({{"CPU", FixedPoint(3.5)}})));
+
+    // Resource not present: should fail.
+    ASSERT_FALSE(r1.CanAllocate(ResourceSet({{"memory", FixedPoint(1)}})));
+  }
+
+  // 2. Test unit resource (GPU): multi-instance, integer demand requires full instances.
+  {
+    // 4 GPUs, all fully available.
+    NodeResourceInstanceSet r2 = NodeResourceInstanceSet(NodeResourceSet({{"GPU", 4}}));
+
+    // Demand fits in available full instances.
+    ASSERT_TRUE(r2.CanAllocate(ResourceSet({{"GPU", FixedPoint(2)}})));
+    ASSERT_TRUE(r2.CanAllocate(ResourceSet({{"GPU", FixedPoint(4)}})));
+
+    // Demand exceeds total instances.
+    ASSERT_FALSE(r2.CanAllocate(ResourceSet({{"GPU", FixedPoint(5)}})));
+
+    // Allocate 2 GPUs so only 2 remain, then test demands against reduced availability.
+    NodeResourceInstanceSet r3;
+    r3.Set(ResourceID("GPU"),
+           std::vector<FixedPoint>(
+               {FixedPoint(0), FixedPoint(0), FixedPoint(1), FixedPoint(1)}));
+
+    // Only 2 full instances remain.
+    ASSERT_TRUE(r3.CanAllocate(ResourceSet({{"GPU", FixedPoint(2)}})));
+    ASSERT_FALSE(r3.CanAllocate(ResourceSet({{"GPU", FixedPoint(3)}})));
+  }
+
+  // 3. Test unit resource (GPU): fractional demand must fit on a single instance.
+  {
+    NodeResourceInstanceSet r4;
+    // Instance 0 has 0.4 remaining, instance 1 has 0.6 remaining.
+    r4.Set(ResourceID("GPU"),
+           std::vector<FixedPoint>({FixedPoint(0.4), FixedPoint(0.6)}));
+
+    // Demand fits on at least one instance.
+    ASSERT_TRUE(r4.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.4)}})));
+    ASSERT_TRUE(r4.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.6)}})));
+
+    // Total available (0.4 + 0.6 = 1.0) exceeds demand (0.7), but no single instance
+    // can accommodate it — fractional GPU demand cannot be split across instances.
+    ASSERT_FALSE(r4.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.7)}})));
+  }
+
+  // 4. Test mixed demand: integer part + fractional remainder across instances.
+  {
+    NodeResourceInstanceSet r5;
+    // 1 full instance + 1 partial instance with 0.5 remaining.
+    r5.Set(ResourceID("GPU"), std::vector<FixedPoint>({FixedPoint(1), FixedPoint(0.5)}));
+
+    // Demand of 1.3: uses the 1 full instance, then needs 0.3 from the 0.5 partial.
+    ASSERT_TRUE(r5.CanAllocate(ResourceSet({{"GPU", FixedPoint(1.3)}})));
+
+    // Demand of 1.6: uses the 1 full instance, then needs 0.6 but only 0.5 is available.
+    ASSERT_FALSE(r5.CanAllocate(ResourceSet({{"GPU", FixedPoint(1.6)}})));
+  }
+
+  // 5. Test multiple resources: all must be satisfiable.
+  {
+    NodeResourceInstanceSet r7 =
+        NodeResourceInstanceSet(NodeResourceSet({{"CPU", 4}, {"GPU", 2}}));
+    ASSERT_TRUE(
+        r7.CanAllocate(ResourceSet({{"CPU", FixedPoint(2)}, {"GPU", FixedPoint(1.5)}})));
+    ASSERT_FALSE(
+        r7.CanAllocate(ResourceSet({{"CPU", FixedPoint(2)}, {"GPU", FixedPoint(2.5)}})));
+    ASSERT_FALSE(
+        r7.CanAllocate(ResourceSet({{"CPU", FixedPoint(5)}, {"GPU", FixedPoint(0.5)}})));
+  }
+}
+
 TEST_F(NodeResourceInstanceSetTest, TestFree) {
   NodeResourceInstanceSet r1;
   r1.Set(ResourceID("GPU"), std::vector<FixedPoint>({FixedPoint(1), FixedPoint(0.3)}));

@@ -14,7 +14,9 @@
 
 #include "ray/common/scheduling/resource_instance_set.h"
 
+#include <algorithm>
 #include <cmath>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -134,6 +136,68 @@ FixedPoint NodeResourceInstanceSet::Sum(ResourceID resource_id) const {
 
 bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) const {
   return this->resources_ == other.resources_;
+}
+
+bool NodeResourceInstanceSet::CanAllocate(const ResourceSet &resource_demands) const {
+  for (const auto &[resource_id, demand] : resource_demands.Resources()) {
+    const std::vector<FixedPoint> &available = Get(resource_id);
+
+    if (available.empty()) {
+      return false;
+    }
+
+    if (available.size() == 1) {
+      if (available[0] >= demand) {
+        continue;
+      }
+      return false;
+    }
+
+    FixedPoint remaining_demand = demand;
+    int64_t full_instances_used = 0;
+
+    if (remaining_demand >= 1.) {
+      for (size_t i = 0; i < available.size(); i++) {
+        if (available[i] == 1.) {
+          full_instances_used++;
+          remaining_demand -= 1.;
+        }
+        if (remaining_demand < 1.) {
+          break;
+        }
+      }
+    }
+
+    if (remaining_demand >= 1.) {
+      // Not enough full-capacity instances to cover the integer part.
+      return false;
+    }
+
+    if (remaining_demand > 0.) {
+      bool found_fit = false;
+      int64_t full_instances_skipped = 0;
+
+      for (size_t i = 0; i < available.size(); i++) {
+        // Skip the exact number of full instances we previously calculated
+        if (available[i] == 1. && full_instances_skipped < full_instances_used) {
+          full_instances_skipped++;
+          continue;
+        }
+
+        // EARLY EXIT: We only need to know IF it can fit, not WHERE it fits best.
+        if (available[i] >= remaining_demand) {
+          found_fit = true;
+          break;
+        }
+      }
+
+      if (!found_fit) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
@@ -459,12 +523,37 @@ std::string NodeResourceInstanceSet::DebugString() const {
   return buffer.str();
 }
 
+std::set<ResourceID> NodeResourceInstanceSet::ExplicitResourceIds() const {
+  std::set<ResourceID> ids;
+  for (const auto &[id, _] : resources_) {
+    if (!id.IsImplicitResource()) {
+      ids.insert(id);
+    }
+  }
+
+  return ids;
+}
+
 NodeResourceSet NodeResourceInstanceSet::ToNodeResourceSet() const {
   NodeResourceSet node_resource_set;
   for (const auto &[resource_id, instances] : resources_) {
     node_resource_set.Set(resource_id, FixedPoint::Sum(instances));
   }
   return node_resource_set;
+}
+
+absl::flat_hash_map<std::string, std::vector<double>>
+NodeResourceInstanceSet::GetResourceMap(bool non_negative) const {
+  absl::flat_hash_map<std::string, std::vector<double>> result;
+  for (const auto &[id, instances] : resources_) {
+    std::vector<double> values;
+    values.reserve(instances.size());
+    for (const auto &value : instances) {
+      values.push_back(non_negative ? std::max(value.Double(), 0.0) : value.Double());
+    }
+    result[id.Binary()] = std::move(values);
+  }
+  return result;
 }
 
 }  // namespace ray

@@ -368,28 +368,8 @@ class NodeResourcesBase {
   /// Get the set of resource IDs that have explicit available entries.
   virtual std::set<scheduling::ResourceID> GetAvailableResourceIds() const = 0;
 
-  /// Subtract resources from available, clamping each entry to 0.
-  virtual void SubtractAvailable(const ResourceSet &resource_set) = 0;
-
-  /// Set a single resource's available to an explicit scalar value.
-  virtual void SetAvailableResource(scheduling::ResourceID resource_id,
-                                    FixedPoint value) = 0;
-
-  /// Replace the entire available field from a NodeResourceSet.
-  virtual void SetAvailable(NodeResourceSet resource_set) = 0;
-
-  /// Return available resources as a name->value map.
-  virtual absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const = 0;
-
   /// Returns true if the resource has an explicit available entry.
   virtual bool HasAvailableResource(scheduling::ResourceID resource_id) const = 0;
-
-  /// Read-only access to the entire available resource set.
-  virtual const NodeResourceSet &GetAvailable() const = 0;
-
-  /// Transfer ownership of the available resource set (leaves available in a moved-from
-  /// state).
-  virtual NodeResourceSet TakeAvailable() = 0;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -428,40 +408,39 @@ class NodeResources : public NodeResourcesBase {
   std::set<scheduling::ResourceID> GetAvailableResourceIds() const override;
 
   /// Subtract resources from available, clamping each entry to 0.
-  void SubtractAvailable(const ResourceSet &resource_set) override;
+  void SubtractAvailable(const ResourceSet &resource_set);
 
-  /// Set a single resource's available to an explicit scalar value.
-  void SetAvailableResource(scheduling::ResourceID resource_id,
-                            FixedPoint value) override;
+  /// Set a single resource's available to a scalar value.
+  void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
 
-  /// Replace the entire available field from a NodeResourceSet.
-  void SetAvailable(NodeResourceSet resource_set) override;
+  /// Replace the entire available field.
+  void SetAvailable(NodeResourceSet resource_set);
 
   /// Return available resources as a name->value map.
-  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const override;
+  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
 
   /// Returns true if the resource has an explicit available entry.
   bool HasAvailableResource(scheduling::ResourceID resource_id) const override;
 
-  /// Read-only access to the entire available resource set.
-  const NodeResourceSet &GetAvailable() const override;
+  /// Read-only access to the entire available
+  const NodeResourceSet &GetAvailable() const;
 
   /// Transfer ownership of the available resource set (leaves available in a moved-from
   /// state).
-  NodeResourceSet TakeAvailable() override;
+  NodeResourceSet TakeAvailable();
 
  private:
   NodeResourceSet available;
 };
 
-/// NodeResourcesV2 is currently identical to NodeResources. It will diverge in a
-/// subsequent PR to store available resources as a per-instance vector
-/// (NodeResourceInstanceSet) rather than an aggregated scalar NodeResourceSet, enabling
+/// NodeResourcesV2 stores available resources as a per-instance vector
+/// NodeResourceInstanceSet rather than an aggregated scalar NodeResourceSet, enabling
 /// GPU-fraction scheduling.
 class NodeResourcesV2 : public NodeResourcesBase {
  public:
   NodeResourcesV2() {}
-  explicit NodeResourcesV2(const NodeResourceSet &resources) : available(resources) {
+  explicit NodeResourcesV2(const NodeResourceSet &resources)
+      : available(NodeResourceInstanceSet(resources)) {
     total = resources;
   }
 
@@ -469,11 +448,9 @@ class NodeResourcesV2 : public NodeResourcesBase {
   /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const override;
   /// Returns true if the node has the available resources to run the task.
-  /// Note: This doesn't account for the binpacking of unit resources.
   bool IsAvailable(const ResourceRequest &resource_request,
                    bool ignore_at_capacity = false) const override;
   /// Returns true if the node's total resources are enough to run the task.
-  /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const override;
   // Returns true if the node's labels satisfy the label selector requirement.
   bool HasRequiredLabels(const LabelSelector &label_selector) const override;
@@ -486,37 +463,49 @@ class NodeResourcesV2 : public NodeResourcesBase {
   /// Returns compact dict-like string.
   std::string DictString() const override;
 
-  /// Get the scalar available amount for a resource.
+  /// Get the scalar available amount for a resource (sum across instances).
   FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const override;
 
   /// Get the set of resource IDs that have explicit available entries.
   std::set<scheduling::ResourceID> GetAvailableResourceIds() const override;
 
-  /// Subtract resources from available, clamping each entry to 0.
-  void SubtractAvailable(const ResourceSet &resource_set) override;
-
-  /// Set a single resource's available to an explicit scalar value.
+  /// Set a single resource's available to a per-instance vector.
   void SetAvailableResource(scheduling::ResourceID resource_id,
-                            FixedPoint value) override;
+                            std::vector<FixedPoint> instances);
 
-  /// Replace the entire available field from a NodeResourceSet.
-  void SetAvailable(NodeResourceSet resource_set) override;
-
-  /// Return available resources as a name->value map.
-  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const override;
+  /// Replace the entire available field from a per-instance vector.
+  void SetAvailable(NodeResourceInstanceSet instances);
 
   /// Returns true if the resource has an explicit available entry.
   bool HasAvailableResource(scheduling::ResourceID resource_id) const override;
 
-  /// Read-only access to the entire available resource set.
-  const NodeResourceSet &GetAvailable() const override;
+  /// Return available resources as a name->per-instance-values map.
+  /// \param non_negative If true, clamp all instance values to be >= 0.
+  absl::flat_hash_map<std::string, std::vector<double>> GetAvailableResourceMap(
+      bool non_negative = false) const;
+
+  /// Read-only access to the entire available
+  const NodeResourceInstanceSet &GetAvailable() const;
 
   /// Transfer ownership of the available resource set (leaves available in a moved-from
   /// state).
-  NodeResourceSet TakeAvailable() override;
+  NodeResourceInstanceSet TakeAvailable();
+
+  /// Decrease the capacities of the instances of a given resource from the available
+  ///
+  /// \param resource_id The id of the resource to be subtracted.
+  /// \param instances A list of capacities for resource's instances to be subtracted.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
+  ///
+  /// \return Underflow of resource capacities after subtracting instance
+  /// capacities in "instances", i.e.,.
+  /// max(instances - Get(resource_id), 0)
+  std::vector<FixedPoint> Subtract(scheduling::ResourceID resource_id,
+                                   const std::vector<FixedPoint> &instances,
+                                   bool allow_going_negative);
 
  private:
-  NodeResourceSet available;
+  NodeResourceInstanceSet available;
 };
 
 /// Total and available capacities of each resource instance.

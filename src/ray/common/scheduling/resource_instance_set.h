@@ -14,7 +14,9 @@
 
 #pragma once
 
+#include <algorithm>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -56,6 +58,11 @@ class NodeResourceInstanceSet {
 
   std::string DebugString() const;
 
+  /// Returns true if the resources specified by `resource_demands` can be allocated
+  /// from this set without modifying any state. This is a read-only feasibility check
+  /// that accounts for per-instance bin-packing constraints (e.g., GPU fractions).
+  bool CanAllocate(const ResourceSet &resource_demands) const;
+
   /// Try to allocate resources specified by `resource_demands`.
   /// This operation is all or nothing meaning that if any single resource
   /// cannot be allocated, the entire allocation fails and std::nullopt is returned.
@@ -85,6 +92,14 @@ class NodeResourceInstanceSet {
 
   /// Convert to node resource set with summed per-instance values.
   NodeResourceSet ToNodeResourceSet() const;
+
+  /// Return all the ids of explicit resources that this set has.
+  std::set<ResourceID> ExplicitResourceIds() const;
+
+  /// Return a map from resource name to the per-instance values.
+  /// \param non_negative If true, clamp all instance values to be >= 0.
+  absl::flat_hash_map<std::string, std::vector<double>> GetResourceMap(
+      bool non_negative = false) const;
 
   /// Only for testing.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
