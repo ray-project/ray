@@ -190,13 +190,15 @@ class AllToAllOperator(
         output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
-        if self._block_ref_counter is not None:
-            for bundle in self._output_buffer:
-                for ref, meta in bundle.blocks:
-                    if ref not in input_refs:
-                        self._block_ref_counter.on_block_produced(
-                            ref, meta.size_bytes or 0, self.id
-                        )
+        assert (
+            self._block_ref_counter is not None
+        ), "block_ref_counter must be set before all_inputs_done is called"
+        for bundle in self._output_buffer:
+            for ref, meta in bundle.blocks:
+                if ref not in input_refs:
+                    self._block_ref_counter.on_block_produced(
+                        ref, meta.size_bytes or 0, self.id
+                    )
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()

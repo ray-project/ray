@@ -1,6 +1,5 @@
 import math
 import time
-from dataclasses import replace
 from datetime import timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
@@ -8,15 +7,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
-import ray
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
-)
-from ray.data._internal.execution.interfaces.physical_operator import (
-    TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -34,8 +29,6 @@ from ray.data._internal.execution.resource_manager import (
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
-from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.block import TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 
@@ -214,42 +207,35 @@ class TestResourceManager:
             assert get_total_resources.call_count == 2
 
     def test_update_usage(self):
-        """Test calculating op_usage."""
+        """Test calculating op_usage.
+
+        Object-store memory is now tracked via BlockRefCounter (one counter shared
+        across the whole execution), NOT via queue-size metrics.  Each operator's
+        object-store usage = pending_task_outputs (in-flight generator buffer) +
+        block_ref_counter bytes attributed to that operator.
+        """
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
         topo = build_streaming_topology(o3, ExecutionOptions())
 
-        # Mock different metrics that contribute to the resource usage.
         mock_cpu = {
             o1: 0,
             o2: 5,
             o3: 8,
         }
+        # Bytes in the streaming-generator buffer (not yet yielded as ObjectRefs).
         mock_pending_task_outputs = {
             o1: 0,
             o2: 100,
             o3: 200,
         }
-        mock_internal_outqueue = {
+        # Bytes attributed to each operator in the BlockRefCounter (produced ObjectRefs
+        # that are still live somewhere in the pipeline).
+        mock_counter_bytes = {
             o1: 0,
             o2: 300,
             o3: 400,
-        }
-        mock_external_outqueue_sizes = {
-            o1: 100,
-            o2: 500,
-            o3: 600,
-        }
-        mock_internal_inqueue = {
-            o1: 0,
-            o2: 700,
-            o3: 800,
-        }
-        mock_pending_task_inputs = {
-            o1: 0,
-            o2: 900,
-            o3: 1000,
         }
 
         for op in [o1, o2, o3]:
@@ -263,18 +249,7 @@ class TestResourceManager:
             op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
             op._metrics = MagicMock(
                 obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
-                obj_store_mem_internal_outqueue=mock_internal_outqueue[op],
-                obj_store_mem_internal_inqueue=mock_internal_inqueue[op],
-                obj_store_mem_pending_task_inputs=mock_pending_task_inputs[op],
             )
-            op._metrics.obj_store_mem_internal_inqueue_for_input = MagicMock(
-                return_value=mock_internal_inqueue[op],
-            )
-            ref_bundle = MagicMock(
-                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op]),
-                output_split_idx=None,
-            )
-            topo[op].add_output(ref_bundle)
 
         resource_manager = ResourceManager(
             topo,
@@ -283,39 +258,34 @@ class TestResourceManager:
             DataContext.get_current(),
         )
         resource_manager._op_resource_allocator = None
+
+        # Seed the counter so each eligible op reports its expected counter bytes.
+        for op in [o2, o3]:
+            if mock_counter_bytes[op]:
+                resource_manager.block_ref_counter._bytes_by_producer[
+                    op.id
+                ] = mock_counter_bytes[op]
+
         resource_manager.update_usages()
 
         global_cpu = 0
         global_mem = 0
         for op in [o1, o2, o3]:
             if op == o1:
-                # Resource usage of InputDataBuffer doesn't count.
+                # InputDataBuffer memory is not counted.
                 expected_mem = 0
             else:
-                expected_mem = (
-                    mock_pending_task_outputs[op]
-                    + mock_internal_outqueue[op]
-                    + mock_external_outqueue_sizes[op]
-                )
-                for next_op in op.output_dependencies:
-                    expected_mem += (
-                        +mock_internal_inqueue[next_op]
-                        + mock_pending_task_inputs[next_op]
-                    )
+                expected_mem = mock_pending_task_outputs[op] + mock_counter_bytes[op]
             op_usage = resource_manager.get_op_usage(op)
             assert op_usage.cpu == mock_cpu[op]
             assert op_usage.gpu == 0
             assert op_usage.object_store_memory == expected_mem
             if op != o1:
-                # _mem_op_internal only includes pending_task_outputs
                 assert (
                     resource_manager._mem_op_internal[op]
                     == mock_pending_task_outputs[op]
                 )
-                assert (
-                    resource_manager._mem_op_outputs[op]
-                    == expected_mem - resource_manager._mem_op_internal[op]
-                )
+                assert resource_manager._mem_op_outputs[op] == mock_counter_bytes[op]
             global_cpu += mock_cpu[op]
             global_mem += expected_mem
 
@@ -324,13 +294,15 @@ class TestResourceManager:
         )
 
     def test_object_store_usage(self, restore_data_context):
-        input = make_ref_bundles([[x] for x in range(1)])[0]
-        # Set block metadata size_bytes to 1 (rather than mocking the method on the
-        # instance, which doesn't survive dataclasses.replace in OpBufferQueue.pop).
-        block_ref, block_meta = input.blocks[0]
-        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
+        """Object-store usage is tracked via BlockRefCounter, not queue metrics.
 
-        o1 = InputDataBuffer(DataContext.get_current(), [input])
+        Memory is attributed to the operator that called on_block_produced and
+        released automatically via the Ray Core out-of-scope callback.  This test
+        drives the counter directly (bypassing Ray Core) to verify the integration
+        between ResourceManager._estimate_object_store_memory_usage and the counter.
+        """
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
@@ -341,94 +313,101 @@ class TestResourceManager:
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
         )
-        ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
-        ray.data.DataContext.get_current().target_max_block_size = 2
+
+        counter = resource_manager.block_ref_counter
 
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # Objects in an operator's internal inqueue typically count toward the previous
-        # operator's object store memory usage. However, data from an
-        # `InputDataBuffer` aren't counted because they were created outside of this
-        # execution.
-        o2.metrics.on_input_queued(input, input_index=0)
+        # InputDataBuffer blocks are not registered — its usage stays 0.
+        assert counter.get_object_store_memory_usage(o1.id) == 0
+
+        # Simulate o2 producing a 100-byte block.
+        fake_id1 = (1).to_bytes(28, "big")
+        with counter._lock:
+            counter._registered_ids.add(fake_id1)
+            counter._bytes_by_producer[o2.id] += 100
+
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
+        assert resource_manager.get_op_usage(o2).object_store_memory == 100
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # Simulate o3 producing a 200-byte block.
+        fake_id2 = (2).to_bytes(28, "big")
+        with counter._lock:
+            counter._registered_ids.add(fake_id2)
+            counter._bytes_by_producer[o3.id] += 200
+
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o2).object_store_memory == 100
+        assert resource_manager.get_op_usage(o3).object_store_memory == 200
+
+        # Simulate Ray Core callback firing for o2's block (all refs dropped).
+        with counter._lock:
+            counter._registered_ids.discard(fake_id1)
+            counter._bytes_by_producer[o2.id] -= 100
+
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(o2).object_store_memory == 0
+        assert resource_manager.get_op_usage(o3).object_store_memory == 200
+
+        # After clear(), all usage resets to 0.
+        counter.clear()
+        resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # During no-sample phase, obj_store_mem_pending_task_outputs uses fallback
-        # estimate based on target_max_block_size.
-        o2.metrics.on_input_dequeued(input, input_index=0)
-        o2.metrics.on_task_submitted(0, input)
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        # No sample available yet, returns None
-        assert o2.metrics.obj_store_mem_pending_task_outputs is None
-        op2_usage = resource_manager.get_op_usage(o2).object_store_memory
-        # When pending task outputs is None, it's treated as 0
-        assert op2_usage == 0
-        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+    def test_union_no_double_counting(self, restore_data_context):
+        """Blocks passing through UnionOperator are attributed to their original
+        producer, not double-counted.
 
-        # When the task finishes, we move the data from the streaming generator to the
-        # operator's internal outqueue.
-        o2.metrics.on_output_queued(input)
-        o2.metrics.on_task_finished(
-            0,
-            None,
-            TaskExecWorkerStats(task_wall_time_s=0.0),
-            TaskExecDriverStats(task_output_backpressure_s=0),
+        UnionOperator is a passthrough — it never calls on_block_produced, so its
+        block_ref_counter usage is always 0.  Blocks in Union's output queue are
+        already captured by the upstream MapOperator's counter entry.  Global usage
+        = sum of upstream producers only, without any inflation from Union.
+        """
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        map_a = mock_map_op(o1, name="MapA")
+        o2 = InputDataBuffer(DataContext.get_current(), [])
+        map_b = mock_map_op(o2, name="MapB")
+        union_op = mock_union_op([map_a, map_b])
+        downstream = mock_map_op(union_op, name="Downstream")
+
+        topo = build_streaming_topology(downstream, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources(object_store_memory=10_000)),
+            DataContext.get_current(),
         )
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+        counter = resource_manager.block_ref_counter
 
-        o2.metrics.on_output_dequeued(input)
-        topo[o2].output_queue.append(input)
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+        # Simulate map_a producing a 100-byte block and map_b producing 200 bytes.
+        fake_a = (10).to_bytes(28, "big")
+        fake_b = (20).to_bytes(28, "big")
+        with counter._lock:
+            counter._registered_ids.add(fake_a)
+            counter._bytes_by_producer[map_a.id] += 100
+            counter._registered_ids.add(fake_b)
+            counter._bytes_by_producer[map_b.id] += 200
 
-        # Objects in the current operator's internal inqueue count towards the previous
-        # operator's object store memory usage.
-        # NOTE: `pop()` returns a copy of the bundle (via `dataclasses.replace`), so we
-        # must use the returned reference for subsequent o3 metric calls.
-        o3_input = topo[o2].output_queue.pop()
-        o3.metrics.on_input_queued(o3_input, input_index=0)
         resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # Task inputs count toward the previous operator's object store memory
-        # usage. During no-sample phase, pending task outputs uses fallback estimate.
-        o3.metrics.on_input_dequeued(o3_input, input_index=0)
-        o3.metrics.on_task_submitted(0, o3_input)
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        # No sample available yet, returns None
-        assert o3.metrics.obj_store_mem_pending_task_outputs is None
-        op3_usage = resource_manager.get_op_usage(o3).object_store_memory
-        # When pending task outputs is None, it's treated as 0
-        assert op3_usage == 0
+        # map_a and map_b see their own bytes.
+        assert resource_manager.get_op_usage(map_a).object_store_memory == 100
+        assert resource_manager.get_op_usage(map_b).object_store_memory == 200
 
-        # Task inputs no longer count once the task is finished.
-        o3.metrics.on_output_queued(o3_input)
-        o3.metrics.on_task_finished(
-            0,
-            None,
-            TaskExecWorkerStats(task_wall_time_s=0.0),
-            TaskExecDriverStats(task_output_backpressure_s=0),
-        )
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 0
-        assert resource_manager.get_op_usage(o3).object_store_memory == 1
+        # union_op itself has 0 bytes (it never calls on_block_produced).
+        assert resource_manager.get_op_usage(union_op).object_store_memory == 0
+
+        # Global usage = map_a (100) + map_b (200) only, not inflated by Union.
+        # InputDataBuffer and downstream (no blocks yet) contribute 0.
+        total_obj_store = resource_manager.get_global_usage().object_store_memory
+        assert total_obj_store == 300
 
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""

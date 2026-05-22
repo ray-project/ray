@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
@@ -99,6 +100,7 @@ def test_all_to_all_operator():
 
     # Feed data.
     op.start(ExecutionOptions())
+    op.set_block_ref_counter(BlockRefCounter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
@@ -180,6 +182,10 @@ def test_all_to_all_estimated_num_output_bundles():
         DataContext.get_current(),
         DataContext.get_current().target_max_block_size,
     )
+
+    counter = BlockRefCounter()
+    op1.set_block_ref_counter(counter)
+    op2.set_block_ref_counter(counter)
 
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)
