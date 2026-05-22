@@ -373,8 +373,14 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_metrics.on_task_output_generated(
             task_index=partition_id, output=bundle
         )
+        # Use the actual count of submitted reduce tasks (i.e. partitions no
+        # longer pending), NOT ``partition_id + 1`` — _pending_partition_ids
+        # is a set with non-deterministic iteration order and skipped empty
+        # partitions don't become tasks, so partition_id alone is not a
+        # monotonically-increasing task counter.
+        num_tasks_submitted = self._num_partitions - len(self._pending_partition_ids)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
-            partition_id + 1,
+            num_tasks_submitted,
             self.upstream_op_num_outputs(),
             self._reduce_metrics,
             total_num_tasks=self._num_partitions,
