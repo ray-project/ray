@@ -61,6 +61,7 @@ py_test_module_list(
         "test_get_locations.py",
         "test_get_or_create_actor.py",
         "test_healthcheck.py",
+        "test_hostname_routing.py",
         "test_iter.py",
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
