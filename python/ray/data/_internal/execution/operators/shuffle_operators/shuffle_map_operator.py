@@ -43,11 +43,11 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             from a map task.  Computed by the planner via
             :func:`_shuffle_tasks.compute_shard_group_size` to cap M × N.
         num_groups: Number of groups each map task returns
-            (``ceil(num_partitions / shard_group_size)``).
-        partition_fn: Function mapping a pa.Table to ``Dict[int, pa.Table]``.
+            (ceil(num_partitions / shard_group_size)).
+        partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
         pre_map_merge_threshold: Byte threshold per node at which buffered
             blocks are merged into a single map task.  Set to 0 to disable.
-        map_runtime_env: Optional ``runtime_env`` for map tasks; useful to
+        map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
         map_cpus: CPU request per map task.
         name: Display name shown in progress bars and logs.
@@ -188,9 +188,9 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        # Split into two dicts: ``resources`` is the numeric resource ask used
-        # for both Ray Core scheduling and our own ``ExecutionResources``
-        # accounting; ``ray_options`` is the full ``@ray.remote.options(...)``
+        # Split into two dicts: resources is the numeric resource ask used
+        # for both Ray Core scheduling and our own ExecutionResources
+        # accounting; ray_options is the full @ray.remote.options(...)
         # bag which adds scheduling_strategy / runtime_env / num_returns.
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
@@ -261,8 +261,8 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             task.get_requested_resource_bundle()
         )
 
-        # ``task_done_callback`` fires only after the ObjectRef is ready, so
-        # this ``ray.get`` is just local deserialization.
+        # task_done_callback fires only after the ObjectRef is ready, so
+        # this ray.get is just local deserialization.
         input_meta, shard_sizes = ray.get(task.get_waitable())
 
         for pid, (rows, nbytes) in shard_sizes.items():
@@ -303,11 +303,11 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
 
         for bundle in input_bundles:
             self._map_metrics.on_output_taken(bundle)
-        # NOTE: we don't call ``on_task_output_generated`` here.  That metric
-        # path asserts ``exec_stats.block_ser_time_s is not None`` on every
+        # NOTE: we don't call on_task_output_generated here.  That metric
+        # path asserts exec_stats.block_ser_time_s is not None on every
         # output block, and shuffle has no per-output-block timing (one map
         # task produces G blocks together).  The metrics it populates
-        # (``num_task_outputs_generated``, block-size histograms, etc.) are
+        # (num_task_outputs_generated, block-size histograms, etc.) are
         # observability only — execution correctness and resource accounting
         # don't depend on them.  Plasma usage for these outputs is tracked
         # via the downstream op's input-queue instead.
@@ -339,7 +339,7 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
     # -----------------------------------------------------------------------
 
     def get_partition_bytes(self) -> Dict[int, int]:
-        """Per-partition uncompressed byte count.  Used by ``ShuffleReduceOp``
+        """Per-partition uncompressed byte count.  Used by ShuffleReduceOp
         to size each reducer's memory hint."""
         return dict(self._partition_bytes)
 
@@ -395,9 +395,9 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         return self._total_input_rows if self._total_input_rows > 0 else None
 
     def current_logical_usage(self) -> ExecutionResources:
-        # NOTE: ``object_store_memory`` is intentionally excluded.
-        # ``ResourceManager.update_usages`` asserts
-        # ``current_logical_usage().object_store_memory == 0`` and then
+        # NOTE: object_store_memory is intentionally excluded.
+        # ResourceManager.update_usages asserts
+        # current_logical_usage().object_store_memory == 0 and then
         # overwrites it with its own estimate from the op's input/output
         # queue sizes — anything we put here would be discarded.
         return ExecutionResources(

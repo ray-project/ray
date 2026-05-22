@@ -46,18 +46,18 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             map task's return objects.  Must match the value used by the
             paired :class:`ShuffleMapOp`.
         num_groups: Number of groups per map task
-            (``ceil(num_partitions / shard_group_size)``).  Must match.
+            (ceil(num_partitions / shard_group_size)).  Must match.
         reduce_fn: Function called once per partition (in blocking mode) or
             incrementally (in streaming mode) to combine input shards into
             output blocks.
-        streaming_reduce: If True, ``reduce_fn`` is called whenever a
-            partition's accumulator reaches ``target_max_block_size`` (for
+        streaming_reduce: If True, reduce_fn is called whenever a
+            partition's accumulator reaches target_max_block_size (for
             partial-result-friendly reductions like plain concat).  If False,
             wait for all shards before calling once (required for sort or
             stateful aggregation).  Forced to False when
-            ``disallow_block_splitting=True``.
+            disallow_block_splitting=True.
         disallow_block_splitting: If True, output blocks are emitted as-is
-            without being reshaped to ``target_max_block_size`` — required
+            without being reshaped to target_max_block_size — required
             for hash-shuffle's "partition = block" contract.
         reduce_cpus: CPU request per reduce task.  Defaults to 1.  With
             concurrency capped at one reducer per node, asking for more CPUs
@@ -135,15 +135,15 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         """Each upstream bundle carries G blocks in group-index order;
-        accumulate ``blocks[g]`` into ``_group_buffers[g]``."""
+        accumulate blocks[g] into _group_buffers[g]."""
         assert input_index == 0
         self._reduce_metrics.on_input_received(input_bundle)
 
         # Inter-op contract: ShuffleMapOp emits exactly num_groups blocks per
         # bundle (one IPC group per output block, in group-index order).  A
         # violation means silent data corruption downstream, so this is a
-        # ``ValueError`` rather than an ``assert`` (which gets stripped with
-        # ``python -O``).
+        # ValueError rather than an assert (which gets stripped with
+        # python -O).
         if len(input_bundle.block_refs) != self._num_groups:
             raise ValueError(
                 f"ShuffleReduceOp expected {self._num_groups} blocks per "
@@ -158,7 +158,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # Snapshot partition stats from upstream so we can size reducer
         # memory.  Upstream is guaranteed complete by the executor before
         # this is called.  The planner pairs us with a ShuffleMapOp upstream
-        # (see ``_plan_hash_shuffle_repartition``); other upstreams are a
+        # (see _plan_hash_shuffle_repartition); other upstreams are a
         # programming error.
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp), (
@@ -200,7 +200,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         """Max concurrent reduce tasks allowed.
 
         Defaults to 1 per live worker node, distributed via SPREAD.  Override
-        via ``DataContext`` config ``map_reduce_max_concurrent_reducers``.
+        via DataContext config map_reduce_max_concurrent_reducers.
         """
         override = self._data_context.get_config(
             "map_reduce_max_concurrent_reducers", None
@@ -267,7 +267,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 task_done_callback=functools.partial(
                     self._handle_reduce_done, group_id
                 ),
-                # NOTE: ``object_store_memory`` is intentionally not set on
+                # NOTE: object_store_memory is intentionally not set on
                 # the bundle — the resource manager computes per-op plasma
                 # usage itself and would overwrite anything we put here.
                 task_resource_bundle=ExecutionResources(
@@ -349,20 +349,19 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     ) -> Tuple[Dict[str, Any], int]:
         """Build the resource ask for one reduce task.
 
-        Returns ``(resources_dict, estimated_bytes)``:
+        Returns (resources_dict, estimated_bytes):
 
-        - ``resources_dict``: ``num_cpus`` and a ``memory`` hint sized to
-          ``2 × estimated_bytes`` — covers decompressed input + concat copy.
+        - resources_dict: num_cpus and a memory hint sized to
+          2 × estimated_bytes — covers decompressed input + concat copy.
           The memory ask is capped at a single node's memory so the scheduler
           still has a meaningful placement hint.
-        - ``estimated_bytes``: uncompressed bytes for this group's partitions.
+        - estimated_bytes: uncompressed bytes for this group's partitions.
         """
         estimated_bytes = sum(
             self._partition_bytes.get(pid, 0) for pid in partition_ids
         )
-        cluster_res = ray.cluster_resources()
-        num_nodes = max(len(ray.nodes()), 1)
-        node_memory = cluster_res.get("memory", 30e9) / num_nodes
+        assert self._num_nodes is not None
+        node_memory = ray.cluster_resources().get("memory", 30e9) / self._num_nodes
         reduce_resources: Dict[str, Any] = {
             "num_cpus": self._shuffle_reduce_task_num_cpus
         }
@@ -447,7 +446,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def num_output_rows_total(self) -> Optional[int]:
         # Output row count matches upstream input row count.  The planner
-        # guarantees a ShuffleMapOp upstream — see ``_add_input_inner``.
+        # guarantees a ShuffleMapOp upstream — see _add_input_inner.
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp)
         return upstream.num_output_rows_total()

@@ -51,7 +51,7 @@ def _plan_hash_shuffle_repartition(
     """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for V2 hash shuffle.
 
     Returns the reduce op; the executor crawls upstream via its
-    ``input_dependencies`` to find the map op.
+    input_dependencies to find the map op.
     """
     from ray.data._internal.execution.operators.hash_shuffle_v2 import (
         _SHUFFLE_MAP_RUNTIME_ENV,

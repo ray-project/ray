@@ -149,8 +149,8 @@ def _make_reduce_op(
 
 
 def test_partition_blocks_to_shards_combines_chunked_columns():
-    """Regression: ``hash_partition`` is sensitive to per-column chunking; the
-    operator must defragment via ``combine_chunks`` before calling partition_fn
+    """Regression: hash_partition is sensitive to per-column chunking; the
+    operator must defragment via combine_chunks before calling partition_fn
     (a missing call here cut map throughput in half)."""
     chunked_arr = pa.chunked_array([pa.array([1, 2]), pa.array([3, 4])])
     chunked_block = pa.table({"id": chunked_arr, "val": chunked_arr})
@@ -207,7 +207,7 @@ def test_ipc_encode_decode_roundtrip(tc: IpcRoundtripCase):
 
 
 def test_ipc_decoded_schema_has_no_pids_metadata():
-    """``__pids__`` is an internal routing tag; must not leak downstream."""
+    """__pids__ is an internal routing tag; must not leak downstream."""
     buf = _encode_group_ipc([0], {0: _make_table(3)}, _ipc_opts())
     _, decoded = _read_ipc_group(buf)[0]
     meta = decoded.schema.metadata
@@ -389,7 +389,7 @@ def test_pre_map_merge_buffer(monkeypatch, tc: MergeBufferCase):
 
 
 def test_reduce_op_groups_bundles_by_block_position():
-    """ShuffleReduceOp gathers ``bundle.blocks[g]`` into ``_group_buffers[g]``."""
+    """ShuffleReduceOp gathers bundle.blocks[g] into _group_buffers[g]."""
     op = _make_reduce_op(num_partitions=4)
     # num_groups == 4 for num_partitions=4
     refs_a = [ray.ObjectRef(bytes([i]) * 28) for i in range(4)]
@@ -429,7 +429,7 @@ def test_e2e_repartition_keys_preserves_rows(
     disable_fallback_to_object_extension,
     num_partitions,
 ):
-    """Round-trip: ``repartition(num_partitions, keys=...)`` preserves all
+    """Round-trip: repartition(num_partitions, keys=...) preserves all
     rows and key totals when routed through the V2 two-op DAG."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
@@ -445,9 +445,9 @@ def test_e2e_partition_equals_block_contract(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """V2 must produce exactly ``num_partitions`` output blocks (partition =
-    block contract).  Guarded by ``disallow_block_splitting=True`` +
-    ``streaming_reduce=False``."""
+    """V2 must produce exactly num_partitions output blocks (partition =
+    block contract).  Guarded by disallow_block_splitting=True +
+    streaming_reduce=False."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
@@ -487,7 +487,7 @@ def test_e2e_repartition_with_sort_produces_sorted_partitions(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """``repartition(sort=True, keys=...)`` selects the sort reduce; each
+    """repartition(sort=True, keys=...) selects the sort reduce; each
     output block should be sorted by the key columns."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE

@@ -16,7 +16,7 @@ _SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_MAP_WORKER": "1"}}
 
 
 def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> PartitionFn:
-    """Return a partition function that hash-partitions by ``key_columns``."""
+    """Return a partition function that hash-partitions by key_columns."""
 
     def _partition(block: pa.Table) -> Dict[int, pa.Table]:
         return hash_partition(
@@ -38,7 +38,7 @@ def _concat_reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Tab
 
 
 def _sort_reduce(key_columns: List[str]) -> ReduceFn:
-    """Return a reduce function that concatenates then sorts by ``key_columns``.
+    """Return a reduce function that concatenates then sorts by key_columns.
 
     Requires blocking mode because sorting needs all shards before emitting.
     """

@@ -32,11 +32,11 @@ ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
 _MAX_RETURN_GROUPS = 200
 
 # Number of ObjectRefs fetched per ray.get() call in reducers.
-_REDUCE_BATCH_SIZE = 256
+_REDUCE_BATCH_SIZE = 16
 
 
 def compute_shard_group_size(num_partitions: int) -> int:
-    """Choose ``shard_group_size`` so each mapper returns ≤ ``_MAX_RETURN_GROUPS``
+    """Choose shard_group_size so each mapper returns ≤ _MAX_RETURN_GROUPS
     objects.  Caps the M×N intermediate object count regardless of partition
     count."""
     return max(1, (num_partitions + _MAX_RETURN_GROUPS - 1) // _MAX_RETURN_GROUPS)
@@ -58,8 +58,8 @@ def _partition_blocks_to_shards(
 
     Each block is partitioned independently so we never materialize a single
     concatenated table across all inputs.  Chunked columns are defragmented
-    here (``combine_chunks``) before calling partition_fn — this is a real
-    performance constraint, not optional: hash_partition's per-column ``take``
+    here (combine_chunks) before calling partition_fn — this is a real
+    performance constraint, not optional: hash_partition's per-column take
     is sensitive to chunk count, and leaving chunked input alone halves map
     throughput.
     """
@@ -88,8 +88,8 @@ def _encode_group_ipc(
 ) -> pa.Buffer:
     """ZSTD-encode one group as a single Arrow IPC stream.
 
-    The schema metadata's ``__pids__`` field is a list of ``[pid, batch_count]``
-    pairs, in the order batches appear in the stream.  ``combine_chunks()``
+    The schema metadata's __pids__ field is a list of [pid, batch_count]
+    pairs, in the order batches appear in the stream.  combine_chunks()
     usually collapses a Table to one batch, but the Arrow API doesn't strictly
     guarantee that (e.g. tables hitting the 2 GB-per-batch offset limit can
     come out with multiple chunks).  Encoding the per-pid batch count lets the
@@ -219,9 +219,9 @@ def _shuffle_map_task(
 def _read_ipc_group(group: pa.Buffer) -> List[Tuple[int, pa.Table]]:
     """Decompress one IPC group and return (partition_id, table) pairs.
 
-    Reads ``__pids__`` (a list of ``[pid, batch_count]`` pairs encoded by
+    Reads __pids__ (a list of [pid, batch_count] pairs encoded by
     :func:`_encode_group_ipc`) to know how many batches to consume per pid,
-    then re-merges them into one table per pid.  Strips ``__pids__`` from
+    then re-merges them into one table per pid.  Strips __pids__ from
     the table schemas so downstream tables don't carry our routing tag.
     """
     import json as _json
@@ -276,7 +276,7 @@ def _shuffle_reduce_task(
         partition_ids: Partition IDs this reducer is responsible for.
         reduce_fn: User-supplied reduce callable.
         target_max_block_size: Target output block size (also the streaming
-            flush threshold).  ``None`` means emit blocks as-is (no
+            flush threshold).  None means emit blocks as-is (no
             BlockOutputBuffer reshaping, no streaming flush) — used under the
             "partition = block" contract.
         streaming: Whether to flush partitions incrementally (True) or
@@ -318,7 +318,7 @@ def _shuffle_reduce_task(
     def _reduce_into_buffer(pid: int, tables: List[pa.Table]):
         """Call reduce_fn, push outputs through buffer, yield ready blocks.
 
-        When ``target_max_block_size`` is None, ``OutputBlockSizeOption.of``
+        When target_max_block_size is None, OutputBlockSizeOption.of
         returns None, and the BlockOutputBuffer emits exactly one block per
         partition (no slicing / coalescing).
         """
