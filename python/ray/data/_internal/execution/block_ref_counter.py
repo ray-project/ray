@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
 import ray
+import ray._private.worker
 
 if TYPE_CHECKING:
     pass
