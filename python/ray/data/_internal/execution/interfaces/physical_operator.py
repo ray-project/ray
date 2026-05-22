@@ -37,6 +37,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,8 @@ class DataOpTask(OpTask):
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        block_ref_counter: "BlockRefCounter" = None,
+        producer_id: str = None,
     ):
         """Create a DataOpTask
         Args:
@@ -141,6 +144,9 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            block_ref_counter: The centralized block reference counter. on_block_produced
+                is called for each block yielded by this task.
+            producer_id: The id of the operator that produces the blocks from this task.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -153,6 +159,8 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._block_ref_counter: "BlockRefCounter" = block_ref_counter
+        self._producer_id: str = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -272,6 +280,9 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
+            self._block_ref_counter.on_block_produced(
+                self._pending_block_ref, meta.size_bytes or 0, self._producer_id
+            )
             self._output_ready_callback(
                 RefBundle(
                     [(self._pending_block_ref, meta)],
@@ -421,6 +432,11 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
+        self._block_ref_counter: Optional["BlockRefCounter"] = None
+
+    def set_block_ref_counter(self, counter: "BlockRefCounter") -> None:
+        """Inject the centralized block reference counter for this operator."""
+        self._block_ref_counter = counter
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")

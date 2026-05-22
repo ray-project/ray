@@ -216,6 +216,12 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
+        # Propagate the block reference counter to every operator so that
+        # DataOpTask.on_data_ready can call on_block_produced for each yielded block.
+        counter = self._resource_manager.block_ref_counter
+        for op in self._topology:
+            op.set_block_ref_counter(counter)
+
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
