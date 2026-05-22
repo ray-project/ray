@@ -786,6 +786,9 @@ def resolve_ip_for_localhost(host: str):
 # ray start --node-ip-address. You should instead use
 # get_node_to_connect_ip_address.
 def get_node_ip_address(address=None):
+    if os.environ.get("RAY_NODE_USE_HOSTNAME") == "1":
+        return socket.gethostname()
+
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
 
