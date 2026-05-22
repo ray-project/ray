@@ -840,17 +840,19 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
-  absl::flat_hash_set<NodeID> locations_set = it->second.locations;
-  if (it->second.pinned_at_node_id_.has_value()) {
-    locations_set.insert(*it->second.pinned_at_node_id_);
-  }
-  std::vector<NodeID> locations(locations_set.begin(), locations_set.end());
   // Only the owner is allowed to broadcast a free for an object. Borrowers
   // also reach this code path when their local refs drop to zero, but they
   // must not tell the cluster to evict an object that is still owned
   // elsewhere.
-  if (spread_free_local_objects_ && !locations.empty() && it->second.owned_by_us_) {
-    spread_free_local_objects_(it->first, locations);
+  if (spread_free_local_objects_ && it->second.owned_by_us_) {
+    absl::flat_hash_set<NodeID> locations_set = it->second.locations;
+    if (it->second.pinned_at_node_id_.has_value()) {
+      locations_set.insert(*it->second.pinned_at_node_id_);
+    }
+    if (!locations_set.empty()) {
+      std::vector<NodeID> locations(locations_set.begin(), locations_set.end());
+      spread_free_local_objects_(it->first, locations);
+    }
   }
 
   for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {

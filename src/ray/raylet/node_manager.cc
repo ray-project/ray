@@ -3638,9 +3638,8 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
 void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
                                          rpc::FreeLocalObjectsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  for (auto &object_id_str : request.object_ids()) {
-    ObjectID object_id = ObjectID::FromBinary(object_id_str);
-    local_object_manager_.ReleaseFreedLocalObject(object_id);
+  for (const auto &object_id_str : request.object_ids()) {
+    local_object_manager_.ReleaseFreedLocalObject(ObjectID::FromBinary(object_id_str));
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

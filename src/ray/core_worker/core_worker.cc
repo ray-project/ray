@@ -4666,4 +4666,5 @@ void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
       },
       "CoreWorker.SpreadFreeLocalObjects");
 }
+
 }  // namespace ray::core
