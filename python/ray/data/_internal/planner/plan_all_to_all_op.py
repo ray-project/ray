@@ -48,23 +48,79 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.execution.operators.hash_shuffle import (
-        HashShuffleOperator,
+    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for V2 hash shuffle.
+
+    Returns the reduce op; the executor crawls upstream via its
+    ``input_dependencies`` to find the map op.
+    """
+    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+        _SHUFFLE_MAP_RUNTIME_ENV,
+        _concat_reduce,
+        _make_hash_partition_fn,
+        _sort_reduce,
+    )
+    from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (  # noqa: E501
+        compute_num_groups,
+        compute_shard_group_size,
+    )
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+        ShuffleMapOp,
+    )
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+        ShuffleReduceOp,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
+    key_list = list(normalized_key_columns)
 
-    return HashShuffleOperator(
+    # Resolve target_num_partitions with the same fallback chain as the
+    # previous monolithic operator: explicit → upstream estimate → context
+    # default.
+    input_logical_op = input_physical_op._logical_operators[0]
+    estimated_input_blocks = input_logical_op.estimated_num_outputs()
+    target_num_partitions = (
+        logical_op.num_outputs
+        or estimated_input_blocks
+        or data_context.default_hash_shuffle_parallelism
+    )
+
+    shard_group_size = compute_shard_group_size(target_num_partitions)
+    num_groups = compute_num_groups(target_num_partitions, shard_group_size)
+
+    partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
+    reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
+
+    map_op = ShuffleMapOp(
         input_physical_op,
         data_context,
-        key_columns=tuple(normalized_key_columns),  # noqa: type
-        # NOTE: In case number of partitions is not specified, we fall back to
-        #       default min parallelism configured
-        num_partitions=logical_op.num_outputs,
-        should_sort=logical_op.sort,
-        # TODO wire in aggregator args overrides
+        num_partitions=target_num_partitions,
+        shard_group_size=shard_group_size,
+        num_groups=num_groups,
+        partition_fn=partition_fn,
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=(
+            f"HashShuffleMap(keys={tuple(key_list)}, "
+            f"partitions={target_num_partitions})"
+        ),
     )
+    reduce_op = ShuffleReduceOp(
+        map_op,
+        data_context,
+        num_partitions=target_num_partitions,
+        shard_group_size=shard_group_size,
+        num_groups=num_groups,
+        reduce_fn=reduce_fn,
+        # Partition = block contract: each partition becomes one output
+        # block.  Requires blocking reduce + no BlockOutputBuffer reshaping.
+        streaming_reduce=False,
+        disallow_block_splitting=True,
+        name=(
+            f"HashShuffleReduce(keys={tuple(key_list)}, "
+            f"partitions={target_num_partitions})"
+        ),
+    )
+    return reduce_op
 
 
 def _plan_hash_shuffle_aggregate(
@@ -87,7 +143,7 @@ def _plan_hash_shuffle_aggregate(
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
         num_partitions=logical_op.num_partitions,
-        # TODO wire in aggregator args overrides
+        aggregator_ray_remote_args_override=logical_op.ray_remote_args,
     )
 
 
