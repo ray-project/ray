@@ -167,11 +167,21 @@ def convert_and_sort_checkpointed_ids(
 class CheckpointManager(abc.ABC):
     """Manage checkpoint data."""
 
-    def __init__(self, checkpoint_config: CheckpointConfig):
+    def __init__(
+        self,
+        checkpoint_config: CheckpointConfig,
+        data_context: DataContext,
+    ):
         """Initialize the CheckpointManager.
 
         Args:
             checkpoint_config: the checkpoint config.
+            data_context: the DataContext snapshot whose ``execution_options``
+                should govern the Ray tasks fired during checkpoint loading
+                and pending-checkpoint cleanup. Pass the dataset's
+                ``_context`` (not ``DataContext.get_current()``) so the
+                label_selector and other execution options stay consistent
+                with the rest of materialize.
         """
         self.checkpoint_path = checkpoint_config.checkpoint_path
         self.filesystem = checkpoint_config.filesystem
@@ -182,6 +192,7 @@ class CheckpointManager(abc.ABC):
         self.checkpoint_path_unwrapped = _unwrap_protocol(
             checkpoint_config.checkpoint_path
         )
+        self._data_context = data_context
 
     def load_checkpoint(
         self,
@@ -275,7 +286,7 @@ class CheckpointManager(abc.ABC):
         # Note: the convert is very time-consuming.
         # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
-        ctx_label_selector = DataContext.get_current().execution_options.label_selector
+        ctx_label_selector = self._data_context.execution_options.label_selector
         task = convert_and_sort_checkpointed_ids
         if ctx_label_selector:
             task = task.options(label_selector=ctx_label_selector)
@@ -317,7 +328,7 @@ class CheckpointManager(abc.ABC):
             return
         if data_file_filesystem is None:
             data_file_filesystem = self.filesystem
-        ctx_label_selector = DataContext.get_current().execution_options.label_selector
+        ctx_label_selector = self._data_context.execution_options.label_selector
         task = _clean_pending_checkpoints_task
         if ctx_label_selector:
             task = task.options(label_selector=ctx_label_selector)

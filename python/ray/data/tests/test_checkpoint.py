@@ -866,7 +866,7 @@ def test_clean_pending_checkpoint(
         with fs.open_output_stream(data_file) as f:
             f.write(b"id\n0\n")
 
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
     checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
 
     # Data file should be deleted (if it existed)
@@ -954,7 +954,7 @@ def test_clean_pending_checkpoint_with_partitioned_data(
         ), f"Expected file to exist: {f}"
 
     # Run cleanup
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
     checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
 
     # Verify data files matching pending checkpoint were deleted
@@ -990,7 +990,7 @@ def test_clean_pending_checkpoints_task_failure(ray_start_10_cpus_shared, tmp_pa
         delete_checkpoint_on_success=False,
     )
 
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
 
     # The cleanup task should fail because the checkpoint directory doesn't exist
     # and get_file_info on a non-existent path will raise an error
@@ -2022,7 +2022,7 @@ def test_clean_pending_checkpoints_no_pending(ray_start_10_cpus_shared, fs, base
     with fs.open_output_stream(data_file) as f:
         f.write(b"dummy")
 
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
     checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
 
     # Data file should still exist (no pending checkpoints means nothing to clean)
