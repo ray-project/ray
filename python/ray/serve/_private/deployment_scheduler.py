@@ -460,6 +460,7 @@ class DeploymentScheduler(ABC):
         self._launching_replicas[deployment_id].pop(replica_id, None)
         self._recovering_replicas[deployment_id].discard(replica_id)
         self._running_replicas[deployment_id].pop(replica_id, None)
+        self._logged_pack_placement_failures.discard(replica_id)
 
     def on_replica_running(self, replica_id: ReplicaID, node_id: str) -> None:
         """Called whenever a deployment replica is running with a known node id."""
@@ -1002,14 +1003,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         )
 
         if all_scheduling_requests:
-            order_log_key = tuple(
-                (
-                    r.replica_id.deployment_id,
-                    r.replica_id.unique_id,
-                    _format_resources_for_scheduling_log(r.requested_resources),
-                )
-                for r in all_scheduling_requests
-            )
+            order_log_key = tuple(r.replica_id for r in all_scheduling_requests)
             if order_log_key != self._last_pack_schedule_order_log_key:
                 self._last_pack_schedule_order_log_key = order_log_key
                 if Resources.CUSTOM_PRIORITY:
@@ -1122,16 +1116,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 break
 
         replica_id = scheduling_request.replica_id
-        resource_summary = _format_resources_for_scheduling_log(
-            scheduling_request.requested_resources
-        )
 
         if target_node is None:
             if replica_id not in self._logged_pack_placement_failures:
                 self._logged_pack_placement_failures.add(replica_id)
                 logger.info(
                     f"Pack scheduling could not place {replica_id} "
-                    f"({resource_summary}): no node with sufficient resources."
+                    f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}): "
+                    f"no node with sufficient resources."
                 )
             return None
 
@@ -1144,14 +1136,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         if succeeded:
             self._logged_pack_placement_failures.discard(replica_id)
             logger.info(
-                f"Pack scheduled {replica_id} ({resource_summary}) "
+                f"Pack scheduled {replica_id} "
+                f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
                 f"onto node {target_node}."
             )
         elif replica_id not in self._logged_pack_placement_failures:
             self._logged_pack_placement_failures.add(replica_id)
             logger.info(
                 f"Pack scheduling failed to launch {replica_id} "
-                f"({resource_summary}) on node {target_node}."
+                f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
+                f"on node {target_node}."
             )
 
         return target_node if succeeded else None
