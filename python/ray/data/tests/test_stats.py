@@ -2398,6 +2398,24 @@ class TestTimerHistogram:
         t.add(0.010)  # exactly the 10ms bound
         assert t.approx_percentile(0.5) == pytest.approx(0.010)
 
+    def test_percentile_not_clamped_to_max(self):
+        # Regression test for samples clustered narrowly inside one bin:
+        # every percentile must report the bin's upper bound, not
+        # ``max()``. An earlier impl clamped to max, which collapsed
+        # every percentile in the max-sample's bin to the same value as
+        # max and erased the histogram signal entirely on workloads
+        # with narrowly clustered loop-step times.
+        t = Timer(track_distribution=True)
+        for _ in range(100):
+            t.add(0.77)  # sits in the (0.7, 1.0] bin → upper bound 1.0
+        assert t.max() == pytest.approx(0.77)
+        # Percentile reports the bin upper bound (1.0), not max (0.77).
+        assert t.approx_percentile(0.5) == pytest.approx(1.0)
+        assert t.approx_percentile(0.9) == pytest.approx(1.0)
+        # And it can legitimately exceed max — that's the trade-off for
+        # not losing signal when samples cluster inside one bin.
+        assert t.approx_percentile(0.9) > t.max()
+
     @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
     def test_rejects_out_of_range_p(self, bad_p):
         # Catch the common ``approx_percentile(90)`` typo (instead of 0.9)
@@ -2419,17 +2437,17 @@ def test_streaming_exec_schedule_approx_percentiles_populated(
     ray_start_regular_shared,
 ):
     # Smoke test: after running a dataset to completion, the approx
-    # percentile fields on the summary are set (non-negative, monotonic,
-    # bounded by max) — i.e. the histogram is wired end-to-end through
-    # the streaming executor.
+    # percentile fields on the summary are set (non-negative, monotonic)
+    # — i.e. the histogram is wired end-to-end through the streaming
+    # executor. Don't assert ``≤ max``: percentile reports a bin upper
+    # bound and can legitimately exceed max by up to one bin width.
     ds = ray.data.range(100).map(lambda r: r)
     ds.materialize()
     summary = ds.get_stats_summary(detail=True)
     p50 = summary.streaming_exec_schedule_approx_p50_s
     p70 = summary.streaming_exec_schedule_approx_p70_s
     p90 = summary.streaming_exec_schedule_approx_p90_s
-    schedule_max = summary.streaming_exec_schedule_max_s
-    assert 0 <= p50 <= p70 <= p90 <= schedule_max
+    assert 0 <= p50 <= p70 <= p90
 
 
 if __name__ == "__main__":

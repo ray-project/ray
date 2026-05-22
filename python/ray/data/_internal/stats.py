@@ -169,14 +169,16 @@ class Timer:
     identical to before.
     """
 
-    # Log-spaced upper bin bounds (seconds) — ~2x resolution covering
-    # 1 ms to 100 s. The lower end (1 ms-1 s) is where healthy
-    # scheduling-loop steps live; the upper end (1 s-100 s) lets us
-    # distinguish "loop is degraded" from "cluster is wedged" without
-    # collapsing everything past 5 s into a single bucket. Samples
-    # above the last bound land in an overflow slot;
-    # ``approx_percentile()`` reports ``max()`` for that case so the
-    # tail is never under-reported as the last finite bound.
+    # Upper bin bounds (seconds). Roughly 1.5x ratio in the realistic
+    # 50 ms-2 s scheduling-loop-step range, ~2x outside that range:
+    # the median Ray Data scheduling-loop step tends to sit in
+    # 100 ms-1 s on large-cluster workloads, and uniform 2x bins were
+    # too coarse there to distinguish p50 from p90 when samples cluster
+    # in a single bin. The upper end (5 s-100 s) lets us tell "loop is
+    # degraded" from "cluster is wedged" without collapsing everything
+    # past 5 s into one bucket. Samples above the last bound land in
+    # an overflow slot; ``approx_percentile()`` reports ``max()`` for
+    # that case so the tail isn't under-reported.
     _HIST_BOUNDS_S: Tuple[float, ...] = (
         0.001,
         0.002,
@@ -184,11 +186,18 @@ class Timer:
         0.010,
         0.020,
         0.050,
+        0.075,
         0.100,
+        0.150,
         0.200,
+        0.300,
+        0.400,
         0.500,
+        0.700,
         1.0,
+        1.5,
         2.0,
+        3.0,
         5.0,
         10.0,
         20.0,
@@ -243,22 +252,31 @@ class Timer:
         log-spaced histogram instead of the raw samples (O(1) memory
         regardless of sample count, which matters because this is called
         on every scheduling-loop iteration of every Ray Data job).
-        Resolution is the width of one bin — roughly 2x in the realistic
-        1ms-100s range — and tail samples above the largest bound
-        collapse into a single overflow bucket.
+        Resolution is the width of one bin — ~1.5x in the realistic
+        50 ms-2 s range, ~2x outside it. Tail samples above the largest
+        bound collapse into a single overflow bucket.
+
+        The result is an *upper bound* on the p-th sample's true value:
+        the bin's upper edge. It can be slightly larger than
+        :meth:`max` when the percentile lands in the same bin as the
+        max sample, since the bin spans up to its declared edge. Don't
+        clamp to ``max()`` — doing so collapses every percentile in the
+        max-sample's bin to the same value and erases the signal we
+        wanted from the histogram.
 
         Args:
             p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
                 for p90 — not ``90``). Values outside this range raise
                 ``ValueError``; without the check, ``p=90`` would
-                silently return ``max()`` and look like a tail spike.
+                silently return the overflow bin's value and look like
+                a tail spike.
 
         Returns:
-            The upper bound of the bin the p-th sample falls into,
-            clamped to :meth:`max` so the result is never larger than
-            any observed sample. Samples in the overflow bin are
-            reported as :meth:`max` directly. Returns 0 if histogram
-            tracking is disabled or no samples have been added.
+            The upper bound of the bin the p-th sample falls into.
+            Samples in the overflow bin are reported as :meth:`max`
+            directly (the largest finite bound would understate them).
+            Returns 0 if histogram tracking is disabled or no samples
+            have been added.
 
         Raises:
             ValueError: If ``p`` is outside ``[0.0, 1.0]``.
@@ -276,7 +294,7 @@ class Timer:
             cum += count
             if cum >= target:
                 if i < len(self._HIST_BOUNDS_S):
-                    return min(self._HIST_BOUNDS_S[i], self._max)
+                    return self._HIST_BOUNDS_S[i]
                 return self._max
         return self._max
 
