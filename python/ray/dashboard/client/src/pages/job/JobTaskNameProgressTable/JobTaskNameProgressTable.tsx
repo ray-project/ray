@@ -7,6 +7,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@mui/material";
 import React, { ReactElement } from "react";
 import { ClassNameProps } from "../../../common/props";
@@ -30,10 +31,20 @@ export const JobTaskNameProgressTable = ({
   jobId,
   className,
 }: JobTaskNameProgressTableProps) => {
-  const { progress, page, setPage, total } = useJobProgressByTaskName(jobId);
+  const { progress, page, setPage, total, totalTasks = 0 } = useJobProgressByTaskName(jobId);
+
+  // Check if the number of tasks exceeds a certain threshold
+  const isTruncated = total > 10000;
 
   return (
     <TableContainer className={className}>
+      {isTruncated && (
+        <Box mt={2} mb={2} display="flex" justifyContent="center">
+          <Typography color="error">
+            Warning: This job has truncated tasks. Only the first 10,000 tasks are displayed.
+          </Typography>
+        </Box>
+      )}
       <div>
         <Pagination
           count={Math.ceil(total / page.pageSize)}
