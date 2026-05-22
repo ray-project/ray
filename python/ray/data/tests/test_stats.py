@@ -2309,7 +2309,12 @@ ray.shutdown()
 
 
 class TestTimerHistogram:
-    """Tests for Timer's opt-in histogram + approx_percentile()."""
+    """Tests for Timer's opt-in histogram + approx_percentile().
+
+    ``approx_percentile`` reports the per-bin **mean**, not the bin's
+    upper bound — see ``Timer.approx_percentile`` for the rationale.
+    Test expectations follow accordingly.
+    """
 
     def test_disabled_by_default(self):
         t = Timer()
@@ -2331,8 +2336,8 @@ class TestTimerHistogram:
     @pytest.mark.parametrize(
         "p, expected",
         [
-            # 100 samples, all 5ms — every percentile lands on the 5ms bin
-            # (bisect_left returns the index of the 5ms bound).
+            # 100 samples all at 5ms → bin mean is 5ms; every percentile
+            # lands in that bin and reports its mean.
             (0.5, 0.005),
             (0.7, 0.005),
             (0.9, 0.005),
@@ -2347,11 +2352,15 @@ class TestTimerHistogram:
 
     def test_mixed_distribution_p50_p70_p90(self):
         # Three-tier distribution exercising each reported percentile in
-        # a different bin: 50 samples at 5ms, 25 at 50ms, 25 at 500ms.
-        # Cumulative counts: 50 @ 5ms, 75 @ 50ms, 100 @ 500ms.
-        #   p50 → target 50 → 5ms bin
-        #   p70 → target 70 → 50ms bin (cum 75 ≥ 70 lands here)
-        #   p90 → target 90 → 500ms bin
+        # a different bin. Each tier sits at a single value so the bin
+        # mean equals that value.
+        #   50 @ 5ms     → bin mean 5ms
+        #   25 @ 50ms    → bin mean 50ms
+        #   25 @ 500ms   → bin mean 500ms
+        # Cumulative counts: 50, 75, 100.
+        #   p50 → target 50 → 5ms bin   → 0.005
+        #   p70 → target 70 → 50ms bin  → 0.050
+        #   p90 → target 90 → 500ms bin → 0.500
         t = Timer(track_distribution=True)
         for _ in range(50):
             t.add(0.005)
@@ -2364,10 +2373,11 @@ class TestTimerHistogram:
         assert t.approx_percentile(0.9) == pytest.approx(0.5)
 
     def test_bimodal_distribution(self):
-        # 80 samples at 5ms, 20 samples at 200ms — the kind of bimodal
-        # shape that motivates a percentile metric in the first place.
+        # 80 samples at 5ms, 20 samples at 200ms — the bimodal shape that
+        # motivates a percentile metric in the first place.
         # p50 and p70 sit in the 5ms bin (target ≤ 80); p90 and p99 land
-        # in the 200ms bin (target > 80).
+        # in the 200ms bin (target > 80). Each tier sits at a single
+        # value so the bin mean equals that value.
         t = Timer(track_distribution=True)
         for _ in range(80):
             t.add(0.005)
@@ -2378,43 +2388,83 @@ class TestTimerHistogram:
         assert t.approx_percentile(0.9) == pytest.approx(0.2)
         assert t.approx_percentile(0.99) == pytest.approx(0.2)
 
-    def test_overflow_bin_reports_max(self):
-        # Force p90 into the overflow bin: 50 small samples + 51 samples
-        # above the largest histogram bound (100s). p90 = 0.9 * 101 =
-        # 90.9 → falls past the 1ms bin (cum 50) into overflow (cum 101).
-        # Should be reported as max(), not the last finite bin edge.
+    def test_overflow_bin_reports_overflow_mean(self):
+        # Force p90 into the overflow bin: 50 small samples + 40 large
+        # samples at 150s + 11 huge samples at 500s. p90 = 0.9 * 101 =
+        # 90.9 → past the 1ms bin (cum 50) into overflow (cum 101).
+        # The reported value is the mean of overflow samples — not
+        # ``max()``, since overflow can span a wide range.
         t = Timer(track_distribution=True)
         for _ in range(50):
             t.add(0.001)
-        for _ in range(51):
+        for _ in range(40):
+            t.add(150.0)
+        for _ in range(11):
             t.add(500.0)
+        expected_overflow_mean = (40 * 150.0 + 11 * 500.0) / 51
         assert t.max() == pytest.approx(500.0)
-        assert t.approx_percentile(0.9) == pytest.approx(500.0)
+        assert t.approx_percentile(0.9) == pytest.approx(expected_overflow_mean)
+        # Bin mean is naturally bounded by max.
+        assert t.approx_percentile(0.9) < t.max()
 
     def test_bin_boundaries(self):
         # Sample on a bin edge should be counted in that edge's bin
         # (bisect_left semantics), not the next one up.
         t = Timer(track_distribution=True)
         t.add(0.010)  # exactly the 10ms bound
+        # Only sample in the bin → bin mean equals that sample.
         assert t.approx_percentile(0.5) == pytest.approx(0.010)
 
-    def test_percentile_not_clamped_to_max(self):
-        # Regression test for samples clustered narrowly inside one bin:
-        # every percentile must report the bin's upper bound, not
-        # ``max()``. An earlier impl clamped to max, which collapsed
-        # every percentile in the max-sample's bin to the same value as
-        # max and erased the histogram signal entirely on workloads
-        # with narrowly clustered loop-step times.
+    def test_percentile_uses_bin_mean_not_upper_bound(self):
+        # Regression test for the original failure case: samples cluster
+        # inside one wide bin. The previous implementation reported the
+        # bin's upper bound (collapsing every percentile in that bin to
+        # an over-large constant); we now report the per-bin mean,
+        # which tracks the actual sample distribution inside the bin.
+        #
+        # 80 samples at 1.05s + 20 samples at 1.3s — all land in the
+        # (1.0, 1.5] bin (upper bound 1.5).
+        #   Bin sum:  80*1.05 + 20*1.3 = 110
+        #   Bin mean: 110 / 100 = 1.1
+        #   Bin upper bound: 1.5 (what the old impl returned)
+        #   max():    1.3
         t = Timer(track_distribution=True)
-        for _ in range(100):
-            t.add(0.77)  # sits in the (0.7, 1.0] bin → upper bound 1.0
-        assert t.max() == pytest.approx(0.77)
-        # Percentile reports the bin upper bound (1.0), not max (0.77).
-        assert t.approx_percentile(0.5) == pytest.approx(1.0)
-        assert t.approx_percentile(0.9) == pytest.approx(1.0)
-        # And it can legitimately exceed max — that's the trade-off for
-        # not losing signal when samples cluster inside one bin.
-        assert t.approx_percentile(0.9) > t.max()
+        for _ in range(80):
+            t.add(1.05)
+        for _ in range(20):
+            t.add(1.3)
+        assert t.max() == pytest.approx(1.3)
+        # Percentile reports bin mean (1.1), not bin upper bound (1.5).
+        assert t.approx_percentile(0.5) == pytest.approx(1.1)
+        assert t.approx_percentile(0.9) == pytest.approx(1.1)
+        # Bin mean is naturally bounded by max.
+        assert t.approx_percentile(0.9) <= t.max()
+
+    def test_worker_scaling_regression_case(self):
+        # Regression test for the worker_scaling-scale workload where
+        # avg=11.6s, max=37.7s, and all percentiles previously collapsed
+        # to 20.0 (the bin upper bound). With bin-mean reporting + the
+        # tighter 1s-50s bin layout, p50/p70/p90 should now sit close to
+        # the actual sample distribution and be distinguishable.
+        t = Timer(track_distribution=True)
+        # Synthesize a plausibly-shaped distribution: heavy mass around
+        # 10s, longer tail to ~37s.
+        for v in [8.0, 9.0, 10.0, 11.0, 12.0] * 16:  # 80 samples in 8-12s
+            t.add(v)
+        for v in [15.0, 18.0, 22.0, 28.0] * 4:  # 16 samples in 15-30s
+            t.add(v)
+        for v in [35.0, 37.0]:  # 2 samples near max
+            t.add(v)
+        max_v = t.max()
+        p50 = t.approx_percentile(0.5)
+        p70 = t.approx_percentile(0.7)
+        p90 = t.approx_percentile(0.9)
+        # Monotonic + bounded by max, the invariant the original bug
+        # violated by collapsing every percentile to the bin upper bound.
+        assert 0 < p50 <= p70 <= p90 <= max_v
+        # And p50 should be in the bulk of the distribution, well below
+        # the overall max — not pinned to a bin boundary.
+        assert p50 < 0.5 * max_v
 
     @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
     def test_rejects_out_of_range_p(self, bad_p):
@@ -2437,17 +2487,18 @@ def test_streaming_exec_schedule_approx_percentiles_populated(
     ray_start_regular_shared,
 ):
     # Smoke test: after running a dataset to completion, the approx
-    # percentile fields on the summary are set (non-negative, monotonic)
-    # — i.e. the histogram is wired end-to-end through the streaming
-    # executor. Don't assert ``≤ max``: percentile reports a bin upper
-    # bound and can legitimately exceed max by up to one bin width.
+    # percentile fields on the summary are set (non-negative, monotonic,
+    # bounded by max) — i.e. the histogram is wired end-to-end through
+    # the streaming executor. Bin-mean reporting guarantees percentile
+    # ≤ max for any sample distribution.
     ds = ray.data.range(100).map(lambda r: r)
     ds.materialize()
     summary = ds.get_stats_summary(detail=True)
     p50 = summary.streaming_exec_schedule_approx_p50_s
     p70 = summary.streaming_exec_schedule_approx_p70_s
     p90 = summary.streaming_exec_schedule_approx_p90_s
-    assert 0 <= p50 <= p70 <= p90
+    schedule_max = summary.streaming_exec_schedule_max_s
+    assert 0 <= p50 <= p70 <= p90 <= schedule_max
 
 
 if __name__ == "__main__":

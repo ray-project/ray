@@ -169,16 +169,14 @@ class Timer:
     identical to before.
     """
 
-    # Upper bin bounds (seconds). Roughly 1.5x ratio in the realistic
-    # 50 ms-2 s scheduling-loop-step range, ~2x outside that range:
-    # the median Ray Data scheduling-loop step tends to sit in
-    # 100 ms-1 s on large-cluster workloads, and uniform 2x bins were
-    # too coarse there to distinguish p50 from p90 when samples cluster
-    # in a single bin. The upper end (5 s-100 s) lets us tell "loop is
-    # degraded" from "cluster is wedged" without collapsing everything
-    # past 5 s into one bucket. Samples above the last bound land in
-    # an overflow slot; ``approx_percentile()`` reports ``max()`` for
-    # that case so the tail isn't under-reported.
+    # Upper bin bounds (seconds). Roughly 1.5x ratio across the
+    # realistic 50 ms-50 s scheduling-loop-step range, ~2x outside it.
+    # The 100 ms-1 s span matters for typical Ray Data workloads; the
+    # 5 s-50 s span matters for worker_scaling-scale tests (thousands
+    # of workers, where scheduling-loop time scales with worker count).
+    # Samples above the last bound land in an overflow slot;
+    # ``approx_percentile`` reports the overflow bin's per-sample mean
+    # for that case so the tail isn't under-reported.
     _HIST_BOUNDS_S: Tuple[float, ...] = (
         0.001,
         0.002,
@@ -198,10 +196,18 @@ class Timer:
         1.5,
         2.0,
         3.0,
+        4.0,
         5.0,
+        7.0,
         10.0,
+        12.0,
+        15.0,
         20.0,
+        25.0,
+        30.0,
+        40.0,
         50.0,
+        70.0,
         100.0,
     )
 
@@ -210,9 +216,19 @@ class Timer:
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
-        self._histogram: Optional[List[int]] = (
-            [0] * (len(self._HIST_BOUNDS_S) + 1) if track_distribution else None
-        )
+        # Parallel arrays: count + sum per bin (incl. overflow at idx -1).
+        # We track per-bin sums so ``approx_percentile`` can report the
+        # bin's mean instead of its (often wildly wider) upper bound;
+        # bin mean stays naturally bounded by ``max()`` and gives a much
+        # closer estimate of the true percentile when samples cluster
+        # in a single bin.
+        if track_distribution:
+            n = len(self._HIST_BOUNDS_S) + 1
+            self._histogram: Optional[List[int]] = [0] * n
+            self._hist_sum: Optional[List[float]] = [0.0] * n
+        else:
+            self._histogram = None
+            self._hist_sum = None
 
     @contextmanager
     def timer(self) -> None:
@@ -232,6 +248,7 @@ class Timer:
         if self._histogram is not None:
             idx = bisect.bisect_left(self._HIST_BOUNDS_S, value)
             self._histogram[idx] += 1
+            self._hist_sum[idx] += value
 
     def get(self) -> float:
         return self._total
@@ -249,34 +266,33 @@ class Timer:
         """Approximate ``p``-th percentile in seconds.
 
         Approximation, not an exact percentile: we keep a fixed
-        log-spaced histogram instead of the raw samples (O(1) memory
-        regardless of sample count, which matters because this is called
-        on every scheduling-loop iteration of every Ray Data job).
-        Resolution is the width of one bin — ~1.5x in the realistic
-        50 ms-2 s range, ~2x outside it. Tail samples above the largest
-        bound collapse into a single overflow bucket.
+        log-spaced histogram (counts + sums per bin) instead of the raw
+        samples (O(1) memory regardless of sample count, which matters
+        because this is called on every scheduling-loop iteration of
+        every Ray Data job). Bin spacing is ~1.5x across the realistic
+        50 ms-50 s range, ~2x outside it.
 
-        The result is an *upper bound* on the p-th sample's true value:
-        the bin's upper edge. It can be slightly larger than
-        :meth:`max` when the percentile lands in the same bin as the
-        max sample, since the bin spans up to its declared edge. Don't
-        clamp to ``max()`` — doing so collapses every percentile in the
-        max-sample's bin to the same value and erases the signal we
-        wanted from the histogram.
+        We report the per-bin **mean** of samples that fell into the
+        bin containing the p-th sample — not the bin's upper bound.
+        Reporting the upper bound made every percentile that landed in
+        the same bin as the max sample collapse to a single uninformative
+        value (e.g. all of p50/p70/p90 reporting ``20.0`` when samples
+        clustered in the ``(10, 20]`` bin). Bin mean is naturally
+        bounded by :meth:`max` and stays close to the true percentile
+        value when samples sit anywhere inside a wide bin.
 
         Args:
             p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
                 for p90 — not ``90``). Values outside this range raise
                 ``ValueError``; without the check, ``p=90`` would
-                silently return the overflow bin's value and look like
+                silently return the overflow bin's mean and look like
                 a tail spike.
 
         Returns:
-            The upper bound of the bin the p-th sample falls into.
-            Samples in the overflow bin are reported as :meth:`max`
-            directly (the largest finite bound would understate them).
-            Returns 0 if histogram tracking is disabled or no samples
-            have been added.
+            The mean of samples in the bin the p-th sample falls into.
+            For the overflow bin this is the mean of all samples above
+            the largest finite bound. Returns 0 if histogram tracking
+            is disabled or no samples have been added.
 
         Raises:
             ValueError: If ``p`` is outside ``[0.0, 1.0]``.
@@ -291,11 +307,14 @@ class Timer:
         target = p * self._total_count
         cum = 0
         for i, count in enumerate(self._histogram):
+            if count == 0:
+                # Skip empty bins — they don't hold any sample, and
+                # ``target`` can be 0 (when p=0) which would otherwise
+                # match on the first empty bin and divide by zero.
+                continue
             cum += count
             if cum >= target:
-                if i < len(self._HIST_BOUNDS_S):
-                    return self._HIST_BOUNDS_S[i]
-                return self._max
+                return self._hist_sum[i] / count
         return self._max
 
 
