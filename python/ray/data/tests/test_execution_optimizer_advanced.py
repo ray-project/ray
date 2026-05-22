@@ -494,5 +494,58 @@ def test_configure_map_task_memory_rule(
     assert remote_args.get("memory") == expected_memory
 
 
+@pytest.mark.parametrize(
+    "op_name, average_bytes_per_output, average_bytes_inputs_per_task, expected_memory",
+    [
+        # Standalone Write op: tiny stats output is ignored; input size is used.
+        ("Write", 168, 5 * 1024**3, 5 * 1024**3),
+        # Write fused with an upstream op: the "Write" component in the composed
+        # name still routes the estimate to input size.
+        ("MapBatches->Write", 168, 5 * 1024**3, 5 * 1024**3),
+        # Write op before any task has been submitted: no input estimate yet, so
+        # the rule shouldn't configure memory (rather than fall back to the
+        # tiny output size).
+        ("Write", 168, None, None),
+        # Non-write op whose name only contains "Write" as a substring of a
+        # component (e.g., a user-defined "WriteThrough" UDF) is NOT treated
+        # as a write.
+        ("WriteThrough", 1, 5 * 1024**3, 1),
+    ],
+)
+def test_configure_map_task_memory_rule_for_write(
+    op_name,
+    average_bytes_per_output,
+    average_bytes_inputs_per_task,
+    expected_memory,
+):
+    """Write tasks emit ~168-byte stats blocks, so memory should be sized off
+    the *input* block size to avoid the scheduler over-packing writes and OOMing
+    on multi-GiB inputs (e.g., after a shuffle/repartition).
+
+    Detection is by op name being "Write" (or having "Write" as a component
+    after fusion). If `plan_write_op.py` changes that name, update
+    `ConfigureMapTaskMemoryUsingOutputSize._WRITE_OP_NAME` to match."""
+    data_context = DataContext()
+    input_op = InputDataBuffer(MagicMock(), [])
+    map_op = MapOperator.create(
+        MagicMock(),
+        input_op=input_op,
+        data_context=data_context,
+        name=op_name,
+    )
+    map_op._metrics = MagicMock(
+        spec=OpRuntimeMetrics,
+        average_bytes_per_output=average_bytes_per_output,
+        average_bytes_inputs_per_task=average_bytes_inputs_per_task,
+    )
+    plan = PhysicalPlan(map_op, op_map=MagicMock(), context=data_context)
+    rule = ConfigureMapTaskMemoryUsingOutputSize()
+
+    new_plan = rule.apply(plan)
+
+    remote_args = new_plan.dag._get_dynamic_ray_remote_args()
+    assert remote_args.get("memory") == expected_memory
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

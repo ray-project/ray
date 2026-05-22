@@ -68,6 +68,8 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
 
 
 class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
+    _WRITE_OP_NAME = "Write"
+
     def estimate_per_task_memory_requirement(self, op: MapOperator) -> Optional[int]:
         # Typically, this configuration won't make a difference because
         # `average_bytes_per_output` is usually ~128 MiB and each core usually has
@@ -83,4 +85,18 @@ class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
         # "memory" resource is exclusive of the Object Store memory allocated on the
         # node (i.e., its total allocatable value is Total memory - Object Store
         # memory).
+        #
+        # Write tasks are special-cased: they emit a tiny stats DataFrame (~168
+        # bytes) regardless of input size, so `average_bytes_per_output` is a
+        # useless proxy for the memory each task actually consumes. When
+        # upstream produces multi-GiB blocks (e.g., after shuffle/repartition),
+        # output-based accounting causes the scheduler to over-pack writes on a
+        # node and OOM. Use input block size instead, since a write task's
+        # memory pressure scales with the size of the blocks it processes.
+        if self._is_write_op(op):
+            return op.metrics.average_bytes_inputs_per_task
         return op.metrics.average_bytes_per_output
+
+    @classmethod
+    def _is_write_op(cls, op: MapOperator) -> bool:
+        return cls._WRITE_OP_NAME in op.name.split("->")
