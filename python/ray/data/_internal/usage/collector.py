@@ -11,7 +11,7 @@ import os
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
@@ -43,10 +43,20 @@ class _Op:
 
 
 @dataclass(frozen=True)
-class _Workload:
-    """The plan and operators in the plan"""
+class _PlanNode:
+    """A node in the anonymized plan tree (one logical operator)."""
 
-    plan: str
+    op: str
+    inputs: List["_PlanNode"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class _Workload:
+    """The anonymized plan tree, a human-readable rendering of it, and the
+    per-op flat list (with config)."""
+
+    plan: _PlanNode
+    plan_str: str
     ops: List[_Op]
 
 
@@ -157,9 +167,37 @@ def _safe_version(pkg: str) -> Optional[str]:
 
 
 def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
-    """Collect anonymized plan and per-op config"""
-    ops = _walk_operators(logical_plan.dag)
-    return _Workload(plan="->".join(op.name for op in ops), ops=ops)
+    """Collect anonymized plan tree, indented text rendering, and per-op
+    config list."""
+    dag = logical_plan.dag
+    return _Workload(
+        plan=_build_plan_tree(dag),
+        plan_str=_format_plan_str(dag),
+        ops=_walk_operators(dag),
+    )
+
+
+def _build_plan_tree(op: LogicalOperator) -> _PlanNode:
+    """Recursively build the anonymized plan tree from the logical DAG."""
+    return _PlanNode(
+        op=anonymize_op_name(op),
+        inputs=[_build_plan_tree(child) for child in op.input_dependencies],
+    )
+
+
+def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
+    """Render the anonymized DAG as an indented tree, matching the layout
+    of :func:`ray.data._internal.dataset_repr._format_operator_dag` but
+    using ``anonymize_op_name`` to avoid leaking UDF / datasource details.
+    """
+    name = anonymize_op_name(op)
+    if depth == 0:
+        line = f"{name}\n"
+    else:
+        line = f"{' ' * ((depth - 1) * 3)}+- {name}\n"
+    for child in op.input_dependencies:
+        line += _format_plan_str(child, depth + 1)
+    return line
 
 
 def _walk_operators(op: LogicalOperator) -> List[_Op]:

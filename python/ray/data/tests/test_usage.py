@@ -31,7 +31,8 @@ def reset_collector(monkeypatch):
 
 def test_round_trip_payload_shape(reset_collector, mock_record):
     """End-to-end: record_workload, record_execution_result yields a valid
-    payload with anonymized plan, env, and performance filled in."""
+    payload with anonymized plan tree, plan_str, env, and performance filled
+    in."""
     ds = ray.data.range(1).map_batches(lambda b: b)
     collector.record_workload("exec-1", ds._logical_plan)
     collector.record_execution_result("exec-1")
@@ -40,7 +41,11 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
     payload = json.loads(payload_json)
     entry = payload["executions"][0]
     assert entry["id"] == "exec-1"
-    assert entry["workload"]["plan"] == "ReadRange->MapBatches"
+    assert entry["workload"]["plan"] == {
+        "op": "MapBatches",
+        "inputs": [{"op": "ReadRange", "inputs": []}],
+    }
+    assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
 
 
