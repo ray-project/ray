@@ -15,7 +15,7 @@ __all__ = [
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class StreamingSplit(LogicalOperatorPreservesSchema, LogicalOperator):
+class StreamingSplit(LogicalOperatorPreservesSchema):
     """Logical operator that represents splitting the input data to `n` splits."""
 
     num_splits: int

@@ -61,9 +61,9 @@ class AbstractOneToOne(LogicalOperator):
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(
-    LogicalOperatorPreservesSchema,
     AbstractOneToOne,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
 ):
     """Logical operator for limit."""
 
@@ -130,16 +130,17 @@ class Download(AbstractOneToOne):
         object.__setattr__(self, "_num_outputs", None)
 
     def infer_schema(self) -> Optional["Schema"]:
-        # Output = input schema + one binary column per requested output name.
-        # If an output column already exists in the input it is overwritten.
+        # Output = input schema with one binary column appended per requested
+        # output name. The runtime (``download_bytes_threaded``) always appends
+        # via ``add_column`` without removing any pre-existing column of the
+        # same name, so name collisions produce duplicate columns here too.
         import pyarrow as pa
 
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         input_schema = self.input_dependencies[0].infer_schema()
         if not isinstance(input_schema, pa.Schema):
             return None
-        new_names = set(self.output_bytes_column_names)
-        fields = [f for f in input_schema if f.name not in new_names]
+        fields = list(input_schema)
         for name in self.output_bytes_column_names:
             fields.append(pa.field(name, pa.binary(), nullable=True))
         return pa.schema(fields)

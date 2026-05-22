@@ -72,9 +72,9 @@ class AbstractAllToAll(LogicalOperator):
 
 @dataclass(frozen=True, repr=False, eq=False)
 class RandomizeBlocks(
-    LogicalOperatorPreservesSchema,
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
 ):
     """Logical operator for randomize_block_order."""
 
@@ -103,9 +103,9 @@ class RandomizeBlocks(
 
 @dataclass(frozen=True, repr=False, eq=False)
 class RandomShuffle(
-    LogicalOperatorPreservesSchema,
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
 ):
     """Logical operator for random_shuffle."""
 
@@ -149,9 +149,9 @@ class RandomShuffle(
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Repartition(
-    LogicalOperatorPreservesSchema,
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
 ):
     """Logical operator for repartition."""
 
@@ -199,9 +199,9 @@ class Repartition(
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Sort(
-    LogicalOperatorPreservesSchema,
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
 ):
     """Logical operator for sort."""
 

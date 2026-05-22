@@ -149,11 +149,15 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         return self
 
 
-class LogicalOperatorPreservesSchema:
+class LogicalOperatorPreservesSchema(LogicalOperator):
     """Mixin for operators whose output column layout is identical to their
     single input's. Provides a default ``infer_schema()`` that delegates to
     the input. Use for ops like ``Filter``, ``Sort``, ``Limit``, etc., that
     only re-order or filter rows.
+
+    List this mixin last in the bases of subclasses so the concrete operator
+    base (e.g., ``AbstractMap``, ``AbstractAllToAll``) drives ``__init__`` /
+    ``super()`` chains.
     """
 
     def infer_schema(self) -> Optional["Schema"]:
@@ -161,12 +165,15 @@ class LogicalOperatorPreservesSchema:
         return self.input_dependencies[0].infer_schema()
 
 
-class LogicalOperatorUnifiesInputSchemas:
+class LogicalOperatorUnifiesInputSchemas(LogicalOperator):
     """Mixin for n-ary operators whose output schema is the unification of
     all inputs' schemas (e.g., ``Union``, ``Mix``). Provides a default
     ``infer_schema()`` that returns the result of
     ``unify_schemas_with_validation`` over each input's schema, or
     ``None`` if any input's schema is unresolvable.
+
+    List this mixin last in the bases of subclasses so the concrete operator
+    base (e.g., ``NAry``) drives ``__init__`` / ``super()`` chains.
     """
 
     def infer_schema(self) -> Optional["Schema"]:
@@ -175,7 +182,7 @@ class LogicalOperatorUnifiesInputSchemas:
         from ray.data._internal.util import unify_schemas_with_validation
 
         input_schemas = [op.infer_schema() for op in self.input_dependencies]
-        if not input_schemas or any(s is None for s in input_schemas):
+        if not all(isinstance(s, pa.Schema) for s in input_schemas):
             return None
         try:
             return unify_schemas_with_validation(input_schemas)

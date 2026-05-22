@@ -16,7 +16,7 @@ __all__ = [
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Write(LogicalOperatorPreservesSchema, AbstractMap):
+class Write(AbstractMap, LogicalOperatorPreservesSchema):
     """Logical operator for write."""
 
     datasink_or_legacy_datasource: Union[Datasink, Datasource]

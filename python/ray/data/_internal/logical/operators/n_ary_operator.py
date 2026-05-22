@@ -138,7 +138,7 @@ class Zip(NAry):
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
-class Mix(LogicalOperatorUnifiesInputSchemas, NAry):
+class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
     """Logical operator for weighted dataset mixing."""
 
     _name: str = field(init=False, repr=False)
@@ -191,9 +191,9 @@ class Mix(LogicalOperatorUnifiesInputSchemas, NAry):
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
 class Union(
-    LogicalOperatorUnifiesInputSchemas,
     NAry,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorUnifiesInputSchemas,
 ):
     """Logical operator for union."""
 

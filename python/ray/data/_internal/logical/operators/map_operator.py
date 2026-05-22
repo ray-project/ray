@@ -26,7 +26,6 @@ from ray.data.expressions import Expr, StarExpr, exprlist_to_fields
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
-    import pyarrow
 
     from ray.data.block import Schema
 
@@ -282,7 +281,7 @@ class MapRows(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Filter(LogicalOperatorPreservesSchema, AbstractUDFMap):
+class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     """Logical operator for filter."""
 
     predicate_expr: Optional[Expr] = None
@@ -422,8 +421,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
 
-    @functools.cached_property
-    def _cached_inferred_schema(self) -> Optional["pyarrow.Schema"]:
+    def infer_schema(self) -> Optional["Schema"]:
         import pyarrow as pa
 
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -436,9 +434,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         if fields is None:
             return None
         return pa.schema(fields)
-
-    def infer_schema(self) -> Optional["Schema"]:
-        return self._cached_inferred_schema
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -473,9 +468,9 @@ class FlatMap(AbstractUDFMap):
 
 @dataclass(frozen=True, repr=False, eq=False)
 class StreamingRepartition(
-    LogicalOperatorPreservesSchema,
     AbstractMap,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
 ):
     """Logical operator for streaming repartition operation.
 
