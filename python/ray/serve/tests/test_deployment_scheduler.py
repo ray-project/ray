@@ -326,6 +326,86 @@ class TestPackScheduling:
 
         serve.shutdown()
 
+    def test_high_priority_memory_schedules_before_cpu_hogs(
+        self, ray_cluster, monkeypatch
+    ):
+        """Memory-priority pack scheduling should place the memory hog first.
+
+        Ten deployments each request all schedulable CPUs on a single node.
+        Only one can run. With RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES=memory,
+        the deployment that requests high memory should be the only one running;
+        the nine CPU-only deployments stay pending.
+        """
+        monkeypatch.setenv("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "memory")
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=10, object_store_memory=100 * 1024 * 1024)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+
+        total_memory = int(ray.cluster_resources()["memory"])
+        high_memory = max(int(total_memory * 0.9), 1)
+
+        @serve.deployment
+        def replica_fn():
+            return "ok"
+
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
+        class Ingress:
+            def __init__(self, *handles):
+                self.handles = handles
+
+            def __call__(self):
+                pass
+
+        # Reserve head/proxy CPU by measuring what Serve leaves available.
+        serve.start()
+        replica_cpus = int(ray.available_resources()["CPU"])
+        assert replica_cpus >= 1
+
+        deployments = []
+        for i in range(9):
+            deployments.append(
+                replica_fn.options(
+                    name=f"cpu_{i}",
+                    ray_actor_options={"num_cpus": replica_cpus},
+                ).bind()
+            )
+        deployments.append(
+            replica_fn.options(
+                name="memory_hog",
+                ray_actor_options={
+                    "num_cpus": replica_cpus,
+                    "memory": high_memory,
+                },
+            ).bind()
+        )
+
+        serve._run(Ingress.bind(*deployments), _blocking=False)
+
+        def check_only_memory_hog_running():
+            app_status = serve.status().applications["default"]
+            if app_status.status == "DEPLOY_FAILED":
+                raise AssertionError(f"App failed: {app_status.message}")
+
+            deployments_status = app_status.deployments
+            memory_hog = deployments_status["memory_hog"]
+            assert memory_hog.replica_states.get("RUNNING", 0) == 1, memory_hog
+
+            for i in range(9):
+                cpu_dep = deployments_status[f"cpu_{i}"]
+                running = cpu_dep.replica_states.get("RUNNING", 0)
+                assert running == 0, (f"cpu_{i}", cpu_dep.replica_states)
+
+            return True
+
+        wait_for_condition(check_only_memory_hog_running, timeout=60)
+
+        app_status = serve.status().applications["default"]
+        assert app_status.status == "DEPLOYING"
+
+        serve.shutdown()
+
     @pytest.mark.asyncio
     async def test_e2e_serve_strict_pack_pg_label_selector(
         self, serve_instance_with_labeled_nodes
