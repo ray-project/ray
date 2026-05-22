@@ -847,6 +847,9 @@ def read_zarr(
     * ``array``: the source array's path (e.g., ``"data/camera0_rgb"``, or
       ``""`` for a root-level array).
     * ``chunk_index``: the N-D index of this chunk in its array's chunk grid.
+    * ``chunk_slices``: per-axis ``(start, stop)`` of this chunk in the
+      source array's coordinate space — useful for mapping a chunk back
+      to its global position without recomputing from the chunk shape.
     * ``chunk``: the chunk's data as an ``ndarray`` at its natural shape
       (possibly shorter at trailing boundaries — no padding is applied).
 

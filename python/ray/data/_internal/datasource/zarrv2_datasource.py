@@ -307,6 +307,7 @@ def _create_read_fn(
             {
                 "array": [d.array_name for d in batch],
                 "chunk_index": [d.chunk_index for d in batch],
+                "chunk_slices": [d.chunk_slices for d in batch],
                 "chunk": [
                     _read_chunk(root, d.array_name, d.chunk_slices) for d in batch
                 ],
@@ -330,6 +331,11 @@ class ZarrV2Datasource(Datasource):
       (e.g., ``"data/camera0_rgb"``, or ``""`` for a root-level array).
     * ``chunk_index``: the N-D position of this chunk in the array's chunk
       grid, as a tuple of ints.
+    * ``chunk_slices``: per-axis ``(start, stop)`` of this chunk in the
+      source array's coordinate space — the global slice the chunk
+      occupies. Lets downstream code map chunks back to original
+      positions (e.g., for episode-aware processing) without recomputing
+      from ``chunk_index`` and the chunk shape.
     * ``chunk``: the chunk's data as an ``ndarray``, at its natural shape
       (possibly shorter than the nominal chunk shape at trailing boundaries —
       no padding is applied).

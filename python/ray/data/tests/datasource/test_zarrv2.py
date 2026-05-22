@@ -518,14 +518,28 @@ def test_long_form_schema_and_materialization(tmp_path):
     datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
     df = _execute_read_tasks(datasource.get_read_tasks(parallelism=16))
 
-    # Schema is the long-form trio.
-    assert list(df.columns) == ["array", "chunk_index", "chunk"]
+    # Schema is the long-form quad.
+    assert list(df.columns) == ["array", "chunk_index", "chunk_slices", "chunk"]
     # 3 chunks for images (5/2), 3 chunks for labels (5/2) = 6 rows total.
     assert len(df) == 6
     assert set(df["array"]) == {"images", "labels"}
 
     np.testing.assert_array_equal(_reconstruct_array(df, "images"), images_src)
     np.testing.assert_array_equal(_reconstruct_array(df, "labels"), labels_src)
+
+    # ``chunk_slices`` matches the actual chunk shape and indexes back to
+    # the source array: arr[start:stop, ...] equals the chunk.
+    for _, row in df.iterrows():
+        slices = row["chunk_slices"]
+        chunk = row["chunk"]
+        assert len(slices) == chunk.ndim
+        for axis, (start, stop) in enumerate(slices):
+            assert stop - start == chunk.shape[axis]
+        if row["array"] == "images":
+            np.testing.assert_array_equal(
+                chunk,
+                images_src[slices[0][0] : slices[0][1], slices[1][0] : slices[1][1]],
+            )
 
 
 def test_edge_chunk_is_shorter_not_padded(tmp_path):
