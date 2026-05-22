@@ -1,5 +1,6 @@
 import os
 import pathlib
+import pickle
 import shutil
 import time
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
@@ -41,6 +43,85 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def use_datasource_v2(request, restore_data_context):
+    restore_data_context.use_datasource_v2 = request.param
+
+
+def test_read_parquet_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["col"] == {"key": "value"}
+
+
+def test_read_parquet_rejects_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
+def test_write_parquet_handles_per_block_column_reorder(
+    ray_start_regular_shared, tmp_path
+):
+    # When the Write task receives multiple blocks whose schemas share the same
+    # field names in a different order, `pa.unify_schemas` fixes the column
+    # order from the first block. Previously the per-block `Table.cast` was
+    # positional and rejected the second block; ParquetDatasink now reorders
+    # columns by name before casting.
+    from ray.data._internal.datasource.parquet_datasink import (
+        WRITE_UUID_KWARG_NAME,
+        ParquetDatasink,
+    )
+    from ray.data._internal.execution.interfaces import TaskContext
+
+    t1 = pa.table({"x": [1], "y": [2]})
+    t2 = pa.table({"y": [3], "x": [4]})
+    sink = ParquetDatasink(path=str(tmp_path))
+    ctx = TaskContext(task_idx=0, op_name="Write")
+    ctx.kwargs = {WRITE_UUID_KWARG_NAME: "wuid"}
+
+    sink.write([t1, t2], ctx)
+
+    out = pq.read_table(str(tmp_path))
+    assert sorted(out.column_names) == ["x", "y"]
+    assert out.num_rows == 2
+    # Pair each row's (x, y) regardless of the unified output order.
+    assert sorted(zip(out.column("x").to_pylist(), out.column("y").to_pylist())) == [
+        (1, 2),
+        (4, 3),
+    ]
 
 
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
@@ -126,11 +207,11 @@ def test_include_paths_with_column_projection(
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
     pq.write_table(table, path)
 
-    # V2 ``select_columns`` is literal — ``"path"`` is dropped unless listed.
-    # V1 ``read_parquet(columns=[...], include_paths=True)`` retained ``"path"``
-    # automatically; the ``columns=`` deprecation message in ``read_api`` calls
-    # this out so callers know to thread ``"path"`` through their projection.
-    ds = ray.data.read_parquet(path, include_paths=True).select_columns(["id", "path"])
+    # Exercises the deprecated ``columns=`` arg: V1 retained ``"path"``
+    # implicitly under ``include_paths=True``, and read_api preserves that
+    # by appending it to the projection on the caller's behalf.
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(path, columns=["id"], include_paths=True)
 
     schema_names = ds.schema().names
     assert "id" in schema_names, f"'id' column not found in schema: {schema_names}"
@@ -220,9 +301,11 @@ def test_include_row_hash_with_column_projection(
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, include_row_hash=True).select_columns(
-        ["a", "row_hash"]
-    )
+    # Exercises the deprecated ``columns=`` arg: V1 retained ``"row_hash"``
+    # implicitly under ``include_row_hash=True``, and read_api preserves
+    # that by appending it to the projection on the caller's behalf.
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
     schema_names = ds.schema().names
     assert "a" in schema_names
     assert "b" not in schema_names
@@ -1697,6 +1780,30 @@ def test_read_null_data_in_first_file(
     ]
 
 
+def test_read_parquet_does_not_call_infer_schema(
+    tmp_path, monkeypatch, ray_start_regular_shared
+):
+    """read_parquet should not call _infer_schema, which can cause O(N) metadata reads."""
+
+    num_files = 10
+    for i in range(num_files):
+        cols = {"data": [0]}
+        if i == 0:
+            cols["null_col"] = pa.nulls(1)
+        else:
+            cols["null_col"] = [1]
+        pq.write_table(pa.table(cols), tmp_path / f"part_{i:05d}.parquet")
+
+    mock = MagicMock()
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.parquet_datasource._infer_schema",
+        mock,
+    )
+    mock.return_value = pa.schema({"data": pa.int64()})
+    ray.data.read_parquet(str(tmp_path))
+    mock.assert_not_called()
+
+
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
     """Verify row_group_size is respected."""
 
@@ -2919,7 +3026,6 @@ class TestParquetFragmentBatchSizeCoercion:
                     fragment,
                     schema=schema,
                     data_columns=["x"],
-                    data_columns_rename_map=None,
                     partition_columns=None,
                     partitioning=Partitioning("hive"),
                     to_batches_kwargs=to_batches_kwargs,
