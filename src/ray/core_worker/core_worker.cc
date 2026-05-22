@@ -4640,6 +4640,8 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
                                         const std::vector<NodeID> &locations) {
+  // Must be posted to io context because it is called under the reference
+  // counter mutex
   io_service_.post(
       [this, object_id, locations]() {
         rpc::FreeLocalObjectsRequest request;

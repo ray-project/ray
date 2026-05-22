@@ -592,7 +592,7 @@ service NodeManagerService {
   // If force_kill is false, the worker remains alive for subsequent tasks.
   // Failure: Retries, it's idempotent.
   rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
-  // Tell node manager to free requested local objects
+  // Request the raylet to free plasma objects corresponding to the object ID
   // Failure: Retries, it's idempotent.
   rpc FreeLocalObjects(FreeLocalObjectsRequest) returns (FreeLocalObjectsReply);
 }

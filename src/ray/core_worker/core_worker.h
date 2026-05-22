@@ -1377,7 +1377,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                               const std::vector<NodeID> &locations);
 
  private:
-  /// Resolve a raylet RPC client by node id.
+  /// Resolve a raylet RPC client by node id. Should be used to only get a temporary RPC
+  /// client, since the retryable GRPC client relies on clients going out of scope to
+  /// dtermine when to fail any pending RPCs
   ///
   /// \param node_id The node to resolve.
   /// \return The local client for the current node, the pooled client for any
