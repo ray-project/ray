@@ -891,7 +891,7 @@ int main(int argc, char *argv[]) {
         /*on_objects_freed*/
         [&](const std::vector<ray::ObjectID> &object_ids) {
           object_manager->FreeObjects(object_ids,
-                                      /*local_only=*/false);
+                                      /*local_only=*/true);
         },
         /*is_plasma_object_spillable*/
         [&](const ray::ObjectID &object_id) {
