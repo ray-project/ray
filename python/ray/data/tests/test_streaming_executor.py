@@ -1449,11 +1449,14 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
-    def test_peek_and_prefetched_meta_bytes(self, ray_start_regular_shared):
+    def test_peek_and_on_data_ready_with_prefetched_bytes(
+        self, ray_start_regular_shared
+    ):
         """`peek_pending_pair` surfaces the next (block_ref, meta_ref) pair
-        without consuming metadata via `ray.get`. `cache_prefetched_meta_bytes`
-        primes the task's cache so `on_data_ready` consumes the cached bytes
-        directly (no ray.get).
+        without consuming metadata via `ray.get`. The caller pre-fetches
+        the bytes and hands them to `on_data_ready` via the
+        `bytes_by_meta_ref` kwarg, which emits the RefBundle without
+        issuing its own `ray.get`.
         """
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
 
@@ -1463,9 +1466,8 @@ class TestDataOpTask:
         )
 
         # The streaming generator yields block then metadata; the two refs
-        # can arrive in separate scheduler ticks. Poll peek until both are
-        # surfaced as a single pair (the same drain pattern that
-        # `process_completed_tasks` uses).
+        # can arrive in separate scheduler ticks. Poll peek until a full
+        # pair surfaces.
         deadline = time.time() + 30
         pair = None
         while time.time() < deadline and pair is None:
@@ -1476,14 +1478,10 @@ class TestDataOpTask:
         assert not block_ref.is_nil()
         assert not meta_ref.is_nil()
 
-        # Simulate the batched ray.get done by `process_completed_tasks`:
-        # fetch the bytes, then hand them to the task via the cache.
+        # Simulate what process_completed_tasks does: pre-fetch the bytes
+        # and pass them to on_data_ready.
         meta_bytes = ray.get(meta_ref)
-        data_op_task.cache_prefetched_meta_bytes({meta_ref: meta_bytes})
-
-        # on_data_ready consumes the cached pair without re-issuing ray.get.
-        data_op_task.on_data_ready(None)
-        assert meta_ref not in data_op_task._cached_meta_bytes
+        data_op_task.on_data_ready(None, bytes_by_meta_ref={meta_ref: meta_bytes})
         assert len(outputs) == 1
 
         # Drive the task to completion via fetch_and_drain (peek picks up
@@ -1492,10 +1490,12 @@ class TestDataOpTask:
             ray.wait([streaming_gen], fetch_local=False)
             data_op_task.fetch_and_drain(None)
 
-    def test_fetch_and_drain_when_cache_empty(self, ray_start_regular_shared):
-        """`fetch_and_drain` is the entry point for callers outside
-        `process_completed_tasks`: it peeks, batches one ray.get over any
-        uncached queued meta_refs, then drains via on_data_ready.
+    def test_on_data_ready_falls_back_when_bytes_missing(
+        self, ray_start_regular_shared
+    ):
+        """When `bytes_by_meta_ref` is empty/None, `on_data_ready` falls
+        back to a per-ref `ray.get` per pair. Direct callers (tests) and
+        the batched-fetch-timeout path both rely on this.
         """
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
 
@@ -1507,6 +1507,8 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
+            # fetch_and_drain doesn't pre-fetch bytes; the fallback kicks
+            # in inside on_data_ready.
             bytes_read += data_op_task.fetch_and_drain(None)
 
         assert len(outputs) == 1
@@ -1514,8 +1516,9 @@ class TestDataOpTask:
     def test_peek_drains_multiple_pairs(self, ray_start_regular_shared):
         """`peek_pending_pair` is callable in a loop to drain every pair the
         streaming generator currently has ready, not just the first one.
-        Combined with `cache_prefetched_meta_bytes`, this lets the caller
-        cover an entire task's backlog with a single batched ray.get."""
+        Combined with a prefetched `bytes_by_meta_ref` dict, this lets the
+        caller cover an entire task's backlog in one batched `ray.get`.
+        """
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1, 1, 1])
 
         outputs: List = []
@@ -1524,8 +1527,6 @@ class TestDataOpTask:
         )
 
         # Wait for the generator to surface its outputs, then drain peek.
-        # The stub generator yields all three pairs quickly; allow up to 30s
-        # for them all to be visible to peek (block + meta arrive in pairs).
         deadline = time.time() + 30
         pairs: List = []
         while time.time() < deadline and len(pairs) < 3:
@@ -1541,12 +1542,15 @@ class TestDataOpTask:
         # Simulate the batched ray.get over all three meta_refs.
         meta_refs = [meta_ref for _, meta_ref in pairs]
         bytes_list = ray.get(meta_refs)
-        data_op_task.cache_prefetched_meta_bytes(dict(zip(meta_refs, bytes_list)))
+        bytes_by_meta_ref = dict(zip(meta_refs, bytes_list))
 
-        # on_data_ready consumes all three cached pairs without ray.get.
-        data_op_task.on_data_ready(None)
+        # on_data_ready consumes all three pairs from the dict without
+        # any further ray.get.
+        data_op_task.on_data_ready(None, bytes_by_meta_ref=bytes_by_meta_ref)
         assert len(outputs) == 3
-        assert data_op_task._cached_meta_bytes == {}
+        # All entries should have been popped from the dict as they were
+        # consumed.
+        assert bytes_by_meta_ref == {}
 
         # Drive the rest to completion (fetch_and_drain calls peek so
         # the generator's StopIteration is observed).

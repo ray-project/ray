@@ -1,5 +1,9 @@
 from ray.experimental.dynamic_resources import set_resource
-from ray.experimental.locations import get_local_object_locations, get_object_locations
+from ray.experimental.locations import (
+    get_local_object_locations,
+    get_object_locations,
+    get_object_sizes,
+)
 from ray.experimental.rdt import (
     CommunicatorMetadata,
     RDTManager,
@@ -16,6 +20,7 @@ from ray.experimental.rdt import (
 __all__ = [
     "get_object_locations",
     "get_local_object_locations",
+    "get_object_sizes",
     "set_resource",
     "RDTManager",
     "wait_tensor_freed",

@@ -118,8 +118,7 @@ class DataOpTask(OpTask):
     travel: *pulled from generator → metadata bytes fetched → emitted as
     RefBundle*. Pulling from the generator is destructive (the ref is
     gone from the stream), so a pair must be tracked on the task until
-    it's emitted — even if its metadata bytes haven't been fetched yet.
-    The per-pair state is therefore split into three fields:
+    it's emitted. Two fields hold this state:
 
     - ``_partial_block_ref``: a ``block_ref`` pulled but not yet paired
       with its matching ``meta_ref``. The generator yields the two in
@@ -127,9 +126,6 @@ class DataOpTask(OpTask):
       slot bridges the gap. Cleared as soon as the ``meta_ref`` arrives.
     - ``_pending_pairs``: fully-paired ``(block_ref, meta_ref)`` tuples
       pulled from the generator, awaiting RefBundle emission. Ordered.
-    - ``_cached_meta_bytes``: metadata bytes for some subset of the
-      queued pairs, keyed by ``meta_ref``. A queued pair is *consumable*
-      if its ``meta_ref`` appears here.
 
     **Methods, mapped to lifecycle stages:**
 
@@ -138,29 +134,42 @@ class DataOpTask(OpTask):
       ``_partial_block_ref`` then ``_pending_pairs``. On generator
       termination it sets ``_gen_exhausted`` (normal done) or
       ``_gen_errored_block`` (task raised mid-pair).
-    - :meth:`uncached_pending_meta_refs` — *return the work list for
-      the next batched ``ray.get``*: queued meta_refs not yet in
-      ``_cached_meta_bytes``.
-    - :meth:`cache_prefetched_meta_bytes` — *write fetched bytes* into
-      ``_cached_meta_bytes``.
-    - :meth:`on_data_ready` — *emit RefBundles*: pop queued pairs whose
-      bytes are cached, build and emit a ``RefBundle``, repeat until
-      cache miss or budget exhaustion. After the queue drains, fire
+    - :meth:`on_data_ready` — *emit RefBundles*: pops queued pairs and
+      builds RefBundles using the caller-supplied
+      ``bytes_by_meta_ref`` dict. On cache miss falls back to a
+      per-ref ``ray.get`` so worker death / node preemption surfaces
+      as a per-ref warning. After the queue drains, fires
       ``task_done_callback`` if a termination flag is set.
-    - :meth:`fetch_and_drain` — *one-task convenience* that runs the
-      four steps above for callers outside ``process_completed_tasks``.
+    - :meth:`fetch_and_drain` — *direct-caller convenience* that drains
+      the generator then calls ``on_data_ready`` without a pre-fetched
+      bytes dict (the per-ref fallback handles fetches).
 
     **Production flow** (``process_completed_tasks`` in
-    ``streaming_executor_state.py``) runs the same four steps across
-    every ready ``DataOpTask`` at once, so one batched ``ray.get``
-    covers the union of every task's uncached meta_refs::
+    ``streaming_executor_state.py``) uses
+    :func:`ray.experimental.get_object_sizes` to do a *size-aware*
+    batched fetch: drain every ready task's gen, look up each block's
+    byte size from the owner directory (no RPC), trim each task's
+    pairs by its op's remaining budget, then issue ONE
+    ``ray.get`` covering exactly the metas whose blocks will actually
+    be emitted this iteration::
 
-        for task in ready_tasks:                                   # step 1
+        # 1. Drain every ready task's generator
+        for task in ready_tasks:
             while task.peek_pending_pair() is not None: pass
-        refs = sum((t.uncached_pending_meta_refs() for t in ready_tasks), [])
-        bytes = ray.get(refs, timeout=METADATA_GET_TIMEOUT_S)      # step 2
-        for task: task.cache_prefetched_meta_bytes(...)            # step 3
-        for task: task.on_data_ready(budget)                       # step 4
+
+        # 2. Look up block sizes (local, no RPC)
+        block_refs = [b for t in ready_tasks for b, _ in t._pending_pairs]
+        sizes = ray.experimental.get_object_sizes(block_refs)
+
+        # 3. Per-op budget-aware trim — only fetch metas that fit
+        # 4. ONE batched ray.get over the trimmed set
+        bytes_by_meta_ref = dict(zip(to_fetch, ray.get(to_fetch, timeout=...)))
+
+        # 5. Each task emits exactly the pairs whose bytes are present
+        for task: task.on_data_ready(budget, bytes_by_meta_ref)
+
+    No cross-iteration cache state — the trim is precise, so what's
+    fetched is what's emitted.
     """
 
     def __init__(
@@ -207,12 +216,10 @@ class DataOpTask(OpTask):
 
         # Per-pair state — see class docstring for the full data flow.
         # _pending_pairs: pairs pulled from the gen, awaiting emission.
-        # _cached_meta_bytes: bytes for some subset of queued pairs.
         # _partial_block_ref: half-pulled pair (block yet, meta not).
         self._pending_pairs: Deque[
             Tuple[ray.ObjectRef[Block], ray.ObjectRef[BlockMetadata]]
         ] = deque()
-        self._cached_meta_bytes: Dict[ray.ObjectRef, bytes] = {}
         self._partial_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
         # Termination flags set by peek_pending_pair; consumed by
         # on_data_ready once the queue is fully drained.
@@ -290,65 +297,46 @@ class DataOpTask(OpTask):
         self._pending_pairs.append(pair)
         return pair
 
-    def cache_prefetched_meta_bytes(
-        self, bytes_by_ref: Dict[ray.ObjectRef, bytes]
-    ) -> None:
-        """Hand pre-fetched metadata bytes (from a batched ``ray.get``) to
-        this task. The bytes are cached and consumed in ``on_data_ready``.
-        """
-        self._cached_meta_bytes.update(bytes_by_ref)
-
-    def uncached_pending_meta_refs(self) -> List[ray.ObjectRef]:
-        """Return ``meta_ref`` for every queued pair whose bytes aren't in
-        ``_cached_meta_bytes`` yet — i.e. every pair still needing a
-        ``ray.get`` to become consumable.
-        """
-        return [
-            meta_ref
-            for _, meta_ref in self._pending_pairs
-            if meta_ref not in self._cached_meta_bytes
-        ]
-
     def fetch_and_drain(self, max_bytes_to_read: Optional[int]) -> int:
-        """Drain pairs from the generator into the queue, fetch any
-        missing metadata bytes in one batched ``ray.get``, then consume
-        via ``on_data_ready``. Mirrors what ``process_completed_tasks``
-        does for one task in isolation.
+        """Drain pairs from the generator and emit. Convenience for
+        callers outside ``process_completed_tasks`` (tests, debugging).
+        Doesn't pre-fetch metadata bytes — ``on_data_ready``'s per-ref
+        fallback handles it.
 
-        When ``max_bytes_to_read == 0`` the task is in output backpressure,
-        so skip the peek + fetch (which would advance the generator) and
-        just call ``on_data_ready`` to record the backpressure timer.
+        When ``max_bytes_to_read == 0`` the task is in output
+        backpressure, so skip the peek (which would advance the
+        generator) and just call ``on_data_ready`` to record the
+        backpressure timer.
         """
         if max_bytes_to_read != 0:
             while self.peek_pending_pair() is not None:
                 pass
-            # The same call covers two cases: pairs we just peeked (never
-            # fetched), and pairs left queued from a previous call whose
-            # batched ray.get timed out. Both states look identical — the
-            # ref is in _pending_pairs but absent from _cached_meta_bytes.
-            # On batched timeout the pairs stay uncached; on_data_ready's
-            # per-ref fallback will retry them and surface the per-ref
-            # warning if they're still unavailable.
-            uncached = self.uncached_pending_meta_refs()
-            if uncached:
-                try:
-                    bytes_list = ray.get(uncached, timeout=METADATA_GET_TIMEOUT_S)
-                    self.cache_prefetched_meta_bytes(dict(zip(uncached, bytes_list)))
-                except ray.exceptions.GetTimeoutError:
-                    pass
         return self.on_data_ready(max_bytes_to_read)
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
-        """Consume ``_pending_pairs`` using cached metadata bytes (populated
-        by ``cache_prefetched_meta_bytes``). On cache miss — i.e. the
-        batched ``ray.get`` in ``process_completed_tasks`` timed out for
-        this ref, or the caller didn't pre-fetch — fall back to a per-ref
-        ``ray.get`` so a worker crash / node preemption surfaces as a
-        per-ref warning with retry-next-iteration semantics.
+    def on_data_ready(
+        self,
+        max_bytes_to_read: Optional[int],
+        bytes_by_meta_ref: Optional[Dict[ray.ObjectRef, bytes]] = None,
+    ) -> int:
+        """Emit RefBundles for queued pairs, using bytes from
+        ``bytes_by_meta_ref`` when present and falling back to a per-ref
+        ``ray.get`` on cache miss.
+
+        ``process_completed_tasks`` always passes a dict containing only
+        the meta_refs whose blocks fit the per-op budget (computed up
+        front via ``ray.experimental.get_object_sizes``), so the
+        fallback only fires when (a) the batched ``ray.get`` timed out
+        for that ref or (b) the caller didn't pre-fetch at all. The
+        fallback's per-ref warning surfaces worker crash / node
+        preemption with retry-next-iteration semantics.
 
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all
-                available will be read.
+                queued pairs will be read.
+            bytes_by_meta_ref: Pre-fetched metadata bytes keyed by
+                ``meta_ref``. Consumed (popped) as pairs are emitted.
+                ``None`` means "no pre-fetched bytes" — every pair will
+                hit the per-ref fallback.
 
         Returns: The number of bytes read.
         """
@@ -360,7 +348,11 @@ class DataOpTask(OpTask):
                 break  # nothing queued; termination handled below
 
             block_ref, meta_ref = self._pending_pairs[0]
-            meta_with_schema_bytes = self._cached_meta_bytes.pop(meta_ref, None)
+            meta_with_schema_bytes = (
+                bytes_by_meta_ref.pop(meta_ref, None)
+                if bytes_by_meta_ref is not None
+                else None
+            )
             if meta_with_schema_bytes is None:
                 # Cache miss: per-ref fallback. Surfaces the failure as
                 # a per-ref warning if the metadata still isn't ready.

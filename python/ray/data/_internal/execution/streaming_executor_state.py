@@ -43,6 +43,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
+from ray.experimental import get_object_sizes
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -658,21 +659,15 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
-        # Prefetch metadata bytes for all ready DataOpTasks in one batched
-        # ray.get. For each task we drain `peek_pending_pair` (which pulls
-        # every (block_ref, meta_ref) pair currently surfaced by the
-        # streaming generator into the task's queue) and then collect
-        # `uncached_pending_meta_refs` — covering both the freshly-peeked
-        # pairs AND any pairs left queued from a previous iteration whose
-        # batched ray.get timed out. One ray.get fans out across every
-        # ready task; results are handed back via `cache_prefetched_meta_bytes`
-        # and consumed by `on_data_ready`. Collapses N×~1ms per-call ray.get
-        # overhead per scheduler iteration into one batched call.
+        # Drain every ready DataOpTask's streaming generator into its
+        # pending-pairs queue. Pulling from the generator is destructive
+        # and the pair must persist on the task until emitted, so this
+        # step is independent of (and unaffected by) the size + budget
+        # logic below.
         #
-        # Skip ops whose remaining output budget is 0 — they're in output
-        # backpressure and shouldn't have their generators advanced.
-        meta_refs_by_task: List[Tuple[DataOpTask, List[ray.ObjectRef]]] = []
-        meta_refs_to_prefetch: List[ray.ObjectRef] = []
+        # Skip ops whose remaining output budget is 0 — they're in
+        # output backpressure and shouldn't have their generators
+        # advanced.
         for state, ready_tasks in ready_tasks_by_op.items():
             if remaining_output_budget.get(state, None) == 0:
                 continue
@@ -680,27 +675,79 @@ def process_completed_tasks(
                 if isinstance(task, DataOpTask):
                     while task.peek_pending_pair() is not None:
                         pass
-                    refs = task.uncached_pending_meta_refs()
-                    if refs:
-                        meta_refs_by_task.append((task, refs))
-                        meta_refs_to_prefetch.extend(refs)
-        if meta_refs_to_prefetch:
-            try:
-                bytes_list = ray.get(
-                    meta_refs_to_prefetch, timeout=METADATA_GET_TIMEOUT_S
-                )
-                prefetched_bytes = dict(zip(meta_refs_to_prefetch, bytes_list))
-                for task, refs in meta_refs_by_task:
-                    task.cache_prefetched_meta_bytes(
-                        {ref: prefetched_bytes[ref] for ref in refs}
+
+        # Size-aware batched fetch:
+        # 1. Look up each queued block's byte size from the local owner
+        #    directory (no RPC) via ray.experimental.get_object_sizes.
+        # 2. Per op, walk that op's tasks' queued pairs in order and
+        #    accumulate sizes until the op's remaining_output_budget
+        #    runs out; collect the prefix of meta_refs whose blocks
+        #    fit.
+        # 3. Issue ONE batched ray.get across all selected meta_refs
+        #    (the union across every ready task).
+        # 4. Pass the resulting bytes dict to each task's
+        #    on_data_ready, which pops queue pairs in order and emits
+        #    them as RefBundles. Pairs beyond the prefix stay queued
+        #    and are re-evaluated next iteration with fresh budget.
+        #
+        # The size lookup makes the fetch precise — we ray.get exactly
+        # the metas whose blocks will actually be emitted this
+        # iteration — so no cross-iteration cache state is needed.
+        all_pending_block_refs: List[ray.ObjectRef] = []
+        for ready_tasks in ready_tasks_by_op.values():
+            for task in ready_tasks:
+                if isinstance(task, DataOpTask):
+                    all_pending_block_refs.extend(
+                        bref for bref, _ in task._pending_pairs
                     )
+        if all_pending_block_refs:
+            sizes = get_object_sizes(all_pending_block_refs)
+            size_by_block_ref = {
+                bref: size
+                for bref, size in zip(all_pending_block_refs, sizes)
+                if size is not None
+            }
+        else:
+            size_by_block_ref = {}
+
+        meta_refs_to_fetch: List[ray.ObjectRef] = []
+        for state, ready_tasks in ready_tasks_by_op.items():
+            budget = remaining_output_budget.get(state, None)
+            if budget == 0:
+                continue
+            for task in sorted(ready_tasks, key=lambda t: t.task_index()):
+                if not isinstance(task, DataOpTask):
+                    continue
+                for bref, mref in task._pending_pairs:
+                    size = size_by_block_ref.get(bref)
+                    if size is None:
+                        # Owner directory hasn't published the size
+                        # yet. Fetch this pair anyway — on_data_ready
+                        # will read the actual meta.size_bytes when
+                        # emitting, so the budget is still respected on
+                        # the emit side. Same behavior as before this
+                        # PR, just for the rare ref where Core didn't
+                        # have the size in time.
+                        meta_refs_to_fetch.append(mref)
+                        continue
+                    if budget is not None and budget - size < 0:
+                        break  # this pair doesn't fit; defer the rest
+                    meta_refs_to_fetch.append(mref)
+                    if budget is not None:
+                        budget -= size
+
+        if meta_refs_to_fetch:
+            try:
+                bytes_list = ray.get(meta_refs_to_fetch, timeout=METADATA_GET_TIMEOUT_S)
+                bytes_by_meta_ref = dict(zip(meta_refs_to_fetch, bytes_list))
             except ray.exceptions.GetTimeoutError:
-                # One or more refs weren't ready in time. Pairs stay
-                # queued and uncached; on_data_ready's per-ref fallback
+                # Pairs stay queued; on_data_ready's per-ref fallback
                 # will retry them and emit a per-ref warning if they
                 # still aren't available, with retry-next-iteration
                 # semantics.
-                pass
+                bytes_by_meta_ref = {}
+        else:
+            bytes_by_meta_ref = {}
 
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
@@ -710,6 +757,7 @@ def process_completed_tasks(
                     try:
                         bytes_read = task.on_data_ready(
                             remaining_output_budget.get(state, None),
+                            bytes_by_meta_ref=bytes_by_meta_ref,
                         )
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0

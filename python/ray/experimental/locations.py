@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray._raylet import ObjectRef
@@ -74,3 +74,29 @@ def get_local_object_locations(
         raise RuntimeError("Ray hasn't been initialized.")
     core_worker = ray._private.worker.global_worker.core_worker
     return core_worker.get_local_object_locations(obj_refs)
+
+
+def get_object_sizes(obj_refs: List[ObjectRef]) -> List[Optional[int]]:
+    """Lookup the byte size of a list of objects from the local core worker.
+
+    Returns sizes in the same order as ``obj_refs``. Each entry is the
+    object's ``data + metadata`` size in bytes, or ``None`` if the size
+    isn't known yet (e.g., the producing task hasn't sealed the object).
+    No RPCs are made.
+
+    This is a focused convenience over :func:`get_local_object_locations`
+    for callers that only need the size — for example, doing byte-budget
+    accounting on a batched ``ray.get`` without first fetching the
+    objects themselves.
+
+    Args:
+        obj_refs: List of object refs.
+
+    Returns:
+        A list of optional ints, one per input ref, in input order.
+
+    Raises:
+        RuntimeError: if Ray hasn't been initialized.
+    """
+    locations = get_local_object_locations(obj_refs)
+    return [(locations.get(ref) or {}).get("object_size") for ref in obj_refs]
