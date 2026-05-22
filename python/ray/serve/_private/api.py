@@ -7,10 +7,10 @@ from pydantic import BaseModel
 
 import ray
 from ray._common.usage import usage_lib
-from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -74,7 +74,7 @@ def _start_controller(
     global_logging_config: Union[None, dict, LoggingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
-) -> ActorHandle:
+) -> None:
     """Start Ray Serve controller.
 
     The function makes sure controller is ready to start deploying apps
@@ -82,7 +82,7 @@ def _start_controller(
 
     Parameters are same as ray.serve._private.api.serve_start().
 
-    Returns: controller actor handle.
+    Returns: None. Caller should use ray.get_actor() to get the controller.
     """
 
     # Initialize ray if needed.
@@ -131,7 +131,6 @@ def _start_controller(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-    return controller
 
 
 async def serve_start_async(
@@ -172,18 +171,11 @@ async def serve_start_async(
             _check_http_options(client, http_options)
         return client
 
-    controller = (
-        await ray.remote(_start_controller)
-        .options(num_cpus=0)
-        .remote(
-            http_options,
-            grpc_options,
-            global_logging_config,
-            controller_options=controller_options,
-            **kwargs,
-        )
+    await ray.remote(_start_controller).options(num_cpus=0).remote(
+        http_options, grpc_options, global_logging_config, **kwargs
     )
 
+    controller = ray.get_actor(name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
     client = ServeControllerClient(
         controller,
     )
@@ -271,14 +263,11 @@ def serve_start(
             _check_http_options(client, http_options)
         return client
 
-    controller = _start_controller(
-        http_options,
-        grpc_options,
-        global_logging_config,
-        controller_options=controller_options,
-        **kwargs,
+    _start_controller(
+        http_options, grpc_options, global_logging_config, **kwargs
     )
 
+    controller = ray.get_actor(name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
     client = ServeControllerClient(
         controller,
     )
