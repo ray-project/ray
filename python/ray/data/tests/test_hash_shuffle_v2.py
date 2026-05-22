@@ -375,6 +375,39 @@ def test_pre_map_merge_buffer(monkeypatch, tc: MergeBufferCase):
     assert submitted == tc.expected_submitted_block_counts
 
 
+@dataclass
+class ReduceConcurrencyCase:
+    name: str
+    num_nodes: int
+    override: Optional[int] = None
+    expected_limit: int = 0
+
+
+@pytest.mark.parametrize(
+    "tc",
+    [
+        ReduceConcurrencyCase(
+            name="default_is_one_per_node",
+            num_nodes=32,
+            expected_limit=32,
+        ),
+        ReduceConcurrencyCase(
+            name="override_wins",
+            num_nodes=32,
+            override=12,
+            expected_limit=12,
+        ),
+    ],
+    ids=lambda tc: tc.name,
+)
+def test_reduce_concurrency_limit(tc: ReduceConcurrencyCase):
+    op = _make_base_op()
+    op._num_nodes = tc.num_nodes
+    if tc.override is not None:
+        op._data_context.set_config("map_reduce_max_concurrent_reducers", tc.override)
+    assert op._get_reduce_concurrency_limit() == tc.expected_limit
+
+
 # ===========================================================================
 # End-to-end (real Ray cluster)
 # ===========================================================================

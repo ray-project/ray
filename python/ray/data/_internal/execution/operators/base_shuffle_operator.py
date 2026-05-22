@@ -80,8 +80,11 @@ def _partition_blocks_to_shards(
     """Run partition_fn on each block; collect non-empty shards by pid.
 
     Each block is partitioned independently so we never materialize a single
-    concatenated table.  partition_fn is responsible for any defragmentation
-    it needs (e.g. hash_partition calls try_combine_chunked_columns).
+    concatenated table across all inputs.  Chunked columns are defragmented
+    here (combine_chunks) before calling partition_fn — this is a real
+    performance constraint, not optional, hash_partition's per-column take
+    is sensitive to chunk count, and leaving chunked input alone halves map
+    throughput.
     """
     partition_accumulators: Dict[int, List[pa.Table]] = {}
     for block in blocks:
@@ -436,15 +439,17 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     map_cpus:
         CPU request per map task.
     reduce_cpus:
-        CPU request per reduce task.  If None, auto-derived from partition
-        sizes and cluster shape (1.0 for streaming, memory-proportional for
-        blocking).
+        CPU request per reduce task.  Defaults to
+        :attr:`_DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS` (1.0).  With reduce
+        concurrency capped at one reducer per node, asking for more CPUs
+        than this just blocks downstream ops from co-locating; only raise it
+        for genuinely CPU-bound reduce_fns.
     name:
         Display name shown in progress bars and logs.
     """
 
-    _DEFAULT_shuffle_map_task_NUM_CPUS = 1.0
-    _DEFAULT_shuffle_reduce_task_NUM_CPUS = 1.0
+    _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
+    _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
@@ -459,9 +464,8 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         disallow_block_splitting: bool = False,
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
-        map_cpus: float = _DEFAULT_shuffle_map_task_NUM_CPUS,
+        map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         reduce_cpus: Optional[float] = None,
-        reduce_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         name: str = "Shuffle",
     ):
         super().__init__(
@@ -519,11 +523,8 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         # -- Reduce task config & tracking -----------------------------------
         self._shuffle_reduce_task_num_cpus_override: Optional[float] = reduce_cpus
-        self._shuffle_reduce_task_ray_remote_args_override: Dict[str, Any] = dict(
-            reduce_ray_remote_args_override or {}
-        )
         self._shuffle_reduce_task_num_cpus: float = (
-            self._DEFAULT_shuffle_reduce_task_NUM_CPUS
+            self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._pending_reduce_group_ids: Set[int] = set(range(self._num_groups))
@@ -617,23 +618,22 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        task_resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
+        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            task_resources["memory"] = estimated_bytes * 2
+            resources["memory"] = estimated_bytes * 2
 
-        if target_node_id is not None:
-            task_resources["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                target_node_id, soft=True
-            )
-
-        remote_opts: Dict[str, Any] = {
-            **task_resources,
+        ray_options: Dict[str, Any] = {
+            **resources,
             "num_returns": self._num_groups + 1,
         }
+        if target_node_id is not None:
+            ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                target_node_id, soft=True
+            )
         if self._map_runtime_env is not None:
-            remote_opts["runtime_env"] = self._map_runtime_env
+            ray_options["runtime_env"] = self._map_runtime_env
 
-        map_refs = _shuffle_map_task.options(**remote_opts).remote(
+        map_refs = _shuffle_map_task.options(**ray_options).remote(
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
@@ -648,7 +648,7 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             task_done_callback=functools.partial(
                 self._handle_map_done, cur_task_idx, group_refs, input_bundles
             ),
-            task_resource_bundle=ExecutionResources.from_resource_dict(task_resources),
+            task_resource_bundle=ExecutionResources.from_resource_dict(resources),
         )
         self._shuffle_map_tasks[cur_task_idx] = task
         self._map_resource_usage = self._map_resource_usage.add(
@@ -689,7 +689,7 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             task.get_requested_resource_bundle()
         )
 
-        input_meta, shard_sizes = ray.get(task.get_waitable(), timeout=60)
+        input_meta, shard_sizes = ray.get(task.get_waitable())
 
         for pid, (rows, nbytes) in shard_sizes.items():
             self._partition_row_counts[pid] += rows
@@ -748,54 +748,21 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _is_all_reduce_submitted(self) -> bool:
         return len(self._pending_reduce_group_ids) == 0
 
-    def _auto_derive_reduce_cpus(self) -> float:
-        """Derive shuffle_reduce_task_num_cpus from partition sizes and cluster shape.
-
-        For streaming reduce, memory per partition is bounded by
-        target_max_block_size (typically 128 MB), so 1 CPU maximises
-        concurrency.  For blocking reduce, peak heap is proportional to the
-        largest group's uncompressed bytes, so CPUs are scaled to bound
-        co-located heap usage.
-        """
-        import math
-
-        if self._streaming_reduce:
-            return self._DEFAULT_shuffle_reduce_task_NUM_CPUS
-
-        if not self._partition_bytes:
-            return self._DEFAULT_shuffle_reduce_task_NUM_CPUS
-
-        max_group_bytes = 0
-        for group_idx in range(self._num_groups):
-            start = group_idx * self._shard_group_size
-            end = min(start + self._shard_group_size, self._num_partitions)
-            group_bytes = sum(
-                self._partition_bytes.get(pid, 0) for pid in range(start, end)
-            )
-            max_group_bytes = max(max_group_bytes, group_bytes)
-
-        if max_group_bytes == 0:
-            return self._DEFAULT_shuffle_reduce_task_NUM_CPUS
-
-        reducer_heap = max_group_bytes * 2  # decompressed input + output
-
-        cluster_res = ray.cluster_resources()
-        num_nodes = max(len(ray.nodes()), 1)
-        node_cpus = max(1.0, cluster_res.get("CPU", 8) / num_nodes)
-        node_memory = cluster_res.get("memory", 30e9) / num_nodes
-
-        proportional_cpus = max(1.0, math.ceil(node_cpus * reducer_heap / node_memory))
-        target_per_node = max(1, int(node_cpus / proportional_cpus))
-        reduce_cpus = max(1.0, math.ceil(node_cpus / target_per_node))
-        return float(reduce_cpus)
-
     def _get_reduce_concurrency_limit(self) -> int:
         """Max concurrent reduce tasks allowed.
 
         Defaults to 1 per live worker node to prevent all reducers from
         launching simultaneously (which floods the object store before
         downstream can drain).  As each reducer finishes, the next wave is
-        scheduled by :meth:`_try_reduce`.
+        scheduled by _try_reduce.
+
+        A plasma-aware variant ("reducers_per_node = plasma_per_node //
+        (2 * max_partition_bytes)") was tried and regressed mid/large
+        workloads: packing more reducers per node starved the downstream
+        Write of CPU, causing output blocks to queue in plasma until
+        backpressure kicked in.  Until we model downstream CPU demand, the
+        safer default is one reducer per node — users with small partitions
+        can opt up via map_reduce_max_concurrent_reducers.
 
         Override via DataContext config key
         map_reduce_max_concurrent_reducers.
@@ -840,7 +807,6 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             reduce_options = {
                 **reduce_resources,
                 "scheduling_strategy": "SPREAD",
-                **self._shuffle_reduce_task_ray_remote_args_override,
                 "num_returns": "streaming",
             }
 
@@ -868,11 +834,8 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                     self._handle_reduce_done, group_id
                 ),
                 task_resource_bundle=ExecutionResources(
-                    cpu=reduce_options.get(
-                        "num_cpus", self._shuffle_reduce_task_num_cpus
-                    ),
+                    cpu=reduce_options["num_cpus"],
                     memory=estimated_bytes,
-                    object_store_memory=estimated_bytes,
                 ),
                 operator_name=self.name,
             )
@@ -889,7 +852,35 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 group_id, empty_bundle, task_id=data_task.get_task_id()
             )
 
+    def _log_partition_stats(self) -> None:
+        """Log per-partition row/byte distribution before reduce starts.
+
+        Useful for diagnosing skew, partition-too-large issues (e.g. plasma
+        overflow at high data volume), and shard-grouping behaviour.
+        """
+        counts = self._partition_row_counts
+        if not counts:
+            return
+        row_counts = sorted(counts.values())
+        n = len(row_counts)
+        empty = self._num_partitions - n
+        partition_bytes = sorted(self._partition_bytes[pid] for pid in counts)
+        total_bytes = sum(partition_bytes)
+        logger.debug(
+            f"Partition stats before reduce: "
+            f"partitions={self._num_partitions} (non-empty={n}, empty={empty}), "
+            f"total_rows={sum(row_counts):,}, "
+            f"total_bytes={total_bytes / 1e9:.1f}GB, "
+            f"rows: min={row_counts[0]:,}, median={row_counts[n // 2]:,}, "
+            f"max={row_counts[-1]:,}, "
+            f"bytes: min={partition_bytes[0] / 1e6:.0f}MB, "
+            f"median={partition_bytes[n // 2] / 1e6:.0f}MB, "
+            f"max={partition_bytes[-1] / 1e6:.0f}MB, "
+            f"groups={self._num_groups}, shard_group_size={self._shard_group_size}"
+        )
+
     def _init_reduce_phase(self) -> None:
+        self._log_partition_stats()
         self._reduce_start_time = time.perf_counter()
         map_elapsed = self._reduce_start_time - self._start_time
 
@@ -904,12 +895,16 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._num_nodes = 1
         self._num_nodes = max(1, self._num_nodes)
 
-        if self._shuffle_reduce_task_num_cpus_override is not None:
-            self._shuffle_reduce_task_num_cpus = (
-                self._shuffle_reduce_task_num_cpus_override
-            )
-        else:
-            self._shuffle_reduce_task_num_cpus = self._auto_derive_reduce_cpus()
+        # With concurrency capped at one reducer per node (see
+        # _get_reduce_concurrency_limit), there's no benefit to reserving
+        # more than one CPU per reducer — doing so just blocks downstream ops
+        # (e.g. Write) from co-locating on the same node and starves them
+        # of CPU.  Users with CPU-bound reduce_fns can opt up via the override.
+        self._shuffle_reduce_task_num_cpus = (
+            self._shuffle_reduce_task_num_cpus_override
+            if self._shuffle_reduce_task_num_cpus_override is not None
+            else self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
+        )
 
         logger.info(
             f"Reduce starting: map_elapsed={map_elapsed:.1f}s, "
@@ -921,7 +916,19 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _compute_reduce_resources(
         self, partition_ids: List[int]
     ) -> Tuple[Dict[str, Any], int]:
+        """Build the resource for one reduce task.
 
+        Returns (resources_dict, estimated_bytes):
+
+        - resources_dict: num_cpus (from
+          _shuffle_reduce_task_num_cpus) and a memory hint sized to
+          2 × estimated_bytes — covers decompressed input + concat copy.
+          The memory ask is capped at a single node's memory so the scheduler
+          still has a meaningful placement hint; without the cap, a reducer
+          that asks for more memory than any node has would queue forever.
+        - estimated_bytes: uncompressed bytes for this group's partitions,
+          used by the caller to populate the task's resource bundle.
+        """
         estimated_bytes = sum(
             self._partition_bytes.get(pid, 0) for pid in partition_ids
         )
@@ -932,11 +939,6 @@ class BaseShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             "num_cpus": self._shuffle_reduce_task_num_cpus
         }
         if estimated_bytes > 0:
-            # Cap at a single node's memory so the scheduler still has a
-            # meaningful hint (it'll pick the most-free node).  If we asked
-            # for more than any node has, Ray would queue forever — but
-            # falling back to 0 disables memory-aware placement entirely,
-            # which is worse: the reducer can land on a loaded node and OOM.
             reduce_resources["memory"] = min(estimated_bytes * 2, node_memory)
         return reduce_resources, estimated_bytes
 
