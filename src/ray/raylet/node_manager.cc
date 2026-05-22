@@ -3144,13 +3144,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
           RAY_LOG(INFO) << absl::StrFormat(
-              "Killing %d worker(s), kill details: %s, suggestions: %s",
+              "Killing %d worker(s), kill details: %s; suggestions: %s",
               workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
 
           std::string worker_exit_message = absl::StrFormat(
-              "%d worker(s) were killed due to the node running low on memory. %s, %s",
+              "%d worker(s) were killed due to the node running low on memory. %s; %s",
               workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
@@ -3179,7 +3179,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
               // TODO(sang): Add the job entrypoint to the name.
               memory_manager_worker_eviction_total_count_.Record(
-                  1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
+                  1,
+                  {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", "Driver"}});
             } else if (worker_to_kill->GetGrantedLeaseId().IsNil()) {
               memory_manager_worker_eviction_total_count_.Record(
                   1,
@@ -3275,6 +3276,8 @@ std::string NodeManager::CreateOomKillMessageDetails(
 
   std::vector<std::string> worker_details;
   absl::flat_hash_set<pid_t> workers_to_kill_pids;
+  int64_t total_non_selected_idle_workers = 0;
+  int64_t total_non_selected_idle_workers_uss_bytes = 0;
   for (const auto &[worker, should_retry] : workers_to_kill) {
     workers_to_kill_pids.insert(worker->GetProcess().GetId());
     worker_details.push_back(
@@ -3283,8 +3286,20 @@ std::string NodeManager::CreateOomKillMessageDetails(
   }
   for (const std::shared_ptr<WorkerInterface> &worker : all_workers) {
     if (!workers_to_kill_pids.contains(worker->GetProcess().GetId())) {
-      worker_details.push_back(
-          CreateWorkerMemoryUsageDetails(process_memory_snapshot, worker));
+      if (worker->GetGrantedLeaseId().IsNil()) {
+        total_non_selected_idle_workers++;
+        StatusSetOr<int64_t, StatusT::NotFound> used_bytes_or =
+            MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                          worker->GetProcess().GetId());
+        if (used_bytes_or.has_value()) {
+          total_non_selected_idle_workers_uss_bytes += used_bytes_or.value();
+        } else {
+          RAY_LOG_EVERY_MS(WARNING, 60000) << used_bytes_or.message();
+        }
+      } else {
+        worker_details.push_back(
+            CreateWorkerMemoryUsageDetails(process_memory_snapshot, worker));
+      }
     }
   }
 
@@ -3292,8 +3307,10 @@ std::string NodeManager::CreateOomKillMessageDetails(
       "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f); "
       "OOM kill reason: %s; "
       "Object store memory usage: [%s]; "
-      "Ray killed %d worker(s) based on the killing policy: "
-      "[%s]; "
+      "Ray killed %d worker(s) based on the killing policy; "
+      "Considered workers: [; %s]; "
+      "Total non-selected idle workers: %d; "
+      "Total non-selected idle workers USS bytes: %sGB; "
       "To see more information about memory usage on this node, "
       "use `ray logs raylet.out -ip %s`; "
       "Top 10 memory users: %s",
@@ -3306,6 +3323,10 @@ std::string NodeManager::CreateOomKillMessageDetails(
       absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
       workers_to_kill.size(),
       absl::StrJoin(worker_details, "; "),
+      total_non_selected_idle_workers,
+      absl::StrFormat("%.2f",
+                      static_cast<float>(total_non_selected_idle_workers_uss_bytes) /
+                          1024 / 1024 / 1024),
       node_ip,
       MemoryMonitorUtils::TopNMemoryDebugString(10, process_memory_snapshot));
 }
@@ -3362,7 +3383,7 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "selecting a single worker to kill at a time, set the environment "
       "variable `RAY_worker_killing_policy_by_group` to true before "
       "starting Ray. If the idle workers have a non-trivial memory footprint "
-      "at the time of OOM (check via the top 10 memory users debug log), "
+      "at the time of OOM (check OOM log for non-selected idle workers), "
       "consider setting the environment variable "
       "`RAY_idle_worker_killing_memory_threshold_bytes` to a lower value "
       "to consider idle workers with lower memory footprint for killing.",

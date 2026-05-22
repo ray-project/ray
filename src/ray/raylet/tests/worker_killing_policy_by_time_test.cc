@@ -83,7 +83,8 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesRetriableOverNonRetri
   workers.push_back(non_retriable_worker);
   workers.push_back(retriable_worker);
 
-  // used_bytes - threshold + buffer = 1200 - 1000 + 100 = 300 bytes to free
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{non_retriable_worker, 500}, {retriable_worker, 500}});
@@ -113,7 +114,8 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(older_non_retriable);
   workers.push_back(newer_non_retriable);
 
-  // used_bytes - threshold + buffer = 2000 - 1000 + 100 = 1100 bytes to free
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 2000 - 1000 + 100 = 1100 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{older_retriable, 400},
@@ -152,7 +154,8 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyFreesEnoughWorkersToGetUnderThre
   workers.push_back(worker3);
   workers.push_back(worker4);
 
-  // Memory to free: 1500 - 1000 + 100 = 600 bytes
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1500 - 1000 + 100 = 600 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1500);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{worker1, 100},  // oldest
@@ -223,7 +226,8 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersWhenKillingInPro
   workers.push_back(worker1);
   workers.push_back(worker2);
 
-  // Memory to free: 1200 - 1000 + 100 = 300 bytes
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{worker1, 400}, {worker2, 400}});
@@ -249,7 +253,8 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(worker1);
   workers.push_back(worker2);
 
-  // Memory to free: 1200 - 1000 + 100 = 300 bytes
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{worker1, 400}, {worker2, 400}});
@@ -272,15 +277,16 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_exceeding = CreateWorkerWithNoLease(port_, 5001);
+  std::shared_ptr<WorkerInterface> idle_exceeding = CreateWorkerWithNoLease(port_, 1001);
   std::shared_ptr<WorkerInterface> idle_not_exceeding =
-      CreateWorkerWithNoLease(port_, 5002);
+      CreateWorkerWithNoLease(port_, 1002);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_exceeding);
   workers.push_back(idle_not_exceeding);
 
-  // Memory to free: 1200 - 1000 + 100 = 300 bytes.
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
   ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
       {{idle_exceeding, IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1},
@@ -297,8 +303,8 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestTwoIdleWorkersExceedingThresholdBothSe
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_exceed_1 = CreateWorkerWithNoLease(port_, 5003);
-  std::shared_ptr<WorkerInterface> idle_exceed_2 = CreateWorkerWithNoLease(port_, 5004);
+  std::shared_ptr<WorkerInterface> idle_exceed_1 = CreateWorkerWithNoLease(port_, 1001);
+  std::shared_ptr<WorkerInterface> idle_exceed_2 = CreateWorkerWithNoLease(port_, 1002);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_exceed_1);
@@ -323,14 +329,15 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_under_1 = CreateWorkerWithNoLease(port_, 5005);
-  std::shared_ptr<WorkerInterface> idle_under_2 = CreateWorkerWithNoLease(port_, 5006);
+  std::shared_ptr<WorkerInterface> idle_under_1 = CreateWorkerWithNoLease(port_, 1001);
+  std::shared_ptr<WorkerInterface> idle_under_2 = CreateWorkerWithNoLease(port_, 1002);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_under_1);
   workers.push_back(idle_under_2);
 
-  // Memory to free: 2000 - 1000 + 100 = 1100 bytes.
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 2000 - 1000 + 100 = 1100 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
   ProcessesMemorySnapshot process_snapshot =
       CreateProcessSnapshot({{idle_under_1, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1},
@@ -350,22 +357,22 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
 
   // Cold-start idle worker (no lease ever granted) below the idle threshold
-  std::shared_ptr<WorkerInterface> cold_idle_under = CreateWorkerWithNoLease(port_, 3001);
+  std::shared_ptr<WorkerInterface> cold_idle_under = CreateWorkerWithNoLease(port_, 1001);
 
   // Cold-start idle worker above the idle threshold
-  std::shared_ptr<WorkerInterface> cold_idle_over = CreateWorkerWithNoLease(port_, 3002);
+  std::shared_ptr<WorkerInterface> cold_idle_over = CreateWorkerWithNoLease(port_, 1002);
 
   // Non-cold-start idle worker — held a lease previously
   std::shared_ptr<WorkerInterface> non_cold_idle =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 3003);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1003);
   // Simulate that the worker lease has been cleaned up.
   non_cold_idle->GrantLeaseId(LeaseID::Nil());
 
   // Worker with an active granted lease (non-idle)
   std::shared_ptr<WorkerInterface> oldest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 3004);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1004);
   std::shared_ptr<WorkerInterface> newest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 3005);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1005);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(cold_idle_under);
@@ -374,7 +381,8 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   workers.push_back(oldest_worker);
   workers.push_back(newest_worker);
 
-  // Memory to free: 4000 - 1000 + 100 = 3100 bytes to free.
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 4000 - 1000 + 100 = 3100 bytes.
   // Total worker memory is 2750 bytes (< 3100), so the policy iterates over every
   // candidate.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(4000);
@@ -389,26 +397,14 @@ TEST_F(WorkerKillingPolicyByTimeTest,
       policy.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
 
   ASSERT_EQ(workers_to_kill.size(), 4);
-  bool selected_cold_idle_over = false;
-  bool selected_non_cold_idle = false;
-  bool selected_active_1 = false;
-  bool selected_active_2 = false;
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), cold_idle_over->WorkerId());
+  ASSERT_EQ(workers_to_kill[1].first->WorkerId(), non_cold_idle->WorkerId());
+  ASSERT_EQ(workers_to_kill[2].first->WorkerId(), newest_worker->WorkerId());
+  ASSERT_EQ(workers_to_kill[3].first->WorkerId(), oldest_worker->WorkerId());
+
   for (const auto &entry : workers_to_kill) {
     ASSERT_NE(entry.first->WorkerId(), cold_idle_under->WorkerId());
-    if (entry.first->WorkerId() == cold_idle_over->WorkerId()) {
-      selected_cold_idle_over = true;
-    } else if (entry.first->WorkerId() == non_cold_idle->WorkerId()) {
-      selected_non_cold_idle = true;
-    } else if (entry.first->WorkerId() == oldest_worker->WorkerId()) {
-      selected_active_1 = true;
-    } else if (entry.first->WorkerId() == newest_worker->WorkerId()) {
-      selected_active_2 = true;
-    }
   }
-  ASSERT_TRUE(selected_cold_idle_over);
-  ASSERT_TRUE(selected_non_cold_idle);
-  ASSERT_TRUE(selected_active_1);
-  ASSERT_TRUE(selected_active_2);
 }
 
 TEST_F(WorkerKillingPolicyByTimeTest,
@@ -421,31 +417,32 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   // Two cold-start idle workers below the idle threshold. The policy iterates
   // them first (no granted lease ID sorts first) but skips them, so they
   // contribute nothing toward memory_left_to_free.
-  std::shared_ptr<WorkerInterface> cold_idle_under_1 =
-      CreateWorkerWithNoLease(port_, 4001);
-  std::shared_ptr<WorkerInterface> cold_idle_under_2 =
-      CreateWorkerWithNoLease(port_, 4002);
+  std::shared_ptr<WorkerInterface> oldest_idle_under =
+      CreateWorkerWithNoLease(port_, 1001);
+  std::shared_ptr<WorkerInterface> newest_idle_under =
+      CreateWorkerWithNoLease(port_, 1002);
 
   // Leased workers, created oldest → newest. They sort newest-first.
   std::shared_ptr<WorkerInterface> oldest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 4003);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1003);
   std::shared_ptr<WorkerInterface> middle_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 4004);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1004);
   std::shared_ptr<WorkerInterface> newest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 4005);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1005);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  workers.push_back(cold_idle_under_1);
-  workers.push_back(cold_idle_under_2);
+  workers.push_back(oldest_idle_under);
+  workers.push_back(newest_idle_under);
   workers.push_back(oldest_worker);
   workers.push_back(middle_worker);
   workers.push_back(newest_worker);
 
-  // Memory to free: 1400 - 1000 + 100 = 500 bytes.
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1400 - 1000 + 100 = 500 bytes.
   MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1400);
   ProcessesMemorySnapshot process_snapshot =
-      CreateProcessSnapshot({{cold_idle_under_1, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1},
-                             {cold_idle_under_2, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1},
+      CreateProcessSnapshot({{oldest_idle_under, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1},
+                             {newest_idle_under, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1},
                              {oldest_worker, 300},
                              {middle_worker, 300},
                              {newest_worker, 300}});
@@ -458,8 +455,8 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   ASSERT_EQ(workers_to_kill[1].first->WorkerId(), middle_worker->WorkerId());
 
   for (const auto &entry : workers_to_kill) {
-    ASSERT_NE(entry.first->WorkerId(), cold_idle_under_1->WorkerId());
-    ASSERT_NE(entry.first->WorkerId(), cold_idle_under_2->WorkerId());
+    ASSERT_NE(entry.first->WorkerId(), oldest_idle_under->WorkerId());
+    ASSERT_NE(entry.first->WorkerId(), newest_idle_under->WorkerId());
     ASSERT_NE(entry.first->WorkerId(), oldest_worker->WorkerId());
   }
 }
