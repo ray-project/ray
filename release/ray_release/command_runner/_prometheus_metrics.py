@@ -62,6 +62,11 @@ async def _get_prometheus_metrics(
         "step": 15,
     }
     sf = f'{{SessionName="{session_name}"}}' if session_name else ""
+    sf_spilled = (
+        f'{{SessionName="{session_name}",State="Spilled"}}'
+        if session_name
+        else '{State="Spilled"}'
+    )
     metrics = {
         "cpu_utilization": client.query_prometheus(
             query=f"ray_node_cpu_utilization{sf} * ray_node_cpu_count{sf} / 100",
@@ -132,6 +137,12 @@ async def _get_prometheus_metrics(
         ),
         "unexpected_worker_failures": client.query_prometheus(
             query=f"sum(ray_node_manager_unexpected_worker_failure_total{sf}) by (Type, Name)",
+            **kwargs,
+        ),
+        # `State="Spilled"` is the cumulative-bytes counter (the other States
+        # are point-in-time / transient); `> 0` drops always-emitted 0 points.
+        "spilled_bytes": client.query_prometheus(
+            query=f"sum(ray_spill_manager_objects_bytes{sf_spilled}) > 0",
             **kwargs,
         ),
     }

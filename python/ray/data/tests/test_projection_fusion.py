@@ -765,6 +765,18 @@ class TestProjectionFusion:
         expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
+    def test_with_column_alias_then_rename_preserves_both_columns(
+        self, ray_start_regular_shared
+    ):
+        """Regression test for alias and rename referencing the same input column."""
+        ds = ray.data.from_items([{"a": 1}])
+        ds = ds.with_column("x", col("a")).rename_columns({"a": "b"})
+
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        assert self._count_project_operators(optimized_plan) == 1
+
+        assert ds.take_all() == [{"x": 1, "b": 1}]
+
     @pytest.mark.parametrize(
         "operations,expected",
         [

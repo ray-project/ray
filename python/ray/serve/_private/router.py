@@ -1267,6 +1267,12 @@ class AsyncioRouter:
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
+        # Internal opt-out for pick-only callers (e.g. ingress router that
+        # forwards traffic out-of-band via HAProxy). Skips the replica-side
+        # reserve_slot RPC and the rejection-retry loop; the configured
+        # RequestRouter still drives ordering.
+        reserve = request_kwargs.pop("_reserve", True)
+
         await self._request_router_initialized.wait()
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
@@ -1279,7 +1285,25 @@ class AsyncioRouter:
                 await self._resolve_args_with_metrics(pr)
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
-            replica, slot_token = await self._pick_and_reserve_replica(pr)
+            if reserve:
+                replica, slot_token = await self._pick_and_reserve_replica(pr)
+            else:
+                # Fast path: synchronously ask the configured RequestRouter to
+                # pick a replica from the current snapshot, bypassing the
+                # _pending_requests_to_fulfill queue and the routing-task
+                # workers. Safe because there's no reservation -> no rejection
+                # -> no retry, so the queue's ordering/backoff guarantees are
+                # unused.
+                ranks = await self.request_router.choose_replicas(
+                    candidate_replicas=self.request_router._replicas_list,
+                    pending_request=pr,
+                )
+                replica = next((r for rank in ranks for r in rank), None)
+                if replica is None:
+                    raise RuntimeError(
+                        f"no replicas available for {self.deployment_id}"
+                    )
+                slot_token = None
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
@@ -1293,6 +1317,10 @@ class AsyncioRouter:
                 _method_name=request_meta.call_method,
                 _slot_token=slot_token,
             )
+
+        if not reserve:
+            yield selection
+            return
 
         try:
             self._metrics_manager.inc_reserved_slots()
@@ -1361,6 +1389,11 @@ class AsyncioRouter:
         re-raising.
         """
         replica = selection._replica
+        if selection._slot_token is None:
+            raise RuntimeError(
+                "Cannot dispatch a ReplicaSelection that was created without a "
+                "reservation (_reserve=False)."
+            )
         # Inject the slot token so the replica skips re-acquiring its semaphore.
         # Args are re-resolved here because dispatch may carry augmented args.
         pr = PendingRequest(

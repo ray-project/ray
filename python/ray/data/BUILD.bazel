@@ -350,6 +350,20 @@ py_test(
 )
 
 py_test(
+    name = "test_block_metadata_schema_cache",
+    size = "small",
+    srcs = ["tests/unit/test_block_metadata_schema_cache.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_block_sizing",
     size = "medium",
     srcs = ["tests/test_block_sizing.py"],
@@ -947,6 +961,20 @@ py_test(
     name = "test_parquet",
     size = "large",
     srcs = ["tests/datasource/test_parquet.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_read_parquet_v2",
+    size = "small",
+    srcs = ["tests/datasource/test_read_parquet_v2.py"],
     tags = [
         "exclusive",
         "team:data",
