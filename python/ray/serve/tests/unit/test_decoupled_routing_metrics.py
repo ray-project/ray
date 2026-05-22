@@ -305,3 +305,9 @@ class TestReplicaSelectionStartTime:
         selection = _make_selection(start_time_offset_s=offset_s)
         elapsed_ms = (time.monotonic() - selection.selection_start_time) * 1000
         assert elapsed_ms >= offset_s * 1000
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
