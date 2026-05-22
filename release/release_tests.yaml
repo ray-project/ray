@@ -1244,7 +1244,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1305,7 +1305,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -1331,7 +1331,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -1357,7 +1357,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -1545,7 +1545,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1771,7 +1771,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -4656,7 +4656,7 @@
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.13"
+  python: "3.14"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-xgboost # use // to access from repo's root
