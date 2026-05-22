@@ -2,4 +2,4 @@ daft==0.6.2
 transformers==4.56.2
 pillow==11.3.0
 pybase64==1.4.2
-torch==2.5.0
+torch==2.9.0

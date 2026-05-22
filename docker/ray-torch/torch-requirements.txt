@@ -8,13 +8,12 @@ transformers
 datasets
 daft
 sentence-transformers
-#vllm==0.21.0 # cuda-tile doesn't have a python 3.14 wheel (21st May)
-cupy-cuda12x
 grpcio
 jupytext
 langchain-text-splitters
 
-# necessary version updates for 3.14
+# necessary changes for 3.14
+#vllm==0.21.0 # cuda-tile doesn't have a python 3.14 wheel (21st May)
 cupy-cuda12x==14.0.1
 llvmlite==0.47.0
 numba==0.65.0
