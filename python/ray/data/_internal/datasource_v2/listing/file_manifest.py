@@ -54,6 +54,7 @@ class FileManifest:
     def __repr__(self):
         return f"<{self.__class__.__name__} length={len(self._block)}>"
 
+    # TODO Use arrow arrays instead of numpy for these properties.
     @cached_property
     def paths(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._paths).to_numpy()

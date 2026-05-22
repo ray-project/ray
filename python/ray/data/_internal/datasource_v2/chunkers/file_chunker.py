@@ -5,6 +5,7 @@ more parallel-read units. The indexer drives the chunker once per file
 and emits one manifest row per chunk; downstream the partitioner /
 reader carry the per-chunk metadata through to the read task.
 """
+
 import abc
 import math
 from typing import (
@@ -18,7 +19,7 @@ from typing import (
     get_type_hints,
 )
 
-from ray.data._internal.util import GiB, infer_compression
+from ray.data._internal.util import GiB, MiB, infer_compression
 from ray.util.annotations import DeveloperAPI
 
 
@@ -118,12 +119,12 @@ class WholeFileChunker(FileChunker):
 class LineDelimitedFileChunker(FileChunker):
     """File chunker for line-delimited files (JSONL, CSV, TSV, etc.).
 
-    This chunker splits files into fixed-size byte chunks (default: 256MB)
+    This chunker splits files into fixed-size byte chunks (default: 256 MiB)
     and provides metadata about the byte ranges for each chunk. The actual
     line boundaries are handled by the reader to ensure complete records.
     """
 
-    _CHUNK_BYTE_SIZE = 256 * 1024 * 1024  # 256MB
+    _CHUNK_BYTE_SIZE = 256 * MiB  # 256 MiB
 
     def generate_chunk_metadatas(
         self, path: str, file_size: int
@@ -137,11 +138,14 @@ class LineDelimitedFileChunker(FileChunker):
                 chunk_start = self._CHUNK_BYTE_SIZE * chunk_idx
                 chunk_end = min(self._CHUNK_BYTE_SIZE * (chunk_idx + 1), file_size)
                 chunk_size = chunk_end - chunk_start
-                yield create_chunk_metadata(
-                    LineDelimitedFileChunkMetadata,
-                    chunk_byte_start_idx=chunk_start,
-                    chunk_byte_end_idx=chunk_end,
-                ), chunk_size
+                yield (
+                    create_chunk_metadata(
+                        LineDelimitedFileChunkMetadata,
+                        chunk_byte_start_idx=chunk_start,
+                        chunk_byte_end_idx=chunk_end,
+                    ),
+                    chunk_size,
+                )
 
 
 @DeveloperAPI
@@ -195,8 +199,11 @@ class ParquetFileChunker(FileChunker):
             chunk_start = self._target_chunk_size * i
             chunk_end = min(self._target_chunk_size * (i + 1), file_size)
             chunk_size = chunk_end - chunk_start
-            yield create_chunk_metadata(
-                ParquetFileChunkMetadata,
-                chunk_idx=i,
-                total_num_chunks=num_chunks,
-            ), chunk_size
+            yield (
+                create_chunk_metadata(
+                    ParquetFileChunkMetadata,
+                    chunk_idx=i,
+                    total_num_chunks=num_chunks,
+                ),
+                chunk_size,
+            )
