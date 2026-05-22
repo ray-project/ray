@@ -614,7 +614,7 @@ Each Ray release is fully tested with a compatible vLLM version.
 
 .. list-table::
    :header-rows: 1
-   :widths: 8 8
+   :widths: auto
 
    * - Ray release
      - vLLM version
@@ -638,10 +638,10 @@ GPU memory and CUDA OOM
 
 If you encounter CUDA out of memory errors, try these strategies:
 
-- **Reduce batch size**: Start with 8-16 and increase gradually
-- **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
-- **Decrease ``max_model_len``**: Use shorter context lengths
-- **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
+- Reduce batch size: Start with 8-16 and increase gradually
+- Lower ``max_num_batched_tokens``: Reduce from 4096 to 2048 or 1024
+- Decrease ``max_model_len``: Use shorter context lengths
+- Set ``gpu_memory_utilization``: Use 0.75-0.85 instead of default 0.90
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -694,6 +694,6 @@ If you encounter issues not covered in this guide:
 - `Ray GitHub Issues <https://github.com/ray-project/ray/issues>`_ - Report bugs or request features
 - `Ray Slack <https://ray-distributed.slack.com>`_ - Get help from the community
 - `Ray Discourse Forum <https://discuss.ray.io>`_ - Ask questions and share knowledge
-- `Ray LLM Office Hours <https://docs.google.com/document/d/1n3-Jw_4su8yilo9zdi5OciAduoz6H_VmdL8i9sL4f-E/edit?tab=t.e700ayqsx3v3>`_ - Learn about new features, ask questions, and get guidance from the team
+- `Ray LLM Office Hours <https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month>`_ - Learn about new features, ask questions, and get guidance from the team
 
   - `Past Office Hours Recordings <https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN>`_ - View recordings from previous sessions
