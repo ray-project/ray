@@ -3,4 +3,4 @@
 
 set -exo pipefail
 
-pip3 install mosaicml-streaming
+pip3 install --no-cache-dir tensorflow
