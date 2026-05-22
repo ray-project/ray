@@ -135,7 +135,7 @@ TimeBasedWorkerKillingPolicy::Policy(
 
           absl::Time left_granted_lease_time = left->GetLastGrantedLeaseTime().value();
           absl::Time right_granted_lease_time = right->GetLastGrantedLeaseTime().value();
-          return left_granted_lease_time >= right_granted_lease_time;
+          return left_granted_lease_time > right_granted_lease_time;
         } else {
           StatusSetOr<int64_t, StatusT::NotFound> left_memory_or =
               MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
