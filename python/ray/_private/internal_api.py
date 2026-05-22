@@ -53,7 +53,9 @@ def memory_summary(
     ) + store_stats_summary(reply)
 
 
-def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None, timeout_seconds=60.0):
+def get_memory_info_reply(
+    state, node_manager_address=None, node_manager_port=None, timeout_seconds=60.0
+):
     """Returns global memory info."""
 
     from ray._private.grpc_utils import init_grpc_channel
