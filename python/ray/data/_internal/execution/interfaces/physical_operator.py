@@ -112,7 +112,56 @@ TaskDoneCallbackType = Callable[
 
 
 class DataOpTask(OpTask):
-    """Represents an OpTask that handles Block data."""
+    """An OpTask that handles Block data from a streaming generator.
+
+    **Per-pair lifecycle.** Each (``block_ref``, ``meta_ref``) pair must
+    travel: *pulled from generator → metadata bytes fetched → emitted as
+    RefBundle*. Pulling from the generator is destructive (the ref is
+    gone from the stream), so a pair must be tracked on the task until
+    it's emitted — even if its metadata bytes haven't been fetched yet.
+    The per-pair state is therefore split into three fields:
+
+    - ``_partial_block_ref``: a ``block_ref`` pulled but not yet paired
+      with its matching ``meta_ref``. The generator yields the two in
+      succession but they can arrive in separate scheduler ticks; this
+      slot bridges the gap. Cleared as soon as the ``meta_ref`` arrives.
+    - ``_pending_pairs``: fully-paired ``(block_ref, meta_ref)`` tuples
+      pulled from the generator, awaiting RefBundle emission. Ordered.
+    - ``_cached_meta_bytes``: metadata bytes for some subset of the
+      queued pairs, keyed by ``meta_ref``. A queued pair is *consumable*
+      if its ``meta_ref`` appears here.
+
+    **Methods, mapped to lifecycle stages:**
+
+    - :meth:`peek_pending_pair` — *advance the generator by one pair*
+      (or return ``None`` if nothing is immediately ready). Mutates
+      ``_partial_block_ref`` then ``_pending_pairs``. On generator
+      termination it sets ``_gen_exhausted`` (normal done) or
+      ``_gen_errored_block`` (task raised mid-pair).
+    - :meth:`uncached_pending_meta_refs` — *return the work list for
+      the next batched ``ray.get``*: queued meta_refs not yet in
+      ``_cached_meta_bytes``.
+    - :meth:`cache_prefetched_meta_bytes` — *write fetched bytes* into
+      ``_cached_meta_bytes``.
+    - :meth:`on_data_ready` — *emit RefBundles*: pop queued pairs whose
+      bytes are cached, build and emit a ``RefBundle``, repeat until
+      cache miss or budget exhaustion. After the queue drains, fire
+      ``task_done_callback`` if a termination flag is set.
+    - :meth:`fetch_and_drain` — *one-task convenience* that runs the
+      four steps above for callers outside ``process_completed_tasks``.
+
+    **Production flow** (``process_completed_tasks`` in
+    ``streaming_executor_state.py``) runs the same four steps across
+    every ready ``DataOpTask`` at once, so one batched ``ray.get``
+    covers the union of every task's uncached meta_refs::
+
+        for task in ready_tasks:                                   # step 1
+            while task.peek_pending_pair() is not None: pass
+        refs = sum((t.uncached_pending_meta_refs() for t in ready_tasks), [])
+        bytes = ray.get(refs, timeout=METADATA_GET_TIMEOUT_S)      # step 2
+        for task: task.cache_prefetched_meta_bytes(...)            # step 3
+        for task: task.on_data_ready(budget)                       # step 4
+    """
 
     def __init__(
         self,
@@ -156,33 +205,17 @@ class DataOpTask(OpTask):
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
 
-        # The streaming generator is a one-way stream: pulling a ref off it
-        # is destructive, so once ``peek_pending_pair`` has pulled a pair we
-        # have to track it on the task until it's emitted as a RefBundle —
-        # even if its metadata bytes haven't been fetched yet. That's why
-        # the per-pair state is split into two fields:
-        #
-        #   _pending_pairs        — (block_ref, meta_ref) pairs pulled from
-        #                           the generator, awaiting consumption.
-        #   _cached_meta_bytes    — metadata bytes for some subset of the
-        #                           queued pairs (populated by
-        #                           ``cache_prefetched_meta_bytes``).
-        #
-        # A pair is consumable by ``on_data_ready`` if its meta_ref is in
-        # the bytes dict; otherwise it sits in the queue until the next
-        # batched ``ray.get`` populates the bytes.
+        # Per-pair state — see class docstring for the full data flow.
+        # _pending_pairs: pairs pulled from the gen, awaiting emission.
+        # _cached_meta_bytes: bytes for some subset of queued pairs.
+        # _partial_block_ref: half-pulled pair (block yet, meta not).
         self._pending_pairs: Deque[
             Tuple[ray.ObjectRef[Block], ray.ObjectRef[BlockMetadata]]
         ] = deque()
         self._cached_meta_bytes: Dict[ray.ObjectRef, bytes] = {}
-        # If ``peek_pending_pair`` pulled a block_ref but the matching
-        # meta_ref isn't ready yet, stash the block here and pair it on the
-        # next peek. (The generator yields block then metadata; the two can
-        # arrive in separate scheduler ticks.)
         self._partial_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
-        # Termination flags set by ``peek_pending_pair`` when it detects the
-        # generator is done. ``on_data_ready`` handles them after fully
-        # draining ``_pending_pairs``.
+        # Termination flags set by peek_pending_pair; consumed by
+        # on_data_ready once the queue is fully drained.
         self._gen_exhausted: bool = False
         self._gen_errored_block: Optional[ray.ObjectRef] = None
 
