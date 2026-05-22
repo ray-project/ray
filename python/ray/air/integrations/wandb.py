@@ -100,7 +100,7 @@ def setup_wandb(
         rank_zero_only: If True, will return an initialized session only for the
             rank 0 worker in distributed training. If False, will initialize a
             session for all workers.
-        kwargs: Passed to ``wandb.init()``.
+        **kwargs: Passed to ``wandb.init()``.
 
     Example:
 
@@ -113,6 +113,9 @@ def setup_wandb(
                 # ...
                 wandb.log({"loss": 0.123})
 
+    Returns:
+        The initialized wandb run, or a disabled run for non-rank-zero workers
+        when ``rank_zero_only`` is True.
     """
     if not wandb:
         raise RuntimeError(
@@ -548,6 +551,11 @@ class WandbLoggerCallback(LoggerCallback):
             PopulationBasedTraining. Defaults to False.
         upload_checkpoints: If ``True``, model checkpoints will be uploaded to
             Wandb as artifacts. Defaults to ``False``.
+        save_checkpoints: Deprecated alias of ``upload_checkpoints``. Defaults to
+            ``False``.
+        upload_timeout: Maximum time in seconds to wait for pending uploads to
+            wandb when the experiment ends. Defaults to the Ray Train default
+            sync timeout.
         video_kwargs: Dictionary of keyword arguments passed to wandb.Video()
             when logging videos. Videos have to be logged as 5D numpy arrays
             to be affected by this parameter. For valid keyword arguments, see
