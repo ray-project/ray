@@ -83,8 +83,7 @@ class _TrialIterator:
             lazily or eagerly. This is toggled depending
             on the size of the grid search.
         start: index at which to start counting trials.
-        random_state (int | np.random.Generator | np.random.RandomState):
-            Seed or numpy random generator to use for reproducible results.
+        random_state: Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
             (``np.random``). Please note that full reproducibility cannot
             be guaranteed in a distributed environment.

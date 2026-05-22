@@ -269,6 +269,12 @@ def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
     Args:
         value: Object to be represented as a string.
         max_len: Maximum return string length.
+        wrap: If True, wrap the string across (at most two) lines of width
+            ``max_len`` instead of truncating with an ellipsis.
+
+    Returns:
+        The abbreviated representation, or the original value when it is a
+        number, boolean, or ``None``.
     """
     if value is None or isinstance(value, (int, float, numbers.Number, bool)):
         return value
@@ -301,6 +307,10 @@ def _get_trial_info(
         trial: Trial to get information for.
         param_keys: Names of parameters to include.
         metric_keys: Names of metrics to include.
+
+    Returns:
+        Row of strings ``[name, status, *param values, *metric values]`` used
+        to render the trial in the progress table.
     """
     result = trial.last_result
     trial_info = [str(trial), trial.status]
@@ -594,10 +604,13 @@ class ProgressReporter(Callback):
         verbosity: AirVerbosity,
         progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
     ):
-        """
+        """Initialize the progress reporter.
 
         Args:
             verbosity: AirVerbosity level.
+            progress_metrics: Optional list of metric names (or
+                ``{"metric": ..., "label": ...}`` dicts) to surface in the
+                progress display, in addition to the default columns.
         """
         self._verbosity = verbosity
         self._start_time = time.time()
