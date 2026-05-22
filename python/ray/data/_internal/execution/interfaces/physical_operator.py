@@ -314,23 +314,28 @@ class DataOpTask(OpTask):
         missing metadata bytes in one batched ``ray.get``, then consume
         via ``on_data_ready``. Mirrors what ``process_completed_tasks``
         does for one task in isolation.
+
+        When ``max_bytes_to_read == 0`` the task is in output backpressure,
+        so skip the peek + fetch (which would advance the generator) and
+        just call ``on_data_ready`` to record the backpressure timer.
         """
-        while self.peek_pending_pair() is not None:
-            pass
-        # The same call covers two cases: pairs we just peeked (never
-        # fetched), and pairs left queued from a previous call whose
-        # batched ray.get timed out. Both states look identical — the
-        # ref is in _pending_pairs but absent from _cached_meta_bytes.
-        # On batched timeout the pairs stay uncached; on_data_ready's
-        # per-ref fallback will retry them and surface the per-ref
-        # warning if they're still unavailable.
-        uncached = self.uncached_pending_meta_refs()
-        if uncached:
-            try:
-                bytes_list = ray.get(uncached, timeout=METADATA_GET_TIMEOUT_S)
-                self.cache_prefetched_meta_bytes(dict(zip(uncached, bytes_list)))
-            except ray.exceptions.GetTimeoutError:
+        if max_bytes_to_read != 0:
+            while self.peek_pending_pair() is not None:
                 pass
+            # The same call covers two cases: pairs we just peeked (never
+            # fetched), and pairs left queued from a previous call whose
+            # batched ray.get timed out. Both states look identical — the
+            # ref is in _pending_pairs but absent from _cached_meta_bytes.
+            # On batched timeout the pairs stay uncached; on_data_ready's
+            # per-ref fallback will retry them and surface the per-ref
+            # warning if they're still unavailable.
+            uncached = self.uncached_pending_meta_refs()
+            if uncached:
+                try:
+                    bytes_list = ray.get(uncached, timeout=METADATA_GET_TIMEOUT_S)
+                    self.cache_prefetched_meta_bytes(dict(zip(uncached, bytes_list)))
+                except ray.exceptions.GetTimeoutError:
+                    pass
         return self.on_data_ready(max_bytes_to_read)
 
     def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:

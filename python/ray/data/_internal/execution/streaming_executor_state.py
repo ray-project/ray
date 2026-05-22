@@ -668,9 +668,14 @@ def process_completed_tasks(
         # ready task; results are handed back via `cache_prefetched_meta_bytes`
         # and consumed by `on_data_ready`. Collapses N×~1ms per-call ray.get
         # overhead per scheduler iteration into one batched call.
+        #
+        # Skip ops whose remaining output budget is 0 — they're in output
+        # backpressure and shouldn't have their generators advanced.
         meta_refs_by_task: List[Tuple[DataOpTask, List[ray.ObjectRef]]] = []
         meta_refs_to_prefetch: List[ray.ObjectRef] = []
-        for ready_tasks in ready_tasks_by_op.values():
+        for state, ready_tasks in ready_tasks_by_op.items():
+            if remaining_output_budget.get(state, None) == 0:
+                continue
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     while task.peek_pending_pair() is not None:
