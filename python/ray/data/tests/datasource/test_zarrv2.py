@@ -410,27 +410,23 @@ def test_zarr_array_meta_from_json_rejects_missing_key(missing_key):
         zarrv2_datasource.ZarrArrayMeta.from_json(raw, "some/path")
 
 
-def test_effective_chunks_returns_native_when_user_none():
+@pytest.mark.parametrize(
+    "native_chunks,user_chunk_shape,expected",
+    [
+        # No override: native chunks unchanged.
+        ((50, 28, 28), None, (50, 28, 28)),
+        # Full override: identical to user input.
+        ((50, 28, 28), (16, 14, 14), (16, 14, 14)),
+        # Prefix override: leading axes from user, trailing from native.
+        ((50, 14, 7), (16,), (16, 14, 7)),
+        ((50, 14, 7), (16, 28), (16, 28, 7)),
+    ],
+)
+def test_effective_chunks(native_chunks, user_chunk_shape, expected):
     meta = zarrv2_datasource.ZarrArrayMeta(
-        shape=(200, 28, 28), chunks=(50, 28, 28), dtype="<u1"
+        shape=(200, 28, 28), chunks=native_chunks, dtype="<u1"
     )
-    assert meta.effective_chunks(None) == (50, 28, 28)
-
-
-def test_effective_chunks_full_override():
-    meta = zarrv2_datasource.ZarrArrayMeta(
-        shape=(200, 28, 28), chunks=(50, 28, 28), dtype="<u1"
-    )
-    assert meta.effective_chunks((16, 14, 14)) == (16, 14, 14)
-
-
-def test_effective_chunks_prefix_broadcasts_trailing_axes():
-    """``chunk_shape=[16]`` overrides axis 0 only; trailing axes stay native."""
-    meta = zarrv2_datasource.ZarrArrayMeta(
-        shape=(200, 28, 28), chunks=(50, 14, 7), dtype="<u1"
-    )
-    assert meta.effective_chunks((16,)) == (16, 14, 7)
-    assert meta.effective_chunks((16, 28)) == (16, 28, 7)
+    assert meta.effective_chunks(user_chunk_shape) == expected
 
 
 def test_effective_chunks_rejects_chunk_shape_longer_than_rank():
@@ -459,38 +455,26 @@ def test_rejects_invalid_chunk_shape(zarrv2_group_store, chunk_shape):
         )
 
 
-def test_chunk_shape_dict_glob_pattern(aligned_zarrv2_store):
-    """Dict ``chunk_shape`` resolves per-array via fnmatch glob patterns."""
+@pytest.mark.parametrize(
+    "chunk_shape,expected_axis_0",
+    [
+        # Glob exact-name matches per array.
+        ({"img": [4], "state": [4], "label": [4]}, {"img": 4, "state": 4, "label": 4}),
+        # "default" key catches arrays that match no other pattern.
+        ({"img": [4], "default": [2]}, {"img": 4, "state": 2, "label": 2}),
+        # None as prefix value means keep native chunks (native: state=4, label=8).
+        ({"img": [4], "default": None}, {"img": 4, "state": 4, "label": 8}),
+    ],
+)
+def test_chunk_shape_dict_resolution(
+    aligned_zarrv2_store, chunk_shape, expected_axis_0
+):
+    """Dict ``chunk_shape`` resolves per-array via fnmatch with ``"default"`` fallback."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        chunk_shape={"img": [4], "state": [4], "label": [4]},
+        str(aligned_zarrv2_store), chunk_shape=chunk_shape
     )
-    assert datasource._array_chunks["img"][0] == 4
-    assert datasource._array_chunks["state"][0] == 4
-    assert datasource._array_chunks["label"][0] == 4
-
-
-def test_chunk_shape_dict_default_fallback(aligned_zarrv2_store):
-    """``"default"`` is used for arrays that match no glob pattern."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        chunk_shape={"img": [4], "default": [2]},
-    )
-    assert datasource._array_chunks["img"][0] == 4
-    assert datasource._array_chunks["state"][0] == 2
-    assert datasource._array_chunks["label"][0] == 2
-
-
-def test_chunk_shape_dict_none_keeps_native(aligned_zarrv2_store):
-    """A ``None`` prefix in the dict form means keep native chunks."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        chunk_shape={"img": [4], "default": None},
-    )
-    assert datasource._array_chunks["img"][0] == 4
-    # state native chunk[0]=4, label native chunk[0]=8.
-    assert datasource._array_chunks["state"][0] == 4
-    assert datasource._array_chunks["label"][0] == 8
+    for name, ax0 in expected_axis_0.items():
+        assert datasource._array_chunks[name][0] == ax0
 
 
 def test_chunk_shape_dict_rejects_invalid_prefix(aligned_zarrv2_store):
@@ -511,34 +495,38 @@ def test_chunk_shape_rejects_non_list_non_dict(aligned_zarrv2_store):
         )
 
 
-def test_default_chunk_shape_uses_each_arrays_native_chunks(
-    heterogeneous_zarrv2_store,
+@pytest.mark.parametrize(
+    "chunk_shape,expected",
+    [
+        # No chunk_shape: every array reads at its native chunk size.
+        # 4-D image with tiny chunks coexists with 2-D pose with big chunks —
+        # nothing is forced into a shared min/max.
+        (
+            None,
+            {
+                "data/camera0_rgb": (1, 2, 2, 3),
+                "data/robot0_eef_pos": (10, 3),
+                "meta/episode_ends": (3,),
+            },
+        ),
+        # ``[5]`` prefix overrides axis 0 across arrays of all ranks at once.
+        (
+            [5],
+            {
+                "data/camera0_rgb": (5, 2, 2, 3),
+                "data/robot0_eef_pos": (5, 3),
+                "meta/episode_ends": (5,),
+            },
+        ),
+    ],
+)
+def test_chunk_shape_resolution_across_mixed_rank(
+    heterogeneous_zarrv2_store, chunk_shape, expected
 ):
-    """When no chunk_shape given, every array reads at its native chunk size.
-
-    Unlike the old min-of-axis-0 default, this lets a 4-D image array with
-    tiny chunks coexist with a 2-D pose array with big chunks without
-    forcing either into the other's chunk size.
-    """
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(heterogeneous_zarrv2_store))
-    assert datasource._array_chunks == {
-        "data/camera0_rgb": (1, 2, 2, 3),
-        "data/robot0_eef_pos": (10, 3),
-        "meta/episode_ends": (3,),
-    }
-
-
-def test_chunk_shape_prefix_broadcast_across_mixed_rank(heterogeneous_zarrv2_store):
-    """``chunk_shape=[5]`` overrides axis 0 across arrays of all ranks at once."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(heterogeneous_zarrv2_store),
-        chunk_shape=[5],
+        str(heterogeneous_zarrv2_store), chunk_shape=chunk_shape
     )
-    assert datasource._array_chunks == {
-        "data/camera0_rgb": (5, 2, 2, 3),  # 4-D: axis 0 overridden, rest native
-        "data/robot0_eef_pos": (5, 3),  # 2-D: axis 0 overridden, rest native
-        "meta/episode_ends": (5,),  # 1-D: axis 0 overridden
-    }
+    assert datasource._array_chunks == expected
 
 
 # ---------------------------------------------------------------------------
@@ -571,27 +559,23 @@ def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
     assert stops == [4, 8]
 
 
-def test_align_axis_0_true_aligns_all_selected(aligned_zarrv2_store):
-    """``align_axis_0=True`` aligns every selected array."""
+@pytest.mark.parametrize(
+    "align_axis_0,extra_cols",
+    [
+        # ``True`` aligns every selected array (here: all three).
+        (True, {"img", "state", "label"}),
+        # An explicit subset filters non-listed arrays out of the output.
+        (["img", "state"], {"img", "state"}),
+    ],
+)
+def test_align_axis_0_column_set(aligned_zarrv2_store, align_axis_0, extra_cols):
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store),
-        align_axis_0=True,
+        align_axis_0=align_axis_0,
         chunk_shape=[4],
     )
     df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    assert set(df.columns) == {"t_start", "t_stop", "img", "state", "label"}
-
-
-def test_align_axis_0_filters_non_listed_arrays(aligned_zarrv2_store):
-    """Arrays not in ``align_axis_0=[...]`` are dropped from the output."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        align_axis_0=["img", "state"],
-        chunk_shape=[4],
-    )
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    assert "label" not in df.columns
-    assert set(df.columns) == {"t_start", "t_stop", "img", "state"}
+    assert set(df.columns) == {"t_start", "t_stop"} | extra_cols
 
 
 def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
