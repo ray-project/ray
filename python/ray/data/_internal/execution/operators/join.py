@@ -328,7 +328,9 @@ def _split_unsupported_columns(
         col: "pa.ChunkedArray" = table.column(idx)
         col_type: "pa.DataType" = col.type
 
-        if _is_pa_extension_type(col_type) or _is_pa_join_not_supported(col_type):
+        if _is_pa_extension_type(col_type) or JoinOperator._is_pa_join_not_supported(
+            col_type
+        ):
             unsupported.append(idx)
         else:
             supported.append(idx)
@@ -357,45 +359,6 @@ def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
 
     index_col = pa.array(np.arange(table.num_rows))
     return table.append_column(col_name, index_col)
-
-
-def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
-    """
-    The latest pyarrow versions do not support joins where the
-    tables contain the following types below (lists,
-    structs, maps, unions, extension types, etc.)
-
-    Args:
-        type: The input type of column.
-
-    Returns:
-        True if the type cannot be present (non join-key) during joins.
-        False if the type can be present.
-    """
-    import pyarrow as pa
-
-    pyarrow_version = get_pyarrow_version()
-    is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
-    is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
-
-    return (
-        pa.types.is_map(type)
-        or pa.types.is_union(type)
-        or pa.types.is_list(type)
-        or pa.types.is_struct(type)
-        or pa.types.is_null(type)
-        or pa.types.is_large_list(type)
-        or pa.types.is_fixed_size_list(type)
-        or (is_v12 and pa.types.is_run_end_encoded(type))
-        or (
-            is_v16
-            and (
-                pa.types.is_binary_view(type)
-                or pa.types.is_string_view(type)
-                or pa.types.is_list_view(type)
-            )
-        )
-    )
 
 
 class JoinOperator(HashShufflingOperatorBase):
@@ -449,6 +412,45 @@ class JoinOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             shuffle_progress_bar_name="Shuffle",
             finalize_progress_bar_name="Join",
+        )
+
+    @staticmethod
+    def _is_pa_join_not_supported(dtype: "pa.DataType") -> bool:
+        """
+        The latest pyarrow versions do not support joins where the
+        tables contain the following types below (lists,
+        structs, maps, unions, extension types, etc.)
+
+        Args:
+            dtype: The input type of column.
+
+        Returns:
+            True if the type cannot be present (non join-key) during joins.
+            False if the type can be present.
+        """
+        import pyarrow as pa
+
+        pyarrow_version = get_pyarrow_version()
+        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
+
+        return (
+            pa.types.is_map(dtype)
+            or pa.types.is_union(dtype)
+            or pa.types.is_list(dtype)
+            or pa.types.is_struct(dtype)
+            or pa.types.is_null(dtype)
+            or pa.types.is_large_list(dtype)
+            or pa.types.is_fixed_size_list(dtype)
+            or (is_v12 and pa.types.is_run_end_encoded(dtype))
+            or (
+                is_v16
+                and (
+                    pa.types.is_binary_view(dtype)
+                    or pa.types.is_string_view(dtype)
+                    or pa.types.is_list_view(dtype)
+                )
+            )
         )
 
     def _get_operator_num_cpus_override(self) -> float:
