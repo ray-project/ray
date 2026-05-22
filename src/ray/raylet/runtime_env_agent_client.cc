@@ -439,8 +439,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
 
     // Copy resource_requirements
     auto mutable_reqs = request.mutable_resource_requirements();
-    for (const auto &pair : resource_requirements.GetResourceMap()) {
-      (*mutable_reqs)[pair.first] = pair.second;
+    for (const auto &[id, quantity] : resource_requirements.Resources()) {
+      (*mutable_reqs)[id.Binary()] = quantity.Double();
     }
 
     // Copy allocated_instances
@@ -448,7 +448,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     if (allocated_instances) {
       for (const auto &resource_id : allocated_instances->ResourceIds()) {
         if (resource_id.IsUnitInstanceResource()) {
-          auto instances = allocated_instances->Get(resource_id);
+          const auto &instances = allocated_instances->Get(resource_id);
           rpc::ResourceIDs ids;
           for (size_t i = 0; i < instances.size(); i++) {
             if (instances[i] > 0.) {
