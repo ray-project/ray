@@ -16,13 +16,13 @@ set -euo pipefail
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 
-if [[ "${PYTHON_CODE}" == "py312" ]]; then
+if [[ "${PYTHON_CODE}" == "py314" ]]; then
     CUDA_CODE=cu130
     # Use nvshmem 3.3.24 which is the default for vLLM and compatible with CUDA 13
     # https://github.com/vllm-project/vllm/blob/64ac1395e8d52e3e38910a62c7eb8524126730d8/tools/ep_kernels/install_python_libraries.sh#L14
     NVSHMEM_VER=3.3.24
 else
-    echo "ray-llm supports Python 3.12 only (this image is ${PYTHON_CODE})."
+    echo "ray-llm supports Python 3.14 only (this image is ${PYTHON_CODE})."
     exit 1
 fi
 

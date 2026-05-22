@@ -1,7 +1,7 @@
 build_arg_sets:
   cu130:
-    PYTHON_VERSION: py312
-    PYTHON_VERSION_STR: "3.12"
+    PYTHON_VERSION: py314
+    PYTHON_VERSION_STR: "3.14"
     CUDA_CODE: cu130
 
 

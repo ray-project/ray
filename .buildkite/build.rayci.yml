@@ -274,7 +274,7 @@ steps:
     wanda: ci/docker/ray-llm-image-cuda.wanda.yaml
     array:
       python:
-        - "3.12"
+        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env_file: rayci.env
@@ -295,7 +295,7 @@ steps:
     wanda: ci/docker/ray-llm-extra-image-cuda.wanda.yaml
     array:
       python:
-        - "3.12"
+        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env_file: rayci.env
@@ -358,7 +358,7 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.12"
+        - "3.14"
       platform:
         - cu13.0.0-cudnn
     depends_on:
@@ -381,7 +381,7 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.12"
+        - "3.14"
       platform:
         - cu13.0.0-cudnn
     depends_on:

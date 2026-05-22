@@ -117,7 +117,7 @@ steps:
     depends_on: raycudabase($)
     array:
       python:
-        - "3.12"
+        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env:
@@ -129,7 +129,7 @@ steps:
     wanda: docker/base-extra/cuda.wanda.yaml
     array:
       python:
-        - "3.12"
+        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env:

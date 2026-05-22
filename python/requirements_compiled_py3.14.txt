@@ -419,7 +419,7 @@ cryptography==44.0.3
     #   pyopenssl
     #   snowflake-connector-python
     #   trustme
-cupy-cuda12x==14.0.0 ; sys_platform != "darwin"
+cupy-cuda12x==14.0.1 ; sys_platform != "darwin"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
@@ -1049,7 +1049,7 @@ linear-operator==0.6.1
     #   gpytorch
 linkify-it-py==2.1.0
     # via markdown-it-py
-llvmlite==0.46.0
+llvmlite==0.47.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   numba
@@ -1254,7 +1254,7 @@ nodeenv==1.10.0
     #   pyright
 notebook-shim==0.2.4
     # via jupyterlab
-numba==0.63.0
+numba==0.65.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   statsforecast
