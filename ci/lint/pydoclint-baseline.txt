@@ -270,7 +270,6 @@ python/ray/_private/worker.py
     DOC107: Function `connect`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC111: Function `connect`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC111: Function `get`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `put`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_owner: Optional['ray.actor.ActorHandle']]. Arguments in the docstring but not in the function signature: [_owner [Experimental]: ].
     DOC102: Function `remote`: Docstring contains more arguments than in function signature.
     DOC106: Function `remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC111: Function `remote`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
