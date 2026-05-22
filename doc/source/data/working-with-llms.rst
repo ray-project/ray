@@ -206,73 +206,6 @@ First, load a video dataset:
     :end-before: __vlm_video_load_dataset_example_end__
     :dedent: 0
 
-.. _multimodal_pixel_budget:
-
-Sizing the visual-token pixel budget
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Video (and image) inputs are processed by vLLM in two stages, each with its
-own knob and its own placement in :class:`vLLMEngineProcessorConfig`:
-
-1. **Frame sampling** — vLLM's video I/O decodes the source and samples
-   frames according to ``media_io_kwargs["video"]`` (e.g. ``num_frames``,
-   ``fps``). In Ray Data LLM, media is decoded by the
-   ``PrepareMultimodalStage`` *before* the engine runs, so this kwarg must
-   be set in ``prepare_multimodal_stage["model_config_kwargs"]`` — not
-   ``engine_kwargs`` — to take effect.
-2. **Per-frame resizing** — the HuggingFace processor then resizes the
-   sampled frames to fit a *visual-token pixel budget*, controlled by
-   ``engine_kwargs["mm_processor_kwargs"]``. The budget caps total pixels
-   (``height * width`` for an image, ``num_frames * height * width`` for a
-   video, after rounding to the model's patch / temporal factors) and
-   determines how many vision tokens each request produces — which in turn
-   dominates KV-cache cost on multi-modal workloads.
-
-.. warning::
-    If an input would exceed the pixel budget, the HF processor **silently
-    downscales it** — there is no log, warning, or metric. The only symptom
-    is degraded model quality. Always size the budget to cover your
-    worst-case input.
-
-**Engine-level vs per-request.** vLLM reads ``mm_processor_kwargs`` from
-``engine_kwargs`` once at startup and uses it to size memory profiling and
-the KV cache. A per-row ``mm_processor_kwargs`` passed in the preprocessor
-output can override the budget *smaller* for a single row, but **cannot
-raise it past the engine ceiling without OOM risk**. If the budget is never
-set in ``engine_kwargs`` at all, every request runs against the model
-default.
-
-**Knob naming differs by model family.** This is a versioning trap when
-migrating model families:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 35 35
-
-   * - Family
-     - Pixel-budget knob
-     - Floor knob
-   * - Qwen2-VL, Qwen2.5-VL
-     - ``max_pixels``
-     - ``min_pixels``
-   * - Qwen3-VL and later
-     - ``size.longest_edge``
-     - ``size.shortest_edge``
-
-On Qwen3-VL+, set the budget through ``size``; the older
-``max_pixels`` / ``min_pixels`` names are dropped before reaching the HF
-processor, so the engine ends up resizing against the model's default size.
-For the full set of kwargs each model accepts, see the
-`vLLM multimodal docs <https://docs.vllm.ai/en/latest/features/multimodal_inputs.html>`_
-and the model's HF processor reference.
-
-**Worked example (Qwen3-VL).** Qwen3-VL has ``patch_size=16``,
-``merge_size=2`` (so spatial ``factor = 32``) and ``temporal_patch_size=2``.
-A 1080p video rounds to ``1088 x 1920`` per frame. The model-default video
-budget (``longest_edge = 25,165,824``) silently downscales any 1080p input
-beyond ~12 frames. To preserve detail on a 20-frame 1080p window, set
-``longest_edge = 20 * 1088 * 1920 ~= 41.8M``.
-
 Next, configure the VLM processor with the essential settings:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
@@ -280,9 +213,39 @@ Next, configure the VLM processor with the essential settings:
     :start-after: __vlm_video_config_example_start__
     :end-before: __vlm_video_config_example_end__
 
-Set ``do_sample_frames=False`` when frame sampling has already happened in
-``media_io_kwargs``; otherwise the HF processor will sample again and the two
-stages will fight.
+Ray Data LLM forwards ``mm_processor_kwargs`` to vLLM, which invokes
+the model's HuggingFace processor with it. The accepted keys are
+defined by the HF processor and differ by model family (e.g.
+``max_pixels`` on Qwen2-VL, ``size`` on Qwen3-VL). Refer to the HF
+processor source for your model, for example `Qwen3VLVideoProcessor
+<https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L86>`_.
+
+.. note::
+
+   Understanding multimodal arguments used above:
+
+   - ``engine_kwargs.limit_mm_per_prompt={"video": 1}``: caps the number of videos per request.
+   - ``engine_kwargs.mm_processor_kwargs.size``: per-frame resize budget;
+     inputs are resized to fall within the range
+     ``shortest_edge`` to ``longest_edge`` in total pixels.
+   - ``engine_kwargs.mm_processor_kwargs.do_sample_frames=False``: skip the
+     HF processor's own frame sampling because ``media_io_kwargs`` already
+     produced the final frames. Set this whenever frame sampling has
+     already happened upstream.
+   - ``prepare_multimodal_stage.model_config_kwargs.allowed_local_media_path``:
+     required for ``file://`` or local-path media inputs.
+   - ``prepare_multimodal_stage.model_config_kwargs.media_io_kwargs``:
+     frame sampling at decode time.
+
+
+.. warning::
+   If a multimodal input exceeds ``mm_processor_kwargs.size``, the HF
+   processor's `smart_resize
+   <https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L35>`_
+   downscales it automatically. Size ``size.longest_edge``
+   to the largest input you expect to process: ``height * width`` for an
+   image, ``num_frames * height * width`` for a video.
+
 
 Define preprocessing and postprocessing functions to convert dataset rows into
 the format expected by the VLM and extract model responses. Within the preprocessor,
@@ -644,6 +607,32 @@ For multi-turn conversations or complex agentic workflows, share a vLLM engine a
 Troubleshooting
 ---------------
 
+vLLM compatibility
+~~~~~~~~~~~~~~~~~~
+
+Each Ray release is fully tested with a compatible vLLM version.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 8 8
+
+   * - Ray release
+     - vLLM version
+   * - 2.56.0
+     - 0.22.0
+   * - 2.55.0
+     - 0.18.0
+   * - 2.54.0
+     - 0.15.0
+   * - 2.53.0
+     - 0.12.0
+   * - 2.52.0
+     - 0.11.0
+   * - 2.51.0
+     - 0.11.0
+   * - 2.50.0
+     - 0.10.2
+
 GPU memory and CUDA OOM
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -693,7 +682,6 @@ vLLM NIXL EP dependency incompatibility
 
    Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime
    and vLLM build in your environment.
-
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
 

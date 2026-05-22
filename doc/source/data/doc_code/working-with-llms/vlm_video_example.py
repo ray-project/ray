@@ -40,23 +40,6 @@ from ray.data.llm import (
 
 
 # __vlm_video_config_example_start__
-# vLLM has a two-stage video pipeline. ``media_io_kwargs["video"]`` controls
-# frame sampling in vLLM's video I/O; ``mm_processor_kwargs`` is forwarded to
-# the HF processor and controls per-frame resizing via the visual-token pixel
-# budget. vLLM reads the engine-level budget once at startup to size memory
-# profiling and the KV cache, so it must cover the worst-case input;
-# per-request overrides may only go *smaller* without OOM risk. If the input
-# exceeds the budget, the HF processor silently downscales it.
-#
-# Knob names differ by model family: Qwen3-VL+ uses ``size.longest_edge`` /
-# ``size.shortest_edge``; the older Qwen2-VL ``max_pixels`` / ``min_pixels``
-# names are dropped before reaching the HF processor on Qwen3-VL+. See the
-# vLLM and HF processor docs for the kwargs each model accepts.
-#
-# Worked example (Qwen3-VL, patch_size=16, merge_size=2, temporal_patch_size=2):
-# a 20-frame 1080p window needs ``20 * 1088 * 1920 ~= 41.8M`` pixels; the
-# model's default video budget (25.17M) downscales anything above ~12 frames
-# at 1080p.
 video_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen3-VL-4B-Instruct",
     engine_kwargs=dict(
@@ -64,16 +47,11 @@ video_processor_config = vLLMEngineProcessorConfig(
         pipeline_parallel_size=1,
         trust_remote_code=True,
         limit_mm_per_prompt={"video": 1},
-        # Stage 2: HF processor resizing. vLLM reads this once at startup to
-        # size memory profiling and the KV cache, so it must cover the
-        # worst-case input. Per-row overrides may only go *smaller*.
         mm_processor_kwargs={
             "size": {
                 "shortest_edge": 65536,
                 "longest_edge": 20 * 1088 * 1920,
             },
-            # Stage-1 sampling above already produced the final frames;
-            # skip the HF processor's own re-sampling.
             "do_sample_frames": False,
         },
     ),
@@ -85,10 +63,6 @@ video_processor_config = vLLMEngineProcessorConfig(
         "model_config_kwargs": dict(
             # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
             allowed_local_media_path="/tmp",
-            # Stage 1: vLLM video I/O frame sampling. In Ray Data LLM the
-            # PrepareMultimodalStage decodes media into arrays before the
-            # engine runs, so media_io_kwargs must be set here (not in
-            # engine_kwargs) to take effect.
             media_io_kwargs={"video": {"num_frames": 60, "fps": 2}},
         ),
     },
@@ -138,11 +112,6 @@ def video_preprocess(row: dict) -> dict:
             "max_tokens": 150,
             "detokenize": False,
         },
-        # The visual-token pixel budget is set engine-side in
-        # ``engine_kwargs["mm_processor_kwargs"]``. A per-row
-        # ``mm_processor_kwargs`` can override that budget *smaller* for a
-        # single row, but never larger than the engine ceiling without OOM
-        # risk.
     }
 
 

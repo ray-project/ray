@@ -91,6 +91,20 @@ and vLLM build in your environment.
 
 :::
 
+## vLLM compatibility
+
+Each Ray release is fully tested with a compatible vLLM version.
+
+| Ray release | vLLM version |
+| ----------- | ------------ |
+| 2.56.0      | 0.22.0       |
+| 2.55.0      | 0.18.0       |
+| 2.54.0      | 0.15.0       |
+| 2.53.0      | 0.12.0       |
+| 2.52.0      | 0.11.0       |
+| 2.51.0      | 0.11.0       |
+| 2.50.0      | 0.10.2       |
+
 ## Get help
 
 If you encounter issues not covered in this guide:
