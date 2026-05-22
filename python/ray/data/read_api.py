@@ -833,6 +833,7 @@ def read_zarr(
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
     align_axis_0: Optional[Union[List[str], bool]] = None,
+    overlap: Optional[int] = None,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1001,6 +1002,18 @@ def read_zarr(
             ``align_axis_0`` are filtered out of the output. When
             ``align_axis_0`` is ``None`` (the default), the long-form
             schema is used.
+        overlap: When set with ``align_axis_0``, extends each row's per-array
+            data forward by ``overlap`` timesteps from the next row's owned
+            range (clipped at the end of the store). Used for sliding-window
+            pipelines: with ``overlap=K-1``, any window of length ``K``
+            starting in this row's owned ``[t_start, t_stop)`` fits
+            entirely within the row's per-array slice, so a downstream
+            ``flat_map`` doesn't need cross-row state. The row's ownership
+            (the ``t_start``/``t_stop`` columns) is unchanged; only
+            ``chunk.shape[0]`` of each per-array column grows by up to
+            ``overlap``. Requires ``align_axis_0``; raises ``ValueError``
+            otherwise. ``None`` (default) and ``0`` are equivalent — no
+            overlap, each row's data exactly covers its owned range.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -1029,6 +1042,7 @@ def read_zarr(
         array_paths=array_paths,
         allow_full_metadata_scan=allow_full_metadata_scan,
         align_axis_0=align_axis_0,
+        overlap=overlap,
     )
     return read_datasource(
         datasource,

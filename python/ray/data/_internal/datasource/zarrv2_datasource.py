@@ -286,11 +286,20 @@ class _ChunkDescriptor:
 
 @dataclass(frozen=True)
 class _AlignedChunkDescriptor:
-    """One wide-row's worth of read work: a global axis-0 range across N aligned arrays."""
+    """One wide-row's worth of read work: a global axis-0 range across N aligned arrays.
+
+    The row "owns" the range ``[t_start, t_stop)`` and reports those as
+    columns. When ``overlap > 0``, the row's actual data extends to
+    ``t_stop_data`` (which is ``min(t_stop + overlap, shape[0])``); the
+    trailing slice is the lookahead from the next row's owned range so
+    sliding windows that start in this row's owned range can reach their
+    full tail without crossing a Ray Data row boundary.
+    """
 
     chunk_index: int
     t_start: int
     t_stop: int
+    t_stop_data: int
 
 
 def _create_read_fn(
@@ -346,7 +355,7 @@ def _create_aligned_read_fn(
         }
         for name in aligned_array_names:
             cols[name] = [
-                _read_chunk(root, name, ((d.t_start, d.t_stop),)) for d in batch
+                _read_chunk(root, name, ((d.t_start, d.t_stop_data),)) for d in batch
             ]
         yield pd.DataFrame(cols)
 
@@ -463,6 +472,7 @@ class ZarrV2Datasource(Datasource):
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
         align_axis_0: List[str] | bool | None = None,
+        overlap: int | None = None,
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
@@ -530,6 +540,22 @@ class ZarrV2Datasource(Datasource):
         self._aligned_array_names: list[str] | None = self._resolve_align_axis_0(
             align_axis_0
         )
+
+        # Validate overlap. Only meaningful when arrays are co-iterated as
+        # wide rows, since the trailing lookahead is exposed via the
+        # per-array column being longer than ``t_stop - t_start``.
+        if overlap is not None and (not isinstance(overlap, int) or overlap < 0):
+            raise ValueError(
+                f"overlap must be a non-negative integer or None, got " f"{overlap!r}"
+            )
+        if overlap and self._aligned_array_names is None:
+            raise ValueError(
+                "overlap requires align_axis_0 to be set. In the default "
+                "long-form (chunk-per-row) mode, there's no wide row to "
+                "extend forward — exposed via the ``chunk_slices`` column "
+                "on each chunk row instead."
+            )
+        self.overlap: int = overlap or 0
 
         # Resolve per-array chunk geometry. ``effective_chunks`` raises a
         # ``ValueError`` if the user's ``chunk_shape`` is longer than any
@@ -707,6 +733,7 @@ class ZarrV2Datasource(Datasource):
                 chunk_index=i,
                 t_start=i * axis_0_chunk,
                 t_stop=min((i + 1) * axis_0_chunk, shape0),
+                t_stop_data=min((i + 1) * axis_0_chunk + self.overlap, shape0),
             )
             for i in range(math.ceil(shape0 / axis_0_chunk))
         ]
@@ -738,10 +765,15 @@ class ZarrV2Datasource(Datasource):
     def _estimate_aligned_batch_mem_size(
         self, batch: list[_AlignedChunkDescriptor]
     ) -> int:
-        """Sum bytes across all (row × aligned-array) pairs in a wide-row batch."""
+        """Sum bytes across all (row × aligned-array) pairs in a wide-row batch.
+
+        Accounts for the trailing overlap data each row carries: the row's
+        per-array slice covers ``[t_start, t_stop_data)``, not just
+        ``[t_start, t_stop)``.
+        """
         assert self._aligned_array_names is not None
         return sum(
-            (desc.t_stop - desc.t_start)
+            (desc.t_stop_data - desc.t_start)
             * (math.prod(meta.shape[1:]) if len(meta.shape) > 1 else 1)
             * meta.itemsize
             for desc in batch

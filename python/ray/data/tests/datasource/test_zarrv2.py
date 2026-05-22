@@ -646,6 +646,110 @@ def test_align_axis_0_with_per_pattern_chunk_shape(aligned_zarrv2_store):
     assert len(df) == 2
 
 
+# ---------------------------------------------------------------------------
+# overlap (aligned-mode lookahead)
+# ---------------------------------------------------------------------------
+
+
+def test_overlap_extends_chunk_data(aligned_zarrv2_store):
+    """``overlap=N`` makes each row's per-array slice cover ``N`` extra timesteps.
+
+    Aligned store has shape[0]=8, ``chunk_shape=[4]`` -> rows own [0,4) and [4,8).
+    With ``overlap=2``, row 0's data covers [0,6) and row 1's data covers [4,8)
+    (clipped at the store end since 4+4+2 > 8).
+    """
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=True,
+        chunk_shape=[4],
+        overlap=2,
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    # Ownership unchanged: 2 rows of width 4 each.
+    assert sorted(zip(df["t_start"], df["t_stop"])) == [(0, 4), (4, 8)]
+    # Data extents: row 0 has 6 timesteps, row 1 has 4 (clipped at shape[0]=8).
+    rows = sorted(df.to_dict("records"), key=lambda r: r["t_start"])
+    assert rows[0]["img"].shape[0] == 6  # 4 owned + 2 overlap
+    assert rows[0]["state"].shape[0] == 6
+    assert rows[1]["img"].shape[0] == 4  # 4 owned + 0 overlap (clipped)
+    assert rows[1]["state"].shape[0] == 4
+
+
+def test_overlap_clipped_at_store_end(aligned_zarrv2_store):
+    """Overlap larger than the remaining axis-0 length is clipped silently."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=True,
+        chunk_shape=[4],
+        overlap=100,
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    # Row 0 data extends from 0 to min(4 + 100, 8) = 8 -> 8 timesteps.
+    rows = sorted(df.to_dict("records"), key=lambda r: r["t_start"])
+    assert rows[0]["img"].shape[0] == 8
+    assert rows[1]["img"].shape[0] == 4
+
+
+def test_overlap_zero_equivalent_to_none(aligned_zarrv2_store):
+    """``overlap=0`` is the same as not passing it: no lookahead."""
+    a = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store), align_axis_0=True, chunk_shape=[4], overlap=0
+    )
+    b = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store), align_axis_0=True, chunk_shape=[4]
+    )
+    assert a.overlap == 0 and b.overlap == 0
+
+
+def test_overlap_requires_align_axis_0(aligned_zarrv2_store):
+    """``overlap`` in long-form (no ``align_axis_0``) is a clear error."""
+    with pytest.raises(ValueError, match="overlap requires align_axis_0 to be set"):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(aligned_zarrv2_store),
+            overlap=2,
+        )
+
+
+def test_overlap_rejects_negative_and_non_int(aligned_zarrv2_store):
+    for bad in (-1, 1.5, "two"):
+        with pytest.raises(ValueError, match="overlap must be a non-negative integer"):
+            zarrv2_datasource.ZarrV2Datasource(
+                str(aligned_zarrv2_store),
+                align_axis_0=True,
+                chunk_shape=[4],
+                overlap=bad,
+            )
+
+
+def test_overlap_enables_windowing_without_cross_row_loss(aligned_zarrv2_store):
+    """Sliding windows fitting entirely within rows when ``overlap = window_len - 1``.
+
+    Aligned store has shape[0]=8, ``chunk_shape=[4]``. With ``window_len=3``
+    and ``overlap=2``, every window starting in any row's owned range fits
+    entirely in that row's per-array slice — no windows are dropped.
+    """
+    window_len = 3
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store),
+        align_axis_0=True,
+        chunk_shape=[4],
+        overlap=window_len - 1,
+    )
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
+    starts = []
+    for _, row in df.iterrows():
+        t_start, t_stop = row["t_start"], row["t_stop"]
+        img = row["img"]
+        for local in range(t_stop - t_start):
+            if local + window_len > img.shape[0]:
+                continue  # only triggers at very end of store
+            starts.append(t_start + local)
+    # 8 timesteps, window_len=3 -> valid global starts are [0,6) = 6 windows.
+    # Without overlap we would have lost ~33%. With overlap=2 we should
+    # capture all 6.
+    assert sorted(starts) == [0, 1, 2, 3, 4, 5]
+
+
 def test_chunk_shape_rejected_when_longer_than_smallest_array(
     heterogeneous_zarrv2_store,
 ):
@@ -968,6 +1072,7 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
         array_paths=["nested"],
         allow_full_metadata_scan=False,
         align_axis_0=None,
+        overlap=None,
     )
     mock_read_datasource.assert_called_once()
     args, kwargs = mock_read_datasource.call_args
