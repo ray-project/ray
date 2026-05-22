@@ -27,12 +27,9 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _make_hash_partition_fn,
 )
 from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (
-    _MAX_RETURN_GROUPS,
-    _encode_group_ipc,
+    _encode_partition_ipc,
     _partition_blocks_to_shards,
-    _read_ipc_group,
-    compute_num_groups,
-    compute_shard_group_size,
+    _read_partition_ipc,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -105,14 +102,10 @@ def _make_map_op(
     pre_map_merge_threshold: int = ShuffleMapOp._DEFAULT_PRE_MAP_MERGE_THRESHOLD,  # noqa: SLF001
 ) -> ShuffleMapOp:
     ctx = DataContext()
-    shard_group_size = compute_shard_group_size(num_partitions)
-    num_groups = compute_num_groups(num_partitions, shard_group_size)
     return ShuffleMapOp(
         _make_input_op_mock(num_blocks=4),
         ctx,
         num_partitions=num_partitions,
-        shard_group_size=shard_group_size,
-        num_groups=num_groups,
         partition_fn=_make_hash_partition_fn(["id"], num_partitions),
         pre_map_merge_threshold=pre_map_merge_threshold,
     )
@@ -126,16 +119,12 @@ def _make_reduce_op(
     map_op: Optional[ShuffleMapOp] = None,
 ) -> ShuffleReduceOp:
     ctx = DataContext()
-    shard_group_size = compute_shard_group_size(num_partitions)
-    num_groups = compute_num_groups(num_partitions, shard_group_size)
     if map_op is None:
         map_op = _make_map_op(num_partitions=num_partitions)
     return ShuffleReduceOp(
         map_op,
         ctx,
         num_partitions=num_partitions,
-        shard_group_size=shard_group_size,
-        num_groups=num_groups,
         reduce_fn=_concat_reduce,
         streaming_reduce=streaming_reduce,
         disallow_block_splitting=disallow_block_splitting,
@@ -166,29 +155,21 @@ def test_partition_blocks_to_shards_combines_chunked_columns():
 
 
 @pytest.mark.parametrize(
-    "pids,pid_tables_fn,expected_decoded_pids",
+    "table_fn,expected_rows",
     [
-        ([3], lambda: {3: _make_table(10)}, [3]),
-        (
-            [1, 2, 7],
-            lambda: {p: _make_table(5, offset=p * 100) for p in [1, 2, 7]},
-            [1, 2, 7],
-        ),
-        ([1, 2], lambda: {1: _make_table(4), 2: _empty_table()}, [1]),
+        (lambda: _make_table(10), 10),
+        (lambda: _make_table(5, offset=100), 5),
+        (lambda: _empty_table(), 0),
     ],
 )
-def test_ipc_encode_decode_roundtrip(pids, pid_tables_fn, expected_decoded_pids):
-    buf = _encode_group_ipc(pids, pid_tables_fn(), _ipc_opts())
-    out = _read_ipc_group(buf)
-    assert [pid for pid, _ in out] == expected_decoded_pids
-
-
-def test_ipc_decoded_schema_has_no_pids_metadata():
-    """__pids__ is an internal routing tag; must not leak downstream."""
-    buf = _encode_group_ipc([0], {0: _make_table(3)}, _ipc_opts())
-    _, decoded = _read_ipc_group(buf)[0]
-    meta = decoded.schema.metadata
-    assert meta is None or b"__pids__" not in meta
+def test_ipc_encode_decode_roundtrip(table_fn, expected_rows):
+    buf = _encode_partition_ipc(table_fn(), _ipc_opts())
+    decoded = _read_partition_ipc(buf)
+    if expected_rows == 0:
+        assert decoded is None
+    else:
+        assert decoded is not None
+        assert decoded.num_rows == expected_rows
 
 
 def test_ipc_encode_does_not_mutate_upstream_schema_metadata():
@@ -198,29 +179,8 @@ def test_ipc_encode_does_not_mutate_upstream_schema_metadata():
         [("id", pa.int64()), ("val", pa.float64())], metadata=original_meta
     )
     table = pa.table({"id": [1, 2, 3], "val": [1.0, 2.0, 3.0]}, schema=schema)
-    _encode_group_ipc([0], {0: table}, _ipc_opts())
+    _encode_partition_ipc(table, _ipc_opts())
     assert table.schema.metadata == original_meta
-
-
-# ===========================================================================
-# Shard grouping config
-# ===========================================================================
-
-
-@pytest.mark.parametrize(
-    "num_partitions,expected_shard_group_size,expected_num_groups",
-    [
-        (50, 1, 50),
-        (_MAX_RETURN_GROUPS, 1, _MAX_RETURN_GROUPS),
-        (_MAX_RETURN_GROUPS * 3, 3, _MAX_RETURN_GROUPS),
-    ],
-)
-def test_shard_grouping(num_partitions, expected_shard_group_size, expected_num_groups):
-    sgs = compute_shard_group_size(num_partitions)
-    ng = compute_num_groups(num_partitions, sgs)
-    assert sgs == expected_shard_group_size
-    assert ng == expected_num_groups
-    assert ng <= _MAX_RETURN_GROUPS
 
 
 # ===========================================================================
@@ -312,9 +272,8 @@ def test_pre_map_merge_buffer(
 
 
 def test_reduce_op_groups_bundles_by_block_position():
-    """ShuffleReduceOp gathers bundle.blocks[g] into _group_buffers[g]."""
+    """ShuffleReduceOp gathers bundle.blocks[pid] into _partition_buffers[pid]."""
     op = _make_reduce_op(num_partitions=4)
-    # num_groups == 4 for num_partitions=4
     refs_a = [ray.ObjectRef(bytes([i]) * 28) for i in range(4)]
     refs_b = [ray.ObjectRef(bytes([i + 100]) * 28) for i in range(4)]
     metas = [
@@ -328,12 +287,12 @@ def test_reduce_op_groups_bundles_by_block_position():
     op._add_input_inner(bundle_a, input_index=0)
     op._add_input_inner(bundle_b, input_index=0)
 
-    for g in range(4):
-        assert op._group_buffers[g] == [refs_a[g], refs_b[g]]
+    for pid in range(4):
+        assert op._partition_buffers[pid] == [refs_a[pid], refs_b[pid]]
 
 
 def test_reduce_op_rejects_bundle_with_wrong_block_count():
-    """Bundles must have exactly num_groups blocks (one per group)."""
+    """Bundles must have exactly num_partitions blocks (one per partition)."""
     op = _make_reduce_op(num_partitions=4)
     bundle = _make_bundle(num_blocks=3)  # wrong: should be 4
     with pytest.raises(ValueError, match="expected 4 blocks"):

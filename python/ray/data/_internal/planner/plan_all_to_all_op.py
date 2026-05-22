@@ -59,10 +59,6 @@ def _plan_hash_shuffle_repartition(
         _make_hash_partition_fn,
         _sort_reduce,
     )
-    from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (  # noqa: E501
-        compute_num_groups,
-        compute_shard_group_size,
-    )
     from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
         ShuffleMapOp,
     )
@@ -85,9 +81,6 @@ def _plan_hash_shuffle_repartition(
         or data_context.default_hash_shuffle_parallelism
     )
 
-    shard_group_size = compute_shard_group_size(target_num_partitions)
-    num_groups = compute_num_groups(target_num_partitions, shard_group_size)
-
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
 
@@ -95,8 +88,6 @@ def _plan_hash_shuffle_repartition(
         input_physical_op,
         data_context,
         num_partitions=target_num_partitions,
-        shard_group_size=shard_group_size,
-        num_groups=num_groups,
         partition_fn=partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
@@ -108,8 +99,6 @@ def _plan_hash_shuffle_repartition(
         map_op,
         data_context,
         num_partitions=target_num_partitions,
-        shard_group_size=shard_group_size,
-        num_groups=num_groups,
         reduce_fn=reduce_fn,
         # Partition = block contract: each partition becomes one output
         # block.  Requires blocking reduce + no BlockOutputBuffer reshaping.

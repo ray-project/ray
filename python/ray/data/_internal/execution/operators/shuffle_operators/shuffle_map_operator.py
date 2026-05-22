@@ -38,12 +38,10 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
     Args:
         input_op: Upstream physical operator.
         data_context: Runtime configuration.
-        num_partitions: Total number of output partitions (full shuffle width).
-        shard_group_size: Number of partitions packed into each return object
-            from a map task.  Computed by the planner via
-            :func:`_shuffle_tasks.compute_shard_group_size` to cap M × N.
-        num_groups: Number of groups each map task returns
-            (ceil(num_partitions / shard_group_size)).
+        num_partitions: Total number of output partitions.  Each map task
+            returns ``num_partitions + 1`` objects: the metadata bundle plus
+            one ZSTD-compressed Arrow IPC stream per partition (or ``None``
+            for partitions that received no rows from this mapper).
         partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
         pre_map_merge_threshold: Byte threshold per node at which buffered
             blocks are merged into a single map task.  Set to 0 to disable.
@@ -62,8 +60,6 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         data_context: DataContext,
         *,
         num_partitions: int,
-        shard_group_size: int,
-        num_groups: int,
         partition_fn: PartitionFn,
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
@@ -77,8 +73,6 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         )
 
         self._num_partitions: int = num_partitions
-        self._shard_group_size: int = shard_group_size
-        self._num_groups: int = num_groups
         self._partition_fn: PartitionFn = partition_fn
 
         # -- Map task config -------------------------------------------------
@@ -104,8 +98,8 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         self._partition_row_counts: Dict[int, int] = defaultdict(int)
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
-        # -- Output queue (one bundle per completed map task, containing G
-        #    group refs as blocks ordered by group_idx) -----------------------
+        # -- Output queue (one bundle per completed map task, containing one
+        #    block per partition ordered by partition_id) --------------------
         self._output_queue: deque = deque()
 
         # -- Stats -----------------------------------------------------------
@@ -185,17 +179,17 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        # Split into two dicts: resources is the numeric resource ask used
-        # for both Ray Core scheduling and our own ExecutionResources
-        # accounting; ray_options is the full @ray.remote.options(...)
-        # bag which adds scheduling_strategy / runtime_env / num_returns.
+        # Split into two dicts: ``resources`` is the numeric resource ask
+        # used for both Ray Core scheduling and our own ExecutionResources
+        # accounting; ``ray_options`` is the full @ray.remote.options(...)
+        # bag adding scheduling_strategy / runtime_env / num_returns.
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * 2
 
         ray_options: Dict[str, Any] = {
             **resources,
-            "num_returns": self._num_groups + 1,
+            "num_returns": self._num_partitions + 1,
         }
         if target_node_id is not None:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
@@ -208,16 +202,15 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
-            shard_group_size=self._shard_group_size,
         )
         metadata_ref = map_refs[0]
-        group_refs = list(map_refs[1:])
+        partition_refs = list(map_refs[1:])
 
         task = MetadataOpTask(
             task_index=cur_task_idx,
             object_ref=metadata_ref,
             task_done_callback=functools.partial(
-                self._handle_map_done, cur_task_idx, group_refs, input_bundles
+                self._handle_map_done, cur_task_idx, partition_refs, input_bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(resources),
         )
@@ -250,7 +243,7 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
     def _handle_map_done(
         self,
         task_idx: int,
-        group_refs: List[ObjectRef],
+        partition_refs: List[ObjectRef],
         input_bundles: List[RefBundle],
     ) -> None:
         task = self._shuffle_map_tasks.pop(task_idx)
@@ -258,8 +251,8 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             task.get_requested_resource_bundle()
         )
 
-        # task_done_callback fires only after the ObjectRef is ready, so
-        # this ray.get is just local deserialization.
+        # ``task_done_callback`` fires only after the ObjectRef is ready, so
+        # this ``ray.get`` is just local deserialization.
         input_meta, shard_sizes = ray.get(task.get_waitable())
 
         for pid, (rows, nbytes) in shard_sizes.items():
@@ -273,37 +266,30 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         self._total_input_bytes += input_meta.size_bytes or 0
         self._map_blocks_stats.append(input_meta.to_stats())
 
-        # Build the output bundle for this task: G blocks in group_idx order.
-        # Block i corresponds to group_idx i; the downstream ShuffleReduceOp
-        # gathers by block position.  We compute per-group (rows, bytes) by
-        # summing the pid sizes for pids that fall in each group.
-        group_sizes: List[List[int]] = [[0, 0] for _ in range(self._num_groups)]
-        for pid, (rows, nbytes) in shard_sizes.items():
-            g = pid // self._shard_group_size
-            group_sizes[g][0] += rows
-            group_sizes[g][1] += nbytes
-
-        blocks_with_meta = [
-            (
-                group_refs[g],
-                BlockMetadata(
-                    num_rows=group_sizes[g][0],
-                    size_bytes=group_sizes[g][1],
-                    exec_stats=None,
-                    input_files=None,
-                ),
+        # Build the output bundle: one block per partition, ordered by
+        # partition_id.  Block i corresponds to partition_id i; the
+        # downstream ShuffleReduceOp gathers by block position.
+        blocks_with_meta = []
+        for pid in range(self._num_partitions):
+            rows, nbytes = shard_sizes.get(pid, (0, 0))
+            blocks_with_meta.append(
+                (
+                    partition_refs[pid],
+                    BlockMetadata(
+                        num_rows=rows,
+                        size_bytes=nbytes,
+                        exec_stats=None,
+                        input_files=None,
+                    ),
+                )
             )
-            for g in range(self._num_groups)
-        ]
         output_bundle = RefBundle(blocks_with_meta, schema=None, owns_blocks=True)
         self._output_queue.append(output_bundle)
 
-        for bundle in input_bundles:
-            self._map_metrics.on_output_taken(bundle)
         # NOTE: we don't call on_task_output_generated here.  That metric
         # path asserts exec_stats.block_ser_time_s is not None on every
         # output block, and shuffle has no per-output-block timing (one map
-        # task produces G blocks together).  The metrics it populates
+        # task produces N partitions together).  The metrics it populates
         # (num_task_outputs_generated, block-size histograms, etc.) are
         # observability only — execution correctness and resource accounting
         # don't depend on them.  Plasma usage for these outputs is tracked
@@ -329,6 +315,7 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.popleft()
         self._map_metrics.on_output_dequeued(bundle)
+        self._map_metrics.on_output_taken(bundle)
         return bundle
 
     # -----------------------------------------------------------------------

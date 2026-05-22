@@ -41,23 +41,20 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     Args:
         input_op: Upstream :class:`ShuffleMapOp`.
         data_context: Runtime configuration.
-        num_partitions: Total number of output partitions.
-        shard_group_size: Number of partitions packed into one of the upstream
-            map task's return objects.  Must match the value used by the
-            paired :class:`ShuffleMapOp`.
-        num_groups: Number of groups per map task
-            (ceil(num_partitions / shard_group_size)).  Must match.
+        num_partitions: Total number of output partitions.  Must match the
+            value used by the paired :class:`ShuffleMapOp` — one reducer
+            task per partition.
         reduce_fn: Function called once per partition (in blocking mode) or
             incrementally (in streaming mode) to combine input shards into
             output blocks.
-        streaming_reduce: If True, reduce_fn is called whenever a
-            partition's accumulator reaches target_max_block_size (for
+        streaming_reduce: If True, ``reduce_fn`` is called whenever a
+            partition's accumulator reaches ``target_max_block_size`` (for
             partial-result-friendly reductions like plain concat).  If False,
             wait for all shards before calling once (required for sort or
             stateful aggregation).  Forced to False when
-            disallow_block_splitting=True.
+            ``disallow_block_splitting=True``.
         disallow_block_splitting: If True, output blocks are emitted as-is
-            without being reshaped to target_max_block_size — required
+            without being reshaped to ``target_max_block_size`` — required
             for hash-shuffle's "partition = block" contract.
         reduce_cpus: CPU request per reduce task.  Defaults to 1.  With
             concurrency capped at one reducer per node, asking for more CPUs
@@ -74,8 +71,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         data_context: DataContext,
         *,
         num_partitions: int,
-        shard_group_size: int,
-        num_groups: int,
         reduce_fn: ReduceFn,
         streaming_reduce: bool = True,
         disallow_block_splitting: bool = False,
@@ -89,8 +84,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
 
         self._num_partitions: int = num_partitions
-        self._shard_group_size: int = shard_group_size
-        self._num_groups: int = num_groups
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         # Block-splitting disallowed → reducer must see entire partition
@@ -103,11 +96,13 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
-        self._pending_reduce_group_ids: Set[int] = set(range(self._num_groups))
+        self._pending_partition_ids: Set[int] = set(range(self._num_partitions))
 
-        # -- Per-group shard buffers (populated by _add_input_inner) ---------
-        # group_idx → list of ObjectRefs to IPC groups from each mapper
-        self._group_buffers: Dict[int, List[ObjectRef]] = defaultdict(list)
+        # -- Per-partition shard buffers (populated by _add_input_inner) -----
+        # partition_id → list of ObjectRefs to compressed IPC shards from
+        # each mapper (one ref per mapper; may be ``None`` if that mapper
+        # produced no rows for this partition).
+        self._partition_buffers: Dict[int, List[ObjectRef]] = defaultdict(list)
 
         # -- Per-partition stats (snapshot from upstream on barrier) ---------
         self._partition_bytes: Dict[int, int] = {}
@@ -127,38 +122,38 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_metrics = OpRuntimeMetrics(self)
 
     # -----------------------------------------------------------------------
-    # Input handling: bucket bundles by block-position into group buffers
+    # Input handling: bucket bundles by block-position into partition buffers
     # -----------------------------------------------------------------------
 
     def can_add_input(self) -> bool:
         return True
 
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
-        """Each upstream bundle carries G blocks in group-index order;
-        accumulate blocks[g] into _group_buffers[g]."""
+        """Each upstream bundle carries N blocks in partition-id order;
+        accumulate ``blocks[pid]`` into ``_partition_buffers[pid]``."""
         assert input_index == 0
         self._reduce_metrics.on_input_received(input_bundle)
 
-        # Inter-op contract: ShuffleMapOp emits exactly num_groups blocks per
-        # bundle (one IPC group per output block, in group-index order).  A
-        # violation means silent data corruption downstream, so this is a
-        # ValueError rather than an assert (which gets stripped with
-        # python -O).
-        if len(input_bundle.block_refs) != self._num_groups:
+        # Inter-op contract: ShuffleMapOp emits exactly num_partitions blocks
+        # per bundle (one IPC stream per output block, in partition-id order).
+        # A violation means silent data corruption downstream, so this is a
+        # ``ValueError`` rather than an ``assert`` (which gets stripped with
+        # ``python -O``).
+        if len(input_bundle.block_refs) != self._num_partitions:
             raise ValueError(
-                f"ShuffleReduceOp expected {self._num_groups} blocks per "
+                f"ShuffleReduceOp expected {self._num_partitions} blocks per "
                 f"input bundle from ShuffleMapOp, got "
                 f"{len(input_bundle.block_refs)}"
             )
-        for group_idx, block_ref in enumerate(input_bundle.block_refs):
-            self._group_buffers[group_idx].append(block_ref)
+        for pid, block_ref in enumerate(input_bundle.block_refs):
+            self._partition_buffers[pid].append(block_ref)
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         # Snapshot partition stats from upstream so we can size reducer
         # memory.  Upstream is guaranteed complete by the executor before
         # this is called.  The planner pairs us with a ShuffleMapOp upstream
-        # (see _plan_hash_shuffle_repartition); other upstreams are a
+        # (see ``_plan_hash_shuffle_repartition``); other upstreams are a
         # programming error.
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp), (
@@ -190,7 +185,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return list(self._shuffle_reduce_tasks.values())
 
     def _is_all_reduce_submitted(self) -> bool:
-        return len(self._pending_reduce_group_ids) == 0
+        return len(self._pending_partition_ids) == 0
 
     # -----------------------------------------------------------------------
     # Reduce scheduling
@@ -200,7 +195,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         """Max concurrent reduce tasks allowed.
 
         Defaults to 1 per live worker node, distributed via SPREAD.  Override
-        via DataContext config map_reduce_max_concurrent_reducers.
+        via ``DataContext`` config ``map_reduce_max_concurrent_reducers``.
         """
         override = self._data_context.get_config(
             "map_reduce_max_concurrent_reducers", None
@@ -223,21 +218,18 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._shuffle_reduce_tasks
         )
 
-        for group_id in list(self._pending_reduce_group_ids):
+        for partition_id in list(self._pending_partition_ids):
             if slots_available <= 0:
                 break
-            group_refs = self._group_buffers.get(group_id, [])
+            shard_refs = self._partition_buffers.get(partition_id, [])
 
-            group_start = group_id * self._shard_group_size
-            group_end = min(group_start + self._shard_group_size, self._num_partitions)
-            partition_ids = list(range(group_start, group_end))
-
-            if not group_refs:
-                self._pending_reduce_group_ids.discard(group_id)
+            if not shard_refs:
+                # No mapper produced anything for this partition — skip.
+                self._pending_partition_ids.discard(partition_id)
                 continue
 
             reduce_resources, estimated_bytes = self._compute_reduce_resources(
-                partition_ids
+                partition_id
             )
 
             reduce_options = {
@@ -247,8 +239,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             }
 
             block_gen = _shuffle_reduce_task.options(**reduce_options).remote(
-                group_refs,
-                partition_ids=partition_ids,
+                shard_refs,
+                partition_id=partition_id,
                 reduce_fn=self._reduce_fn,
                 target_max_block_size=(
                     None
@@ -259,34 +251,34 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             )
 
             data_task = DataOpTask(
-                task_index=group_id,
+                task_index=partition_id,
                 streaming_gen=block_gen,
                 output_ready_callback=functools.partial(
-                    self._handle_reduce_output_ready, group_id
+                    self._handle_reduce_output_ready, partition_id
                 ),
                 task_done_callback=functools.partial(
-                    self._handle_reduce_done, group_id
+                    self._handle_reduce_done, partition_id
                 ),
-                # NOTE: object_store_memory is intentionally not set on
-                # the bundle — the resource manager computes per-op plasma
-                # usage itself and would overwrite anything we put here.
-                task_resource_bundle=ExecutionResources(
-                    cpu=reduce_options["num_cpus"],
-                    memory=estimated_bytes,
+                # Mirror the actual Ray task resource ask so the executor's
+                # bookkeeping matches what Ray reserved.  ``object_store_memory``
+                # is omitted — the resource manager computes per-op plasma
+                # usage from its own input/output queue estimate.
+                task_resource_bundle=ExecutionResources.from_resource_dict(
+                    reduce_resources
                 ),
                 operator_name=self.name,
             )
 
-            self._shuffle_reduce_tasks[group_id] = data_task
-            self._pending_reduce_group_ids.discard(group_id)
+            self._shuffle_reduce_tasks[partition_id] = data_task
+            self._pending_partition_ids.discard(partition_id)
             slots_available -= 1
 
             # Release driver-side refs so intermediate objects can be reclaimed.
-            self._group_buffers.pop(group_id, None)
+            self._partition_buffers.pop(partition_id, None)
 
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             self._reduce_metrics.on_task_submitted(
-                group_id, empty_bundle, task_id=data_task.get_task_id()
+                partition_id, empty_bundle, task_id=data_task.get_task_id()
             )
 
     def _log_partition_stats(self) -> None:
@@ -304,8 +296,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             f"total_bytes={total_bytes / 1e9:.1f}GB, "
             f"bytes: min={partition_bytes[0] / 1e6:.0f}MB, "
             f"median={partition_bytes[n // 2] / 1e6:.0f}MB, "
-            f"max={partition_bytes[-1] / 1e6:.0f}MB, "
-            f"groups={self._num_groups}, shard_group_size={self._shard_group_size}"
+            f"max={partition_bytes[-1] / 1e6:.0f}MB"
         )
 
     def _init_reduce_phase(self) -> None:
@@ -345,22 +336,24 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_phase_initialized = True
 
     def _compute_reduce_resources(
-        self, partition_ids: List[int]
+        self, partition_id: int
     ) -> Tuple[Dict[str, Any], int]:
         """Build the resource ask for one reduce task.
 
-        Returns (resources_dict, estimated_bytes):
+        Returns ``(resources_dict, estimated_bytes)``:
 
-        - resources_dict: num_cpus and a memory hint sized to
-          2 × estimated_bytes — covers decompressed input + concat copy.
+        - ``resources_dict``: ``num_cpus`` and a ``memory`` hint sized to
+          ``2 × estimated_bytes`` — covers decompressed input + concat copy.
           The memory ask is capped at a single node's memory so the scheduler
           still has a meaningful placement hint.
-        - estimated_bytes: uncompressed bytes for this group's partitions.
+        - ``estimated_bytes``: uncompressed bytes for this partition.
         """
-        estimated_bytes = sum(
-            self._partition_bytes.get(pid, 0) for pid in partition_ids
-        )
-        assert self._num_nodes is not None
+        estimated_bytes = self._partition_bytes.get(partition_id, 0)
+        # ``_init_reduce_phase`` runs before any reducer launch and caches
+        # ``_num_nodes`` after filtering dead + head-only nodes; reuse it.
+        assert (
+            self._num_nodes is not None
+        ), "_compute_reduce_resources called before _init_reduce_phase"
         node_memory = ray.cluster_resources().get("memory", 30e9) / self._num_nodes
         reduce_resources: Dict[str, Any] = {
             "num_cpus": self._shuffle_reduce_task_num_cpus
@@ -369,17 +362,17 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             reduce_resources["memory"] = min(estimated_bytes * 2, node_memory)
         return reduce_resources, estimated_bytes
 
-    def _handle_reduce_output_ready(self, group_id: int, bundle: RefBundle) -> None:
+    def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
         self._output_queue.append(bundle)
         self._reduce_metrics.on_output_queued(bundle)
         self._reduce_metrics.on_task_output_generated(
-            task_index=group_id, output=bundle
+            task_index=partition_id, output=bundle
         )
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
-            group_id + 1,
+            partition_id + 1,
             self.upstream_op_num_outputs(),
             self._reduce_metrics,
-            total_num_tasks=self._num_groups,
+            total_num_tasks=self._num_partitions,
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
@@ -391,23 +384,25 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def _handle_reduce_done(
         self,
-        group_id: int,
+        partition_id: int,
         exc: Optional[Exception],
         task_exec_stats: Optional[TaskExecWorkerStats],
         task_exec_driver_stats: Optional[TaskExecDriverStats],
     ) -> None:
         """Callback when a reduce task finishes (with or without exception)."""
-        if group_id not in self._shuffle_reduce_tasks:
+        if partition_id not in self._shuffle_reduce_tasks:
             return
-        self._shuffle_reduce_tasks.pop(group_id)
+        self._shuffle_reduce_tasks.pop(partition_id)
         self._reduce_metrics.on_task_finished(
-            task_index=group_id,
+            task_index=partition_id,
             exception=exc,
             task_exec_stats=task_exec_stats,
             task_exec_driver_stats=task_exec_driver_stats,
         )
         if exc:
-            logger.error(f"Reduce of group {group_id} failed: {exc}", exc_info=exc)
+            logger.error(
+                f"Reduce of partition {partition_id} failed: {exc}", exc_info=exc
+            )
 
     # -----------------------------------------------------------------------
     # Completion
@@ -428,7 +423,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
-        self._group_buffers.clear()
+        self._partition_buffers.clear()
 
     # -----------------------------------------------------------------------
     # Stats / metrics
@@ -446,7 +441,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def num_output_rows_total(self) -> Optional[int]:
         # Output row count matches upstream input row count.  The planner
-        # guarantees a ShuffleMapOp upstream — see _add_input_inner.
+        # guarantees a ShuffleMapOp upstream — see ``_add_input_inner``.
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp)
         return upstream.num_output_rows_total()
@@ -470,9 +465,9 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     # -----------------------------------------------------------------------
 
     def progress_str(self) -> str:
-        reduces_submitted = self._num_groups - len(self._pending_reduce_group_ids)
+        reduces_submitted = self._num_partitions - len(self._pending_partition_ids)
         reduces_done = reduces_submitted - len(self._shuffle_reduce_tasks)
-        return f"reduce: {reduces_done}/{self._num_groups}"
+        return f"reduce: {reduces_done}/{self._num_partitions}"
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         return ["Reduce"]
