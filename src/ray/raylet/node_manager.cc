@@ -3646,8 +3646,7 @@ void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
     local_object_manager_.ReleaseFreedLocalObject(object_id);
   }
 
-  auto status = store_client_->Delete(object_ids);
-  send_reply_callback(status, nullptr, nullptr);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray::raylet
