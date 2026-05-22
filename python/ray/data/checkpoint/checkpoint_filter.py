@@ -87,7 +87,7 @@ def _clean_pending_checkpoints_task(
     def _clean() -> int:
         # 1. List all files in checkpoint dir, find pending ones
         ckpt_files = checkpoint_filesystem.get_file_info(
-            FileSelector(checkpoint_path_unwrapped, recursive=False)
+            FileSelector(checkpoint_path_unwrapped, recursive=False, allow_not_found=True)
         )
         pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
         pending_file_paths = [
