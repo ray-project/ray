@@ -151,14 +151,11 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             ):
                 self._flush_merge_buffer(node_id)
         else:
-            for block_ref, block_metadata in zip(
-                input_bundle.block_refs, input_bundle.metadata
-            ):
-                self._submit_shuffle_map_task(
-                    [block_ref],
-                    [input_bundle],
-                    estimated_bytes=block_metadata.size_bytes or 0,
-                )
+            self._submit_shuffle_map_task(
+                list(input_bundle.block_refs),
+                [input_bundle],
+                estimated_bytes=sum((m.size_bytes or 0) for m in input_bundle.metadata),
+            )
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()

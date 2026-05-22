@@ -11,8 +11,7 @@ Focused on regressions and non-obvious behaviour; pyarrow-internal behaviour
 by the e2e block below.
 """
 
-from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import List, Optional
 from unittest.mock import MagicMock
 
 import pyarrow as pa
@@ -166,44 +165,22 @@ def test_partition_blocks_to_shards_combines_chunked_columns():
     assert seen_chunk_counts == [1]
 
 
-@dataclass
-class IpcRoundtripCase:
-    name: str
-    pids: List[int]
-    pid_tables_fn: Callable[[], Dict[int, pa.Table]]
-    expected_decoded_pids: List[int]
-
-
 @pytest.mark.parametrize(
-    "tc",
+    "pids,pid_tables_fn,expected_decoded_pids",
     [
-        IpcRoundtripCase(
-            name="single_pid",
-            pids=[3],
-            pid_tables_fn=lambda: {3: _make_table(10)},
-            expected_decoded_pids=[3],
+        ([3], lambda: {3: _make_table(10)}, [3]),
+        (
+            [1, 2, 7],
+            lambda: {p: _make_table(5, offset=p * 100) for p in [1, 2, 7]},
+            [1, 2, 7],
         ),
-        IpcRoundtripCase(
-            name="multi_pid_in_order",
-            pids=[1, 2, 7],
-            pid_tables_fn=lambda: {
-                p: _make_table(5, offset=p * 100) for p in [1, 2, 7]
-            },
-            expected_decoded_pids=[1, 2, 7],
-        ),
-        IpcRoundtripCase(
-            name="empty_pid_dropped",
-            pids=[1, 2],
-            pid_tables_fn=lambda: {1: _make_table(4), 2: _empty_table()},
-            expected_decoded_pids=[1],
-        ),
+        ([1, 2], lambda: {1: _make_table(4), 2: _empty_table()}, [1]),
     ],
-    ids=lambda tc: tc.name,
 )
-def test_ipc_encode_decode_roundtrip(tc: IpcRoundtripCase):
-    buf = _encode_group_ipc(tc.pids, tc.pid_tables_fn(), _ipc_opts())
+def test_ipc_encode_decode_roundtrip(pids, pid_tables_fn, expected_decoded_pids):
+    buf = _encode_group_ipc(pids, pid_tables_fn(), _ipc_opts())
     out = _read_ipc_group(buf)
-    assert [pid for pid, _ in out] == tc.expected_decoded_pids
+    assert [pid for pid, _ in out] == expected_decoded_pids
 
 
 def test_ipc_decoded_schema_has_no_pids_metadata():
@@ -230,35 +207,19 @@ def test_ipc_encode_does_not_mutate_upstream_schema_metadata():
 # ===========================================================================
 
 
-@dataclass
-class ShardGroupCase:
-    name: str
-    num_partitions: int
-    expected_shard_group_size: int
-    expected_num_groups: int
-
-
 @pytest.mark.parametrize(
-    "tc",
+    "num_partitions,expected_shard_group_size,expected_num_groups",
     [
-        ShardGroupCase("few_one_per_group", 50, 1, 50),
-        ShardGroupCase(
-            "at_cap_one_per_group", _MAX_RETURN_GROUPS, 1, _MAX_RETURN_GROUPS
-        ),
-        ShardGroupCase(
-            "above_cap_packs_multiple",
-            _MAX_RETURN_GROUPS * 3,
-            3,
-            _MAX_RETURN_GROUPS,
-        ),
+        (50, 1, 50),
+        (_MAX_RETURN_GROUPS, 1, _MAX_RETURN_GROUPS),
+        (_MAX_RETURN_GROUPS * 3, 3, _MAX_RETURN_GROUPS),
     ],
-    ids=lambda tc: tc.name,
 )
-def test_shard_grouping(tc: ShardGroupCase):
-    sgs = compute_shard_group_size(tc.num_partitions)
-    ng = compute_num_groups(tc.num_partitions, sgs)
-    assert sgs == tc.expected_shard_group_size
-    assert ng == tc.expected_num_groups
+def test_shard_grouping(num_partitions, expected_shard_group_size, expected_num_groups):
+    sgs = compute_shard_group_size(num_partitions)
+    ng = compute_num_groups(num_partitions, sgs)
+    assert sgs == expected_shard_group_size
+    assert ng == expected_num_groups
     assert ng <= _MAX_RETURN_GROUPS
 
 
@@ -267,29 +228,22 @@ def test_shard_grouping(tc: ShardGroupCase):
 # ===========================================================================
 
 
-@dataclass
-class ContractCase:
-    name: str
-    streaming_reduce: bool
-    disallow_block_splitting: bool
-    expected_streaming_reduce: bool
-
-
 @pytest.mark.parametrize(
-    "tc",
+    "streaming_reduce,disallow_block_splitting,expected_streaming_reduce",
     [
-        ContractCase("streaming_on_disallow_off", True, False, True),
-        ContractCase("disallow_forces_streaming_off", True, True, False),
-        ContractCase("streaming_off_passthrough", False, False, False),
+        (True, False, True),
+        (True, True, False),
+        (False, False, False),
     ],
-    ids=lambda tc: tc.name,
 )
-def test_contract_flags(tc: ContractCase):
+def test_contract_flags(
+    streaming_reduce, disallow_block_splitting, expected_streaming_reduce
+):
     op = _make_reduce_op(
-        streaming_reduce=tc.streaming_reduce,
-        disallow_block_splitting=tc.disallow_block_splitting,
+        streaming_reduce=streaming_reduce,
+        disallow_block_splitting=disallow_block_splitting,
     )
-    assert op._streaming_reduce is tc.expected_streaming_reduce
+    assert op._streaming_reduce is expected_streaming_reduce
 
 
 # ===========================================================================
@@ -297,32 +251,19 @@ def test_contract_flags(tc: ContractCase):
 # ===========================================================================
 
 
-@dataclass
-class ReduceConcurrencyCase:
-    name: str
-    num_nodes: int
-    override: Optional[int] = None
-    expected_limit: int = 0
-
-
 @pytest.mark.parametrize(
-    "tc",
+    "num_nodes,override,expected_limit",
     [
-        ReduceConcurrencyCase(
-            name="default_is_one_per_node", num_nodes=32, expected_limit=32
-        ),
-        ReduceConcurrencyCase(
-            name="override_wins", num_nodes=32, override=12, expected_limit=12
-        ),
+        (32, None, 32),
+        (32, 12, 12),
     ],
-    ids=lambda tc: tc.name,
 )
-def test_reduce_concurrency_limit(tc: ReduceConcurrencyCase):
+def test_reduce_concurrency_limit(num_nodes, override, expected_limit):
     op = _make_reduce_op()
-    op._num_nodes = tc.num_nodes
-    if tc.override is not None:
-        op._data_context.set_config("map_reduce_max_concurrent_reducers", tc.override)
-    assert op._get_reduce_concurrency_limit() == tc.expected_limit
+    op._num_nodes = num_nodes
+    if override is not None:
+        op._data_context.set_config("map_reduce_max_concurrent_reducers", override)
+    assert op._get_reduce_concurrency_limit() == expected_limit
 
 
 # ===========================================================================
@@ -330,57 +271,39 @@ def test_reduce_concurrency_limit(tc: ReduceConcurrencyCase):
 # ===========================================================================
 
 
-@dataclass
-class MergeBufferCase:
-    name: str
-    threshold: int
-    bundles: List[Tuple[int, int]] = field(default_factory=list)
-    finalize: bool = False
-    expected_submitted_block_counts: List[int] = field(default_factory=list)
-
-
 @pytest.mark.parametrize(
-    "tc",
+    "threshold,bundles,finalize,expected_submitted_block_counts",
     [
-        MergeBufferCase(
-            name="threshold_zero_one_task_per_block",
-            threshold=0,
-            bundles=[(3, 10)],
-            expected_submitted_block_counts=[1, 1, 1],
-        ),
-        MergeBufferCase(
-            name="below_threshold_then_crossover_flushes_merged",
-            threshold=1000,
-            bundles=[(1, 200), (1, 300), (1, 600)],
-            expected_submitted_block_counts=[3],
-        ),
-        MergeBufferCase(
-            name="all_inputs_done_drains_remaining",
-            threshold=10_000,
-            bundles=[(2, 100)],
-            finalize=True,
-            expected_submitted_block_counts=[2],
-        ),
+        # Pre-map merge disabled: each input bundle becomes one task,
+        # regardless of how many blocks it carries.  (Earlier code looped
+        # per-block and shared the same bundle reference across N tasks,
+        # which caused double-free + N× inflated input metrics — see
+        # shuffle_map_operator._add_input_inner.)
+        (0, [(3, 10)], False, [3]),
+        (0, [(2, 10), (1, 10), (4, 10)], False, [2, 1, 4]),
+        (1000, [(1, 200), (1, 300), (1, 600)], False, [3]),
+        (10_000, [(2, 100)], True, [2]),
     ],
-    ids=lambda tc: tc.name,
 )
-def test_pre_map_merge_buffer(monkeypatch, tc: MergeBufferCase):
+def test_pre_map_merge_buffer(
+    monkeypatch, threshold, bundles, finalize, expected_submitted_block_counts
+):
     monkeypatch.setattr(RefBundle, "get_preferred_object_locations", lambda self: {})
-    op = _make_map_op(pre_map_merge_threshold=tc.threshold)
+    op = _make_map_op(pre_map_merge_threshold=threshold)
     submitted: List[int] = []
     monkeypatch.setattr(
         op,
         "_submit_shuffle_map_task",
-        lambda block_refs, bundles, **kw: submitted.append(len(block_refs)),
+        lambda block_refs, _bundles, **kw: submitted.append(len(block_refs)),
     )
-    for num_blocks, size_bytes in tc.bundles:
+    for num_blocks, size_bytes in bundles:
         op._add_input_inner(
             _make_bundle(num_blocks=num_blocks, size_bytes=size_bytes),
             input_index=0,
         )
-    if tc.finalize:
+    if finalize:
         op.all_inputs_done()
-    assert submitted == tc.expected_submitted_block_counts
+    assert submitted == expected_submitted_block_counts
 
 
 # ===========================================================================
