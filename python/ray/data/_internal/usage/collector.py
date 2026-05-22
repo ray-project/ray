@@ -204,7 +204,7 @@ def _cluster_spilled_bytes() -> Optional[int]:
     try:
         reply = get_memory_info_reply(
             get_state_from_address(ray.get_runtime_context().gcs_address),
-            timeout_seconds=10.0
+            timeout_seconds=10.0,
         )
         return int(reply.store_stats.spilled_bytes_total)
     except Exception:
