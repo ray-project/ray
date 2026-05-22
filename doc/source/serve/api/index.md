@@ -97,9 +97,11 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
+   serve.config.AcceleratorConfig
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
    serve.config.RequestRouterConfig
+   serve.config.TPUAcceleratorConfig
    serve.config.GangSchedulingConfig
    serve.config.DeploymentActorConfig
 ```
