@@ -328,7 +328,7 @@ class BayesOptSearch(Searcher):
 
     def on_trial_complete(
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
-    ):
+    ) -> None:
         """Notification for the completion of trial.
 
         Args:
