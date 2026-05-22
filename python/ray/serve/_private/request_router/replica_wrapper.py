@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import pickle
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -411,6 +412,9 @@ class ReplicaSelection:
     # Token to be used for replica reservation;
     # Can be None when created via the pick-only path
     _slot_token: Optional[str]
+    # Monotonic timestamp (seconds) when this selection was created (slot reserved).
+    # Used to compute the selection→dispatch gap metric.
+    selection_start_time: float = field(default_factory=time.monotonic, init=False)
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
