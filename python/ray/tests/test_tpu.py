@@ -948,5 +948,24 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
     assert slice_pg.placement_group is None
 
 
+def test_chips_per_vm_zero_raises_value_error():
+    """Verifies that passing chips_per_vm=0 explicitly raises a ValueError instead of silently using the topology default."""
+    with pytest.raises(ValueError):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            chips_per_vm=0,
+        )
+
+    # Also verify when custom resources already include a "TPU" key
+    with pytest.raises(ValueError):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            resources_per_bundle={"TPU": 4},
+            chips_per_vm=0,
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -115,10 +115,6 @@ void CoreWorkerGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
       CoreWorkerService, Exit, max_active_rpcs_per_handler_, ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          AssignObjectOwner,
-                                                          max_active_rpcs_per_handler_,
-                                                          ClusterIdAuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           NumPendingTasks,
                                                           max_active_rpcs_per_handler_,
                                                           ClusterIdAuthType::NO_AUTH);

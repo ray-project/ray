@@ -1,6 +1,8 @@
+import logging
 import os
 from typing import List
 
+from ray._common.network_utils import get_all_interfaces_ip
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -16,6 +18,7 @@ from ray.serve._private.constants_utils import (
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
@@ -948,9 +951,20 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
 
-# Direct ingress must be enabled if HAProxy is enabled
 if RAY_SERVE_ENABLE_HA_PROXY:
+    # Direct ingress must be enabled if HAProxy is enabled.
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
+
+    # Replica HTTP ports must be reachable from HAProxy on remote nodes, so
+    # the effective default binds to all interfaces regardless of
+    # RAY_SERVE_DEFAULT_HTTP_HOST.
+    if DEFAULT_HTTP_HOST not in (None, get_all_interfaces_ip()):
+        logger.warning(
+            f"RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r} is ignored "
+            "because RAY_SERVE_ENABLE_HA_PROXY=1 forces host to all interfaces "
+            "so HAProxy on other nodes can reach Serve HTTP ports."
+        )
+    DEFAULT_HTTP_HOST = get_all_interfaces_ip()
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
