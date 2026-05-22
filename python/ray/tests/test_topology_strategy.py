@@ -126,6 +126,65 @@ def test_topology_strategy_strict_spread(ray_start_cluster):
     assert len(bundle_nodes) == len(set(bundle_nodes)) == 4
 
 
+def test_topology_strategy_reschedule_on_node_failure(ray_start_cluster):
+    """Verify rescheduling stays within the same topology level on partial failure.
+
+    Provides 6 rack-1 nodes for a 4-bundle PG. Kills 2 nodes holding bundles;
+    asserts the PG re-creates with all bundles still on rack-1 rather than
+    leaking onto a different domain.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    rack_nodes = [cluster.add_node(num_cpus=1, labels=rack1_labels) for _ in range(6)]
+
+    bundles = [{"CPU": 1}] * 4
+    pg = placement_group(
+        bundles=bundles,
+        topology_strategy=[{NODE_ID_LABEL: "PACK", RACK_LABEL: "STRICT_PACK"}],
+    )
+    ray.get(pg.ready(), timeout=30)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    cluster.remove_node(rack_nodes[0])
+    cluster.remove_node(rack_nodes[1])
+
+    ray.get(pg.ready(), timeout=30)
+    assert placement_group_table(pg)["state"] == "CREATED"
+    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
+
+
+def test_topology_strategy_infeasible_after_node_kill(ray_start_cluster):
+    """Verify PG enters RESCHEDULING when no surviving rack-1 node fits the orphan.
+
+    Two rack-1 nodes, each with 1 CPU and one bundle. Kill one; the surviving
+    node has no spare CPU for the orphan. The PG should stay in RESCHEDULING.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    cluster.add_node(num_cpus=1, labels=rack1_labels)
+    node_b = cluster.add_node(num_cpus=1, labels=rack1_labels)
+
+    bundles = [{"CPU": 1}] * 2
+    pg = placement_group(
+        bundles=bundles,
+        topology_strategy=[{NODE_ID_LABEL: "PACK", RACK_LABEL: "STRICT_PACK"}],
+    )
+    ray.get(pg.ready(), timeout=10)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    cluster.remove_node(node_b)
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=5)
+
+    state = placement_group_table(pg)["state"]
+    assert state == "RESCHEDULING", f"Expected RESCHEDULING, got {state}"
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

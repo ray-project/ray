@@ -18,9 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/constants.h"
-#include "ray/common/scheduling/label_selector.h"
-
 namespace ray {
 namespace gcs {
 
@@ -167,33 +164,6 @@ std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKe
     keys.push_back(entry.first);
   }
   return keys;
-}
-
-void GcsPlacementGroup::ComputeTopologyStrategy() {
-  const auto &proto_bundles = placement_group_table_data_.bundles();
-  if (proto_bundles.empty()) {
-    return;
-  }
-  BundleSpecification first_bundle(proto_bundles.Get(0));
-  const LabelSelector &label_selector =
-      first_bundle.GetRequiredResources().GetLabelSelector();
-  for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == kLabelKeyNodeAcceleratorType &&
-        constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
-        (constraint.GetLabelValues().contains(kGB300) ||
-         constraint.GetLabelValues().contains(kGB200))) {
-      // Only create a level within topology strategy if empty
-      if (static_cast<size_t>(placement_group_table_data_.topology_strategy_size()) ==
-          0) {
-        placement_group_table_data_.add_topology_strategy();
-      }
-
-      auto *level = placement_group_table_data_.mutable_topology_strategy(0);
-      auto *entries = level->mutable_entries();
-      (*entries)[kGpuDomainLabelKey] = rpc::PlacementStrategy::STRICT_PACK;
-      return;
-    }
-  }
 }
 
 std::optional<std::string> GcsPlacementGroup::GetTopologyAssignment(

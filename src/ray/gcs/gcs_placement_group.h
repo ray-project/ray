@@ -83,7 +83,6 @@ class GcsPlacementGroup {
         clock_.NowUnixMillis());
     placement_group_table_data_.mutable_topology_strategy()->CopyFrom(
         placement_group_spec.topology_strategy());
-    ComputeTopologyStrategy();
     SetupStates();
   }
 
@@ -222,11 +221,6 @@ class GcsPlacementGroup {
     }
     last_metric_state_ = cur_state;
   }
-
-  /// Inspects bundle label selectors to auto-populate topology_strategy for
-  /// well-known accelerator types (e.g. GB200/GB300 imply gpu-domain packing).
-  /// No-op if the user already supplied a topology_strategy.
-  void ComputeTopologyStrategy();
 
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
