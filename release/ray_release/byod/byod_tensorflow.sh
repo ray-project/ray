@@ -3,4 +3,5 @@
 
 set -exo pipefail
 
-pip3 install --no-cache-dir tensorflow
+# tensorflow doesn't have 3.14 support (latest version 2.21)
+pip3 install --no-cache-dir tf-nightly
