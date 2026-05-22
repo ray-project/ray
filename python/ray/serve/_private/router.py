@@ -1831,15 +1831,8 @@ class SingletonThreadRouter(Router):
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Dispatch request to a previously selected replica."""
-        try:
-            selection._mark_dispatched()
-        except Exception as exc:
-            future = concurrent.futures.Future()
-            future.set_exception(exc)
-            return future
-
         return self._wrap_asyncio_call_in_future(
-            self._asyncio_router._dispatch_to_marked_selection(
+            self._asyncio_router.dispatch(
                 selection, request_meta, *request_args, **request_kwargs
             )
         )
@@ -2064,15 +2057,8 @@ class CurrentLoopRouter(Router):
 
         Returns an asyncio.Future wrapping the async dispatch call.
         """
-        try:
-            selection._mark_dispatched()
-        except Exception as exc:
-            future = self._asyncio_loop.create_future()
-            future.set_exception(exc)
-            return future
-
         return self._asyncio_loop.create_task(
-            self._asyncio_router._dispatch_to_marked_selection(
+            self._asyncio_router.dispatch(
                 selection, request_meta, *request_args, **request_kwargs
             )
         )
