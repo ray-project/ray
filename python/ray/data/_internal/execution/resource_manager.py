@@ -692,8 +692,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
 
-        self._idle_detector = self.IdleDetector()
-
     def _update_reservation(
         self, limits: ExecutionResources
     ) -> Tuple[

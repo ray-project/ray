@@ -84,16 +84,26 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             )
             if over_budget_scale_down > 0:
                 max_can_release = actor_pool.current_size() - actor_pool.min_size()
-                num_to_scale_down = min(over_budget_scale_down, max_can_release)
+                # Only release idle actors. Busy actors are doing useful work and
+                # cannot be removed by `_remove_inactive_actor()` anyway. Capping
+                # by `num_idle_actors` prevents returning a spurious downscale
+                # request that would block the subsequent scale-up logic.
+                num_idle = actor_pool.num_idle_actors()
+                num_to_scale_down = min(
+                    over_budget_scale_down, max_can_release, num_idle
+                )
                 if num_to_scale_down > 0:
                     return ActorPoolScalingRequest.downscale(
                         delta=-num_to_scale_down,
                         reason="actor pool exceeds resource allocation",
                     )
-                return ActorPoolScalingRequest.no_op(
-                    reason="actor pool exceeds resource allocation "
-                    "but cannot scale below min size",
-                )
+                if max_can_release == 0:
+                    return ActorPoolScalingRequest.no_op(
+                        reason="actor pool exceeds resource allocation "
+                        "but cannot scale below min size",
+                    )
+                # num_idle == 0: all actors are busy. Fall through to
+                # utilization-based logic so scale-up remains possible.
 
         # To prevent unexpected downscaling from the initial size, short-circuit if
         # the operator hasn't received any inputs.

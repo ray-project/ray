@@ -9,7 +9,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -161,10 +161,27 @@ class OutputBackpressureGuard:
             output_op_state = self._topology[output_op]
             return output_op_state.num_waiting_consumers > 0
 
+        # Ops downstream of a pending materializing operator (e.g. AllToAll /
+        # shuffle / sort) are excluded from the allocator's eligible set. Using
+        # their starved state to justify unblocking *upstream* ops would
+        # overflow the materializing op's input buffer — it buffers all data
+        # before releasing any output, so its downstream looking idle is
+        # expected, not a liveness emergency.
+        allocator_eligible_ops = self._allocator_eligible_ops()
+
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure
             # in one of the following cases.
             if downstream_op.num_active_tasks() == 0:
+                # Skip downstream ops that are behind a pending materializing
+                # operator (see comment above). When the allocator is disabled
+                # there's no materializing cutoff to honor, so don't skip.
+                if (
+                    allocator_eligible_ops is not None
+                    and downstream_op not in allocator_eligible_ops
+                ):
+                    continue
+
                 downstream_op_state = self._topology[downstream_op]
 
                 # Case 1: Downstream operator
@@ -189,6 +206,18 @@ class OutputBackpressureGuard:
         # As a last resort we check whether operator has been idling (ie not
         # producing any outputs) for a while, and unblock in that case.
         return self._idle_detector.detect_idle(op)
+
+    def _allocator_eligible_ops(self) -> Optional[Set[PhysicalOperator]]:
+        """Operators the resource allocator currently considers eligible,
+        which excludes anything sitting behind a pending materializing op.
+
+        Returns None when no op-level resource allocator is enabled — in that
+        case there is no materializing cutoff to consult and the caller should
+        not skip any downstream ops on that basis.
+        """
+        if not self._resource_manager.op_resource_allocator_enabled():
+            return None
+        return set(self._resource_manager.op_resource_allocator._get_eligible_ops())
 
     def _can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Whether ``op`` can submit a new task under current resource budgets.

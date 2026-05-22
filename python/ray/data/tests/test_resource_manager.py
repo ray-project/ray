@@ -942,6 +942,49 @@ class TestOutputBackpressureGuard:
         topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
         assert guard.should_unblock(o2) is True
 
+    def test_no_unblock_backpressure_when_downstream_blocked_by_materializing_op(
+        self, restore_data_context
+    ):
+        """Ops downstream of a pending materializing op (e.g. AllToAll/shuffle) are
+        excluded from the liveness check. Using their starved state to justify
+        unblocking upstream would overfill the materializing op's input buffer
+        (regression: 1 TB sort spilling due to uncontrolled data ingestion)."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)  # eligible — the op we're checking
+        o3 = mock_all_to_all_op(o2)  # ineligible (throttling_disabled) + materializing
+        o4 = mock_map_op(o3)  # eligible downstream, but behind o3
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        guard = OutputBackpressureGuard(topo, resource_manager)
+
+        # o4 has no active tasks and no input blocks (o3 hasn't produced output yet).
+        # Without the fix, this would trigger Case 2 and unblock o2 indefinitely,
+        # causing o3's input buffer to grow without bound.
+        o4.num_active_tasks = MagicMock(return_value=0)
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=True
+        )
+        topo[o4].total_enqueued_input_blocks = MagicMock(return_value=0)
+
+        # Idle detector should NOT fire (o2 is producing outputs, just not consumed).
+        guard._idle_detector.detect_idle = MagicMock(return_value=False)
+
+        # o4 is downstream of the pending materializing op o3, so it should be
+        # excluded from the liveness check. Backpressure stays in effect.
+        assert guard.should_unblock(o2) is False
+
+        # But if o2 itself is genuinely idle (no output for a long time), we do
+        # unblock via the idle detector as a last resort.
+        guard._idle_detector.detect_idle = MagicMock(return_value=True)
+        assert guard.should_unblock(o2) is True
+
 
 class TestIdleDetector:
     """Tests for IdleDetector."""
