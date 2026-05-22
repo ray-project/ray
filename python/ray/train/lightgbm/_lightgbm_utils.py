@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def normalize_pandas_for_lightgbm(df: "pd.DataFrame") -> "pd.DataFrame":
     """Map Arrow-backed pandas dtypes to NumPy-nullable equivalents.
 
