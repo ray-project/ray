@@ -234,35 +234,26 @@ that don't get emitted this iteration (because they didn't fit the budget,
 or the batched `ray.get` timed out) must persist on the task. Per-iteration
 state lives only in the caller-supplied `bytes_by_meta_ref` dict.
 
-#### 1b. New `ray.experimental.get_object_sizes(refs)` helper
+#### 1b. Assumed dependency: cheap, reliable per-ref size lookup
+
+The design depends on a Ray Core primitive that returns each ref's byte
+size **without** issuing an RPC or fetching the object data, and that is
+**reliably populated** by the time the streaming generator surfaces the
+ref to the driver. Surface used in the rest of this document:
 
 ```python
-def get_object_sizes(obj_refs: List[ObjectRef]) -> List[Optional[int]]:
-    """Return the byte size of each object as known to Ray Core, or None
-    if the size isn't yet known (the producing task hasn't sealed the
-    object). Local-only; no RPCs."""
-    locations = get_local_object_locations(obj_refs)
-    return [(locations.get(r) or {}).get("object_size") for r in obj_refs]
+sizes = ray.experimental.get_object_sizes(block_refs)   # List[int], one per ref
 ```
 
-Thin wrapper over the existing `get_local_object_locations` (which already
-reads `object_size` from the local reference counter — no new RPC, no new
-Ray Core state, just a focused Python entry point onto data Ray Core
-already maintains for OOM / spill / scheduling decisions).
+How Ray Core exposes this — whether via a focused helper, an extension to
+an existing API, an inlined field on `ObjectRef`, or something else —
+is a question for the Ray Core team and out of scope for this RFC.
+This RFC assumes the primitive exists and is reliable for streaming-gen
+owned refs; see the open questions section.
 
 The size lets us **trim the metadata fetch up front**, so what we
 `ray.get` is exactly what we emit this iteration. No cross-iteration
 cache, no speculative over-fetch.
-
-#### 1c. Graceful `None` handling
-
-`get_object_sizes` returns `None` for refs whose owner hasn't yet
-published a size (small race window between the gen yielding a ref and
-the worker's `SealOwnedObject` report reaching the driver). Treat `None`
-as "fetch this pair anyway" — the per-pair `ray.get` happens, the budget
-is still enforced on the emit side via `bytes_read += meta.size_bytes`.
-Same behavior as today for that pair; the precise-trim win is realized
-for the pairs where the size is known.
 
 ### Per-call ray.get fallback
 
@@ -427,7 +418,7 @@ variant and 1.4× on the actors variant.
 
 | file | changes |
 | --- | --- |
-| `ray/experimental/locations.py` + `__init__.py` | new `get_object_sizes(refs)` helper |
+| Ray Core API surface for per-ref size (exact shape TBD with Core team) | exposes the cheap, reliable size lookup that Part 1 depends on |
 | `data/_internal/execution/interfaces/physical_operator.py` | `DataOpTask` switches from scalar `_pending_*_ref` to queue + partial; new `peek_pending_pair` + drainable semantics; `on_data_ready` takes `bytes_by_meta_ref` dict; per-ref fallback for cache miss; `fetch_and_drain` convenience |
 | `data/_internal/execution/streaming_executor_state.py` | `process_completed_tasks` runs the 5-step flow above |
 | `data/tests/test_streaming_executor.py` + `tests/util.py` | tests updated to new `on_data_ready` signature; new tests for peek-drain + size-aware trim + cache-miss fallback |
@@ -450,7 +441,8 @@ Both parts are independent. Suggested order:
 
 1. **Part 1 first.** Self-contained, measured wins, smaller blast radius
    (touches the data-fetch path, not the resource manager). Lands as its
-   own PR with the queue-based `DataOpTask` + `get_object_sizes` helper.
+   own PR with the queue-based `DataOpTask`; depends on the Core size
+   primitive landing first.
 2. **Part 2 follow-up.** Separate review attention (touches every op
    subclass that overrides `*_logical_usage`); benefits from Part 1's
    release-test measurements to baseline against.
@@ -497,16 +489,15 @@ lands incrementally.
 ## Risks
 
 ### Part 1
-1. **`get_object_sizes` race window.** A streaming-gen ref can be
-   delivered to the driver before the owner-side `SealOwnedObject`
-   report arrives, returning `None` from `get_object_sizes`.
-   Mitigation: `None` falls through to "fetch this pair anyway",
-   identical behavior to today's per-pair `ray.get`. Pure optimization,
-   no correctness dependency.
-2. **Batched `ray.get` stragglers.** One slow ref blocks the whole
+1. **Batched `ray.get` stragglers.** One slow ref blocks the whole
    batched call. Mitigation: per-ref fallback inside `on_data_ready`
    handles `GetTimeoutError`. As a future-future tweak, cap the batch
    size at ~1000 refs.
+2. **Dependence on the Ray Core size primitive being reliable.** If
+   the assumed `get_object_sizes` ever returns stale or missing
+   values for streaming-gen owned refs, the size-aware trim degrades
+   (we'd over- or under-fetch metadata). Mitigation: see "Open
+   questions" — Core team to specify the guaranteed-reliable surface.
 
 ### Part 2
 1. **Cache drift.** Any future code path that mutates op state without
@@ -526,6 +517,13 @@ lands incrementally.
 
 ## Open questions
 
+- **For the Ray Core team:** what is the right Core-side surface for
+  cheap, no-RPC, reliably-populated per-ref byte size? Part 1's
+  size-aware trim depends on this primitive existing and returning
+  real values (not `None`/stale) at the moment the streaming
+  generator surfaces a ref to the driver. The Python entry point and
+  the underlying implementation are both Core-team decisions; this
+  RFC assumes the result.
 - Should `_cached_logical_usage` be a single `ExecutionResources` or
   four separate scalar fields (cpu / gpu / memory / obj_store)?
   Constructors are the bottleneck, so probably scalars;
