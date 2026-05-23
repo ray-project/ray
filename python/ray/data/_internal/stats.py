@@ -1099,7 +1099,7 @@ class DatasetStats:
         self.time_total_s: float = 0
 
         # Streaming executor stats. The scheduling-loop step Timer
-        # *can* retain every sample so we can report exact p50/p70/p90,
+        # *can* retain every sample so we can report exact p50/p90,
         # but doing so grows memory linearly with the job's lifetime —
         # so it's opt-in via ``RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES``
         # and intended for release-test runs, not production. When the
@@ -1236,7 +1236,6 @@ class DatasetStats:
         streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
         streaming_exec_schedule_p50_s = schedule_timer.percentile(0.5)
-        streaming_exec_schedule_p70_s = schedule_timer.percentile(0.7)
         streaming_exec_schedule_p90_s = schedule_timer.percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
@@ -1254,7 +1253,6 @@ class DatasetStats:
             streaming_exec_schedule_avg_s,
             streaming_exec_schedule_max_s,
             streaming_exec_schedule_p50_s,
-            streaming_exec_schedule_p70_s,
             streaming_exec_schedule_p90_s,
         )
 
@@ -1296,7 +1294,6 @@ class DatasetStatsSummary:
     # Exact percentiles when sample tracking is enabled via
     # ``RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES=1``; 0 otherwise.
     streaming_exec_schedule_p50_s: float
-    streaming_exec_schedule_p70_s: float
     streaming_exec_schedule_p90_s: float
 
     def to_string(

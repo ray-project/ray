@@ -2347,7 +2347,6 @@ class TestTimerPercentile:
         [
             # 100 samples all at 5ms → every percentile is exactly 5ms.
             (0.5, 0.005),
-            (0.7, 0.005),
             (0.9, 0.005),
             (0.99, 0.005),
         ],
@@ -2363,7 +2362,6 @@ class TestTimerPercentile:
         # interpolation between sorted values:
         #   p=0.0 → sorted[0]   = 0.0
         #   p=0.5 → sorted[5]   = 0.5  (rank 0.5 * 10 = 5 exactly)
-        #   p=0.7 → sorted[7]   = 0.7  (rank 7)
         #   p=0.9 → sorted[9]   = 0.9  (rank 9)
         #   p=1.0 → sorted[-1]  = 1.0
         t = Timer(track_distribution=True)
@@ -2371,7 +2369,6 @@ class TestTimerPercentile:
             t.add(v)
         assert t.percentile(0.0) == pytest.approx(0.0)
         assert t.percentile(0.5) == pytest.approx(0.5)
-        assert t.percentile(0.7) == pytest.approx(0.7)
         assert t.percentile(0.9) == pytest.approx(0.9)
         assert t.percentile(1.0) == pytest.approx(1.0)
 
@@ -2389,7 +2386,6 @@ class TestTimerPercentile:
         # 80 samples at 5ms, 20 samples at 200ms. Sorted: [5ms]*80 then
         # [200ms]*20. Indices 0..79 are 5ms, 80..99 are 200ms.
         #   p=0.5 → rank 0.5*99 = 49.5 → interp(5ms, 5ms) = 5ms
-        #   p=0.7 → rank 0.7*99 = 69.3 → interp(5ms, 5ms) = 5ms
         #   p=0.9 → rank 0.9*99 = 89.1 → interp(200ms, 200ms) = 200ms
         t = Timer(track_distribution=True)
         for _ in range(80):
@@ -2397,13 +2393,12 @@ class TestTimerPercentile:
         for _ in range(20):
             t.add(0.2)
         assert t.percentile(0.5) == pytest.approx(0.005)
-        assert t.percentile(0.7) == pytest.approx(0.005)
         assert t.percentile(0.9) == pytest.approx(0.2)
 
     def test_worker_scaling_regression_case(self):
         # Regression test for the worker_scaling-scale workload that
         # motivated the switch to exact percentiles. With raw sample
-        # retention, p50/p70/p90 sit close to the actual distribution
+        # retention, p50/p90 sit close to the actual distribution
         # and are distinguishable (no histogram bin quantization).
         t = Timer(track_distribution=True)
         # 80 samples in 8-12s
@@ -2416,10 +2411,9 @@ class TestTimerPercentile:
             t.add(v)
         max_v = t.max()
         p50 = t.percentile(0.5)
-        p70 = t.percentile(0.7)
         p90 = t.percentile(0.9)
         # Monotonic and bounded by max — guaranteed by exact percentiles.
-        assert 0 < p50 < p70 < p90 <= max_v
+        assert 0 < p50 < p90 <= max_v
         # p50 in the bulk (8-12s); p90 well into the tail.
         assert 8.0 <= p50 <= 12.0
         assert p90 >= 18.0
@@ -2457,11 +2451,10 @@ def test_streaming_exec_schedule_percentiles_populated(
     ds.materialize()
     summary = ds.get_stats_summary(detail=True)
     p50 = summary.streaming_exec_schedule_p50_s
-    p70 = summary.streaming_exec_schedule_p70_s
     p90 = summary.streaming_exec_schedule_p90_s
     schedule_max = summary.streaming_exec_schedule_max_s
     # Monotonic + bounded by max — guaranteed by exact percentiles.
-    assert 0 <= p50 <= p70 <= p90 <= schedule_max
+    assert 0 <= p50 <= p90 <= schedule_max
 
 
 def test_streaming_exec_schedule_percentiles_off_by_default(
@@ -2474,7 +2467,6 @@ def test_streaming_exec_schedule_percentiles_off_by_default(
     ds.materialize()
     summary = ds.get_stats_summary(detail=True)
     assert summary.streaming_exec_schedule_p50_s == 0
-    assert summary.streaming_exec_schedule_p70_s == 0
     assert summary.streaming_exec_schedule_p90_s == 0
     # ...but avg/max are still populated.
     assert summary.streaming_exec_schedule_max_s > 0
