@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -141,6 +142,17 @@ class ClusterResourceScheduler {
 
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
+  /// Snapshot node availability at the start of a scheduling round.
+  /// During the round, NodeAvailable() returns the cached result
+  /// instead of consulting the GCS liveness cache on every call.
+  /// Must be paired with EndSchedulingRound().
+  /// Correctness: the raylet event loop is single-threaded, so node
+  /// availability cannot change between Begin and End.
+  void BeginSchedulingRound();
+
+  /// Clear the snapshot. Must be called after BeginSchedulingRound().
+  void EndSchedulingRound();
+
  private:
   void Init(instrumented_io_context &io_service,
             const NodeResources &local_node_resources,
@@ -151,6 +163,10 @@ class ClusterResourceScheduler {
             ClockInterface &clock);
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
+
+  /// Internal implementation of NodeAvailable without snapshot short-circuit.
+  /// Used by BeginSchedulingRound() to populate the snapshot.
+  bool NodeAvailableInternal(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
@@ -231,6 +247,11 @@ class ClusterResourceScheduler {
       bundle_scheduling_policy_;
   /// Whether there is a raylet on the local node.
   bool is_local_node_with_raylet_ = true;
+  /// Whether a scheduling round is active (between Begin/EndSchedulingRound).
+  /// Counter to support reentrant calls.
+  mutable int scheduling_round_depth_{0};
+  /// Cached node availability during a scheduling round.
+  mutable absl::flat_hash_set<scheduling::NodeID> node_availability_snapshot_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

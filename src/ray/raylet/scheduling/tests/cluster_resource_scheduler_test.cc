@@ -2513,4 +2513,109 @@ TEST_F(ClusterResourceSchedulerTest, FallbackReturnsNilForGCSIfAllNodesUnavailab
   ASSERT_TRUE(result_node.IsNil());
 }
 
+// Verifies that BeginSchedulingRound reduces the number of IsNodeAlive
+// (GCS liveness) calls. Without snapshot: each IsSchedulableOnNode call
+// triggers IsNodeAlive. With snapshot: IsNodeAlive called only during
+// BeginSchedulingRound; subsequent calls hit the in-memory hash set.
+// Uses GMock EXPECT_CALL().Times() for precise call count verification.
+TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotCallCount) {
+  constexpr int kNumNodes = 50;
+  constexpr int kNumOps = 500;
+
+  NodeResources node_resources = RandomNodeResources();
+  instrumented_io_context io_context;
+  ClusterResourceScheduler scheduler(io_context,
+                                     scheduling::NodeID(0),
+                                     node_resources,
+                                     is_node_available_fn_,
+                                     fake_gauge_,
+                                     clock_);
+
+  std::vector<scheduling::NodeID> node_ids;
+  for (int i = 0; i < kNumNodes; i++) {
+    node_ids.push_back(
+        scheduling::NodeID(NodeID::FromRandom().Binary()));
+    scheduler.GetClusterResourceManager().AddOrUpdateNode(
+        node_ids.back(), RandomNodeResources());
+  }
+
+  // Empty shape: every node passes HasAvailableResources.
+  absl::flat_hash_map<std::string, double> shape;
+
+  // Without snapshot: each of kNumOps scheduling operations triggers
+  // one IsNodeAlive call (plus one for each candidate node checked).
+  {
+    EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
+        .Times(kNumOps);
+
+    for (int i = 0; i < kNumOps; i++) {
+      scheduler.IsSchedulableOnNode(node_ids[i % kNumNodes], shape,
+                                    LabelSelector(), false);
+    }
+  }
+
+  // With snapshot: exactly kNumNodes calls during BeginSchedulingRound
+  // (one per node), then ZERO additional calls during scheduling ops.
+  {
+    EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
+        .Times(kNumNodes);
+
+    scheduler.BeginSchedulingRound();
+
+    for (int i = 0; i < kNumOps; i++) {
+      scheduler.IsSchedulableOnNode(node_ids[i % kNumNodes], shape,
+                                    LabelSelector(), false);
+    }
+
+    scheduler.EndSchedulingRound();
+  }
+}
+
+// Verifies that BeginSchedulingRound snapshots only available nodes,
+// and that EndSchedulingRound properly clears the snapshot so
+// subsequent calls fall through to the liveness check again.
+TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotSemantics) {
+  NodeResources node_resources = RandomNodeResources();
+  instrumented_io_context io_context;
+  ClusterResourceScheduler scheduler(io_context,
+                                     scheduling::NodeID(0),
+                                     node_resources,
+                                     is_node_available_fn_,
+                                     fake_gauge_,
+                                     clock_);
+
+  std::vector<scheduling::NodeID> node_ids;
+  for (int i = 0; i < 10; i++) {
+    node_ids.push_back(
+        scheduling::NodeID(NodeID::FromRandom().Binary()));
+    scheduler.GetClusterResourceManager().AddOrUpdateNode(
+        node_ids.back(), RandomNodeResources());
+  }
+
+  absl::flat_hash_map<std::string, double> shape;
+  const auto check = [&](const scheduling::NodeID &nid, bool expected) {
+    EXPECT_EQ(
+        scheduler.IsSchedulableOnNode(nid, shape, LabelSelector(), false),
+        expected);
+  };
+
+  // Before snapshot: normal liveness checks work
+  check(node_ids[0], true);
+  check(node_ids[1], true);
+
+  // During snapshot: same results, fewer checks
+  scheduler.BeginSchedulingRound();
+  check(node_ids[0], true);
+  check(node_ids[1], true);
+  scheduler.EndSchedulingRound();
+
+  // After snapshot cleared: normal liveness checks resume
+  {
+    EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
+        .Times(2);
+    check(node_ids[0], true);
+    check(node_ids[1], true);
+  }
+}
+
 }  // namespace ray

@@ -99,6 +99,14 @@ void ClusterResourceScheduler::Init(
 }
 
 bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
+  if (scheduling_round_depth_ > 0) {
+    return node_availability_snapshot_.contains(node_id);
+  }
+  return NodeAvailableInternal(node_id);
+}
+
+bool ClusterResourceScheduler::NodeAvailableInternal(
+    scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
     if (!is_local_node_with_raylet_) {
       return false;
@@ -118,6 +126,26 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
   }
 
   return true;
+}
+
+void ClusterResourceScheduler::BeginSchedulingRound() {
+  if (scheduling_round_depth_ == 0) {
+    node_availability_snapshot_.clear();
+    for (const auto &[node_id, _] : cluster_resource_manager_->GetResourceView()) {
+      if (NodeAvailableInternal(node_id)) {
+        node_availability_snapshot_.insert(node_id);
+      }
+    }
+  }
+  scheduling_round_depth_++;
+}
+
+void ClusterResourceScheduler::EndSchedulingRound() {
+  RAY_CHECK(scheduling_round_depth_ > 0);
+  scheduling_round_depth_--;
+  if (scheduling_round_depth_ == 0) {
+    node_availability_snapshot_.clear();
+  }
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,

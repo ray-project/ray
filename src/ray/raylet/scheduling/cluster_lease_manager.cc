@@ -193,7 +193,26 @@ bool ClusterLeaseManager::CancelAllLeasesOwnedBy(
   return CancelLeases(predicate, failure_type, scheduling_failure_message);
 }
 
+namespace {
+// RAII guard that calls EndSchedulingRound on scope exit.
+// Ensures the snapshot is always released even on early return or exception.
+class SchedulingRoundGuard {
+ public:
+  explicit SchedulingRoundGuard(ClusterResourceScheduler &scheduler)
+      : scheduler_(scheduler) {
+    scheduler_.BeginSchedulingRound();
+  }
+  ~SchedulingRoundGuard() { scheduler_.EndSchedulingRound(); }
+  SchedulingRoundGuard(const SchedulingRoundGuard &) = delete;
+  SchedulingRoundGuard &operator=(const SchedulingRoundGuard &) = delete;
+
+ private:
+  ClusterResourceScheduler &scheduler_;
+};
+}  // namespace
+
 void ClusterLeaseManager::ScheduleAndGrantLeases() {
+  SchedulingRoundGuard guard(cluster_resource_scheduler_);
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleLease();
   std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
