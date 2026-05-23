@@ -105,8 +105,7 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
   return NodeAvailableInternal(node_id);
 }
 
-bool ClusterResourceScheduler::NodeAvailableInternal(
-    scheduling::NodeID node_id) const {
+bool ClusterResourceScheduler::NodeAvailableInternal(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
     if (!is_local_node_with_raylet_) {
       return false;

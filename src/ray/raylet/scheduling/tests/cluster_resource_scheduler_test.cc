@@ -2533,10 +2533,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotCallCount) {
 
   std::vector<scheduling::NodeID> node_ids;
   for (int i = 0; i < kNumNodes; i++) {
-    node_ids.push_back(
-        scheduling::NodeID(NodeID::FromRandom().Binary()));
-    scheduler.GetClusterResourceManager().AddOrUpdateNode(
-        node_ids.back(), RandomNodeResources());
+    node_ids.push_back(scheduling::NodeID(NodeID::FromRandom().Binary()));
+    scheduler.GetClusterResourceManager().AddOrUpdateNode(node_ids.back(),
+                                                          RandomNodeResources());
   }
 
   // Empty shape: every node passes HasAvailableResources.
@@ -2549,8 +2548,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotCallCount) {
         .Times(kNumOps);
 
     for (int i = 0; i < kNumOps; i++) {
-      scheduler.IsSchedulableOnNode(node_ids[i % kNumNodes], shape,
-                                    LabelSelector(), false);
+      scheduler.IsSchedulableOnNode(
+          node_ids[i % kNumNodes], shape, LabelSelector(), false);
     }
   }
 
@@ -2563,8 +2562,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotCallCount) {
     scheduler.BeginSchedulingRound();
 
     for (int i = 0; i < kNumOps; i++) {
-      scheduler.IsSchedulableOnNode(node_ids[i % kNumNodes], shape,
-                                    LabelSelector(), false);
+      scheduler.IsSchedulableOnNode(
+          node_ids[i % kNumNodes], shape, LabelSelector(), false);
     }
 
     scheduler.EndSchedulingRound();
@@ -2586,17 +2585,15 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotSemantics) {
 
   std::vector<scheduling::NodeID> node_ids;
   for (int i = 0; i < 10; i++) {
-    node_ids.push_back(
-        scheduling::NodeID(NodeID::FromRandom().Binary()));
-    scheduler.GetClusterResourceManager().AddOrUpdateNode(
-        node_ids.back(), RandomNodeResources());
+    node_ids.push_back(scheduling::NodeID(NodeID::FromRandom().Binary()));
+    scheduler.GetClusterResourceManager().AddOrUpdateNode(node_ids.back(),
+                                                          RandomNodeResources());
   }
 
   absl::flat_hash_map<std::string, double> shape;
   const auto check = [&](const scheduling::NodeID &nid, bool expected) {
-    EXPECT_EQ(
-        scheduler.IsSchedulableOnNode(nid, shape, LabelSelector(), false),
-        expected);
+    EXPECT_EQ(scheduler.IsSchedulableOnNode(nid, shape, LabelSelector(), false),
+              expected);
   };
 
   // Before snapshot: normal liveness checks work
@@ -2611,8 +2608,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingRoundSnapshotSemantics) {
 
   // After snapshot cleared: normal liveness checks resume
   {
-    EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
-        .Times(2);
+    EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_)).Times(2);
     check(node_ids[0], true);
     check(node_ids[1], true);
   }

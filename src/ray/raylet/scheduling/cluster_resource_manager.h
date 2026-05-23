@@ -214,10 +214,8 @@ class ClusterResourceManager {
   friend struct ClusterResourceManagerTest;
   friend class raylet::ClusterLeaseManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest,
-              SchedulingRoundSnapshotCallCount);
-  FRIEND_TEST(ClusterResourceSchedulerTest,
-              SchedulingRoundSnapshotSemantics);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingRoundSnapshotCallCount);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingRoundSnapshotSemantics);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
