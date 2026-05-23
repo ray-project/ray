@@ -53,7 +53,7 @@ int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 3;
-int WORKER_REGISTER_TIMEOUT_SECONDS = 1;
+int WORKER_REGISTER_TIMEOUT_SECONDS = 5;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID_2 = JobID::FromInt(2);
 constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
@@ -277,7 +277,9 @@ class WorkerPoolMock : public WorkerPool {
       const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0) {
+      int runtime_env_hash = 0,
+      const ResourceSet &resource_requirements =
+          ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}})) {
     auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
@@ -307,6 +309,7 @@ class WorkerPoolMock : public WorkerPool {
     }
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
+    worker->SetResourceRequirements(resource_requirements);
     std::shared_ptr<MockWorkerClient> rpc_client = std::make_shared<MockWorkerClient>();
     worker->Connect(rpc_client);
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
@@ -1579,9 +1582,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT + 2;
   for (int i = 0; i < num_workers; i++) {
-    PopWorkerStatus status;
+    PopWorkerStatus status = PopWorkerStatus::OK;
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+        Language::PYTHON,
+        rpc::WorkerType::WORKER,
+        job_id,
+        &status,
+        /*dynamic_options=*/{},
+        /*runtime_env_hash=*/0,
+        /*serialized_runtime_env_context=*/"{}",
+        /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
+        /*worker_startup_keep_alive_duration=*/std::nullopt,
+        /*resource_requirements=*/
+        ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}}));
     pid_t pid = proc.GetId();
     auto worker =
         worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
@@ -1799,9 +1812,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   JobID job_id = JOB_ID;
 
   /// Add worker to the pool.
-  PopWorkerStatus status;
+  PopWorkerStatus status = PopWorkerStatus::OK;
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+      Language::PYTHON,
+      rpc::WorkerType::WORKER,
+      job_id,
+      &status,
+      /*dynamic_options=*/{},
+      /*runtime_env_hash=*/0,
+      /*serialized_runtime_env_context=*/"{}",
+      /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
+      /*worker_startup_keep_alive_duration=*/std::nullopt,
+      /*resource_requirements=*/
+      ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}}));
   pid_t pid = proc.GetId();
   auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
@@ -1882,9 +1905,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   JobID job_id = JOB_ID;
 
   /// Add worker to the pool.
-  PopWorkerStatus status;
+  PopWorkerStatus status = PopWorkerStatus::OK;
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+      Language::PYTHON,
+      rpc::WorkerType::WORKER,
+      job_id,
+      &status,
+      /*dynamic_options=*/{},
+      /*runtime_env_hash=*/0,
+      /*serialized_runtime_env_context=*/"{}",
+      /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
+      /*worker_startup_keep_alive_duration=*/std::nullopt,
+      /*resource_requirements=*/
+      ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}}));
   pid_t pid = proc.GetId();
   auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
