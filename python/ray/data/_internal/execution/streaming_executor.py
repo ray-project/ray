@@ -448,14 +448,15 @@ class StreamingExecutor(Executor, threading.Thread):
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
         # Always assign a ``Timer`` so downstream consumers can call
         # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``
-        # unconditionally. When ``_initial_stats`` is absent we hand back
-        # an empty Timer (count 0); zero-sample semantics yield 0 across
-        # all four. ``track_distribution=True`` to mirror the timer that
-        # ``DatasetStats.__init__`` would have created.
+        # unconditionally. When ``_initial_stats`` is absent we hand
+        # back an empty (no-tracking) Timer; zero-sample semantics yield
+        # 0 across all four. Sample tracking is configured by
+        # ``DatasetStats.__init__`` based on an env var, so a default
+        # ``Timer()`` here matches the "not enabled" path.
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats
-            else Timer(track_distribution=True)
+            else Timer()
         )
         return stats
 

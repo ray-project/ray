@@ -1,7 +1,7 @@
-import bisect
 import collections
 import copy
 import logging
+import os
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -161,74 +161,28 @@ class _StatsAccumulator:
 class Timer:
     """Helper class for tracking accumulated time (in seconds).
 
-    When ``track_distribution=True``, also maintains a fixed-bound
-    histogram so percentiles can be computed without retaining raw
-    samples. The histogram is O(1) memory and adds one bisect per
-    :meth:`add` call. Disabled by default to keep the per-add cost of
-    the many ``Timer`` instances scattered across the stats path
-    identical to before.
-    """
+    When ``track_distribution=True``, :meth:`add` also appends every
+    value to an internal list so :meth:`percentile` can compute exact
+    percentiles.
 
-    # Upper bin bounds (seconds). Roughly 1.5x ratio across the
-    # realistic 50 ms-50 s scheduling-loop-step range, ~2x outside it.
-    # The 100 ms-1 s span matters for typical Ray Data workloads; the
-    # 5 s-50 s span matters for worker_scaling-scale tests (thousands
-    # of workers, where scheduling-loop time scales with worker count).
-    # Samples above the last bound land in an overflow slot;
-    # ``approx_percentile`` reports the overflow bin's per-sample mean
-    # for that case so the tail isn't under-reported.
-    _HIST_BOUNDS_S: Tuple[float, ...] = (
-        0.001,
-        0.002,
-        0.005,
-        0.010,
-        0.020,
-        0.050,
-        0.075,
-        0.100,
-        0.150,
-        0.200,
-        0.300,
-        0.400,
-        0.500,
-        0.700,
-        1.0,
-        1.5,
-        2.0,
-        3.0,
-        4.0,
-        5.0,
-        7.0,
-        10.0,
-        12.0,
-        15.0,
-        20.0,
-        25.0,
-        30.0,
-        40.0,
-        50.0,
-        70.0,
-        100.0,
-    )
+    .. warning::
+
+        ``track_distribution=True`` accumulates memory proportional to
+        the number of ``add()`` calls and is intended for short-lived
+        tests and benchmarks only — never for long-running production
+        workloads. The list is unbounded; a Ray Data job that runs for
+        hours can amass millions of entries (tens of MB).
+    """
 
     def __init__(self, track_distribution: bool = False):
         self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
-        # Parallel arrays: count + sum per bin (incl. overflow at idx -1).
-        # We track per-bin sums so ``approx_percentile`` can report the
-        # bin's mean instead of its (often wildly wider) upper bound;
-        # bin mean stays naturally bounded by ``max()`` and gives a much
-        # closer estimate of the true percentile when samples cluster
-        # in a single bin.
-        if track_distribution:
-            n = len(self._HIST_BOUNDS_S) + 1
-            self._histogram: Optional[List[int]] = [0] * n
-            self._hist_sum: Optional[List[float]] = [0.0] * n
-        else:
-            self._histogram = None
-            self._hist_sum = None
+        # When tracking is enabled, retain every sample so
+        # ``percentile`` can compute an exact value. Memory grows
+        # linearly with ``add()`` calls — see class-level warning.
+        self._samples: Optional[List[float]] = [] if track_distribution else None
 
     @contextmanager
     def timer(self) -> None:
@@ -245,10 +199,8 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
-        if self._histogram is not None:
-            idx = bisect.bisect_left(self._HIST_BOUNDS_S, value)
-            self._histogram[idx] += 1
-            self._hist_sum[idx] += value
+        if self._samples is not None:
+            self._samples.append(value)
 
     def get(self) -> float:
         return self._total
@@ -262,37 +214,27 @@ class Timer:
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
 
-    def approx_percentile(self, p: float) -> float:
-        """Approximate ``p``-th percentile in seconds.
+    def percentile(self, p: float) -> float:
+        """Exact ``p``-th percentile in seconds, with linear interpolation.
 
-        Approximation, not an exact percentile: we keep a fixed
-        log-spaced histogram (counts + sums per bin) instead of the raw
-        samples (O(1) memory regardless of sample count, which matters
-        because this is called on every scheduling-loop iteration of
-        every Ray Data job). Bin spacing is ~1.5x across the realistic
-        50 ms-50 s range, ~2x outside it.
+        Requires ``track_distribution=True`` at construction so that
+        :meth:`add` retains every sample. Returns 0 when tracking is
+        disabled or no samples have been added.
 
-        We report the per-bin **mean** of samples that fell into the
-        bin containing the p-th sample — not the bin's upper bound.
-        Reporting the upper bound made every percentile that landed in
-        the same bin as the max sample collapse to a single uninformative
-        value (e.g. all of p50/p70/p90 reporting ``20.0`` when samples
-        clustered in the ``(10, 20]`` bin). Bin mean is naturally
-        bounded by :meth:`max` and stays close to the true percentile
-        value when samples sit anywhere inside a wide bin.
+        Uses the linear-interpolation method (matches
+        ``numpy.percentile`` default and ``statistics.quantiles``
+        rank-based interpretation): rank ``k = p * (n - 1)``, then
+        interpolate between ``sorted[floor(k)]`` and ``sorted[floor(k)+1]``.
 
         Args:
             p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
                 for p90 — not ``90``). Values outside this range raise
-                ``ValueError``; without the check, ``p=90`` would
-                silently return the overflow bin's mean and look like
-                a tail spike.
+                ``ValueError``.
 
         Returns:
-            The mean of samples in the bin the p-th sample falls into.
-            For the overflow bin this is the mean of all samples above
-            the largest finite bound. Returns 0 if histogram tracking
-            is disabled or no samples have been added.
+            The interpolated p-th percentile of all samples seen.
+            Returns 0 if tracking is disabled or no samples have been
+            added.
 
         Raises:
             ValueError: If ``p`` is outside ``[0.0, 1.0]``.
@@ -302,27 +244,16 @@ class Timer:
                 f"p must be in [0.0, 1.0], got {p!r}. "
                 "Pass a fraction like 0.9, not a percent like 90."
             )
-        if self._histogram is None or self._total_count == 0:
+        if not self._samples:
             return 0
-        target = p * self._total_count
-        cum = 0
-        for i, count in enumerate(self._histogram):
-            if count == 0:
-                # Skip empty bins — they don't hold any sample, and
-                # ``target`` can be 0 (when p=0) which would otherwise
-                # match on the first empty bin and divide by zero.
-                continue
-            cum += count
-            # Add a small tolerance to absorb IEEE 754 imprecision in
-            # ``p * self._total_count``. Without it, e.g. p=0.1, N=100
-            # produces target ≈ 10.000000000000002, so cum=10 (the
-            # correct stop) fails the >= check and we silently advance
-            # to the next bin — inflating the reported percentile by
-            # one bin width. ``cum`` is always an integer count, so
-            # 1e-9 is comfortably below any meaningful gap.
-            if cum + 1e-9 >= target:
-                return self._hist_sum[i] / count
-        return self._max
+        sorted_samples = sorted(self._samples)
+        n = len(sorted_samples)
+        k = p * (n - 1)
+        lo = int(k)
+        if lo >= n - 1:
+            return sorted_samples[-1]
+        frac = k - lo
+        return sorted_samples[lo] * (1 - frac) + sorted_samples[lo + 1] * frac
 
 
 class _DatasetStatsBuilder:
@@ -1167,13 +1098,17 @@ class DatasetStats:
         self.dataset_uuid: str = UNKNOWN_UUID
         self.time_total_s: float = 0
 
-        # Streaming executor stats. Track the per-iteration distribution
-        # so we can report p90/p99 on the scheduling-loop step duration —
-        # this is the only Timer in the stats path that runs unboundedly
-        # often (once per scheduling-loop iteration of every Ray Data
-        # job), so percentile resolution matters and a raw-sample list
-        # would grow without bound.
-        self.streaming_exec_schedule_s: Timer = Timer(track_distribution=True)
+        # Streaming executor stats. The scheduling-loop step Timer
+        # *can* retain every sample so we can report exact p50/p70/p90,
+        # but doing so grows memory linearly with the job's lifetime —
+        # so it's opt-in via ``RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES``
+        # and intended for release-test runs, not production. When the
+        # env var is unset, percentile fields on the summary read 0.
+        self.streaming_exec_schedule_s: Timer = Timer(
+            track_distribution=(
+                os.environ.get("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", "0") == "1"
+            )
+        )
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -1300,9 +1235,9 @@ class DatasetStats:
         streaming_exec_schedule_s = schedule_timer.get()
         streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
-        streaming_exec_schedule_approx_p50_s = schedule_timer.approx_percentile(0.5)
-        streaming_exec_schedule_approx_p70_s = schedule_timer.approx_percentile(0.7)
-        streaming_exec_schedule_approx_p90_s = schedule_timer.approx_percentile(0.9)
+        streaming_exec_schedule_p50_s = schedule_timer.percentile(0.5)
+        streaming_exec_schedule_p70_s = schedule_timer.percentile(0.7)
+        streaming_exec_schedule_p90_s = schedule_timer.percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1318,9 +1253,9 @@ class DatasetStats:
             streaming_exec_schedule_s,
             streaming_exec_schedule_avg_s,
             streaming_exec_schedule_max_s,
-            streaming_exec_schedule_approx_p50_s,
-            streaming_exec_schedule_approx_p70_s,
-            streaming_exec_schedule_approx_p90_s,
+            streaming_exec_schedule_p50_s,
+            streaming_exec_schedule_p70_s,
+            streaming_exec_schedule_p90_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1358,10 +1293,11 @@ class DatasetStatsSummary:
     streaming_exec_schedule_s: float
     streaming_exec_schedule_avg_s: float
     streaming_exec_schedule_max_s: float
-    # Histogram-derived approximations — see ``Timer.approx_percentile``.
-    streaming_exec_schedule_approx_p50_s: float
-    streaming_exec_schedule_approx_p70_s: float
-    streaming_exec_schedule_approx_p90_s: float
+    # Exact percentiles when sample tracking is enabled via
+    # ``RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES=1``; 0 otherwise.
+    streaming_exec_schedule_p50_s: float
+    streaming_exec_schedule_p70_s: float
+    streaming_exec_schedule_p90_s: float
 
     def to_string(
         self,
