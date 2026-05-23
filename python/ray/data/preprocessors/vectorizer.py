@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _Computed,
     _PublicField,
@@ -11,6 +11,7 @@ from ray.data.preprocessors.utils import (
     simple_hash,
     simple_split_tokenizer,
 )
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -18,7 +19,10 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="alpha")
-class HashingVectorizer(Preprocessor):
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.hashing_vectorizer"
+)
+class HashingVectorizer(SerializablePreprocessorBase):
     """Count the frequency of tokens using the
     `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_.
 
@@ -140,8 +144,10 @@ class HashingVectorizer(Preprocessor):
         self._columns = columns
         self._num_features = num_features
         self._tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self._output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
     @property
@@ -187,6 +193,21 @@ class HashingVectorizer(Preprocessor):
             f"output_columns={self._output_columns!r})"
         )
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "num_features": self._num_features,
+            "tokenization_fn": self._tokenization_fn,
+            "output_columns": self._output_columns,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._num_features = fields["num_features"]
+        self._tokenization_fn = fields["tokenization_fn"]
+        self._output_columns = fields["output_columns"]
+
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
@@ -207,7 +228,8 @@ class HashingVectorizer(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class CountVectorizer(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.count_vectorizer")
+class CountVectorizer(SerializablePreprocessorBase):
     """Count the frequency of tokens in a column of strings.
 
     :class:`CountVectorizer` operates on columns that contain strings. For example:
@@ -293,8 +315,10 @@ class CountVectorizer(Preprocessor):
         self._columns = columns
         self._tokenization_fn = tokenization_fn or simple_split_tokenizer
         self._max_features = max_features
-        self._output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
     @property
@@ -313,7 +337,7 @@ class CountVectorizer(Preprocessor):
     def output_columns(self) -> List[str]:
         return self._output_columns
 
-    def _fit(self, dataset: "Dataset") -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
         def stat_fn(key_gen):
             def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
                 def get_token_counts(col):
@@ -383,6 +407,24 @@ class CountVectorizer(Preprocessor):
             f"tokenization_fn={fn_name}, max_features={self._max_features!r}, "
             f"output_columns={self._output_columns!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "tokenization_fn": self._tokenization_fn,
+            "max_features": self._max_features,
+            "output_columns": self._output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._tokenization_fn = fields["tokenization_fn"]
+        self._max_features = fields["max_features"]
+        self._output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)

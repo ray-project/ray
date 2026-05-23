@@ -25,7 +25,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -38,6 +38,7 @@
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -98,6 +99,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
+  /// \param observability_publisher If non-null, used for `PublishError`.
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
@@ -111,7 +113,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
-      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge,
+      pubsub::ObservabilityPublisher *observability_publisher,
+      ClockInterface &clock);
 
   ~GcsActorManager() override;
 
@@ -481,6 +485,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
   /// This is used to communicate with raylets where actors are located.
   rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.
@@ -508,6 +513,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       actor_state_counter_;
   ray::observability::MetricInterface &actor_by_state_gauge_;
   ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
+  ClockInterface &clock_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t lifetime_num_created_actors_ = 0;

@@ -7,10 +7,10 @@ from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
+from pydantic import ValidationError
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -147,27 +147,30 @@ class ServeHead(SubprocessModule):
     async def put_all_applications(self, req: Request) -> Response:
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
-        from ray.serve.config import ProxyLocation
         from ray.serve.schema import ServeDeploySchema
 
         try:
-            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
+            config: ServeDeploySchema = ServeDeploySchema.model_validate(
+                await req.json()
+            )
         except ValidationError as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.dict()
-        location = ProxyLocation._to_deployment_mode(config.proxy_location)
-        full_http_options = dict({"location": location}, **config_http_options)
-        grpc_options = config.grpc_options.dict()
+        config_http_options = config.http_options.model_dump()
+        full_http_options = dict(
+            {"location": config.proxy_location.value}, **config_http_options
+        )
+        grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
                 http_options=full_http_options,
                 grpc_options=grpc_options,
                 global_logging_config=config.logging_config,
+                controller_options=config.controller_options,
             )
 
         # Serve ignores HTTP options if it was already running when

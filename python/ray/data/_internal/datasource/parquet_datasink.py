@@ -3,6 +3,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    reorder_columns_by_schema,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
@@ -16,17 +19,6 @@ if TYPE_CHECKING:
 
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
-# Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
-# `pyarrow.dataset.write_dataset` function.
-# Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
-EXISTING_DATA_BEHAVIOR_MAP = {
-    SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
-    SaveMode.IGNORE: "overwrite_or_ignore",
-    SaveMode.ERROR: "error",
-}
-
 FILE_FORMAT = "parquet"
 
 # These args are part of https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream
@@ -188,8 +180,8 @@ class ParquetDatasink(_FileDatasink):
             block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
         ]
 
-        filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
@@ -270,17 +262,18 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow.dataset as ds
 
-        # Make every incoming batch conform to the final schema *before* writing
+        # Make every incoming batch conform to the final schema *before* writing.
+        # `pa.unify_schemas` above fixed column order from the first block.
         for idx, table in enumerate(tables):
             if output_schema and not table.schema.equals(output_schema):
+                table = reorder_columns_by_schema(table, output_schema)
                 table = table.cast(output_schema)
             tables[idx] = table
 
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
-            self.mode, "overwrite_or_ignore"
-        )
+        # We set this to "overwrite_or_ignore", to avoid the race condition seen in parallel writes when this is set to "error". The driver already handles the save mode check in on_write_start.
+        existing_data_behavior = "overwrite_or_ignore"
 
         (
             min_rows_per_group,
@@ -294,6 +287,7 @@ class ParquetDatasink(_FileDatasink):
 
         basename_template = self._get_basename_template(filename, write_uuid)
 
+        # Note that the driver already handles the save mode logic, checking if the directory exists and raising an error if it does on SaveMode.ERROR
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
@@ -309,6 +303,7 @@ class ParquetDatasink(_FileDatasink):
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
+            create_dir=self.try_create_dir,
         )
 
     @property

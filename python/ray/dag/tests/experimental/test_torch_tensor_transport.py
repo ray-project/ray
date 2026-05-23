@@ -175,19 +175,19 @@ class TestDriverToWorkerDeviceGPU:
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
         ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1]))
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        if torch.cuda.is_available():
+            assert ray.get(ref) == "cuda:0"
+        else:
+            with pytest.raises(
+                RayTaskError, match="RuntimeError: No CUDA GPUs are available"
+            ):
+                ray.get(ref)
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
         ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1], device="cuda"))
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
@@ -209,10 +209,7 @@ class TestDriverToWorkerDeviceGPU:
             "gpu_tensor": torch.tensor([1], device="cuda"),
         }
         ref = run_driver_to_worker_dag(actor, "cuda", tensor_dict, is_dict=True)
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == {"cpu_tensor": "cuda:0", "gpu_tensor": "cuda:0"}
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_gpu_node(self, ray_start_regular):
@@ -247,10 +244,7 @@ class TestDriverToWorkerDeviceDefault:
         ref = run_driver_to_worker_dag(
             actor, "default", torch.tensor([1], device="cuda")
         )
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
@@ -274,10 +268,7 @@ class TestDriverToWorkerDeviceDefault:
             "gpu_tensor": torch.tensor([1], device="cuda"),
         }
         ref = run_driver_to_worker_dag(actor, "default", tensor_dict, is_dict=True)
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cuda:0"}
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_gpu_node(self, ray_start_regular):
@@ -365,10 +356,13 @@ class TestWorkerToWorkerDeviceGPU:
         sender = Actor.remote()
         receiver = Actor.remote()
         ref = run_worker_to_worker_dag(sender, receiver, gpu_device, "cpu")
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        if torch.cuda.is_available():
+            assert ray.get(ref) == "cuda:0"
+        else:
+            with pytest.raises(
+                RayTaskError, match="RuntimeError: No CUDA GPUs are available"
+            ):
+                ray.get(ref)
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
@@ -382,10 +376,7 @@ class TestWorkerToWorkerDeviceGPU:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
         ref = run_worker_to_worker_dag(sender, receiver, "cuda", "cuda")
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
@@ -410,10 +401,7 @@ class TestWorkerToWorkerDeviceGPU:
             {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
             is_dict=True,
         )
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == {"cpu_tensor": "cuda:0", "gpu_tensor": "cuda:0"}
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
@@ -453,10 +441,7 @@ class TestWorkerToWorkerDeviceDefault:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
         ref = run_worker_to_worker_dag(sender, receiver, "default", "cuda")
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
@@ -481,10 +466,7 @@ class TestWorkerToWorkerDeviceDefault:
             {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
             is_dict=True,
         )
-        with pytest.raises(
-            RayTaskError, match="RuntimeError: No CUDA GPUs are available"
-        ):
-            ray.get(ref)
+        assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cuda:0"}
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)

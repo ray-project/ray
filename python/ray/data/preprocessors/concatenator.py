@@ -4,18 +4,20 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _PublicField,
     migrate_private_fields,
 )
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
-class Concatenator(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.concatenator")
+class Concatenator(SerializablePreprocessorBase):
     """Combine numeric columns into a column of type
     :class:`~ray.data._internal.tensor_extensions.pandas.TensorDtype`. Only columns
     specified in ``columns`` will be concatenated.
@@ -183,6 +185,24 @@ class Concatenator(Preprocessor):
                 non_default_arguments.append(f"{parameter}={value}")
 
         return f"{self.__class__.__name__}({', '.join(non_default_arguments)})"
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "output_column_name": self._output_column_name,
+            "dtype": self._dtype,
+            "raise_if_missing": self._raise_if_missing,
+            "flatten": getattr(self, "_flatten", False),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._output_column_name = fields["output_column_name"]
+        self._dtype = fields["dtype"]
+        self._raise_if_missing = fields["raise_if_missing"]
+        # optional fields (flatten was added later)
+        self._flatten = fields.get("flatten", False)
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)

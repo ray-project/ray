@@ -134,7 +134,11 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         f".{ext.lower()}" if not ext.startswith(".") else ext.lower()
         for ext in extensions
     ]
-    return any(path.lower().endswith(ext) for ext in extensions)
+    # Ignore query components when checking extensions (for example,
+    # versioned object-store paths like `...parquet?versionId=...`).
+    # Keep `#` untouched because it can be part of object keys.
+    parsed_path = path.split("?", 1)[0]
+    return any(parsed_path.lower().endswith(ext) for ext in extensions)
 
 
 # Mapping from URI schemes to compatible filesystem type_name values.
@@ -181,13 +185,54 @@ def _is_filesystem_compatible_with_scheme(
         # This preserves backward compatibility for custom filesystems
         return True
 
+    # Unwrap RetryingPyFileSystem to get the underlying filesystem's type
+    from ray.data._internal.util import RetryingPyFileSystem
+
+    unwrapped = (
+        filesystem.unwrap()
+        if isinstance(filesystem, RetryingPyFileSystem)
+        else filesystem
+    )
+
     # Get the actual filesystem type
-    fs_type = filesystem.type_name
+    fs_type = unwrapped.type_name
 
-    # For PyFileSystem (fsspec wrappers), also check if it's HTTP
-    if fs_type == "py" and scheme in ("http", "https"):
-        return _is_http_filesystem(filesystem)
+    # For PyFileSystem (fsspec wrappers), check the inner fsspec protocol
+    # rather than relying on type_name alone, since all fsspec wrappers
+    # share type_name "py" regardless of the underlying protocol.
+    if fs_type in ("py", "RetryingPyFileSystem") or fs_type.startswith("py::"):
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
 
+        actual_fs = filesystem
+        if isinstance(actual_fs, RetryingPyFileSystem):
+            actual_fs = actual_fs.unwrap()
+
+        # After unwrapping, the inner filesystem may be a native PyArrow
+        # filesystem (e.g., S3FileSystem) rather than a PyFileSystem wrapper.
+        # Fall back to direct type_name matching in that case.
+        if not isinstance(actual_fs, PyFileSystem):
+            return actual_fs.type_name in expected_types
+
+        if isinstance(actual_fs.handler, FSSpecHandler):
+            inner_fs = actual_fs.handler.fs
+            protocol = getattr(inner_fs, "protocol", None)
+            if protocol is not None:
+                if isinstance(protocol, str):
+                    protocol = (protocol,)
+                # Match scheme against fsspec protocol(s)
+                if scheme in protocol:
+                    return True
+                # For bare paths (empty scheme), trust user-provided filesystem
+                if scheme == "":
+                    return True
+
+        # Fallback: check HTTP
+        if scheme in ("http", "https"):
+            return _is_http_filesystem(filesystem)
+
+        return False
+
+    # Direct match for native PyArrow filesystems (s3, gcs, local, hdfs, etc.)
     return fs_type in expected_types
 
 
@@ -292,6 +337,24 @@ def _resolve_paths_and_filesystem(
             None, the provided filesystem will still be validated against all
             filesystems inferred from the provided paths to ensure
             compatibility.
+
+    Returns:
+        A pair ``(resolved_paths, filesystem)``. *resolved_paths* lists the
+        normalized paths for each input path that resolved successfully, in
+        order.
+
+        If *filesystem* was ``None``, the returned *filesystem* is set from
+        ``resolved_filesystem`` on the first successful path and is left
+        unchanged on later iterations whenever it is already non-``None``.
+
+        If *filesystem* was not ``None``, the returned value is always that
+        same validated instance, even when ``_resolve_single_path_with_fallback``
+        inferred a different filesystem for a given path. Callers should pass
+        ``None`` or a filesystem compatible with the path URIs so returned paths
+        and filesystem stay consistent.
+
+        All paths are assumed to use one storage backend; mixing unrelated URI
+        schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
 
@@ -322,6 +385,30 @@ def _resolve_paths_and_filesystem(
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
+
+
+def _split_uri(uri: str):
+    """Split a URI into (store_url, path) for use with obstore.
+
+    e.g. "s3://my-bucket/a/b/c.jpg"               -> ("s3://my-bucket", "a/b/c.jpg")
+         "https://host.com/a/b?X-Amz-Signature=x" -> ("https://host.com", "a/b?X-Amz-Signature=x")
+
+    The query string is preserved so signed URLs (e.g. pre-signed S3 HTTPS)
+    reach obstore intact. Semicolons in object keys normally appear in
+    ``parsed.path`` (not ``parsed.params``) for typical ``urlparse`` output.
+
+    Only the first leading ``/`` after the authority (as reported in
+    ``parsed.path``) is removed. Extra leading slashes belong to the object
+    key (e.g. ``s3://bucket//abs/key`` -> key ``/abs/key``), so
+    ``str.lstrip("/")`` is not used.
+    """
+    parsed = urlparse(uri, allow_fragments=False)
+    store_url = f"{parsed.scheme}://{parsed.netloc}"
+    raw_path = parsed.path
+    path = raw_path[1:] if raw_path.startswith("/") else raw_path
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    return store_url, path
 
 
 def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
@@ -377,10 +464,6 @@ def _unwrap_protocol(path):
         parsed_path = parsed_path[1:]
 
     return netloc + parsed_path + params + query
-
-
-def _is_url(path) -> bool:
-    return urlparse(path).scheme != ""
 
 
 def _is_http_url(path) -> bool:

@@ -58,6 +58,10 @@ class JobSubmissionClient(SubmissionClient):
             for cases like authentication to a remote cluster.
         verify: Boolean indication to verify the server's TLS certificate or a path to
             a file or directory of trusted certificates. Default: True.
+        **kwargs: Additional keyword arguments forwarded to the cluster info
+            resolution function. For external module addresses (e.g.,
+            ``anyscale://``), these are passed through to the module's
+            ``get_job_submission_client_cluster_info()`` implementation.
     """
 
     def __init__(
@@ -68,6 +72,7 @@ class JobSubmissionClient(SubmissionClient):
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
         verify: Optional[Union[str, bool]] = True,
+        **kwargs,
     ):
         self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
@@ -102,6 +107,7 @@ class JobSubmissionClient(SubmissionClient):
             metadata=metadata,
             headers=headers,
             verify=verify,
+            **kwargs,
         )
         self._check_connection_and_version(
             min_version="1.9",
@@ -509,8 +515,9 @@ class JobSubmissionClient(SubmissionClient):
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     yield msg.data
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
-                    logger.debug(
-                        f"WebSocket closed for job {job_id} with close code {ws.close_code}"
+                    logger.info(
+                        f"WebSocket closed for job {job_id} with close code "
+                        f"{ws.close_code}"
                     )
                     if ws.close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
                         raise RuntimeError(
@@ -526,7 +533,8 @@ class JobSubmissionClient(SubmissionClient):
                             f"WebSocket error for job {job_id}: {ws.exception()}"
                         )
                     else:
-                        logger.debug(
-                            f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
+                        logger.warning(
+                            f"WebSocket error for job {job_id}, treating as "
+                            f"normal close. Err: {ws.exception()!r}"
                         )
                         break

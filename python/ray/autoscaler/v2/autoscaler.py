@@ -43,6 +43,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
+from ray.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ class Autoscaler:
             self._cloud_instance_provider = KubeRayProvider(
                 config.get_config("cluster_name"),
                 provider_config,
+                gcs_client=self._gcs_client,
             )
         elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
@@ -138,7 +140,12 @@ class Autoscaler:
             storage=InMemoryStorage(),
         )
         subscribers: List[InstanceUpdatedSubscriber] = []
-        subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
+        subscribers.append(
+            CloudInstanceUpdater(
+                cloud_provider=cloud_provider,
+                metrics_reporter=self._metrics_reporter,
+            )
+        )
         subscribers.append(
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )
@@ -218,6 +225,9 @@ class Autoscaler:
                 autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
             )
+        except AuthenticationError as e:
+            logger.warning(f"AuthenticationError detected, restarting autoscaler: {e}")
+            raise
         except Exception as e:
             logger.exception(e)
             return None

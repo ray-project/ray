@@ -3,8 +3,9 @@ import logging
 from types import FunctionType
 from typing import Any, Dict, Union
 
+from pydantic import BaseModel
+
 import ray
-from ray._common.pydantic_compat import is_subclass_of_base_model
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
@@ -14,13 +15,33 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.context import _get_global_client, _set_global_client
+from ray.serve.config import ControllerOptions, HTTPOptions, gRPCOptions
+from ray.serve.context import (
+    _check_cached_client_alive,
+    _get_global_client,
+    _set_global_client,
+)
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _coerce_controller_options(
+    controller_options: Union[None, dict, ControllerOptions],
+) -> ControllerOptions:
+    """Normalize an optional dict / model into a validated ControllerOptions."""
+    if controller_options is None:
+        return ControllerOptions()
+    if isinstance(controller_options, ControllerOptions):
+        return controller_options
+    if isinstance(controller_options, dict):
+        return ControllerOptions.model_validate(controller_options)
+    raise TypeError(
+        "controller_options must be a dict, ControllerOptions, or None; got "
+        f"{type(controller_options).__name__}."
+    )
 
 
 def _check_http_options(
@@ -31,7 +52,7 @@ def _check_http_options(
         new_http_options = (
             http_options
             if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.parse_obj(http_options)
+            else HTTPOptions.model_validate(http_options)
         )
         different_fields = []
         all_http_option_fields = new_http_options.__dict__
@@ -51,6 +72,7 @@ def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ActorHandle:
     """Start Ray Serve controller.
@@ -78,7 +100,7 @@ def _start_controller(
             )
 
     if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
+        http_options = HTTPOptions.model_validate(http_options)
     if http_options is None:
         http_options = HTTPOptions()
 
@@ -90,7 +112,8 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller_impl = get_controller_impl()
+    controller_options = _coerce_controller_options(controller_options)
+    controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
@@ -115,6 +138,7 @@ async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -129,22 +153,35 @@ async def serve_start_async(
 
     usage_lib.record_library_usage("serve")
 
-    try:
-        client = _get_global_client(_health_check_controller=True)
+    # Validate eagerly in the caller so a bad ``controller_options`` raises
+    # locally rather than from the ``_start_controller`` Ray task.
+    controller_options = _coerce_controller_options(controller_options)
+
+    client, _ = _check_cached_client_alive()
+    if client is None:
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            client = None
+    if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http options will not be applied."
+            " New http_options/controller_options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
         return client
-    except RayServeException:
-        pass
 
     controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(http_options, grpc_options, global_logging_config, **kwargs)
+        .remote(
+            http_options,
+            grpc_options,
+            global_logging_config,
+            controller_options=controller_options,
+            **kwargs,
+        )
     )
 
     client = ServeControllerClient(
@@ -159,6 +196,7 @@ def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -174,49 +212,63 @@ def serve_start(
           with fields:
 
             - host(str, None): Host for HTTP servers to listen on. Defaults to
-              "127.0.0.1". To expose Serve publicly, you probably want to set
-              this to "0.0.0.0".
+              localhost. To expose Serve publicly, you probably want to set
+              this to "0.0.0.0" for IPv4 or "::" for IPv6.
             - port(int): Port for HTTP server. Defaults to 8000.
             - root_path(str): Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
             - middlewares(list): A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
-            - location(str, serve.config.DeploymentMode): The deployment
+            - location(str, serve.config.ProxyLocation): The deployment
               location of HTTP servers:
 
                 - "HeadOnly": start one HTTP server on the head node. Serve
                   assumes the head node is the node you executed serve.start
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
-                - "NoServer" or None: disable HTTP server.
+                - "Disabled" (or legacy "NoServer") or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        grpc_options: [Experimental] Configuration options for gRPC proxy.
+        grpc_options: Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
             - port(int): Port for gRPC server. Defaults to 9000.
             - grpc_servicer_functions(list): List of import paths for gRPC
                 `add_servicer_to_server` functions to add to Serve's gRPC proxy.
                 Default empty list, meaning not to start the gRPC server.
+        controller_options: Optional ``ControllerOptions`` (or dict) for the
+            Serve controller actor. Currently only ``runtime_env.env_vars``
+            is honored; see ``ray.serve.config.ControllerOptions``. Only
+            applied on first controller creation -- ignored if the controller
+            is already running in this Ray cluster (a log line is emitted).
     """
 
     usage_lib.record_library_usage("serve")
 
-    try:
-        client = _get_global_client(_health_check_controller=True)
+    controller_options = _coerce_controller_options(controller_options)
+
+    client, _ = _check_cached_client_alive()
+    if client is None:
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            client = None
+    if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http options will not be applied."
+            " New http_options/controller_options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
         return client
-    except RayServeException:
-        pass
 
     controller = _start_controller(
-        http_options, grpc_options, global_logging_config, **kwargs
+        http_options,
+        grpc_options,
+        global_logging_config,
+        controller_options=controller_options,
+        **kwargs,
     )
 
     client = ServeControllerClient(
@@ -266,10 +318,8 @@ def call_user_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if inspect.isclass(param.annotation) and is_subclass_of_base_model(
-        param.annotation
-    ):
-        args = param.annotation.parse_obj(args)
+    if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
+        args = param.annotation.model_validate(args)
 
     app = builder(args)
     if not isinstance(app, Application):

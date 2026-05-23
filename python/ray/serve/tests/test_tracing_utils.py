@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import uuid
 from pathlib import Path
 from threading import Thread
@@ -37,6 +38,7 @@ from ray.serve._private.tracing_utils import (
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.grpc_util import gRPCInputStream
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.utils import get_trace_context
 from ray.tests.conftest import *  # noqa
@@ -63,7 +65,7 @@ def use_custom_tracing_exporter():
 
     # Clean up output file produced by custom exporter
     if os.path.exists(CUSTOM_EXPORTER_OUTPUT_FILENAME):
-        os.remove(CUSTOM_EXPORTER_OUTPUT_FILENAME)
+        safe_remove(CUSTOM_EXPORTER_OUTPUT_FILENAME)
 
 
 @pytest.fixture
@@ -166,7 +168,6 @@ def test_missing_dependencies():
                 component_type=ServeComponentType.REPLICA,
                 component_name="component_name",
                 component_id="component_id",
-                tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
                 tracing_sampling_ratio=1.0,
             )
 
@@ -191,6 +192,25 @@ def test_default_tracing_exporter(ray_start_cluster):
         assert isinstance(span_processor, SimpleSpanProcessor)
 
 
+def safe_remove(path):
+    """Safely removes a file or directory, handling Windows file locking by using a retry method."""
+    if sys.platform != "win32":
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        return
+
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "shutdown"):
+        provider.shutdown()
+
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
+
+
 def test_custom_tracing_exporter(use_custom_tracing_exporter):
     """Test setup_tracing with a custom tracing exporter."""
     custom_tracing_exporter_path = use_custom_tracing_exporter
@@ -203,6 +223,7 @@ def test_custom_tracing_exporter(use_custom_tracing_exporter):
 
     for span_processor in span_processors:
         assert isinstance(span_processor, SimpleSpanProcessor)
+        span_processor.shutdown()
 
     is_tracing_setup_successful = setup_tracing(
         "component_name",
@@ -439,7 +460,6 @@ def test_tracing_e2e(
 
     serve_logs_dir = get_serve_logs_dir()
     spans_dir = os.path.join(serve_logs_dir, "spans")
-
     files = os.listdir(spans_dir)
 
     if RAY_SERVE_ENABLE_HA_PROXY:
@@ -488,7 +508,7 @@ def test_tracing_e2e(
     assert proxy_spans == expected_proxy_spans
     assert replica_spans == expected_replica_spans
 
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
 
 
 @pytest.mark.parametrize(
@@ -640,7 +660,6 @@ def test_tracing_e2e_with_errors(
     # Verify the trace data
     serve_logs_dir = get_serve_logs_dir()
     spans_dir = os.path.join(serve_logs_dir, "spans")
-
     files = os.listdir(spans_dir)
 
     if RAY_SERVE_ENABLE_HA_PROXY:
@@ -712,16 +731,20 @@ def test_tracing_e2e_with_errors(
         else:
             assert False, "Invalid protocol"
     # Clean up
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
 
 
 def custom_tracing_exporter():
     """Custom tracing exporter used for testing."""
-    return [
-        SimpleSpanProcessor(
-            ConsoleSpanExporter(out=open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a"))
-        )
-    ]
+    out_file = open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a")
+
+    class FileConsoleSpanExporter(ConsoleSpanExporter):
+        def shutdown(self):
+            if not out_file.closed:
+                out_file.flush()
+                out_file.close()
+
+    return [SimpleSpanProcessor(FileConsoleSpanExporter(out=out_file))]
 
 
 def load_json_fixture(file_path):
@@ -735,10 +758,13 @@ def load_spans(file_path):
     This requires special handling because ConsoleSpanExporter
     does not write proper JSON since the data is streamed.
     """
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        return []
+
     with open(file_path, "r") as file:
         file_contents = file.read()
 
-    raw_spans = file_contents.split("}\n{")
+    raw_spans = re.split(r"}\s*\n\s*{", file_contents)
     spans = []
     for i, raw_span in enumerate(raw_spans):
         if len(raw_spans) > 1:
@@ -1022,7 +1048,106 @@ def test_batched_span_attached_to_first_request_trace():
         len(batch_indices) == 2
     ), f"Expected two distinct batch indices, got {batch_indices}"
 
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["ClientStreaming", "BidiStreaming"],
+)
+def test_grpc_streaming_tracing_attributes(serve_and_ray_shutdown, method_name):
+    """Test that tracing attributes are correctly set for gRPC streaming requests.
+
+    Verifies that for client streaming and bidirectional streaming methods,
+    the proxy gRPC span contains the expected tracing attributes including
+    request_id, deployment, app, request_type, and RPC-specific attributes.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip()
+
+    grpc_port = 9000
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=[
+                "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            ],
+        ),
+    )
+
+    @serve.deployment
+    class StreamingDeployment:
+        async def ClientStreaming(self, request_stream: gRPCInputStream):
+            async for _ in request_stream:
+                pass
+            return serve_pb2.UserDefinedResponse(greeting="ok", num_x2=0)
+
+        async def BidiStreaming(self, request_stream: gRPCInputStream):
+            async for request in request_stream:
+                yield serve_pb2.UserDefinedResponse(
+                    greeting=f"Hello {request.name}",
+                    num_x2=request.num * 2,
+                )
+
+    serve.run(StreamingDeployment.options(name="streaming-deployment").bind())
+
+    setup_tracing(
+        component_name="upstream_app",
+        component_id="345",
+        tracing_sampling_ratio=1.0,
+    )
+
+    tracer = trace.get_tracer("test_tracing")
+    with tracer.start_as_current_span("upstream_streaming"):
+        ctx = get_trace_context()
+        headers = {}
+        TraceContextTextMapPropagator().inject(headers, ctx)
+        metadata = tuple(headers.items())
+
+        channel = grpc.insecure_channel("localhost:9000")
+        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+
+        def request_generator():
+            for i in range(2):
+                yield serve_pb2.UserDefinedMessage(name=f"msg_{i}", num=i, foo="bar")
+
+        if method_name == "ClientStreaming":
+            stub.ClientStreaming(request_generator(), metadata=metadata)
+        else:
+            list(stub.BidiStreaming(request_generator(), metadata=metadata))
+
+    serve.shutdown()
+
+    # Find proxy spans
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+    files = os.listdir(spans_dir)
+
+    proxy_spans = None
+    for file in files:
+        if "proxy" in file:
+            proxy_spans = load_spans(os.path.join(spans_dir, file))
+            break
+
+    grpc_proxy_span = next(
+        (span for span in proxy_spans if "proxy_grpc_request" in span["name"]),
+        None,
+    )
+    assert grpc_proxy_span is not None
+    attrs = grpc_proxy_span["attributes"]
+
+    # Verify tracing attributes are set up correctly
+    assert "request_id" in attrs
+    assert attrs["deployment"] == "streaming-deployment"
+    assert "app" in attrs
+    assert attrs["request_type"] == "grpc"
+    assert attrs["rpc.system"] == "grpc"
+    assert f"/ray.serve.UserDefinedService/{method_name}" == attrs["rpc.method"]
+    assert attrs["rpc.grpc.status_code"] == "OK"
+    assert grpc_proxy_span["status"]["status_code"] == "OK"
+
+    safe_remove(spans_dir)
 
 
 if __name__ == "__main__":

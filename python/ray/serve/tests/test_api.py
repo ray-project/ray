@@ -7,10 +7,10 @@ import httpx
 import pytest
 import starlette.responses
 from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel, ValidationError
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
@@ -27,7 +27,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import SharedCounter, get_application_url
 from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
@@ -89,6 +89,32 @@ def test_ingress_wrapper_preserves_metadata():
     assert wrapped_cls.__doc__ == OriginalIngress.__doc__
     assert wrapped_cls.__annotations__ == OriginalIngress.__annotations__
     assert getattr(wrapped_cls, "__wrapped__", None) is OriginalIngress
+
+
+def test_ingress_async_init(serve_instance):
+    """Test that async __init__ works correctly with @serve.ingress.
+
+    Without the fix, cls.__init__() returns a coroutine that is silently
+    discarded, so self.msg is never set and the /check endpoint raises
+    AttributeError.
+    """
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class MyDeployment:
+        async def __init__(self):
+            await asyncio.sleep(0.01)
+            self.msg = "initialized"
+
+        @app.get("/check")
+        async def check(self):
+            return self.msg
+
+    serve.run(MyDeployment.bind())
+    resp = httpx.get(f"{get_application_url()}/check")
+    assert resp.status_code == 200
+    assert resp.json() == "initialized"
 
 
 class FakeRequestRouter(RequestRouter):
@@ -474,19 +500,8 @@ def test_delete_application(serve_instance):
 async def test_delete_while_initializing(serve_instance):
     """Test that __del__ runs when a replica terminates while initializing."""
 
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def incr(self):
-            self.count += 1
-
-        def get_count(self) -> int:
-            return self.count
-
     signal = SignalActor.remote()
-    counter = Counter.remote()
+    counter = SharedCounter.remote()
 
     @serve.deployment(graceful_shutdown_timeout_s=0.01)
     class HangingStart:
@@ -501,7 +516,7 @@ async def test_delete_while_initializing(serve_instance):
 
         async def __del__(self):
             print("Running __del__")
-            await self.counter.incr.remote()
+            await self.counter.inc.remote()
 
     serve._run(HangingStart.bind(signal, counter), _blocking=False)
 
@@ -513,7 +528,7 @@ async def test_delete_while_initializing(serve_instance):
 
     # Ensure that __del__ ran once, even though the deployment terminated
     # during initialization.
-    assert (await counter.get_count.remote()) == 1
+    assert (await counter.get.remote()) == 1
 
 
 def test_deployment_name_with_app_name(serve_instance):
@@ -628,7 +643,7 @@ class TestAppBuilder:
 
     class TypedArgs(BaseModel):
         message: str
-        num_replicas: Optional[int]
+        num_replicas: Optional[int] = None
 
     def test_prebuilt_app(self):
         a = self.A.bind()
@@ -777,23 +792,16 @@ class TestAppBuilder:
         def check_missing_required(args: self.TypedArgs):
             assert False, "Shouldn't get here because validation failed."
 
-        with pytest.raises(ValidationError, match="field required"):
+        # Pydantic v2 uses "Field required" (capitalized)
+        with pytest.raises(ValidationError, match="Field required"):
             call_user_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
 
-    @pytest.mark.parametrize("use_v1_patch", [True, False])
-    def test_pydantic_version_compatibility(self, use_v1_patch: bool):
-        """Check compatibility with different pydantic versions."""
+    def test_pydantic_version_compatibility(self):
+        """Check compatibility with pydantic v2."""
 
-        if use_v1_patch:
-            try:
-                # Only runs if installed pydantic version is >=2.5.0
-                from pydantic.v1 import BaseModel
-            except ImportError:
-                return
-        else:
-            from pydantic import BaseModel
+        from pydantic import BaseModel
 
         cat_dict = {"color": "orange", "age": 10}
 
@@ -1270,6 +1278,75 @@ def test_custom_request_router_kwargs(serve_instance):
 
     handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
     assert handle.remote().result() == "Hello, world!"
+
+
+def test_backoff_params_imperative(serve_instance):
+    """Check that custom initial_backoff_s is actually applied during retries.
+
+    Deploys with max_ongoing_requests=1 and a large initial_backoff_s. Sends a
+    blocking request to fill the replica, then sends a second request that enters
+    backoff. Verifies the second request takes at least initial_backoff_s to
+    complete (proving the backoff sleep was applied).
+    """
+    import time
+
+    custom_initial_backoff_s = 3.0
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_ongoing_requests=1,
+        request_router_config=RequestRouterConfig(
+            initial_backoff_s=custom_initial_backoff_s,
+            backoff_multiplier=2.0,
+            max_backoff_s=custom_initial_backoff_s,
+        ),
+    )
+    class SlowApp:
+        async def __call__(self, block: bool = False) -> str:
+            if block:
+                await signal.wait.remote()
+            return "ok"
+
+    handle = serve.run(SlowApp.bind())
+
+    # Send a few warm-up requests so the long poll has time to propagate
+    # the custom backoff config to the router (avoids the race where the
+    # router is lazy-initialized with default params before the long poll
+    # fires).
+    for _ in range(5):
+        assert handle.remote().result() == "ok"
+
+    # Send a blocking request to fill the single slot.
+    blocking_ref = handle.remote(block=True)
+
+    # Wait for the blocking request to be processing.
+    time.sleep(0.5)
+
+    # Send a second request — the router's queue length probe will find the
+    # replica at capacity and enter the backoff loop.
+    start = time.monotonic()
+    second_ref = handle.remote(block=False)
+
+    # Unblock the first request while the backoff sleep is in progress.
+    # The router exhausts locality probes then sleeps for initial_backoff_s;
+    # we wait 1s (< 3s) so the signal arrives during the sleep.
+    time.sleep(1)
+    ray.get(signal.send.remote())
+
+    # Wait for both requests to complete.
+    blocking_ref.result()
+    second_ref.result()
+    elapsed = time.monotonic() - start
+
+    # With initial_backoff_s=3.0 and max_backoff_s=3.0, every backoff sleep
+    # is exactly 3.0s (min(3.0 * 2.0^attempt, 3.0) = 3.0 for all attempts).
+    # A lower bound of 3.0s proves the backoff sleep was applied.
+    # An upper bound of 5.0s proves only ONE sleep occurred (two would be ≥6s),
+    # confirming it was the initial backoff (attempt 0).
+    assert custom_initial_backoff_s <= elapsed < 5.0, (
+        f"Expected [{custom_initial_backoff_s}, 5.0)s due to a single backoff sleep, "
+        f"but request completed in {elapsed:.2f}s"
+    )
 
 
 def test_overloaded_app_builder_signatures():

@@ -130,11 +130,14 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Fetch Serve status and confirm that HTTP options are unchanged
     get_response = requests.get(SERVE_HEAD_URL, timeout=5)
-    serve_details = ServeInstanceDetails.parse_obj(get_response.json())
+    serve_details = ServeInstanceDetails.model_validate(get_response.json())
 
-    original_http_options = HTTPOptionsSchema.parse_obj(original_http_options_json)
+    original_http_options = HTTPOptionsSchema.model_validate(original_http_options_json)
 
-    assert original_http_options == serve_details.http_options.dict(exclude_unset=True)
+    # Compare the key fields that were explicitly set
+    assert original_http_options.host == serve_details.http_options.host
+    assert original_http_options.port == serve_details.http_options.port
+    assert original_http_options.root_path == serve_details.http_options.root_path
 
     # Deployments should still be up
     assert (

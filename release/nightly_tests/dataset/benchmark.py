@@ -1,17 +1,165 @@
 import gc
 import json
+import logging
+import math
 import os
+import threading
 import time
-from typing import Callable, Dict, Union
-
-from ray.data.dataset import Dataset
-from typing import Any
-
-
 from enum import Enum
+from typing import Any, Callable, Dict, List, Union
+import dataclasses
+import ray
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.util.state import list_runtime_envs
 
-import pyarrow as pa
-import pandas as pd
+logger = logging.getLogger(__name__)
+
+
+def _get_spilled_bytes_total(state) -> float:
+    """Get the total number of spilled bytes across the cluster."""
+    return get_memory_info_reply(state).store_stats.spilled_bytes_total
+
+
+def _bytes_to_gb(b: float) -> float:
+    return round(b / (1024**3), 4)
+
+
+class ObjectStoreMemorySampler:
+    """Samples aggregate object store usage and tracks the peak value.
+
+    Object store usage is an instantaneous gauge, so checking only at the
+    beginning and end of a benchmark can miss short-lived memory spikes.
+    """
+
+    def __init__(self, state, interval_s: float = 1.0):
+        self._state = state
+        self._interval_s = interval_s
+        self._stop_event = threading.Event()
+        self._thread = None
+
+        self._peak_used_bytes = 0
+        self._peak_utilization = 0.0
+
+    @property
+    def peak_used_bytes(self) -> int:
+        return self._peak_used_bytes
+
+    @property
+    def peak_utilization(self) -> float:
+        return self._peak_utilization
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
+
+    def start(self):
+        self._sample_once()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="object-store-memory-sampler",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+        self._sample_once()
+
+    def _run(self):
+        while not self._stop_event.wait(self._interval_s):
+            self._sample_once()
+
+    def _sample_once(self):
+        try:
+            store_stats = get_memory_info_reply(self._state).store_stats
+        except Exception:
+            logger.warning("Failed to sample object store memory.", exc_info=True)
+            return
+
+        used_bytes = store_stats.object_store_bytes_used
+        capacity_bytes = store_stats.object_store_bytes_avail
+
+        self._peak_used_bytes = max(self._peak_used_bytes, used_bytes)
+
+        if capacity_bytes > 0:
+            self._peak_utilization = max(
+                self._peak_utilization,
+                used_bytes / capacity_bytes,
+            )
+
+
+def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
+    """Collect execution stats from a Dataset as a JSON-serializable dict.
+    This is a subset from `get_stats_summary`, because we are only adding the ones
+    we care about for the release tests."""
+    summary = ds.get_stats_summary(detail=True)
+    return {
+        "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
+        "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
+        "operators": [
+            {
+                "operator_name": op.operator_name,
+                "earliest_start_time": op.earliest_start_time,
+                "latest_end_time": op.latest_end_time,
+                "scheduling_overhead": (
+                    [dataclasses.asdict(bucket) for bucket in op.scheduling_overhead]
+                    if op.scheduling_overhead
+                    else []
+                ),
+            }
+            for op in summary.operators_stats
+        ],
+    }
+
+
+class RuntimeEnvSetupTracker:
+    """Collects runtime environment creation times across the cluster.
+
+    Queries the Ray State API for all runtime environments and reports
+    aggregate statistics (mean, stdev) for creation time.
+
+    Usage::
+
+        # After a pipeline or job completes:
+        stats = RuntimeEnvSetupTracker.collect()
+    """
+
+    @staticmethod
+    def collect() -> List[Dict[str, Any]]:
+        try:
+            groups: Dict[str, List[float]] = {}
+            for env in list_runtime_envs(limit=1000):
+                if env.creation_time_ms is None:
+                    continue
+                label = "+".join(sorted(env.runtime_env.keys()))
+                groups.setdefault(label, []).append(env.creation_time_ms)
+        except Exception:
+            logger.warning("Failed to query runtime env creation times.", exc_info=True)
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for label, times in groups.items():
+            mean = sum(times) / len(times)
+            variance = sum((t - mean) ** 2 for t in times) / len(times)
+            results.append(
+                {
+                    "runtime_env_type": label,
+                    "count": len(times),
+                    "mean_creation_time_ms": round(mean, 2),
+                    "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+                }
+            )
+        return results
+
+
+def benchmark_py_modules() -> List[str]:
+    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
+    return [os.path.abspath(__file__)]
 
 
 class BenchmarkMetric(Enum):
@@ -19,6 +167,9 @@ class BenchmarkMetric(Enum):
     NUM_ROWS = "num_rows"
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
+    OBJECT_STORE_SPILLED_TOTAL_GB = "object_store_spilled_total_gb"
+    OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
+    OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
 
 
 class Benchmark:
@@ -52,85 +203,6 @@ class Benchmark:
     def __init__(self):
         self.result = {}
 
-    def run_materialize_ds(
-        self,
-        name: str,
-        fn: Callable[..., Dataset],
-        *fn_args,
-        **fn_kwargs,
-    ):
-        """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
-        return the Dataset which is to be materialized. Runtime and throughput
-        are automatically calculated and reported."""
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        output_ds = fn(*fn_args, **fn_kwargs)
-        output_ds.materialize()
-        duration = time.perf_counter() - start_time
-
-        # TODO(chengsu): Record more metrics based on dataset stats.
-        num_rows = output_ds.count()
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: num_rows,
-            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
-    def run_iterate_ds(
-        self,
-        name: str,
-        dataset: Any,
-    ):
-        """Run a benchmark iterating over a dataset. Runtime and throughput
-        are automatically calculated and reported. Supported dataset types are:
-        - Ray Dataset (`ray.data.Dataset`)
-        - iterator over Ray Dataset (`ray.data.iterator._IterableFromIterator` from
-            `.iter_batches()`,`.iter_torch_batches()`, `.iter_tf_batches()`)
-        - Torch DataLoader (`torch.utils.data.DataLoader`)
-        - TensorFlow Dataset (`tf.data.Dataset`)
-        """
-        # Import TF/Torch within this method, as not all benchmarks
-        # will use/install these libraries.
-        import tensorflow as tf
-        import torch
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        record_count = 0
-        ds_iterator = iter(dataset)
-        for batch in ds_iterator:
-            # Unwrap list to get the underlying batch format.
-            if isinstance(batch, (list, tuple)) and len(batch) > 0:
-                batch = batch[0]
-
-            # Get the batch size for various batch formats.
-            if isinstance(batch, dict):
-                feature_lengths = {k: len(batch[k]) for k in batch}
-                batch_size = max(feature_lengths.values())
-            elif isinstance(batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(batch)
-            elif isinstance(batch, torch.Tensor):
-                batch_size = batch.size(dim=0)
-            elif isinstance(batch, tf.Tensor):
-                batch_size = batch.shape.as_list()[0]
-            else:
-                raise TypeError(f"Unexpected batch type: {type(batch)}")
-            record_count += batch_size
-
-        duration = time.perf_counter() - start_time
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: record_count,
-            BenchmarkMetric.THROUGHPUT.value: record_count / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
     def run_fn(
         self,
         name: str,
@@ -150,13 +222,32 @@ class Benchmark:
         gc.collect()
 
         print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        fn_output = fn(*fn_args, **fn_kwargs)
-        assert fn_output is None or isinstance(fn_output, dict), fn_output
-        duration = time.perf_counter() - start_time
+        state = get_state_from_address(ray.get_runtime_context().gcs_address)
 
+        with ObjectStoreMemorySampler(state) as memory_sampler:
+            start_time = time.perf_counter()
+            start_spilled_bytes = _get_spilled_bytes_total(state)
+
+            try:
+                fn_output = fn(*fn_args, **fn_kwargs)
+            finally:
+                duration = time.perf_counter() - start_time
+
+        assert fn_output is None or isinstance(fn_output, dict), fn_output
+
+        spilled_bytes_total = _get_spilled_bytes_total(state) - start_spilled_bytes
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
+            BenchmarkMetric.OBJECT_STORE_MEMORY_USED_PEAK_GB.value: _bytes_to_gb(
+                memory_sampler.peak_used_bytes
+            ),
+            BenchmarkMetric.OBJECT_STORE_MEMORY_UTILIZATION_PEAK.value: round(
+                memory_sampler.peak_utilization,
+                4,
+            ),
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():

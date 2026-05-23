@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import math
+import os
 import pickle
 import queue
 import threading
@@ -19,13 +20,19 @@ import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_localhost,
+)
+from ray._common.tls_utils import add_port_to_grpc_server
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.services import canonicalize_bootstrap_address_or_die
-from ray._private.tls_utils import add_port_to_grpc_server
 from ray._raylet import GcsClient
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -128,6 +135,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
+                # Reconstruct LoggingConfig from dict after InitRequest ray_init_kwargs is parsed from JSON on the server.
+                if "logging_config" in extra_kwargs and isinstance(
+                    extra_kwargs["logging_config"], dict
+                ):
+                    extra_kwargs["logging_config"] = LoggingConfig.from_dict(
+                        extra_kwargs["logging_config"]
+                    )
                 try:
                     self.ray_connect_handler(job_config, **extra_kwargs)
                 except Exception as e:
@@ -264,6 +278,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 rtc = ray.get_runtime_context()
                 ctx.job_id = ray._common.utils.hex_to_binary(rtc.get_job_id())
                 ctx.node_id = ray._common.utils.hex_to_binary(rtc.get_node_id())
+                ctx.worker_id = ray._common.utils.hex_to_binary(rtc.get_worker_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
@@ -509,18 +524,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self, request: ray_client_pb2.PutRequest, context=None
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
-        return self._put_object(
-            request.data, request.client_ref_id, "", request.owner_id, context
-        )
+        return self._put_object(request.data, request.client_ref_id, "", context)
 
     def _put_object(
         self,
         data: Union[bytes, bytearray],
         client_ref_id: bytes,
         client_id: str,
-        owner_id: bytes,
-        context=None,
-    ):
+        context: Optional[grpc.ServicerContext] = None,
+    ) -> ray_client_pb2.PutResponse:
         """Put an object in the cluster with ray.put() via gRPC.
 
         Args:
@@ -529,18 +541,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             client_ref_id: The id associated with this object on the client.
             client_id: The client who owns this data, for tracking when to
               delete this reference.
-            owner_id: The owner id of the object.
             context: gRPC context.
+
+        Returns:
+            A ``PutResponse`` containing the resulting object ref id, or an
+            error payload if the put failed.
         """
         try:
             obj = loads_from_client(data, self)
-
-            if owner_id:
-                owner = self.actor_refs[owner_id]
-            else:
-                owner = None
             with disable_client_hook():
-                objectref = ray.put(obj, _owner=owner)
+                objectref = ray.put(obj)
         except Exception as e:
             logger.exception("Put failed:")
             return ray_client_pb2.PutResponse(
@@ -787,8 +797,8 @@ def serve(host: str, port: int, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, f"{host}:{port}")
+        add_port_to_grpc_server(server, build_address(get_localhost_ip(), port))
+    add_port_to_grpc_server(server, build_address(host, port))
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
@@ -855,7 +865,10 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--host", type=str, default="0.0.0.0", help="Host IP to bind to"
+        "--host",
+        type=str,
+        default=get_all_interfaces_ip(),
+        help="Host IP to bind to. Defaults to all interfaces (0.0.0.0/::).",
     )
     parser.add_argument("-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(
@@ -874,12 +887,6 @@ def main():
         help="username for connecting to Redis",
     )
     parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        help="Password for connecting to Redis",
-    )
-    parser.add_argument(
         "--runtime-env-agent-address",
         required=False,
         type=str,
@@ -894,16 +901,15 @@ def main():
         help="The hex ID of this node.",
     )
     args, _ = parser.parse_known_args()
+    redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
     ray_connect_handler = create_ray_handler(
-        args.address, args.redis_password, args.redis_username
+        args.address, redis_password, args.redis_username
     )
 
     hostport = build_address(args.host, args.port)
     args_str = str(args)
-    if args.redis_password:
-        args_str = args_str.replace(args.redis_password, "****")
     logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
@@ -911,7 +917,7 @@ def main():
             args.port,
             args.address,
             redis_username=args.redis_username,
-            redis_password=args.redis_password,
+            redis_password=redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
             node_id=args.node_id,
         )

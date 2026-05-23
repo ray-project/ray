@@ -22,7 +22,6 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
@@ -36,9 +35,10 @@ from ray.data.collate_fn import (
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
+from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
+    import jax
     import tensorflow as tf
     import torch
 
@@ -119,6 +119,22 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
+        """Hook fired from the consumer's thread when iteration ends.
+
+        Called from the ``finally`` in ``_iter_batches`` on normal
+        exhaustion, early ``break``, or an exception. The default shuts
+        ``executor`` down (idempotent) so the local iterator path stops
+        producing blocks into the object store eagerly rather than waiting
+        for ``_ClosingIterator.__del__``. ``StreamSplitDataIterator``
+        overrides this to instead signal the ``SplitCoordinator`` actor
+        on the consumer thread, since its inner block-fetching generator
+        runs in a separate prefetch thread whose cleanup is GC-bound and
+        therefore not deterministic.
+        """
+        if executor is not None:
+            executor.shutdown(force=True)
+
     @PublicAPI
     def iter_batches(
         self,
@@ -139,6 +155,30 @@ class DataIterator(abc.ABC):
             ... ).iterator().iter_batches(): # doctest: +SKIP
             ...     print(batch) # doctest: +SKIP
 
+        .. note::
+
+            When you ``break`` out of the for-loop above, Ray Data shuts the
+            streaming executor down so it stops producing blocks into the
+            object store. This relies on Python firing ``GeneratorExit`` into
+            the implicit iterator created by the for-loop.
+
+            If you instead hold a reference to the iterator yourself, the
+            cleanup is deferred until that reference is dropped::
+
+                it = iter(ds.iter_batches())
+                for i, batch in enumerate(it):
+                    if i == 0:
+                        break
+                # The executor keeps producing blocks until ``it`` goes
+                # out of scope. Call ``it.close()`` to release resources
+                # eagerly, or stick with ``for batch in ds.iter_batches()``.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
+
         Time complexity: O(1)
 
         Args:
@@ -151,8 +191,9 @@ class DataIterator(abc.ABC):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
+                select ``pyarrow.Table``, ``"cudf"`` [Experimental] to select
+                ``cudf.DataFrame``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -228,6 +269,9 @@ class DataIterator(abc.ABC):
             prefetch_bytes_callback = (
                 make_prefetch_callback(executor) if executor is not None else None
             )
+            if prefetch_bytes_callback is not None:
+                # Register the external consumer with the executor's resource manager.
+                prefetch_bytes_callback(0)
 
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
@@ -248,10 +292,18 @@ class DataIterator(abc.ABC):
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            yield from batch_iterator
-
-            if stats:
-                stats.iter_total_s.add(time.perf_counter() - time_start)
+            try:
+                yield from batch_iterator
+                if stats:
+                    stats.iter_total_s.add(time.perf_counter() - time_start)
+            finally:
+                # On early exit (e.g. ``break`` in the for-loop), the inner
+                # ``_ClosingIterator`` would only shut down the executor via
+                # its ``__del__``, which is non-deterministic. The hook
+                # shuts it down eagerly (or, for ``StreamSplitDataIterator``,
+                # signals the remote ``SplitCoordinator``) so resources are
+                # released the moment the consumer stops pulling.
+                self._on_iteration_end(executor)
 
         return _IterableFromIterator(_create_iterator)
 
@@ -296,7 +348,7 @@ class DataIterator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def schema(self) -> "Schema":
+    def schema(self) -> Optional["Schema"]:
         """Return the schema of the dataset iterated over."""
         ...
 
@@ -615,6 +667,129 @@ class DataIterator(abc.ABC):
 
         return mapped_iterable
 
+    @PublicAPI(stability="alpha")
+    def iter_jax_batches(
+        self,
+        *,
+        prefetch_batches: int = 1,
+        batch_size: int = 256,
+        dtypes: Optional[
+            Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
+        ] = None,
+        collate_fn: Optional[CollateFn] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        synchronize_batches: bool = False,
+        paddings: Optional[
+            Union[int, float, bool, Dict[str, Union[int, float, bool]]]
+        ] = None,
+    ) -> Iterable[Any]:
+        """Return a batched iterable of JAX Arrays over the dataset.
+
+        This iterator fetches data blocks, converts them to NumPy arrays, and
+        loads them directly onto JAX-addressable devices using Global Data Parallel
+        sharding. Data types are inferred from the underlying NumPy arrays,
+        unless specified via ``dtypes``.
+
+        This iterable will yield a dictionary of column-tensors, or a single
+        tensor if the underlying dataset consists of a single unnamed column.
+
+        .. note::
+            The returned JAX Arrays are sharded using an internal 1D mesh created by
+            Ray Data. If you are using these arrays within a `jax.set_mesh` context that
+            defines a different mesh (e.g., a multi-dimensional mesh or a different device
+            ordering), JAX may perform an implicit resharding (communication) when
+            the arrays are first used in a JAX operation. To minimize this overhead,
+            ensure your training loop's device ordering aligns with the one produced
+            by `jax.experimental.mesh_utils.create_device_mesh`.
+
+        Args:
+            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            batch_size: The number of rows in each batch for each host. Must be divisible
+                by the number of local devices. Defaults to 256.
+            dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
+                will be inferred from the NumPy ndarray data.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output must be a `np.ndarray` or `Dict[str, np.ndarray]`, and will be
+                automatically sharded across JAX-addressable devices.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
+            drop_last: Whether to drop the last batch if incomplete.
+            local_shuffle_buffer_size: Minimum rows for local in-memory shuffle.
+            local_shuffle_seed: Seed for local random shuffle.
+            synchronize_batches: Whether to synchronize batch shapes across all hosts.
+                Setting this to False can improve performance if you guarantee that all
+                hosts produce identical batch shapes and counts beforehand.
+                Setting this to True can help catch bugs where different hosts
+                produce different batch shapes.
+            paddings: The value to use for padding the last batch to `batch_size`.
+                If a dictionary is provided, it must map column names to padding values.
+                If not None, uneven batches will be padded with this value.
+                Must be castable to the dtypes of the created arrays.
+
+        Returns:
+            An iterable over JAX Array batches.
+        """
+
+        import jax
+
+        from ray.data.util.jax_util import jax_sync_generator
+
+        num_local_devices = jax.local_device_count()
+
+        if batch_size <= 0 or batch_size % num_local_devices != 0:
+            raise ValueError(
+                f"The provided batch_size ({batch_size}) must be a positive integer "
+                f"evenly divisible by the number of local JAX devices "
+                f"({num_local_devices}) on this host."
+            )
+
+        if collate_fn is None:
+            batch_format = "numpy"
+        elif isinstance(collate_fn, ArrowBatchCollateFn):
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, NumpyBatchCollateFn):
+            batch_format = "numpy"
+        elif isinstance(collate_fn, PandasBatchCollateFn):
+            batch_format = "pandas"
+        else:
+            raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
+
+        # Directly Fetch the underlying blocks.
+        batch_iterable = self._iter_batches(
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=collate_fn,
+        )
+
+        # Use prefetch_batches as the lookahead size for synchronization.
+        return jax_sync_generator(
+            batch_iterable,
+            drop_last,
+            batch_size=batch_size,
+            paddings=paddings,
+            dtypes=dtypes,
+            synchronize_batches=synchronize_batches,
+            synchronize_lookahead=max(prefetch_batches, 1),
+        )
+
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -723,10 +898,16 @@ class DataIterator(abc.ABC):
         Returns:
             A torch IterableDataset.
         """
+        warnings.warn(
+            "`DataIterator.to_torch` is deprecated and will be removed after "
+            "October 2026. Use `DataIterator.iter_torch_batches` instead.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         import torch
 
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
+        from ray.data.util.torch_utils import convert_table_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -765,27 +946,30 @@ class DataIterator(abc.ABC):
         def make_generator():
             for batch in self._iter_batches(
                 batch_size=batch_size,
-                batch_format="pandas",
+                batch_format="pyarrow",
                 prefetch_batches=prefetch_batches,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
+                    feature_batch = batch.select(
+                        [col for col in batch.column_names if col != label_column]
+                    )
+                    label_tensor = convert_table_to_torch_tensor(
                         batch,
                         [label_column],
                         label_column_dtype,
                         unsqueeze=unsqueeze_label_tensor,
                     )
-                    batch.pop(label_column)
                 else:
+                    feature_batch = batch
                     label_tensor = None
 
                 if isinstance(feature_columns, dict):
                     features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
+                        key: convert_table_to_torch_tensor(
+                            feature_batch,
                             feature_columns[key],
                             (
                                 feature_column_dtypes[key]
@@ -797,8 +981,8 @@ class DataIterator(abc.ABC):
                         for key in feature_columns
                     }
                 else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
+                    features_tensor = convert_table_to_torch_tensor(
+                        feature_batch,
                         columns=feature_columns,
                         column_dtypes=feature_column_dtypes,
                         unsqueeze=unsqueeze_feature_tensors,
@@ -1052,15 +1236,12 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats, self.get_context())
+        context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
-            execution_plan._context,
+            context,
         )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        return MaterializedDataset(logical_plan, context, stats)
 
 
 # Backwards compatibility alias.

@@ -15,6 +15,8 @@ class FIFOBundleQueue(BaseBundleQueue):
     """A bundle queue that follows fifo-policy. Conceptually
     [ ] <- [ ] <- [ ] ...
      ^ where the leftmost is popped first
+
+    NOTE: Not thread-safe
     """
 
     def __init__(self, bundles: Optional[List[RefBundle]] = None):

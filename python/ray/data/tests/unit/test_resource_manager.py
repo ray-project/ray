@@ -125,19 +125,24 @@ def test_does_not_double_count_usage_from_union():
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
     resource_manager = ResourceManager(
-        topology, ExecutionOptions(), lambda: total_resources, DataContext.get_current()
+        topology,
+        ExecutionOptions(),
+        lambda: total_resources,
+        DataContext.get_current(),
     )
 
-    # Create a 1-byte `RefBundle`.
-    block_ref = ray.ObjectRef(b"1" * 28)
+    # Create two 1-byte `RefBundle`s.
+    block_ref1 = ray.ObjectRef(b"1" * 28)
+    block_ref2 = ray.ObjectRef(b"2" * 28)
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=1, input_files=None, exec_stats=None
     )
-    bundle = RefBundle([(block_ref, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
+    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
 
     # Add two 1-byte `RefBundle` to the union operator.
-    topology[union_op].add_output(bundle)
-    topology[union_op].add_output(bundle)
+    topology[union_op].add_output(bundle1)
+    topology[union_op].add_output(bundle2)
     resource_manager.update_usages()
 
     # The total object store memory usage should be 2. If the resource manager double-
@@ -178,20 +183,26 @@ def test_per_input_inqueue_attribution_for_union():
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
     resource_manager = ResourceManager(
-        topology, options, lambda: total_resources, DataContext.get_current()
+        topology,
+        options,
+        lambda: total_resources,
+        DataContext.get_current(),
     )
 
-    # Create a 10-byte RefBundle.
-    block_ref = ray.ObjectRef(b"1" * 28)
+    # Create two 10-byte RefBundles with distinct block refs (simulates real execution
+    # where each block from a source has its own ObjectRef).
+    block_ref1 = ray.ObjectRef(b"1" * 28)
+    block_ref2 = ray.ObjectRef(b"2" * 28)
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=10, input_files=None, exec_stats=None
     )
-    bundle = RefBundle([(block_ref, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
+    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
 
     # Add blocks only to input2's buffer inside the union operator.
     # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
-    union_op.add_input(bundle, input_index=1)
-    union_op.add_input(bundle, input_index=1)
+    union_op.add_input(bundle1, input_index=1)
+    union_op.add_input(bundle2, input_index=1)
 
     resource_manager.update_usages()
 

@@ -17,7 +17,7 @@ class ModelInferencer:
         async with session.resource("s3") as s3:
             obj = await s3.Bucket(self.bucket_name)
             await obj.download_file(f"{model_id}/model.pt", f"model_{model_id}.pt")
-            return torch.load(f"model_{model_id}.pt")
+            return torch.load(f"model_{model_id}.pt", weights_only=False)
 
     async def __call__(self, request: starlette.requests.Request):
         model_id = serve.get_multiplexed_model_id()

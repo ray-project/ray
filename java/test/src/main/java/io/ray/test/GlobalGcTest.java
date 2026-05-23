@@ -33,15 +33,33 @@ public class GlobalGcTest extends BaseTest {
 
   public static class GarbageHolder {
 
+    // Hold a strong reference initially so that the JVM cannot collect the
+    // cyclic object before the test explicitly triggers the global GC event
+    // below. This mirrors the `gc.disable()` call used in the Python
+    // equivalent of this test (see python/ray/tests/test_global_gc.py).
+    private LargeObjectWithCyclicRef strongRef;
+
     private WeakReference<LargeObjectWithCyclicRef> garbage;
 
     public GarbageHolder() {
-      LargeObjectWithCyclicRef x = new LargeObjectWithCyclicRef();
-      garbage = new WeakReference<>(x);
+      strongRef = new LargeObjectWithCyclicRef();
+      garbage = new WeakReference<>(strongRef);
     }
 
     public boolean hasGarbage() {
       return garbage.get() != null;
+    }
+
+    /**
+     * Release the strong reference so the cyclic object becomes eligible for collection by the next
+     * JVM GC. Call this immediately before triggering the global GC event the test is exercising.
+     * Returns a boolean so the caller can `.get()` on the resulting ObjectRef to synchronously wait
+     * for the release to take effect on the actor process; Ray's Java API does not surface an
+     * ObjectRef for void actor methods.
+     */
+    public boolean releaseStrongRef() {
+      strongRef = null;
+      return true;
     }
 
     public TestUtils.LargeObject returnLargeObject() {
@@ -50,9 +68,10 @@ public class GlobalGcTest extends BaseTest {
   }
 
   private void testGlobalGcWhenFull(boolean withPut) {
-    // Local driver.
-    WeakReference<LargeObjectWithCyclicRef> localRef =
-        new WeakReference<>(new LargeObjectWithCyclicRef());
+    // Local driver. Hold a strong reference until we explicitly want to allow
+    // GC (mirrors `gc.disable()` in the Python equivalent test).
+    LargeObjectWithCyclicRef localStrong = new LargeObjectWithCyclicRef();
+    WeakReference<LargeObjectWithCyclicRef> localRef = new WeakReference<>(localStrong);
 
     // Remote workers.
     List<ActorHandle<GarbageHolder>> actors =
@@ -63,6 +82,13 @@ public class GlobalGcTest extends BaseTest {
     Assert.assertNotNull(localRef.get());
     for (ActorHandle<GarbageHolder> actor : actors) {
       Assert.assertTrue(actor.task(GarbageHolder::hasGarbage).remote().get());
+    }
+
+    // Now release the strong references so the cyclic objects become eligible
+    // for collection once the global GC event is triggered below.
+    localStrong = null;
+    for (ActorHandle<GarbageHolder> actor : actors) {
+      actor.task(GarbageHolder::releaseStrongRef).remote().get();
     }
 
     if (withPut) {

@@ -2,9 +2,10 @@ import sys
 import warnings
 
 import pytest
+from pydantic import ValidationError
 
+import ray
 from ray import cloudpickle, serve
-from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -15,13 +16,18 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
 )
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
-    DeploymentMode,
+    ControllerOptions,
+    DeploymentActorConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
@@ -54,6 +60,22 @@ class FakeRequestRouter:
     ...
 
 
+@ray.remote
+class _TestDummyActor:
+    """Used for deployment_actors import path test."""
+
+    pass
+
+
+@ray.remote
+class _TestRayActor:
+    """Used for deployment_actors proto roundtrip test (needs __ray_actor_class__)."""
+
+    def ping(self):
+        """Dummy method to verify class is deserialized correctly."""
+        return "pong"
+
+
 def test_autoscaling_config_validation():
     # Check validation over publicly exposed options
 
@@ -70,23 +92,25 @@ def test_autoscaling_config_validation():
         AutoscalingConfig(target_ongoing_requests=-1)
 
     # max_replicas must be greater than or equal to min_replicas
-    with pytest.raises(ValueError):
+    # In Pydantic v2, ValueError in validators is wrapped in ValidationError
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=100, max_replicas=1)
     AutoscalingConfig(min_replicas=1, max_replicas=100)
     AutoscalingConfig(min_replicas=10, max_replicas=10)
 
     # initial_replicas must be greater than or equal to min_replicas
-    with pytest.raises(ValueError):
+    # In Pydantic v2, ValueError in validators is wrapped in ValidationError
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=10, initial_replicas=1)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=10, initial_replicas=1, max_replicas=15)
     AutoscalingConfig(min_replicas=5, initial_replicas=10, max_replicas=15)
     AutoscalingConfig(min_replicas=5, initial_replicas=5, max_replicas=15)
 
     # initial_replicas must be less than or equal to max_replicas
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(initial_replicas=10, max_replicas=8)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=1, initial_replicas=10, max_replicas=8)
     AutoscalingConfig(min_replicas=1, initial_replicas=4, max_replicas=5)
     AutoscalingConfig(min_replicas=1, initial_replicas=5, max_replicas=5)
@@ -142,9 +166,10 @@ class TestDeploymentConfig:
 
         # Test num_replicas validation.
         DeploymentConfig(num_replicas=1)
-        with pytest.raises(ValidationError, match="type_error"):
+        # Pydantic v2 uses different error type names
+        with pytest.raises(ValidationError, match="int_parsing"):
             DeploymentConfig(num_replicas="hello")
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             DeploymentConfig(num_replicas=-1)
 
         # Test dynamic default for max_ongoing_requests.
@@ -155,11 +180,12 @@ class TestDeploymentConfig:
         DeploymentConfig(max_constructor_retry_count=1)
         DeploymentConfig(max_constructor_retry_count=10)
 
-        with pytest.raises(ValidationError, match="type_error"):
+        # Pydantic v2 uses different error type names
+        with pytest.raises(ValidationError, match="int_parsing"):
             DeploymentConfig(max_constructor_retry_count="hello")
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than"):
             DeploymentConfig(max_constructor_retry_count=-1)
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than"):
             DeploymentConfig(max_constructor_retry_count=0)
 
         # Test default value
@@ -204,13 +230,10 @@ class TestDeploymentConfig:
 
     def test_setting_and_getting_request_router_class(self):
         """Check that setting and getting request_router_class works."""
+        # The request_router_class path is derived from the class's __module__ attribute
         request_router_path = (
-            "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            f"{FakeRequestRouter.__module__}.{FakeRequestRouter.__name__}"
         )
-        if sys.platform == "win32":
-            request_router_path = (
-                "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
-            )
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
@@ -253,6 +276,181 @@ class TestDeploymentConfig:
             deployment_config.request_router_config.get_request_router_class()
             == PowerOfTwoChoicesRequestRouter
         )
+
+    def test_backoff_params_imperative(self):
+        """Check that custom backoff params are set via the imperative path."""
+        custom_initial = 0.1
+        custom_multiplier = 3.0
+        custom_max = 2.0
+
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=custom_initial,
+                backoff_multiplier=custom_multiplier,
+                max_backoff_s=custom_max,
+            )
+        )
+
+        assert (
+            deployment_config.request_router_config.initial_backoff_s == custom_initial
+        )
+        assert (
+            deployment_config.request_router_config.backoff_multiplier
+            == custom_multiplier
+        )
+        assert deployment_config.request_router_config.max_backoff_s == custom_max
+
+    def test_backoff_params_defaults_imperative(self):
+        """Check that backoff params use defaults when not specified."""
+        deployment_config = DeploymentConfig.from_default()
+
+        assert (
+            deployment_config.request_router_config.initial_backoff_s
+            == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+        )
+        assert (
+            deployment_config.request_router_config.backoff_multiplier
+            == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+        )
+        assert (
+            deployment_config.request_router_config.max_backoff_s
+            == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
+        )
+
+    def test_backoff_params_declarative_schema(self):
+        """Check that backoff params can be set via the declarative schema."""
+        schema = DeploymentSchema(
+            name="test-deployment",
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=0.1,
+                backoff_multiplier=3.0,
+                max_backoff_s=2.0,
+            ),
+        )
+
+        assert schema.request_router_config.initial_backoff_s == 0.1
+        assert schema.request_router_config.backoff_multiplier == 3.0
+        assert schema.request_router_config.max_backoff_s == 2.0
+
+    def test_deployment_actors_config(self):
+        """Test deployment_actors config and proto roundtrip."""
+
+        @ray.remote
+        class DummyActor:
+            pass
+
+        actor_config = DeploymentActorConfig(
+            name="prefix_tree",
+            actor_class=DummyActor,
+            init_kwargs={"max_depth": 100},
+            actor_options={"num_cpus": 0.1},
+        )
+        config = DeploymentConfig(
+            num_replicas=1,
+            deployment_actors=[actor_config],
+        )
+        assert config.deployment_actors is not None
+        assert len(config.deployment_actors) == 1
+        assert config.deployment_actors[0].name == "prefix_tree"
+        assert isinstance(config.deployment_actors[0].actor_class, str)
+        assert config.deployment_actors[0]._serialized_actor_class
+        assert (
+            config.deployment_actors[0].get_actor_class().__ray_actor_class__.__name__
+            == "DummyActor"
+        )
+        assert config.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert deserialized.deployment_actors is not None
+        assert len(deserialized.deployment_actors) == 1
+        assert deserialized.deployment_actors[0].name == "prefix_tree"
+        assert isinstance(deserialized.deployment_actors[0].actor_class, str)
+        assert deserialized.deployment_actors[0]._serialized_actor_class
+        assert (
+            deserialized.deployment_actors[0]
+            .get_actor_class()
+            .__ray_actor_class__.__name__
+            == "DummyActor"
+        )
+        assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+    def test_deployment_actors_config_duplicate_names_raise(self):
+        """Test that duplicate deployment_actor names raise ValueError."""
+        with pytest.raises(ValueError, match="unique names"):
+            DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                ],
+            )
+
+    def test_deployment_actors_config_import_path(self):
+        """actor_class stays as string until _serialize_actor_class() is called
+        (happens in the build task where user code is importable).
+        """
+        actor_config_str = DeploymentActorConfig(
+            name="actor_from_path",
+            actor_class="ray.serve.tests.unit.test_config._TestDummyActor",
+            init_kwargs={"max_depth": 50},
+        )
+        assert isinstance(actor_config_str.actor_class, str)
+        assert not actor_config_str._serialized_actor_class
+
+        # Simulate what build_serve_application does
+        actor_config_str._serialize_actor_class()
+        assert actor_config_str._serialized_actor_class
+
+        config_str = DeploymentConfig(
+            num_replicas=1,
+            deployment_actors=[actor_config_str],
+        )
+        proto = config_str.to_proto()
+        assert len(proto.deployment_actors) == 1
+        assert proto.deployment_actors[0].name == "actor_from_path"
+        assert proto.deployment_actors[0].actor_class_name != ""
+
+        deserialized_str = DeploymentConfig.from_proto_bytes(
+            config_str.to_proto_bytes()
+        )
+        resolved_str = deserialized_str.deployment_actors[0].get_actor_class()
+        assert (
+            resolved_str.__ray_actor_class__.__name__
+            == _TestDummyActor.__ray_actor_class__.__name__
+        )
+
+    def test_proto_roundtrip_preserves_actor_class(self):
+        """DeploymentActorConfig survives proto serialization and can
+        reconstruct the actor class via get_actor_class().
+        """
+        cfg = DeploymentActorConfig(
+            name="counter",
+            actor_class=_TestRayActor,
+            init_kwargs={},
+        )
+        dc = DeploymentConfig(num_replicas=1, deployment_actors=[cfg])
+
+        deserialized = DeploymentConfig.from_proto_bytes(dc.to_proto_bytes())
+        actor_cfg = deserialized.deployment_actors[0]
+
+        assert actor_cfg._serialized_actor_class
+        assert isinstance(actor_cfg.actor_class, str)
+
+        resolved = actor_cfg.get_actor_class()
+        assert resolved.__ray_actor_class__.__name__ == "_TestRayActor"
+
+        # Verify we can instantiate and invoke methods (class serialized properly)
+        underlying = resolved.__ray_actor_class__
+        instance = underlying()
+        assert instance.ping() == "pong"
 
 
 class TestReplicaConfig:
@@ -814,20 +1012,39 @@ class TestGangSchedulingConfig:
             def f():
                 return "test"
 
-    def test_gang_scheduling_config_auto_num_replicas(self):
-        """Test that num_replicas='auto' is rejected with gang_scheduling_config."""
-
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+        """Test that min_replicas=0 is rejected with gang_scheduling_config."""
+        with pytest.raises(
+            ValueError,
+            match="Scale to zero isn't supported for gang-scheduled deployments",
+        ):
 
             @serve.deployment(
                 num_replicas="auto",
-                gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+                gang_scheduling_config=GangSchedulingConfig(gang_size=3),
+                autoscaling_config={"min_replicas": 0, "max_replicas": 9},
             )
             def f():
                 return "test"
 
+    def test_gang_scheduling_config_auto_num_replicas(self):
+        """Test that num_replicas='auto' is allowed with gang_scheduling_config."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        def f():
+            return "test"
+
+        assert f._deployment_config.autoscaling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+        assert f._deployment_config.autoscaling_config.min_replicas == 4
+        assert f._deployment_config.autoscaling_config.max_replicas == 8
+
     def test_gang_scheduling_config_auto_num_replicas_via_options(self):
-        """Test that num_replicas='auto' is rejected via .options() with gang config."""
+        """Test that num_replicas='auto' works via .options() with gang config."""
 
         @serve.deployment(
             num_replicas=4,
@@ -836,8 +1053,14 @@ class TestGangSchedulingConfig:
         def f():
             return "test"
 
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
-            f.options(num_replicas="auto")
+        f2 = f.options(
+            num_replicas="auto",
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        assert f2._deployment_config.autoscaling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+        assert f2._deployment_config.autoscaling_config.min_replicas == 4
+        assert f2._deployment_config.autoscaling_config.max_replicas == 8
 
     def test_gang_scheduling_config_proto_roundtrip(self):
         """Test roundtrip serialization of GangSchedulingConfig through protobuf."""
@@ -941,68 +1164,68 @@ def test_http_options():
     # Test configs ignoring unknown keys (required for forward-compatibility)
     HTTPOptions(new_version_config_key="this config is from newer version of Ray")
 
-    assert HTTPOptions(host=None).location == "NoServer"
-    assert HTTPOptions(location=None).location == "NoServer"
-    assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
+    assert HTTPOptions(host=None).location == ProxyLocation.Disabled
+    assert HTTPOptions(location=None).location == ProxyLocation.Disabled
+    assert HTTPOptions(location=ProxyLocation.EveryNode).location == "EveryNode"
 
 
 def test_prepare_imperative_http_options():
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=None,
-    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+    ) == HTTPOptions(location=ProxyLocation.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={},
-    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+    ) == HTTPOptions(location=ProxyLocation.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(**{}),
     ) == HTTPOptions(
-        location=DeploymentMode.HeadOnly
+        location=ProxyLocation.HeadOnly
     )  # in this case we can't know whether location was provided or not
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(),
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"test": "test"},
-    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+    ) == HTTPOptions(location=ProxyLocation.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=DeploymentMode.EveryNode, host="0.0.0.0")
+    ) == HTTPOptions(location=ProxyLocation.EveryNode, host="0.0.0.0")
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=DeploymentMode.NoServer)
+    ) == HTTPOptions(location=ProxyLocation.Disabled)
 
     assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.Disabled,
         http_options=None,
-    ) == HTTPOptions(location=DeploymentMode.NoServer)
+    ) == HTTPOptions(location=ProxyLocation.Disabled)
 
     assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.HeadOnly,
         http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly, host="0.0.0.0")
+    ) == HTTPOptions(location=ProxyLocation.HeadOnly, host="0.0.0.0")
 
     assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.HeadOnly,
         http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
 
     with pytest.raises(ValueError, match="not a valid ProxyLocation"):
         prepare_imperative_http_options(proxy_location="wrong", http_options=None)
 
-    with pytest.raises(ValueError, match="not a valid enumeration"):
+    with pytest.raises(ValidationError, match="not a valid ProxyLocation"):
         prepare_imperative_http_options(
             proxy_location=None, http_options={"location": "123"}
         )
@@ -1019,6 +1242,31 @@ def test_with_proto():
     # Test user_config object
     config = DeploymentConfig(user_config={"python": ("native", ["objects"])})
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+
+
+def test_rolling_update_percentage_proto_roundtrip():
+    """Ensure `rolling_update_percentage` survives to_proto/from_proto.
+
+    Because the proto field is declared `optional double`, an explicit value
+    must round-trip losslessly, and an absent field (simulating an older
+    controller during a rolling upgrade) must fall back to the Python-level
+    default instead of a proto3 zero default.
+    """
+    # Explicit non-default value survives the round-trip.
+    config = DeploymentConfig(rolling_update_percentage=0.5)
+    roundtripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert roundtripped.rolling_update_percentage == 0.5
+
+    # Simulate an older controller that didn't carry this field: start from a
+    # valid proto (so the other non-optional fields satisfy Pydantic's
+    # validators on deserialization) and clear just `rolling_update_percentage`.
+    # Clearing the optional field makes HasField() return False, mimicking a
+    # proto serialized before this field existed.
+    proto = DeploymentConfig().to_proto()
+    proto.ClearField("rolling_update_percentage")
+    assert not proto.HasField("rolling_update_percentage")
+    deserialized = DeploymentConfig.from_proto(proto)
+    assert deserialized.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
 
 
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
@@ -1093,56 +1341,123 @@ def test_grpc_options():
     assert "is not a callable function!" in str(exception)
 
 
-def test_proxy_location_to_deployment_mode():
-    assert (
-        ProxyLocation._to_deployment_mode(ProxyLocation.Disabled)
-        == DeploymentMode.NoServer
-    )
-    assert (
-        ProxyLocation._to_deployment_mode(ProxyLocation.HeadOnly)
-        == DeploymentMode.HeadOnly
-    )
-    assert (
-        ProxyLocation._to_deployment_mode(ProxyLocation.EveryNode)
-        == DeploymentMode.EveryNode
-    )
+class TestControllerOptions:
+    """Validator + parsing coverage for ControllerOptions.
 
-    assert ProxyLocation._to_deployment_mode("Disabled") == DeploymentMode.NoServer
-    assert ProxyLocation._to_deployment_mode("HeadOnly") == DeploymentMode.HeadOnly
-    assert ProxyLocation._to_deployment_mode("EveryNode") == DeploymentMode.EveryNode
+    The runtime validator is intentionally strict: v0 only accepts
+    ``runtime_env.env_vars``. Other ``runtime_env`` keys (pip, working_dir, ...)
+    would mutate the long-lived detached controller actor's dependencies and
+    are rejected with a message pointing at deployment-level runtime_env.
+    """
+
+    def test_default_is_empty(self):
+        opts = ControllerOptions()
+        assert opts.runtime_env is None
+
+    def test_accepts_dict_from_model_validate(self):
+        opts = ControllerOptions.model_validate(
+            {"runtime_env": {"env_vars": {"X": "y"}}}
+        )
+        assert opts.runtime_env == {"env_vars": {"X": "y"}}
+
+    def test_accepts_env_vars_with_str_str(self):
+        opts = ControllerOptions(
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                    "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                }
+            }
+        )
+        assert opts.runtime_env["env_vars"]["RAY_SERVE_HAPROXY_TCP_NODELAY"] == "1"
+
+    def test_accepts_empty_env_vars(self):
+        opts = ControllerOptions(runtime_env={"env_vars": {}})
+        assert opts.runtime_env == {"env_vars": {}}
+
+    def test_accepts_explicit_none(self):
+        opts = ControllerOptions(runtime_env=None)
+        assert opts.runtime_env is None
+
+    @pytest.mark.parametrize(
+        "disallowed_key, value",
+        [
+            ("pip", ["numpy"]),
+            ("working_dir", "/tmp"),
+            ("py_modules", []),
+            ("conda", "env.yaml"),
+            ("container", {}),
+            # A future runtime_env key we'd want to land via an explicit
+            # API broadening, not by silently accepting it.
+            ("nsight", "default"),
+        ],
+    )
+    def test_rejects_non_env_vars_runtime_env_keys(self, disallowed_key, value):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={disallowed_key: value})
+        msg = str(exc.value)
+        assert "only supports ['env_vars']" in msg
+        assert disallowed_key in msg
+
+    def test_rejects_runtime_env_not_a_dict(self):
+        with pytest.raises(ValidationError):
+            ControllerOptions(runtime_env="env_vars=FOO")
+
+    def test_rejects_env_vars_not_a_dict(self):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": ["FOO=bar"]})
+        assert "env_vars must be a dict" in str(exc.value)
+
+    def test_rejects_env_vars_explicit_none(self):
+        # Explicit ``env_vars: null`` (e.g., from YAML) is distinct from the
+        # key being absent; reject it so a bad config fails locally instead of
+        # surfacing later from the Ray runtime_env layer.
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": None})
+        assert "env_vars must be a dict" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        [1, 3.14, True, None, ["1"], {"nested": "value"}],
+    )
+    def test_rejects_non_str_env_var_values(self, bad_value):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": {"X": bad_value}})
+        assert "must be str" in str(exc.value)
+
+    @pytest.mark.parametrize("bad_key", ["", 1, None])
+    def test_rejects_bad_env_var_keys(self, bad_key):
+        with pytest.raises(ValidationError):
+            ControllerOptions(runtime_env={"env_vars": {bad_key: "v"}})
+
+    def test_rejects_extra_top_level_fields(self):
+        # extra="forbid" guards against typos and against silently accepting
+        # future fields without a validator update.
+        with pytest.raises(ValidationError):
+            ControllerOptions(runtimeenv={"env_vars": {}})  # missing underscore
+
+    def test_rejects_mixed_allowed_and_disallowed_runtime_env_keys(self):
+        with pytest.raises(ValidationError) as exc:
+            ControllerOptions(runtime_env={"env_vars": {"X": "y"}, "pip": ["numpy"]})
+        assert "pip" in str(exc.value)
+
+
+def test_proxy_location_normalize():
+    assert ProxyLocation._normalize(None) is None
+    assert ProxyLocation._normalize(ProxyLocation.Disabled) == ProxyLocation.Disabled
+    assert ProxyLocation._normalize(ProxyLocation.HeadOnly) == ProxyLocation.HeadOnly
+    assert ProxyLocation._normalize(ProxyLocation.EveryNode) == ProxyLocation.EveryNode
+
+    assert ProxyLocation._normalize("Disabled") == ProxyLocation.Disabled
+    assert ProxyLocation._normalize("HeadOnly") == ProxyLocation.HeadOnly
+    assert ProxyLocation._normalize("EveryNode") == ProxyLocation.EveryNode
+    assert ProxyLocation._normalize("NoServer") == ProxyLocation.Disabled
 
     with pytest.raises(ValueError):
-        ProxyLocation._to_deployment_mode("Unknown")
+        ProxyLocation._normalize("Unknown")
 
     with pytest.raises(TypeError):
-        ProxyLocation._to_deployment_mode({"some_other_obj"})
-
-
-def test_deployment_mode_to_proxy_location():
-    assert ProxyLocation._from_deployment_mode(None) is None
-
-    assert (
-        ProxyLocation._from_deployment_mode(DeploymentMode.NoServer)
-        == ProxyLocation.Disabled
-    )
-    assert (
-        ProxyLocation._from_deployment_mode(DeploymentMode.HeadOnly)
-        == ProxyLocation.HeadOnly
-    )
-    assert (
-        ProxyLocation._from_deployment_mode(DeploymentMode.EveryNode)
-        == ProxyLocation.EveryNode
-    )
-
-    assert ProxyLocation._from_deployment_mode("NoServer") == ProxyLocation.Disabled
-    assert ProxyLocation._from_deployment_mode("HeadOnly") == ProxyLocation.HeadOnly
-    assert ProxyLocation._from_deployment_mode("EveryNode") == ProxyLocation.EveryNode
-
-    with pytest.raises(ValueError):
-        ProxyLocation._from_deployment_mode("Unknown")
-
-    with pytest.raises(TypeError):
-        ProxyLocation._from_deployment_mode({"some_other_obj"})
+        ProxyLocation._normalize({"some_other_obj"})
 
 
 @pytest.mark.parametrize(
@@ -1203,6 +1518,50 @@ def test_default_autoscaling_policy_import_path():
     policy = import_attr(DEFAULT_AUTOSCALING_POLICY_NAME)
 
     assert policy == default_autoscaling_policy
+
+
+class TestGetControllerImpl:
+    """White-box checks that ``get_controller_impl`` wires ``ControllerOptions``
+    into the controller actor class's default options.
+
+    These cover the path without starting a Ray cluster -- the live
+    end-to-end env-propagation test lives in
+    ``tests/test_standalone.py::test_serve_start_controller_options``.
+    """
+
+    def _default_options(self, controller_options=None):
+        from ray.serve._private.default_impl import get_controller_impl
+
+        return get_controller_impl(
+            controller_options=controller_options
+        )._default_options
+
+    def test_no_runtime_env_key_when_options_is_none(self):
+        opts = self._default_options(controller_options=None)
+        # Hardcoded fields stay; no runtime_env unless explicitly requested.
+        assert opts["name"] == "SERVE_CONTROLLER_ACTOR"
+        assert opts["namespace"] == "serve"
+        assert "runtime_env" not in opts
+
+    def test_no_runtime_env_key_when_runtime_env_is_none(self):
+        opts = self._default_options(ControllerOptions(runtime_env=None))
+        assert "runtime_env" not in opts
+
+    def test_env_vars_passthrough(self):
+        opts = self._default_options(
+            ControllerOptions(
+                runtime_env={
+                    "env_vars": {
+                        "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                        "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                    }
+                }
+            )
+        )
+        assert opts["runtime_env"]["env_vars"] == {
+            "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+            "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+        }
 
 
 class TestProtoToDict:

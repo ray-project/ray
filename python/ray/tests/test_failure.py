@@ -483,8 +483,6 @@ def test_version_mismatch(ray_start_cluster):
 
 def test_export_large_objects(ray_start_regular, error_pubsub):
     p = error_pubsub
-    import ray._private.ray_constants as ray_constants
-
     large_object = np.zeros(
         2 * ray_constants.FUNCTION_SIZE_WARN_THRESHOLD, dtype=np.uint8
     )

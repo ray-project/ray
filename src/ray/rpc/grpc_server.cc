@@ -34,12 +34,10 @@
 namespace ray {
 namespace rpc {
 
-void GrpcServer::Init() {
+void GrpcServer::Init(bool enable_default_health_check_service) {
   RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
-  // Enable built in health check implemented by gRPC:
-  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
-  grpc::EnableDefaultHealthCheckService(true);
+  grpc::EnableDefaultHealthCheckService(enable_default_health_check_service);
   grpc::reflection::InitProtoReflectionServerBuilderPlugin();
   grpc::channelz::experimental::InitChannelzService();
 }
@@ -64,8 +62,8 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address =
-      BuildAddress((listen_to_localhost_only_ ? "127.0.0.1" : "0.0.0.0"), port_);
+  std::string server_address = BuildAddress(
+      (listen_to_localhost_only_ ? GetLocalhostIP() : GetAllInterfacesIP()), port_);
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and

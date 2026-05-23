@@ -3,17 +3,19 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _PublicField,
     migrate_private_fields,
     simple_hash,
 )
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class FeatureHasher(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.feature_hasher")
+class FeatureHasher(SerializablePreprocessorBase):
     r"""Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
 
@@ -139,6 +141,19 @@ class FeatureHasher(Preprocessor):
             f"num_features={self._num_features!r}, "
             f"output_column={self._output_column!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "num_features": self._num_features,
+            "output_column": self._output_column,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._num_features = fields["num_features"]
+        self._output_column = fields["output_column"]
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)

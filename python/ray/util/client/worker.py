@@ -27,6 +27,7 @@ from ray._private.ray_constants import (
     env_float,
     env_integer,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
@@ -82,6 +83,73 @@ def backoff(timeout: int) -> int:
     if timeout > MAX_TIMEOUT_SEC:
         timeout = MAX_TIMEOUT_SEC
     return timeout
+
+
+def prepare_init_request_args(
+    job_config: Optional[JobConfig],
+    ray_init_kwargs: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[bytes], Dict[str, Any]]:
+    """Normalize *ray_init_kwargs* and serialize ``job_config`` for an ``InitRequest``.
+
+    This handles:
+    * Converting a :class:`LoggingConfig` in ``ray_init_kwargs`` to a plain dict
+      so it can be JSON-encoded for transport.
+    * Propagating the logging config onto ``job_config`` when it has not already
+      been set.
+    * Uploading ``py_modules`` / ``working_dir`` runtime-env artifacts and
+      pickling the resulting ``job_config``.
+
+    Args:
+        job_config: Job settings to pickle for the server, or ``None`` if the
+            request has no serialized job config.
+        ray_init_kwargs: Keyword arguments for ``ray.init`` on the client
+            server. A shallow copy is returned, with values normalized for JSON
+            (e.g. ``logging_config`` as a plain dict). ``None`` is treated as
+            ``{}``.
+
+    Returns:
+        A ``(serialized_job_config, ray_init_kwargs)`` tuple whose values can
+        be placed directly into a ``ray_client_pb2.InitRequest``.
+    """
+    if ray_init_kwargs is None:
+        ray_init_kwargs = {}
+    else:
+        ray_init_kwargs = dict(ray_init_kwargs)
+
+    if "logging_config" in ray_init_kwargs and isinstance(
+        ray_init_kwargs["logging_config"], LoggingConfig
+    ):
+        ray_init_kwargs["logging_config"] = ray_init_kwargs["logging_config"].to_dict()
+
+    if job_config is None:
+        serialized_job_config = None
+    else:
+        job_config.ensure_logging_config(ray_init_kwargs.get("logging_config"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+            runtime_env = job_config.runtime_env or {}
+            include_gitignore = (
+                os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+            )
+            runtime_env = upload_py_modules_if_needed(
+                runtime_env,
+                scratch_dir=tmp_dir,
+                include_gitignore=include_gitignore,
+                logger=logger,
+            )
+            runtime_env = upload_working_dir_if_needed(
+                runtime_env,
+                scratch_dir=tmp_dir,
+                include_gitignore=include_gitignore,
+                logger=logger,
+            )
+            runtime_env.pop("excludes", None)
+            job_config.set_runtime_env(runtime_env, validate=True)
+
+        serialized_job_config = pickle.dumps(job_config)
+
+    return serialized_job_config, ray_init_kwargs
 
 
 class Worker:
@@ -374,8 +442,13 @@ class Worker:
         metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.
+
         Args:
             metadata: the gRPC metadata to append the IDs to
+
+        Returns:
+            The metadata with the thread id and request id appended, or the
+            original metadata unchanged if reconnects are disabled.
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
@@ -490,7 +563,6 @@ class Worker:
         val,
         *,
         client_ref_id: bytes = None,
-        _owner: Optional[ClientActorHandle] = None,
     ):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
@@ -501,16 +573,12 @@ class Worker:
                 "call 'put' on it (or return it)."
             )
         data = dumps_from_client(val, self._client_id)
-        return self._put_pickled(data, client_ref_id, _owner)
+        return self._put_pickled(data, client_ref_id)
 
-    def _put_pickled(
-        self, data, client_ref_id: bytes, owner: Optional[ClientActorHandle] = None
-    ):
+    def _put_pickled(self, data, client_ref_id: bytes):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
-        if owner is not None:
-            req.owner_id = owner.actor_ref.id
 
         resp = self.data_client.PutObject(req)
         if not resp.valid:
@@ -874,41 +942,10 @@ class Worker:
         self, job_config: JobConfig, ray_init_kwargs: Optional[Dict[str, Any]] = None
     ):
         """Initialize the server"""
-        if ray_init_kwargs is None:
-            ray_init_kwargs = {}
         try:
-            if job_config is None:
-                serialized_job_config = None
-            else:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    from ray._private.ray_constants import (
-                        RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
-                    )
-
-                    runtime_env = job_config.runtime_env or {}
-                    # Determine whether to respect .gitignore files based on environment variable
-                    # Default is True (respect .gitignore). Set to False if env var is "1".
-                    include_gitignore = (
-                        os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
-                    )
-                    runtime_env = upload_py_modules_if_needed(
-                        runtime_env,
-                        scratch_dir=tmp_dir,
-                        include_gitignore=include_gitignore,
-                        logger=logger,
-                    )
-                    runtime_env = upload_working_dir_if_needed(
-                        runtime_env,
-                        scratch_dir=tmp_dir,
-                        include_gitignore=include_gitignore,
-                        logger=logger,
-                    )
-                    # Remove excludes, it isn't relevant after the upload step.
-                    runtime_env.pop("excludes", None)
-                    job_config.set_runtime_env(runtime_env, validate=True)
-
-                serialized_job_config = pickle.dumps(job_config)
-
+            serialized_job_config, ray_init_kwargs = prepare_init_request_args(
+                job_config, ray_init_kwargs
+            )
             response = self.data_client.Init(
                 ray_client_pb2.InitRequest(
                     job_config=serialized_job_config,

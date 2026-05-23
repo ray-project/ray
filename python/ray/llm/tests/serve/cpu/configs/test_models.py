@@ -1,10 +1,17 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
 
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.serve.core.configs.accelerators import (
+    CPUAccelerator,
+    GPUAccelerator,
+    TPUAccelerator,
+    TPUConfig,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -293,39 +300,192 @@ class TestFieldValidators:
         assert "Invalid lora_config" in str(exc_info.value)
 
 
-class TestUseCpuLogic:
-    """Test the use_cpu logic and its interaction with accelerator_type."""
+class TestAcceleratorConfigLogic:
+    """Test the accelerator_config logic and its interaction with accelerator_type."""
 
-    def test_use_cpu_field_basic(self):
-        """Test that use_cpu field works with basic values."""
-        # Test use_cpu=True
+    def test_accelerator_config_field_basic(self):
+        """Test that accelerator_config field works with basic values."""
+        # Test CPU config
         llm_config_cpu = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            use_cpu=True,
+            accelerator_config={"kind": "cpu"},
         )
-        assert llm_config_cpu.use_cpu is True
+        assert llm_config_cpu.accelerator_config.kind == "cpu"
         engine_config = llm_config_cpu.get_engine_config()
-        assert engine_config.use_gpu is False
+        assert engine_config.accelerator_config.kind == "cpu"
 
-        # Test use_cpu=False
+        # Test GPU config
         llm_config_gpu = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            use_cpu=False,
+            accelerator_config={"kind": "gpu"},
         )
-        assert llm_config_gpu.use_cpu is False
+        assert llm_config_gpu.accelerator_config.kind == "gpu"
         engine_config_gpu = llm_config_gpu.get_engine_config()
-        assert engine_config_gpu.use_gpu is True
+        assert engine_config_gpu.accelerator_config.kind == "gpu"
 
-    def test_use_cpu_precedence_over_accelerator_type(self):
-        """Test that explicit use_cpu setting takes precedence over accelerator_type."""
-        # use_cpu=True should override GPU accelerator_type
-        llm_config_cpu_override = LLMConfig(
+    def test_accelerator_type_with_cpu_config_raises_error(self):
+        """Test that accelerator_type with CPU config raises a validation error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_config={"kind": "cpu"},
+                accelerator_type="L4",
+            )
+
+    def test_accelerator_type_with_cpu_only_placement_group_raises_error(self):
+        """Test that accelerator_type with CPU-only placement_group_config raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_accelerator_type_with_empty_bundles_raises_error(self):
+        """Test that accelerator_type with empty bundles list raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_accelerator_type_with_gpu_placement_group_succeeds(self):
+        """Test that accelerator_type with GPU-containing placement_group_config succeeds."""
+        llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            use_cpu=True,
-            accelerator_type="L4",  # GPU type but use_cpu=True should take precedence
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
         )
-        engine_config = llm_config_cpu_override.get_engine_config()
-        assert engine_config.use_gpu is False  # use_cpu=True takes precedence
+        assert llm_config.accelerator_type == "L4"
+
+    def test_accelerator_type_with_gpu_config_succeeds(self):
+        """Test that accelerator_type with GPU config succeeds."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            accelerator_config={"kind": "gpu"},
+        )
+        assert llm_config.accelerator_type == "L4"
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.accelerator_type == "L4"
+
+    def test_llm_config_accelerator_type_hardware_mismatch(self):
+        """Test that passing a GPU accelerator_type with a TPU config raises an error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Hardware mismatch",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                accelerator_config={"kind": "tpu", "topology": "4x4"},
+            )
+
+    def test_engine_config_infers_tpu_from_accelerator_type_string(self):
+        """Test that the engine config infers a TPU backend directly from the accelerator_type string."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="TPU-V6E",
+        )
+
+        # Validate engine correctly inferred the TPU backend
+        engine_config = llm_config.get_engine_config()
+
+        assert isinstance(engine_config.accelerator, TPUAccelerator)
+        assert engine_config.accelerator_type == "TPU-V6E"
+
+    def test_requires_deferred_placement_group(self):
+        """Test that requires_deferred_placement_group correctly identifies deferred PG requirements."""
+        cpu_accel = CPUAccelerator()
+        assert cpu_accel.requires_deferred_placement_group is False
+
+        gpu_accel = GPUAccelerator()
+        assert gpu_accel.requires_deferred_placement_group is False
+
+        tpu_accel_no_topo = TPUAccelerator(TPUConfig(kind="tpu"))
+        assert tpu_accel_no_topo.requires_deferred_placement_group is False
+
+        tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        assert tpu_accel_with_topo.requires_deferred_placement_group is True
+
+    @pytest.mark.parametrize(
+        "topology,num_devices,accelerator_type_str,expected_bundles_count,expected_chips_per_host",
+        [
+            ("1x1", 1, "TPU-V6E", 1, 1),
+            ("1x1", 1, "TPU-V7X", 1, 1),
+            ("4x4", 16, "TPU-V6E", 4, 4),
+            ("2x2x2", 8, "TPU-V5P", 2, 4),
+            ("2x2", 4, "TPU-V5LITEPOD", 1, 4),
+            ("2x2x1", 4, "TPU-V4", 1, 4),
+            ("2x4", 8, "TPU-V6E", 1, 8),
+        ],
+    )
+    def test_default_bundles_topology(
+        self,
+        topology,
+        num_devices,
+        accelerator_type_str,
+        expected_bundles_count,
+        expected_chips_per_host,
+    ):
+        """Test that different topologies return correct per-host bundles."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology=topology))
+        bundles = tpu_accel.default_bundles(
+            num_devices=num_devices, accelerator_type_str=accelerator_type_str
+        )
+
+        assert len(bundles) == expected_bundles_count
+        for bundle in bundles:
+            assert bundle["TPU"] == expected_chips_per_host
+            assert f"accelerator_type:{accelerator_type_str}" in bundle
+
+    def test_default_bundles_topology_missing_accelerator_type_raises(self):
+        """Test that ValueError is raised when topology is present but accelerator type is missing."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        with pytest.raises(
+            ValueError,
+            match="`accelerator_type` must be specified when `topology` is present",
+        ):
+            tpu_accel.default_bundles(num_devices=16, accelerator_type_str=None)
+
+    def test_default_bundles_topology_non_multiple_num_devices_raises(self):
+        """Test that ValueError is raised when num_devices is not a multiple of chips_per_host."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        with pytest.raises(ValueError, match="must be a multiple of chips_per_host"):
+            tpu_accel.default_bundles(num_devices=6, accelerator_type_str="TPU-V6E")
+
+
+class TestCheckpointInfo:
+    def test_apply_checkpoint_info_uses_autoconfig_and_threads_trust_remote_code(self):
+        """apply_checkpoint_info uses AutoConfig (not PretrainedConfig) and forwards
+        trust_remote_code to every HF config load call."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model")
+        )
+        mock_hf_config = MagicMock(spec=["architectures", "vision_config"])
+        mock_hf_config.architectures = ["LlavaForCausalLM"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ) as mock_auto:
+            llm_config.apply_checkpoint_info("vision/model", trust_remote_code=True)
+
+        assert all(
+            call.kwargs["trust_remote_code"] is True
+            for call in mock_auto.call_args_list
+        )
+        assert llm_config._supports_vision is True
+        assert llm_config._model_architecture == "LlavaForCausalLM"
 
 
 if __name__ == "__main__":

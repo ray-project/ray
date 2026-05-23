@@ -288,6 +288,45 @@ class TestAggregateTimeseries:
             == 5.0
         )
 
+    def test_exclude_early_partial_period_when_aligned_start_equals_last_timestamp(
+        self,
+    ):
+        """Edge case: aligned_start == merged_timeseries[-1].timestamp.
+
+        When one series has only one point and it's the latest, aligned_start equals
+        the last merged timestamp. window_start must exclude the partial period
+        (the earlier point from the other series).
+        """
+        # s1 has one point at 100.1, s2 has one point at 100.2 (the latest)
+        # merged = [(100.1, 10), (100.2, 30)]; aligned_start = 100.2 = last timestamp
+        series1 = [TimeStampedValue(100.1, 10.0)]
+        series2 = [TimeStampedValue(100.2, 20.0)]
+
+        merged = merge_instantaneous_total([series1, series2])
+        assert merged[-1].timestamp == 100.2
+        aligned_start = max(ts[0].timestamp for ts in [series1, series2])
+        assert aligned_start == 100.2  # Edge case: aligned_start == last timestamp
+
+        last_window_s = 1.0
+
+        # With window_start=aligned_start: excludes 100.1, only [100.2, 101.2) at value 30
+        result_with_window = aggregate_timeseries(
+            merged,
+            AggregationFunction.MEAN,
+            last_window_s=last_window_s,
+            window_start=aligned_start,
+        )
+        assert result_with_window == 30.0
+
+        # Without window_start: includes 100.1 (partial period), gives lower average
+        result_without_window = aggregate_timeseries(
+            merged,
+            AggregationFunction.MEAN,
+            last_window_s=last_window_s,
+            window_start=None,
+        )
+        assert result_without_window < 30.0  # Includes the 10 from 100.1-100.2
+
 
 class TestInstantaneousMerge:
     """Test the new instantaneous merge functionality."""

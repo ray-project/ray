@@ -43,8 +43,8 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Please keep this in sync with the .bazelversion file.
 versions.check(
-    maximum_bazel_version = "6.5.0",
-    minimum_bazel_version = "6.5.0",
+    maximum_bazel_version = "7.5.0",
+    minimum_bazel_version = "7.5.0",
 )
 
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")

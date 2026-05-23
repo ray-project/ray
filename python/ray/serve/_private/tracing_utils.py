@@ -72,7 +72,15 @@ def default_tracing_exporter(tracing_file_name):
     os.makedirs(spans_dir, exist_ok=True)
     spans_file = os.path.join(spans_dir, tracing_file_name)
 
-    return [SimpleSpanProcessor(ConsoleSpanExporter(out=open(spans_file, "a")))]
+    out_file = open(spans_file, "a")
+
+    class FileConsoleSpanExporter(ConsoleSpanExporter):
+        def shutdown(self):
+            if not out_file.closed:
+                out_file.flush()
+                out_file.close()
+
+    return [SimpleSpanProcessor(FileConsoleSpanExporter(out=out_file))]
 
 
 class TraceContextManager:

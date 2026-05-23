@@ -153,10 +153,11 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             num_rows = None
         else:
             num_rows = len(paths) * rows_per_file
+        input_files = list(paths)
         return BlockMetadata(
             num_rows=num_rows,
             size_bytes=None if None in file_sizes else int(sum(file_sizes)),
-            input_files=paths,
+            input_files=input_files,
             exec_stats=None,
         )  # Exec stats filled in later.
 
@@ -471,7 +472,7 @@ def _expand_directory(
         file_path = file_.path
         if not file_path.startswith(base_path):
             continue
-        relative = file_path[len(base_path) :]
+        relative = file_path[len(base_path) :].lstrip("/")
         if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
         out.append((file_path, file_.size))

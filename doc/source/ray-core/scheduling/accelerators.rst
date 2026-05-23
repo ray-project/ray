@@ -29,7 +29,7 @@ The accelerators natively supported by Ray Core are:
      - Experimental, supported by the community
    * - Google TPU
      - TPU
-     - Experimental, supported by the community
+     - Fully tested, supported by the Ray team
    * - Intel Gaudi
      - HPU
      - Experimental, supported by the community

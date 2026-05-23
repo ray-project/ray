@@ -26,7 +26,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/file_system_monitor.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"

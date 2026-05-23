@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
 
-from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
@@ -24,7 +23,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ProcessorConfig(_ProcessorConfig):
     """The processor configuration.
 
@@ -50,7 +49,7 @@ class ProcessorConfig(_ProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     """The configuration for the HTTP request processor.
 
@@ -102,7 +101,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     """The configuration for the vLLM engine processor.
 
@@ -125,7 +124,16 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             This is to overlap the batch processing to avoid the tail latency of
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
-            enough for batch size >= 64.
+            enough for batch size >= 64. Sets the engine actor's Ray Core
+            ``max_concurrency``.
+        max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
+            each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
+            If unset, Ray Data uses
+            ``ray.data.DataContext.max_tasks_in_flight_per_actor`` if set globally.
+            Otherwise, it defaults to ``2 * max_concurrent_batches``; the factor
+            can be overridden via the
+            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
+            env var.
         should_continue_on_error: If True, continue processing when inference fails for a row
             instead of raising an exception. Failed rows will have a non-empty
             ``__inference_error__`` column containing the error message, and other
@@ -211,7 +219,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     """The configuration for the SGLang engine processor.
 
@@ -233,7 +241,16 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             This is to overlap the batch processing to avoid the tail latency of
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
-            enough for batch size >= 64.
+            enough for batch size >= 64. Sets the engine actor's Ray Core
+            ``max_concurrency``.
+        max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
+            each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
+            If unset, Ray Data uses
+            ``ray.data.DataContext.max_tasks_in_flight_per_actor`` if set globally.
+            Otherwise, it defaults to ``2 * max_concurrent_batches``; the factor
+            can be overridden via the
+            ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
+            env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
@@ -296,7 +313,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     """The configuration for the serve deployment processor.
 
@@ -402,7 +419,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     """The configuration for the chat template stage.
 
@@ -431,7 +448,7 @@ class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DetokenizeStageConfig(_DetokenizeStageConfig):
     """The configuration for the detokenize stage.
 
@@ -456,7 +473,7 @@ class DetokenizeStageConfig(_DetokenizeStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     """The configuration for the prepare multimodal stage.
 
@@ -488,7 +505,7 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TokenizerStageConfig(_TokenizerStageConfig):
     """The configuration for the tokenizer stage.
 
@@ -513,7 +530,7 @@ class TokenizerStageConfig(_TokenizerStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HttpRequestStageConfig(_HttpRequestStageConfig):
     """The configuration for the http request stage.
 
@@ -559,29 +576,7 @@ class PrepareImageStageConfig(_PrepareImageStageConfig):
     pass
 
 
-@Deprecated(new="build_processor", error=False)
-def build_llm_processor(
-    config: ProcessorConfig,
-    preprocess: Optional[UserDefinedFunction] = None,
-    postprocess: Optional[UserDefinedFunction] = None,
-    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
-    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
-    builder_kwargs: Optional[Dict[str, Any]] = None,
-) -> Processor:
-    """
-    [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
-    """
-    return build_processor(
-        config,
-        preprocess,
-        postprocess,
-        preprocess_map_kwargs,
-        postprocess_map_kwargs,
-        builder_kwargs,
-    )
-
-
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def build_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -763,6 +758,5 @@ __all__ = [
     "TokenizerStageConfig",
     "HttpRequestStageConfig",
     "PrepareImageStageConfig",
-    "build_llm_processor",
     "build_processor",
 ]

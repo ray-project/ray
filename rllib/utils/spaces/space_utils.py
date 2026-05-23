@@ -314,14 +314,31 @@ def batch(
     if not list_of_structs:
         raise ValueError("Input `list_of_structs` does not contain any items.")
 
+    first = list_of_structs[0]
+    # Nested structures (dict/tuple) require tree traversal; leaves do not.
+    is_nested = isinstance(first, (dict, tuple))
+
     # TODO (sven): Maybe replace this by a list-override (usage of which indicated
     #  this method that concatenate should be used (not stack)).
     if individual_items_already_have_batch_dim == "auto":
-        flat = tree.flatten(list_of_structs[0])
-        individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
+        if isinstance(first, BatchedNdArray):
+            individual_items_already_have_batch_dim = True
+        elif is_nested:
+            flat = tree.flatten(first)
+            individual_items_already_have_batch_dim = isinstance(
+                flat[0], BatchedNdArray
+            )
+        else:
+            individual_items_already_have_batch_dim = False
 
     if individual_items_already_have_batch_dim:
-        ret = tree.map_structure(lambda *s: np.concatenate(s, axis=0), *list_of_structs)
+        if is_nested:
+            ret = tree.map_structure(
+                lambda *s: np.concatenate(s, axis=0), *list_of_structs
+            )
+        else:
+            # Fast path: simple numpy arrays or scalars — no tree traversal needed.
+            ret = np.concatenate(list_of_structs, axis=0)
     else:
         n = len(list_of_structs)
 
@@ -335,7 +352,11 @@ def batch(
                 out[i] = s[i]
             return out
 
-        ret = tree.map_structure(fast_stack, *list_of_structs)
+        if is_nested:
+            ret = tree.map_structure(fast_stack, *list_of_structs)
+        else:
+            # Fast path: simple numpy arrays or scalars — no tree traversal needed.
+            ret = fast_stack(*list_of_structs)
 
     return ret
 
@@ -514,11 +535,11 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
                 elem = elem.astype(s.dtype)
 
         # Gymnasium now uses np.int_64 as the dtype of a Discrete action space
-        elif isinstance(s, int) or isinstance(s, np.int_):
+        elif isinstance(s, int) or isinstance(s, np.intp):
             if isinstance(elem, float) and elem.is_integer():
                 elem = int(elem)
             # Note: This does not check if the float element is actually an integer
-            if isinstance(elem, np.float_):
+            if isinstance(elem, np.floating):
                 elem = np.int64(elem)
 
         return elem

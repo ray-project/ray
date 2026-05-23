@@ -447,7 +447,14 @@ def test_client_deprecation_warn():
 def test_task_use_prestarted_worker(call_ray_start):
     ray.init("ray://localhost:50056")
 
-    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    assert (
+        len(
+            list_workers(
+                filters=[("worker_type", "!=", "DRIVER")], raise_on_missing_output=False
+            )
+        )
+        == 2
+    )
 
     @ray.remote(num_cpus=2)
     def f():
@@ -455,7 +462,14 @@ def test_task_use_prestarted_worker(call_ray_start):
 
     assert ray.get(f.remote()) == 42
 
-    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    assert (
+        len(
+            list_workers(
+                filters=[("worker_type", "!=", "DRIVER")], raise_on_missing_output=False
+            )
+        )
+        == 2
+    )
 
 
 if __name__ == "__main__":

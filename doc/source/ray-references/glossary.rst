@@ -404,10 +404,6 @@ documentation, sorted alphabetically.
 
     .. TODO: Policy evaluation
 
-    Predictor
-        :class:`An interface for performing inference<ray.train.predictor.Predictor>` (prediction)
-        on input data with a trained model.
-
     Preprocessor
         :ref:`An interface used to preprocess a Dataset<preprocessor-ref>` for
         training and inference (prediction). Preprocessors
