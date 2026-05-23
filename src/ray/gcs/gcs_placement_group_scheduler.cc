@@ -494,8 +494,8 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
   std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
-  // v1 supports a single topology level (level 0). Take the first non-node-id
-  // key as the label domain the scheduler should pin to.
+  // Currently, take the first non-node-id key as the label domain the scheduler should
+  // pin to.
   // TODO: extend once nested topology levels are supported.
   std::optional<std::vector<std::string>> topology_keys =
       placement_group.GetTopologyStrategyKeys(/*level=*/0);
