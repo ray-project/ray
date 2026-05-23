@@ -13,14 +13,13 @@ the relevant code path report what changed.**
 
 | subsystem      | today's anti-pattern                                                                                                                            | this RFC                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; N small RPCs per scheduler iteration                | Drain all gens first, look up block sizes locally, trim by per-op budget, then issue **one** batched `ray.get`     |
+| **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; the scheduler thread blocks on metadata fetch + deserialization | Defer the metadata fetch entirely. Scheduler carries `size_bytes` (from Ray Core) and `num_rows` (inline from the streaming gen) as scalars on the `RefBundle`; downstream consumers that need full `BlockMetadata` (stats reporting, lineage) `ray.get` the `meta_ref` lazily, off the scheduler thread |
 | **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers)             | Ops push resource deltas at mutation sites (emit / dispatch / done); `update_usages` shrinks to an aggregator      |
 
 On the wide-schema `worker_scaling` release-test matrix (m5.2xlarge × {36,
 72, 143, 358} nodes for {500, 1000, 2000, 5000} workers), the two parts
-together are projected to cut max scheduling-loop time by ~40-50 % at the
-1000-2000 worker scale and ~25-30 % at 5000 workers, where the dispatch
-side dominates.
+together are projected to cut max scheduling-loop time by ~40-60 % across
+the matrix.
 
 Both parts are independent. Either can land alone. They're presented
 together because they share the same architectural shift (poll → push,
@@ -169,72 +168,106 @@ The redundancy:
   grew (`meta.size_bytes`), but doesn't tell anyone — the next
   `update_usages` re-walks the output queue to find out.
 
-## Part 1: Data path — batch the per-pair `ray.get`
+## Part 1: Data path — defer the metadata fetch entirely
 
 ### Design
 
-Restructure `process_completed_tasks` so that each scheduler iteration
-issues **one** batched `ray.get` covering exactly the metadata for the
-pairs that will be emitted, then hands the bytes to each task for emit.
+The scheduler thread **never `ray.get`s metadata**. It carries the two
+scalar fields it actually needs from each block (`size_bytes` and
+`num_rows`) as inline values on the `RefBundle`. The full
+`BlockMetadata` (exec stats, input files, task exec stats) lives behind
+a `meta_ref` that downstream consumers — stats reporting, lineage
+tracking — fetch lazily, off the scheduler thread.
 
 ```
 process_completed_tasks(topology, ...)
    │
    ├── ray.wait(active_task_refs) → ready set
    │
-   ├── # 1. Drain each ready task's gen into its pending-pairs queue.
-   │   for task in ready_tasks:
-   │       while task.peek_pending_pair() is not None: pass
+   ├── for each ready DataOpTask:
+   │      while task.peek_pending_pair() is not None: pass     ← drain gen
    │
-   ├── # 2. Look up each queued block's size (local, no RPC).
-   │   sizes = ray.experimental.get_object_sizes(all_pending_block_refs)
+   ├── # No ray.get on metadata. We already have:
+   │   #   - block_ref           (from the gen)
+   │   #   - num_rows scalar     (inline from the gen — see 1b)
+   │   #   - meta_ref            (from the gen, kept opaque)
+   │   #   - size_bytes scalar   (from Ray Core — see 1c)
    │
-   ├── # 3. Per op, trim each task's queued pairs by remaining budget.
-   │   #    Collect the prefix of meta_refs whose blocks fit.
-   │   to_fetch = [...]
-   │
-   ├── # 4. ONE batched ray.get covering the trimmed union.
-   │   bytes_by_meta_ref = dict(zip(to_fetch, ray.get(to_fetch, timeout=…)))
-   │
-   └── # 5. Each task pops queue pairs in order and emits.
-       for task in ready_tasks:
-           task.on_data_ready(budget, bytes_by_meta_ref)
+   └── for each ready DataOpTask:
+          task.on_data_ready(budget)                            ← pure assemble + emit
+              │
+              ├── pop queued pair (block_ref, num_rows, meta_ref)
+              ├── size_bytes ← ray.experimental.get_object_sizes([block_ref])[0]
+              ├── build RefBundle entry (block_ref, size_bytes, num_rows, meta_ref)
+              ├── emit RefBundle
+              └── bytes_read += size_bytes
 ```
 
-Two structural changes underneath:
+### 1a. `DataOpTask` queue holds `(block_ref, num_rows, meta_ref)` triples
 
-#### 1a. `DataOpTask` switches to a queue-of-pairs
-
-Replace the single `_pending_block_ref` / `_pending_meta_ref` scalar slots
-with a `Deque[(block_ref, meta_ref)]` queue, plus a `_partial_block_ref`
-stash for the half-pulled-pair case. Add `peek_pending_pair()` as a
-drainable method (callable in a loop until it returns `None`).
+Replace the single `_pending_block_ref` / `_pending_meta_ref` scalar
+slots with a `Deque[(block_ref, num_rows, meta_ref)]` queue, plus a
+`_partial` stash for the half-pulled-pair case (the gen yields the
+three components in order; they can arrive in separate scheduler
+ticks). `peek_pending_pair()` is a drainable method (call in a loop
+until it returns `None`).
 
 ```python
 class DataOpTask:
-    _pending_pairs:   Deque[(block_ref, meta_ref)]   # pulled from gen, awaiting emission
-    _partial_block_ref: ObjectRef                    # half-pulled state
-    _gen_exhausted:   bool
+    _pending: Deque[Tuple[ObjectRef[Block], int, ObjectRef[BlockMetadata]]]
+    _partial: ...                                  # half-pulled state
+    _gen_exhausted: bool
     _gen_errored_block: Optional[ObjectRef]
 
-    def peek_pending_pair(self) -> Optional[Tuple[ObjectRef, ObjectRef]]:
-        """Pull one (block_ref, meta_ref) into _pending_pairs; return it.
-        Returns None if no full pair is immediately ready. Loop to drain."""
+    def peek_pending_pair(self) -> Optional[Tuple[ObjectRef, int, ObjectRef]]:
+        """Pull one (block_ref, num_rows, meta_ref) triple from the gen
+        into _pending. Returns None if not immediately ready."""
         ...
 
-    def on_data_ready(self, max_bytes_to_read, bytes_by_meta_ref=None):
-        """Pop queued pairs in order, look up bytes in the caller-supplied
-        dict, emit RefBundles. Per-ref ray.get fallback on cache miss."""
+    def on_data_ready(self, max_bytes_to_read) -> int:
+        """Pop queued triples, look up size_bytes via the Core primitive,
+        build RefBundle entries, emit."""
         ...
 ```
 
 Why a queue rather than a scalar: pulling from the generator is
-**destructive** — once we peek, the ref is gone from the stream. Pairs
-that don't get emitted this iteration (because they didn't fit the budget,
-or the batched `ray.get` timed out) must persist on the task. Per-iteration
-state lives only in the caller-supplied `bytes_by_meta_ref` dict.
+**destructive** — once we peek, the values are gone from the stream.
+Triples that don't get emitted this iteration (budget exhausted) must
+persist on the task.
 
-#### 1b. Assumed dependency: cheap, reliable per-ref size lookup
+### 1b. Streaming generator protocol: yield `num_rows` inline
+
+Today the producing worker yields two values per block:
+
+```python
+yield block                                            # ObjectRef
+yield pickle.dumps(BlockMetadataWithSchema(...))       # ObjectRef
+```
+
+Proposed:
+
+```python
+yield block                                            # ObjectRef
+yield num_rows                                         # int — small object, inlined
+yield pickle.dumps(BlockMetadataWithSchema(...))       # ObjectRef — fetched lazily
+```
+
+The `num_rows` value is a small Python `int`, which Ray Core already
+inlines into the `ObjectRef` itself (objects under
+`max_direct_call_object_size`, ~100 KB by default — way more than an
+int needs). `ray.get` on an inlined ref is a local memory copy with
+no object store interaction.
+
+The full metadata is still produced and stored — we just don't fetch it
+on the scheduler thread.
+
+This is a Ray-Data-internal protocol change to the streaming generator
+contract; no Ray Core change involved. It does require updating every
+task generator that participates in `DataOpTask` to yield the
+three-tuple instead of the pair. The existing TODO in
+`DataOpTask.__init__` calls this protocol out as something to evolve.
+
+### 1c. Assumed dependency: cheap per-ref `size_bytes` from Ray Core
 
 The design depends on a Ray Core primitive that returns each ref's byte
 size **without** issuing an RPC or fetching the object data, and that is
@@ -245,58 +278,131 @@ ref to the driver. Surface used in the rest of this document:
 sizes = ray.experimental.get_object_sizes(block_refs)   # List[int], one per ref
 ```
 
-How Ray Core exposes this — whether via a focused helper, an extension to
-an existing API, an inlined field on `ObjectRef`, or something else —
-is a question for the Ray Core team and out of scope for this RFC.
+How Ray Core exposes this — whether via a focused helper, an extension
+to an existing API, an inlined field on `ObjectRef`, or something else
+— is a question for the Ray Core team and out of scope for this RFC.
 This RFC assumes the primitive exists and is reliable for streaming-gen
 owned refs; see the open questions section.
 
-The size lets us **trim the metadata fetch up front**, so what we
-`ray.get` is exactly what we emit this iteration. No cross-iteration
-cache, no speculative over-fetch.
+### 1d. `RefBundle` layout change
 
-### Per-call ray.get fallback
+`RefBundle.blocks` today is `Tuple[Tuple[ObjectRef[Block],
+BlockMetadata], ...]` — each entry carries a fully-dereferenced
+`BlockMetadata` object. The proposed shape:
+
+```python
+@dataclass(frozen=True)
+class BlockEntry:
+    block_ref:  ObjectRef[Block]
+    size_bytes: int                  # from Ray Core
+    num_rows:   int                  # inlined by the streaming gen
+    _meta_ref:  ObjectRef[BlockMetadata]   # opaque; fetched on demand
+
+    @cached_property
+    def metadata(self) -> BlockMetadata:
+        """Lazy: fetched the first time a consumer asks. Only stats /
+        lineage paths exercise this; scheduler-thread code never does."""
+        return ray.get(self._meta_ref)
+```
+
+`RefBundle` then carries `Tuple[BlockEntry, ...]` instead of
+`Tuple[Tuple[ObjectRef, BlockMetadata], ...]`. Schema stays where it is
+— `RefBundle.schema` is already a top-level field (see 1f below for
+how it's populated without a scheduler-thread `ray.get`).
+
+`RefBundle.size_bytes()` and `RefBundle.num_rows()` (today both walk
+each block's metadata) become direct sums of the inline scalars. No
+dereference, no `ray.get`.
+
+### 1e. Lazy metadata access for stats / lineage consumers
+
+The 68 production sites that read `bundle.metadata.*` fall into two
+groups:
+
+- **Scheduler hot path (read scalars):** `size_bytes`, `num_rows`.
+  After this RFC: direct field reads, no `ray.get`.
+- **Stats / lineage consumers (read non-scalar fields):**
+  `exec_stats`, `task_exec_stats`, `input_files`. After this RFC: pay
+  a `ray.get` on `_meta_ref` when accessing — but this fires once per
+  op completion, not per block per scheduler iteration. Off the
+  scheduler thread.
+
+Examples:
+- `map_operator._output_blocks_stats.extend(to_stats(bundle.metadata))`
+  fires when the op finishes producing — one batched
+  `ray.get(meta_refs)` materializes all the metadata at once.
+- `input_data_buffer` reads `input_files` once at op construction; one
+  `ray.get` per op.
+- Per-block scheduler-loop logging (which currently reads
+  `metadata.num_rows` / `metadata.size_bytes` for progress bar
+  updates) — already covered by the scalar fields.
+
+### 1f. Schema delivery
+
+`RefBundle.schema` is today populated by the scheduler when it
+`pickle.loads`-es the `BlockMetadataWithSchema` payload. With the
+metadata fetch deferred, schema needs another delivery path. Options:
+
+1. **Worker yields schema once per task** (in the gen protocol, as a
+   fourth optional inline value before the first block). The scheduler
+   caches it per-task / per-op; subsequent yields don't repeat it.
+   Schema is identical across all blocks of a single map task, so a
+   single inline yield amortizes naturally.
+2. **Fetch on-demand from the first block's `meta_ref`.** Downstream
+   ops that need schema validation pay one `ray.get` at op-bind time;
+   subsequent blocks reuse the cached schema.
+
+Option 1 is cleaner if we're already changing the gen protocol for
+`num_rows`. See open questions.
+
+### Per-call `ray.get` fallback (error path only)
 
 `on_data_ready` keeps a per-ref `ray.get(meta_ref)` + `GetTimeoutError`
-warning as a cache-miss fallback. The fallback runs when:
-
-1. The batched `ray.get` raised `GetTimeoutError` and no bytes were
-   cached for the iteration — falls through to per-ref so the worker
-   crash / node preemption surfaces with the standard warning and
-   retry-next-iteration semantics.
-2. `on_data_ready` was called outside `process_completed_tasks` (tests,
-   debugging) with no `bytes_by_meta_ref`.
+warning as a fallback for the rare case the Core size primitive
+returns `None` (Open Questions item 1) — falls through to the
+pre-refactor behavior with the standard per-ref warning and
+retry-next-iteration semantics. In the steady-state happy path this
+fallback is dead code; it exists for diagnostic visibility when
+something has gone wrong upstream.
 
 A convenience `fetch_and_drain(max_bytes_to_read)` wraps `peek` +
 `on_data_ready` for direct callers (tests).
 
 ### Expected impact (data path)
 
-Prototype measurements on the wide-schema `worker_scaling` matrix:
+Pre-refactor py-spy breakdown for `on_data_ready` (5000_tasks):
 
-| variant     | master | this RFC (data path only) | reduction | speedup |
-| ----------- | -----: | --: | --: | --: |
-| 500_actors  |  0.89 s|  0.69 s | 22.9 % | 1.30× |
-| 500_tasks   |  2.40 s|  1.58 s | 34.3 % | 1.52× |
-| 1000_actors |  1.69 s|  1.28 s | 24.6 % | 1.33× |
-| **1000_tasks** |  6.58 s|  3.72 s | **43.4 %** | **1.77×** |
-| 2000_actors |  3.19 s|  2.33 s | 26.9 % | 1.37× |
-| 2000_tasks  | 14.63 s|  8.96 s | 38.8 % | 1.63× |
-| 5000_actors |  9.83 s|  8.75 s | 11.0 % | 1.12× |
-| 5000_tasks  | 33.61 s| 28.69 s | 14.6 % | 1.17× |
+| frame                              | inclusive | what it is |
+| --- | ---: | --- |
+| `on_data_ready` (total)            | 294 s |  |
+|   `ray.get_objects` (leaf)         | 164 s | per-pair `ray.get(meta_ref)` |
+|   `pickle.loads` (metadata)        |  ~25 s| deserialize `BlockMetadataWithSchema` |
+|   `Schema.__setstate__` etc.       |  ~10 s| schema deserialize on cache miss |
+|   `RefBundle` construction + emit  |  ~15 s| `_output_ready_callback` + bookkeeping |
+|   loop overhead                    |  ~80 s| `_next_sync` gen pulls, queue mgmt |
 
-Two observations from the py-spy breakdowns:
+After this RFC, the scheduler thread does:
 
-- **Wins peak at 1000–2000 workers.** Per-call `ray.get` overhead was
-  the binding constraint there; `on_data_ready` inclusive share drops
-  from 42–49 % to 4–35 % after batching.
-- **Dampens at 5000 workers.** The batched `ray.get(5000 refs)` fans out
-  to all 358 nodes and blocks on the slowest ref; `get_objects` leaf time
-  actually *grows* for the tasks variant (164 s → 218 s). The dispatch
-  side starts to dominate — Part 2 below.
+- `ray.experimental.get_object_sizes(block_refs)` — cheap local lookup.
+- Queue pops + `RefBundle` construction.
+- `bytes_read += size_bytes` (scalar).
 
-Cost: `peek_pending_pair` adds 2-3 % of scheduler-thread time across all
-variants. Small price for the batching infrastructure.
+**No `ray.get`, no `pickle.loads`, no schema deserialize.** Projected
+`on_data_ready`:
+
+| variant     | master `on_data_ready` | projected | reduction |
+| ----------- | ---: | ---: | ---: |
+| 1000_tasks  |  40 s |  ~3 s | ~92 % |
+| 2000_tasks  |  87 s |  ~6 s | ~93 % |
+| 5000_tasks  | 294 s | ~20 s | ~93 % |
+
+The savings concentrate at scale (more pairs ingested per iteration =
+more avoided `ray.get`s).
+
+Cost paid elsewhere: stats / lineage paths now do an extra `ray.get`
+per op completion. For a topology of ~3 ops, that's 3 `ray.get` calls
+per dataset, batched. Negligible compared to the per-pair savings —
+and these run off the scheduler thread.
 
 ## Part 2: Control path — push, don't poll
 
@@ -396,32 +502,38 @@ Each part attacks a different cost; they compose.
 
 | 5000_tasks scheduler thread | today | + Part 1 | + Parts 1 & 2 |
 | --- | ---: | ---: | ---: |
-| `process_completed_tasks`  | 315 s |  ~280 s | ~280 s   |
+| `process_completed_tasks`  | 315 s |  ~40 s  | ~40 s   |
 | `update_usages`            | 110 s |  ~110 s |  ~30 s   |
 | `dispatch_next_task`       | 120 s |  ~120 s | ~120 s   |
-| **Total**                  | ~600 s| ~580 s | **~500 s** |
+| `safe_round` (leaf)        |  ~46 s|   ~46 s |   <5 s  |
+| **Total scheduler thread** | ~600 s| ~320 s | **~200 s** |
 
-The data-path win is concentrated in mid-range scale (1000-2000 workers,
-where `on_data_ready` dominates); the control-path win is concentrated
-at the high end (5000+ workers, where `update_usages` dominates).
-Together they cover the whole scaling range.
+The data-path win is dramatic at every scale once the per-pair
+`ray.get` and pickle-loads are out of the hot path. The control-path
+win compounds at the high end where `update_usages` dominates after
+the data side shrinks. Together: an estimated **3× reduction in total
+scheduler-thread time** at 5000 workers.
 
 For `max_scheduling_loop` (the metric users actually feel), prototype
-data-path measurements show 1.3-1.77× reduction at 500-2000 workers,
-dampening to 1.12-1.17× at 5000. Adding the control-path refactor should
-restore the win at 5000 — projected combined 1.3-1.5× on the tasks
-variant and 1.4× on the actors variant.
+batched-`ray.get` measurements (without deferred metadata) showed
+1.3-1.77× reduction at 500-2000 workers, dampening to 1.12-1.17× at
+5000. With deferred metadata + push-model resource accounting, the
+projected combined improvement is **1.5-2.5× across the whole
+scaling range**, with the largest absolute savings at 5000 workers.
 
 ## Scope
 
-### Part 1: data path (~500 LoC)
+### Part 1: data path (~600-800 LoC)
 
 | file | changes |
 | --- | --- |
-| Ray Core API surface for per-ref size (exact shape TBD with Core team) | exposes the cheap, reliable size lookup that Part 1 depends on |
-| `data/_internal/execution/interfaces/physical_operator.py` | `DataOpTask` switches from scalar `_pending_*_ref` to queue + partial; new `peek_pending_pair` + drainable semantics; `on_data_ready` takes `bytes_by_meta_ref` dict; per-ref fallback for cache miss; `fetch_and_drain` convenience |
-| `data/_internal/execution/streaming_executor_state.py` | `process_completed_tasks` runs the 5-step flow above |
-| `data/tests/test_streaming_executor.py` + `tests/util.py` | tests updated to new `on_data_ready` signature; new tests for peek-drain + size-aware trim + cache-miss fallback |
+| Ray Core API surface for per-ref `size_bytes` (exact shape TBD with Core team) | exposes the cheap, reliable size lookup |
+| Streaming-generator protocol contract (Ray Data internal) | adds inline `num_rows` (and optionally schema) to the yield sequence; updates the workers that produce blocks for `DataOpTask` (map, read, etc.) |
+| `data/_internal/execution/interfaces/ref_bundle.py` | `RefBundle.blocks` becomes `Tuple[BlockEntry, ...]`; `BlockEntry` carries inline `size_bytes` + `num_rows` + opaque `_meta_ref` + lazy `metadata` property |
+| `data/_internal/execution/interfaces/physical_operator.py` | `DataOpTask` queue becomes `Deque[(block_ref, num_rows, meta_ref)]`; `peek_pending_pair` drainable; `on_data_ready` does scalar-only emit, no `ray.get` in steady state |
+| `data/_internal/execution/streaming_executor_state.py` | `process_completed_tasks` no longer batches `ray.get` on metadata |
+| Stats / lineage call sites that read `bundle.metadata.exec_stats` etc. | migrate to the lazy `BlockEntry.metadata` accessor; ideally batch their own `ray.get` over many entries at op-completion time |
+| `data/tests/test_streaming_executor.py` + `tests/util.py` | tests updated to the new `RefBundle` layout and gen protocol; new tests for inline `num_rows` delivery + lazy metadata access |
 
 ### Part 2: control path (~300-600 LoC)
 
@@ -439,30 +551,44 @@ variant and 1.4× on the actors variant.
 
 Both parts are independent. Suggested order:
 
-1. **Part 1 first.** Self-contained, measured wins, smaller blast radius
-   (touches the data-fetch path, not the resource manager). Lands as its
-   own PR with the queue-based `DataOpTask`; depends on the Core size
-   primitive landing first.
-2. **Part 2 follow-up.** Separate review attention (touches every op
-   subclass that overrides `*_logical_usage`); benefits from Part 1's
-   release-test measurements to baseline against.
+1. **Ray Core size primitive first.** Part 1 depends on it; landing it
+   first unblocks the Data-side work and lets us validate
+   reliability on the streaming-gen use case before relying on it.
+2. **Part 1 (data path).** Streaming-gen protocol change + `RefBundle`
+   layout + `DataOpTask` queue + lazy `BlockEntry.metadata`. Lands as
+   its own PR.
+3. **Part 2 (control path).** Independent of Parts 1 and the Core
+   primitive. Could land before Part 1 if convenient.
 
-Either can ship without the other. If Part 2's op-subclass migration runs
-long, Part 1 carries most of the mid-range win in production while Part 2
-lands incrementally.
+Either Data-side part can ship without the other. If Part 2's
+op-subclass migration runs long, Part 1 carries most of the wide-schema
+wins in production while Part 2 lands incrementally.
 
 ## Alternatives considered
 
 ### Data path
 
+- **Batched `ray.get` of metadata in `process_completed_tasks`** — keep
+  fetching metadata in the scheduler thread but collapse N small
+  `ray.get` calls into one batched call per scheduler iteration. This
+  was the earlier shape of the same proposal and a measured prototype
+  showed 1.3-1.77× max-loop reduction at 500-2000 workers, dampening
+  to 1.12-1.17× at 5000.
+  - *Pros:* no Ray Core dependency (uses existing `ray.get`); no
+    streaming-gen protocol change; existing `RefBundle` layout
+    preserved.
+  - *Cons:* metadata fetch is still on the scheduler thread, just
+    batched. At 5000 workers the batched call itself becomes the
+    bottleneck (one slow ref blocks the whole call; `get_objects` leaf
+    time *grows* — measured 164 s → 218 s for tasks variant). Solves
+    the per-call overhead, doesn't solve the "metadata is on the
+    critical path at all" question. Adds cross-iteration cache state to
+    handle over-fetch.
 - **Per-pair `ray.get` with smaller fixed overhead** — would require
   Ray Core changes to the `ray.get` codepath; large blast radius for
   a marginal improvement.
-- **Streaming generator protocol change** to yield `(block_ref, size,
-  meta_ref)` triples — biggest API surface change; requires every Ray
-  Data task generator to comply.
 - **Hard cap on batch size** (`MAX_REFS_PER_BATCH=256`) — bounds the
-  blast radius but doesn't make the fetch budget-aware.
+  blast radius but still fetches metadata on the scheduler thread.
 
 ### Control path
 
@@ -489,15 +615,28 @@ lands incrementally.
 ## Risks
 
 ### Part 1
-1. **Batched `ray.get` stragglers.** One slow ref blocks the whole
-   batched call. Mitigation: per-ref fallback inside `on_data_ready`
-   handles `GetTimeoutError`. As a future-future tweak, cap the batch
-   size at ~1000 refs.
-2. **Dependence on the Ray Core size primitive being reliable.** If
-   the assumed `get_object_sizes` ever returns stale or missing
-   values for streaming-gen owned refs, the size-aware trim degrades
-   (we'd over- or under-fetch metadata). Mitigation: see "Open
-   questions" — Core team to specify the guaranteed-reliable surface.
+1. **Streaming-gen protocol change is invasive.** Every task generator
+   that participates in `DataOpTask` (map, read, hash-shuffle, ...)
+   has to yield the new three-tuple instead of the pair. Mitigation:
+   make the inline `num_rows` optional initially — `peek_pending_pair`
+   tolerates pairs (the old shape) and falls back to `ray.get` on the
+   meta_ref to obtain `num_rows`. Migrate generators one at a time,
+   measure each.
+2. **Lazy metadata fetch shifts cost to consumers.** Stats / lineage
+   paths now pay a `ray.get` per `meta_ref`. Mitigation: most
+   consumers operate on whole bundles at op-completion time, so they
+   can batch their own `ray.get(meta_refs)`. The total work is no
+   higher than before — it's just off the scheduler thread.
+3. **Dependence on the Ray Core size primitive being reliable.** If
+   the assumed cheap `size_bytes` lookup ever returns stale or missing
+   values for streaming-gen owned refs, the scheduler hot path falls
+   through to `ray.get(meta_ref)` to recover `size_bytes`. Mitigation:
+   see "Open questions" — Core team to specify the guaranteed-reliable
+   surface.
+4. **Schema delivery without metadata fetch.** Two options sketched in
+   1f; the gen-protocol option is preferred but adds yet another
+   inline value. Mitigation: prototype both, measure which is
+   cleaner.
 
 ### Part 2
 1. **Cache drift.** Any future code path that mutates op state without
@@ -518,12 +657,24 @@ lands incrementally.
 ## Open questions
 
 - **For the Ray Core team:** what is the right Core-side surface for
-  cheap, no-RPC, reliably-populated per-ref byte size? Part 1's
-  size-aware trim depends on this primitive existing and returning
-  real values (not `None`/stale) at the moment the streaming
-  generator surfaces a ref to the driver. The Python entry point and
-  the underlying implementation are both Core-team decisions; this
-  RFC assumes the result.
+  cheap, no-RPC, reliably-populated per-ref `size_bytes`? Part 1
+  assumes such a primitive exists and is reliable for streaming-gen
+  owned refs at the moment the driver receives the ref. The Python
+  entry point and the underlying implementation are both Core-team
+  decisions; this RFC assumes the result.
+- **Schema delivery without scheduler-thread `ray.get`:** option 1
+  (worker yields schema once per task in the gen protocol) or option
+  2 (lazy fetch from the first block's `meta_ref` at op-bind time)?
+  Pick one before implementation.
+- **Lazy `BlockEntry.metadata` access pattern:** should the stats /
+  lineage consumers batch their `ray.get` over all of an op's blocks
+  at op-completion time, or fetch per-block as needed? Probably
+  batched-at-completion for efficiency; needs an explicit code-style
+  recommendation.
+- **`BlockEntry` shape:** dataclass with named fields, or just a
+  four-tuple `(block_ref, size_bytes, num_rows, meta_ref)`? Dataclass
+  is clearer; tuple is cheaper to construct. Hot path, so possibly
+  tuple.
 - Should `_cached_logical_usage` be a single `ExecutionResources` or
   four separate scalar fields (cpu / gpu / memory / obj_store)?
   Constructors are the bottleneck, so probably scalars;
@@ -533,9 +684,6 @@ lands incrementally.
 - Backwards compatibility: maintain old method signatures
   (`current_logical_usage()` etc.) indefinitely as cached-value
   readers, or deprecate them?
-- For Part 1: cap batch size at a constant `MAX_REFS_PER_BATCH` or
-  size-aware "fetch only what fits ~B bytes of cumulative metadata"?
-  Latter avoids straggler effects without per-iteration count caps.
 
 ## Out of scope
 
