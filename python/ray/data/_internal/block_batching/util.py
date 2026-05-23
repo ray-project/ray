@@ -3,7 +3,19 @@ import functools
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
+import pyarrow as pa
 
 import ray
 from ray.actor import ActorHandle
@@ -19,6 +31,28 @@ from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+
+def deepcopy_array(array: Union[pa.ChunkedArray, pa.Array]) -> pa.Array:
+    """Deepcopy an Arrow array.
+
+    `pa.concat_arrays` copies the input arrays into a new array buffer.
+
+    This utility can be used to sever references to the original buffers
+    and allows them to be freed. See https://github.com/apache/arrow/issues/38806.
+
+    For example, consider a pyarrow table in shared memory that contains many columns.
+    If we keep a column view of the table around as metadata, even though all
+    other columns are no longer referenced, the table would not be freed.
+    If we deepcopy the column instead, the original table can be freed earlier.
+    """
+    chunks = array.chunks if isinstance(array, pa.ChunkedArray) else [array]
+
+    if len(chunks) == 0:
+        return pa.array([], type=array.type)
+
+    return pa.concat_arrays(chunks)
+
 
 I = TypeVar("I")
 O = TypeVar("O")
@@ -85,6 +119,15 @@ def resolve_block_refs(
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
+
+        # EXPERIMENT: heap-copy to unpin object store shared memory.
+        if isinstance(block, pa.Table):
+            block = pa.table(
+                [deepcopy_array(col) for col in block.columns],
+                names=block.column_names,
+            )
+        del block_ref
+
         yield block
 
     if stats:

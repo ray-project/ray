@@ -382,10 +382,18 @@ class ResourceManager:
             verbose = LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE
 
         if verbose:
-            usage_str += (
-                f" (in={memory_string(self.get_mem_op_internal(op))},"
-                f"out={memory_string(self.get_mem_op_outputs(op))})"
-            )
+            if self._has_external_consumer:
+                usage_str += (
+                    f" (in={memory_string(self.get_mem_op_internal(op))},"
+                    f"out={memory_string(self.get_mem_op_outputs(op))},"
+                    f"external_consumer={memory_string(self.get_external_consumer_bytes())})"
+                )
+            else:
+                usage_str += (
+                    f" (in={memory_string(self.get_mem_op_internal(op))},"
+                    f"out={memory_string(self.get_mem_op_outputs(op))})"
+                )
+
             if self._op_resource_allocator is not None:
                 allocation = self._op_resource_allocator.get_allocation(op)
                 if allocation:

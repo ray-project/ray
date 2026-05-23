@@ -239,7 +239,7 @@ class BatchIterator:
             fn=self._pipeline,
             num_workers=1,
             preserve_ordering=False,
-            buffer_size=max(self._prefetch_batches, 1),
+            buffer_size=1,  # EXPERIMENT: minimize untracked ObjectRef buffering
         )
 
         self.before_epoch_start()
