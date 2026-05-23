@@ -470,15 +470,9 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id) << "Getting actor info";
 
-  const auto &registered_actor_iter = registered_actors_.find(actor_id);
-  if (registered_actor_iter != registered_actors_.end()) {
-    *reply->mutable_actor_table_data() =
-        registered_actor_iter->second->GetActorTableData();
-  } else {
-    const auto &observability_iter = destroyed_actor_observability_data_.find(actor_id);
-    if (observability_iter != destroyed_actor_observability_data_.end()) {
-      *reply->mutable_actor_table_data() = observability_iter->second.actor_table_data;
-    }
+  const auto *actor_table_data = GetActorTableData(actor_id);
+  if (actor_table_data != nullptr) {
+    *reply->mutable_actor_table_data() = *actor_table_data;
   }
 
   RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
@@ -534,19 +528,18 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
       *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
 
-    for (const auto &[id, entry] : destroyed_actor_observability_data_) {
+    for (const auto &[id, actor_table_data] : destroyed_actor_observability_data_) {
       if (count >= limit) {
         break;
       }
       // With filters, skip the actor if it doesn't match the filter.
-      if (request.has_filters() &&
-          !filter_fn(request.filters(), entry.actor_table_data)) {
+      if (request.has_filters() && !filter_fn(request.filters(), actor_table_data)) {
         ++num_filtered;
         continue;
       }
 
       count += 1;
-      *reply->add_actor_table_data() = entry.actor_table_data;
+      *reply->add_actor_table_data() = actor_table_data;
     }
     reply->set_num_filtered(num_filtered);
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
@@ -1783,13 +1776,9 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      // Rehydrate dead actors directly into the lightweight observability cache
-      // instead of constructing a full GcsActor we'd immediately discard.
-      // Bump the DEAD counter so the actor_by_state_gauge reflects rehydrated
-      // dead actors after a GCS restart — preserves the cumulative-deaths
-      // semantic.
-      destroyed_actor_observability_data_.emplace(
-          actor_id, ActorObservabilityData{actor_table_data});
+      // Populate the observability cache from persisted dead actors.
+      // Bump the DEAD counter to preserve the number of cumulative deaths.
+      destroyed_actor_observability_data_.emplace(actor_id, actor_table_data);
       actor_state_counter_->Increment(
           {rpc::ActorTableData::DEAD, actor_table_data.class_name()});
       sorted_destroyed_actor_observability_list_.emplace_back(
@@ -1959,8 +1948,7 @@ void GcsActorManager::AddDestroyedActorObservabilityData(const GcsActor &actor) 
   }
 
   const auto &actor_id = actor.GetActorID();
-  if (destroyed_actor_observability_data_
-          .emplace(actor_id, ActorObservabilityData{actor.GetActorTableData()})
+  if (destroyed_actor_observability_data_.emplace(actor_id, actor.GetActorTableData())
           .second) {
     sorted_destroyed_actor_observability_list_.emplace_back(
         actor_id, static_cast<int64_t>(actor.GetActorTableData().timestamp()));
@@ -2001,7 +1989,7 @@ const rpc::ActorTableData *GcsActorManager::GetActorTableData(
   }
   auto dead_it = destroyed_actor_observability_data_.find(actor_id);
   if (dead_it != destroyed_actor_observability_data_.end()) {
-    return &dead_it->second.actor_table_data;
+    return &dead_it->second;
   }
   return nullptr;
 }

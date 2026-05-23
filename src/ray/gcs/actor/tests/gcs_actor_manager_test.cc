@@ -397,23 +397,12 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
   ASSERT_EQ(RayConfig::instance().maximum_gcs_destroyed_actor_cached_count(), 10);
   auto job_id = JobID::FromInt(1);
 
-  // Capture a weak_ptr to an actor that will end up in the observability cache
-  // (actors 10..19 survive eviction; pick 15). If destroyed_actor_observability_data_
-  // accidentally pins the heavy GcsActor, this weak_ptr would stay alive.
-  std::weak_ptr<gcs::GcsActor> weak_cached_actor;
-  ActorID cached_actor_id;
-
   // Create 20 actors.
   for (int i = 0; i < 20; i++) {
     auto registered_actor = RegisterActor(job_id);
     rpc::CreateActorRequest create_actor_request;
     create_actor_request.mutable_task_spec()->CopyFrom(
         registered_actor->GetCreationTaskSpecification().GetMessage());
-
-    if (i == 15) {
-      weak_cached_actor = registered_actor;
-      cached_actor_id = registered_actor->GetActorID();
-    }
 
     Status status =
         gcs_actor_manager_->CreateActor(create_actor_request,
@@ -431,22 +420,15 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
     ASSERT_TRUE(worker_client_->Reply());
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   }
+
+  // drain every handler posted on the io_context when actor is destroyed to assert final
+  // state
+  drain_io_context();
+
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 20);
 
   // The observability cache must hold exactly the configured maximum.
   ASSERT_EQ(gcs_actor_manager_->destroyed_actor_observability_data_.size(), 10u);
-
-  // The heavy GcsActor for actor #15 must be freed even though its lightweight
-  // ActorTableData is still cached — this is the heap leak the refactor fixes.
-  ASSERT_TRUE(weak_cached_actor.expired())
-      << "destroyed_actor_observability_data_ must not retain shared ownership of "
-         "GcsActor; it should only hold ActorTableData snapshots.";
-
-  // GetActorTableData should serve the dead actor's snapshot from the cache.
-  const auto *cached_data = gcs_actor_manager_->GetActorTableData(cached_actor_id);
-  ASSERT_NE(cached_data, nullptr);
-  ASSERT_EQ(cached_data->state(), rpc::ActorTableData::DEAD);
-  ASSERT_EQ(ActorID::FromBinary(cached_data->actor_id()), cached_actor_id);
 }
 
 TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {

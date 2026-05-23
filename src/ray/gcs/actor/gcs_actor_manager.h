@@ -94,15 +94,6 @@ namespace gcs {
 class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
                         public std::enable_shared_from_this<GcsActorManager> {
  public:
-  /// Lightweight observability snapshot of a destroyed actor. Holds only the
-  /// fields needed by `ray list actors` / dashboard / state API and by death-cause
-  /// helpers that operate on ActorTableData. Replaces caching a full
-  /// `shared_ptr<GcsActor>`, whose `task_spec_`/`lease_spec_` which may use a lot of
-  /// memory.
-  struct ActorObservabilityData {
-    rpc::ActorTableData actor_table_data;
-  };
-
   /// Create a GcsActorManager
   ///
   /// \param scheduler Used to schedule actor creation tasks.
@@ -472,8 +463,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// `ActorTableData` (not the full `GcsActor` with `task_spec_`/`lease_spec_`)
   /// so that the heavy heap state is freed when `registered_actors_` releases
   /// its `shared_ptr`.
-  absl::flat_hash_map<ActorID, ActorObservabilityData>
-      destroyed_actor_observability_data_;
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> destroyed_actor_observability_data_;
   /// The actors are sorted according to the timestamp, and the oldest is at the head of
   /// the list.
   std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_observability_list_;
