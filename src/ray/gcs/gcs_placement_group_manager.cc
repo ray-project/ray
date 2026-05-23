@@ -737,6 +737,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         // assignments and retry on a fresh selection. The manager here is just
         // responsible for rescheduling; clearing the assignments is handled by
         // ScheduleUnplacedBundles within the scheduler.
+        // TODO(#61777): extend once nested topology levels are supported.
         if (iter->second->AllUnplacedBundles() &&
             iter->second->GetTopologyStrategyKeys(/*level=*/0).has_value()) {
           auto infeasible_pg_iter =

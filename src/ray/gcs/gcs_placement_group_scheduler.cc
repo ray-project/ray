@@ -62,6 +62,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   // the topology assignments so new values can be selected. If only some bundles
   // are unplaced (partial failure), we attempt to reschedule onto the same
   // assignments.
+  // TODO(#61777): extend once nested topology levels are supported.
   if (placement_group->AllUnplacedBundles() &&
       placement_group->GetTopologyStrategyKeys(0).has_value()) {
     placement_group->ClearTopologyAssignments();
@@ -106,6 +107,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
+  // TODO(#61777): extend once nested topology levels are supported.
   if (scheduling_result.selected_label_domain.has_value()) {
     const auto &[label_domain_key, label_domain_value] =
         *scheduling_result.selected_label_domain;
@@ -496,6 +498,7 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
   std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
   // Currently, take the first non-node-id key as the label domain the scheduler should
   // pin to.
+  // TODO(#61777): extend once nested topology levels are supported.
   std::optional<std::vector<std::string>> topology_keys =
       placement_group.GetTopologyStrategyKeys(/*level=*/0);
   if (topology_keys.has_value()) {
