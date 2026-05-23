@@ -686,7 +686,7 @@ class TestClusterAutoscaling:
 
         expected_message = (
             "The utilization of one or more logical resource is higher than the "
-            "specified threshold of 75%: CPU=100%, GPU=100%, memory=0%, "
+            "specified threshold of 50%: CPU=100%, GPU=100%, memory=0%, "
             "object_store_memory=100%. Requesting 1 node(s) of each shape: "
             "[{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
         )

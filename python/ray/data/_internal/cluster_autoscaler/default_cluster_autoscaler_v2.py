@@ -105,7 +105,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
       * Check the average cluster utilization (CPU and memory)
         in a time window (by default 10s). If the utilization is above a threshold (by
-        default 0.75), send a request to Ray's autoscaler to scale up the cluster.
+        default 0.50), send a request to Ray's autoscaler to scale up the cluster.
       * Unlike previous implementation, each resource bundle in the request is a node
         resource spec, rather than an `incremental_resource_usage()`. This allows us
         to directly scale up nodes.
@@ -113,10 +113,15 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         termination.
     """
 
-    # Default cluster utilization threshold to trigger scaling up.
+    # Default cluster utilization threshold to trigger scaling up. V2 read
+    # tasks have transient working memory not reflected in observed
+    # utilization, so scaling at 0.75 lands too late on autoscaling clusters
+    # — by the time CPU/memory hit 75%, the few startup nodes are already
+    # over-committed by the unaccounted transient. 0.50 gives the autoscaler
+    # enough lead time to grow the cluster before nodes saturate.
     DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = env_float(
         "RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD",
-        0.75,
+        0.50,
     )
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = env_integer(
