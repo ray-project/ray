@@ -15,9 +15,9 @@ from urllib.request import urlopen
 import sphinx
 from docutils import nodes
 from jinja2.filters import FILTERS
-from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
+from sphinx.util.matching import compile_matchers
 
 DEFAULT_API_GROUP = "Others"
 
@@ -78,7 +78,52 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
+    "sphinx_llms_txt",
+    "sphinxext.opengraph",
 ]
+
+# -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
+
+llms_txt_summary = (
+    "Ray is an open-source unified compute framework for scaling AI and "
+    "Python workloads, including data processing, model training, model "
+    "serving, hyperparameter tuning, and reinforcement learning. The full "
+    "documentation lives at https://docs.ray.io/."
+)
+
+# Filter low-signal pages from llms-full.txt. Auto-generated API reference
+# pages (one per public class/method) are excluded because they would
+# dominate the corpus with autodoc boilerplate. Mirrors the directories in
+# `remove_from_toctrees` below. Agents needing specific API details can
+# fetch per-page markdown twins via Read the Docs' Markdown for Agents
+# content negotiation. Tuning of this list is tracked separately.
+llms_txt_exclude = [
+    "search",
+    "genindex",
+    "404",
+    "_TableOfContents",
+    "cluster/running-applications/job-submission/doc/*",
+    "ray-observability/reference/doc/*",
+    "ray-core/api/doc/*",
+    "data/api/doc/*",
+    "train/api/doc/*",
+    "tune/api/doc/*",
+    "serve/api/doc/*",
+    "rllib/package_ref/*",
+]
+
+# Exclude Jupyter notebooks from llms-full.txt. sphinx-llms-txt reads each
+# docname's source verbatim from `_sources/`, so for `.ipynb` pages it
+# appends raw notebook JSON (cells, outputs, embedded base64 images) into
+# the corpus. `llms_txt_exclude` matches docnames (extension stripped) via
+# fnmatch, so a `**/*.ipynb` pattern can't work — we enumerate each
+# notebook's docname instead. Notebooks remain fully rendered in the HTML
+# build; only the agent corpus drops them.
+_conf_dir = pathlib.Path(__file__).parent
+llms_txt_exclude += sorted(
+    p.relative_to(_conf_dir).with_suffix("").as_posix()
+    for p in _conf_dir.rglob("*.ipynb")
+)
 
 # -- sphinx-collections: pull external template files at build time -----------
 
@@ -96,7 +141,7 @@ def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
-    with urlopen(api_url) as resp:
+    with urlopen(api_url, timeout=30) as resp:
         data = json.loads(resp.read())
     url = data["url"]
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
@@ -117,7 +162,7 @@ def _fetch_and_extract_zip(config):
         shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
     logger.info("sphinx-collections: downloading %s -> %s", url, target)
-    with urlopen(url) as resp:
+    with urlopen(url, timeout=30) as resp:
         zip_bytes = io.BytesIO(resp.read())
     with zipfile.ZipFile(zip_bytes) as zf:
         zf.extractall(target)
@@ -251,6 +296,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
 sitemap_url_scheme = "{link}"
+
+# sphinxext-opengraph: emit Open Graph metadata per page. Pin `ogp_site_url`
+# to `html_baseurl` so the `og:url` tag tracks the same canonical URL as
+# Sphinx's `<link rel="canonical">`. If `ogp_site_url` were left unset, the
+# extension would fall back to Read the Docs' `READTHEDOCS_CANONICAL_URL`
+# env var (set by RtD's Addons framework from the project's "Canonical
+# version" admin setting), which can diverge from `html_baseurl`. Per-page
+# `:og:description:` and `:og:image:` can still be set in individual files.
+ogp_site_url = html_baseurl
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
@@ -450,8 +504,8 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "pygment_light_style": "stata-dark",
-    "pygment_dark_style": "stata-dark",
+    "pygments_light_style": "stata-dark",
+    "pygments_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
         "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
@@ -730,6 +784,11 @@ def setup(app):
 
     app.connect('source-read', fix_collections_code_blocks)
 
+    app.add_config_value("ipython3_lexer_patterns", [], "env")
+    app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")
+    app.connect("config-inited", _compile_pattern_matchers)
+    app.connect("source-read", apply_ipython3_lexer)
+
 
 redoc = [
     {
@@ -814,17 +873,6 @@ for mock_target in autodoc_mock_imports:
         )
 
 
-class MockedClassDocumenter(autodoc.ClassDocumenter):
-    """Remove note about base class when a class is derived from object."""
-
-    def add_line(self, line: str, source: str, *lineno: int) -> None:
-        if line == "   Bases: :py:class:`object`":
-            return
-        super().add_line(line, source, *lineno)
-
-
-autodoc.ClassDocumenter = MockedClassDocumenter
-
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
@@ -869,6 +917,8 @@ intersphinx_mapping = {
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
 
+intersphinx_timeout = 15
+
 # Ray must not be imported in conf.py because third party modules initialized by
 # `import ray` will no be mocked out correctly. Perform a check here to ensure
 # ray is not imported by future maintainers.
@@ -876,6 +926,47 @@ assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
 
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
 os.environ["RAY_DOC_BUILD"] = "1"
+
+ipython3_lexer_patterns = [
+    # External templates fetched by sphinx_collections (see #62179) land here at
+    # build time; their notebook JSON has no language_info, so Sphinx defaults
+    # to the python3 lexer and chokes on !pip / %magic cells.
+    "_collections/**/*.ipynb",
+    "ray-overview/examples/**/content/**.ipynb",
+    "serve/tutorials/**/content/**.ipynb",
+    "data/examples/**/content/**.ipynb",
+    "tune/examples/**/content/**.ipynb",
+]
+ipython3_lexer_exclude_patterns = []
+
+
+def _compile_pattern_matchers(app, config):
+    app.ipython3_lexer_patterns = compile_matchers(
+        config.ipython3_lexer_patterns or []
+    )
+    app.ipython3_lexer_exclude_patterns = compile_matchers(
+        config.ipython3_lexer_exclude_patterns or []
+    )
+
+
+def apply_ipython3_lexer(app, docname, source):
+    """Force the ipython3 pygments lexer on notebooks matching
+    ``ipython3_lexer_patterns`` (minus ``ipython3_lexer_exclude_patterns``).
+
+    Sphinx + myst-nb otherwise default to the python3 lexer, which fails on
+    ``!shell`` and ``%magic`` cells and is fatal under Readthedocs ``-W``.
+    """
+    doc_source = app.env.doc2path(docname, base=False)
+    if not doc_source.endswith(".ipynb"):
+        return
+    if any(m(doc_source) for m in app.ipython3_lexer_exclude_patterns):
+        return
+    if not any(m(doc_source) for m in app.ipython3_lexer_patterns):
+        return
+
+    notebook = json.loads(source[0])
+    lang_info = notebook.setdefault("metadata", {}).setdefault("language_info", {})
+    if lang_info.get("pygments_lexer") != "ipython3":
+        lang_info["pygments_lexer"] = "ipython3"
+        source[0] = json.dumps(notebook, ensure_ascii=False)

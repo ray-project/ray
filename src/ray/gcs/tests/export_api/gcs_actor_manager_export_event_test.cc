@@ -24,7 +24,8 @@
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -38,6 +39,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -150,7 +152,7 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
+        /*get_time_ms=*/[this]() -> double { return clock_.NowUnixMicros(); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
@@ -183,7 +185,8 @@ class GcsActorManagerTest : public ::testing::Test {
         /*session_name=*/"",
         actor_by_state_gauge_,
         gcs_actor_by_state_gauge_,
-        observability_publisher_.get());
+        observability_publisher_.get(),
+        clock_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -264,6 +267,7 @@ class GcsActorManagerTest : public ::testing::Test {
     return promise.get_future().get();
   }
 
+  FakeClock clock_;
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;

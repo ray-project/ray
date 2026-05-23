@@ -195,6 +195,30 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
+    async def __serve_build_asgi_app__(self):
+        from fastapi import HTTPException
+
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ModelCard,
+            to_model_metadata,
+        )
+
+        app = await self.engine.build_asgi_app()
+
+        # vLLM's native ASGI app only exposes `GET /v1/models` (list); add
+        # `GET /v1/models/{id}` so direct-streaming clients can call
+        # `openai_client.models.retrieve(...)` like the OpenAiIngress path.
+        model_id = self._llm_config.model_id
+        model_card = to_model_metadata(model_id, self._llm_config)
+
+        @app.get("/v1/models/{model:path}", response_model=ModelCard)
+        async def _get_model(model: str):
+            if model != model_id:
+                raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
+            return model_card
+
+        return app
+
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):

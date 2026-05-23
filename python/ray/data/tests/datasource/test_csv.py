@@ -44,8 +44,8 @@ def test_csv_read(
     df = pd.concat([df1, df2], ignore_index=True)
     pd.testing.assert_frame_equal(df.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for block, meta in ds._execute().blocks:
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
 
     # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -93,8 +93,8 @@ def test_csv_roundtrip(
     ds2 = ray.data.read_csv(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._plan.execute().blocks:
-        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for block, meta in ds2._execute().blocks:
+        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
 
 
 def test_csv_read_invalid_format(ray_start_regular_shared, tmp_path):

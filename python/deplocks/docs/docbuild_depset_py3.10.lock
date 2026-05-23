@@ -710,9 +710,9 @@ ml-dtypes==0.5.4 \
     # via
     #   keras
     #   tensorflow
-myst-nb==1.0.0rc0 \
-    --hash=sha256:1e16ac04cdbc6bdb9e02dc16fc74925b48737c27c9f21a6bc7134116489fdeda \
-    --hash=sha256:3e778877f59c97452879a8bfb370afa77db14a8800f3e7de4dcaeb44f4230997
+myst-nb==1.4.0 \
+    --hash=sha256:0e2c86e7d3b82c3aa51383f82d6268f7714f3b772c23a796ab09538a8e68b4e4 \
+    --hash=sha256:c145598de62446a6fd009773dd071a40d3b76106ace780de1abdfc6961f614c2
     # via -r doc/requirements-doc.txt
 myst-parser==2.0.0 \
     --hash=sha256:7c36344ae39c8e740dad7fdabf5aa6fc4897a813083c6cc9990044eb93656b14 \
@@ -897,7 +897,6 @@ packaging==25.0 \
     # via
     #   ipykernel
     #   keras
-    #   pydata-sphinx-theme
     #   sphinx
     #   sphinx-collections
     #   tensorboard
@@ -1203,9 +1202,9 @@ pydantic-settings==2.2.1 \
     --hash=sha256:00b9f6a5e95553590434c0fa01ead0b216c3e10bc54ae02e37f359948643c5ed \
     --hash=sha256:0235391d26db4d2190cb9b31051c4b46882d28a51533f97440867f012d4da091
     # via autodoc-pydantic
-pydata-sphinx-theme==0.14.1 \
-    --hash=sha256:c436027bc76ae023df4e70517e3baf90cdda5a88ee46b818b5ef0cc3884aba04 \
-    --hash=sha256:d8d4ac81252c16a002e835d21f0fea6d04cf3608e95045c816e8cc823e79b053
+pydata-sphinx-theme==0.17.1 \
+    --hash=sha256:2cfc1d926c753c77039b7ee53f0ccebcbee5e81f0db61432b01cbb10ad7fd0af \
+    --hash=sha256:320b022d7808bdf5920d9a28e573f27aace9b23e1af6ca103eecc752411df492
     # via -r doc/requirements-doc.txt
 pygments==2.16.1 \
     --hash=sha256:13fc09fa63bc8d8671a6d247e1eb303c4b343eaee81d861f3404db2935653692 \
@@ -1633,9 +1632,11 @@ sphinx==7.3.7 \
     #   sphinx-design
     #   sphinx-docsearch
     #   sphinx-last-updated-by-git
+    #   sphinx-llms-txt
     #   sphinx-remove-toctrees
     #   sphinxcontrib-redoc
     #   sphinxemoji
+    #   sphinxext-opengraph
 sphinx-autobuild==2024.4.16 \
     --hash=sha256:1c0ed37a1970eed197f9c5a66d65759e7c4e4cba7b5a5d77940752bf1a59f2c7 \
     --hash=sha256:f2522779d30fcbf0253e09714f274ce8c608cb6ebcd67922b1c54de59faba702
@@ -1667,6 +1668,10 @@ sphinx-last-updated-by-git==0.3.8 \
     --hash=sha256:6382c8285ac1f222483a58569b78c0371af5e55f7fbf9c01e5e8a72d6fdfa499 \
     --hash=sha256:c145011f4609d841805b69a9300099fc02fed8f5bb9e5bcef77d97aea97b7761
     # via sphinx-sitemap
+sphinx-llms-txt==0.7.1 \
+    --hash=sha256:8f1cfcfe5897f5be118792f33f73eeb04cbbf66fc60c4c15982ec59252522263 \
+    --hash=sha256:b5cefec19d3fd56670aa4a28917d17d32b22c61a9feadbab8564ad11e932f5c0
+    # via -r doc/requirements-doc.txt
 sphinx-remove-toctrees==0.0.3 \
     --hash=sha256:1077ebc00652f8a896ce27404d31cb5bdde9eeaefc80ada72d95a7a0a7b99a9d \
     --hash=sha256:e4792cc4e5d25ceb1a44dd1490c45d578e6b36f1b1e385ede659e4c324b98cba
@@ -1705,6 +1710,10 @@ sphinxcontrib-serializinghtml==2.0.0 \
 sphinxemoji==0.3.2 \
     --hash=sha256:0fb07a95bca5960a3b312bc05b65b0c3040456414a076c363f4ecaf546c6e09e \
     --hash=sha256:814da89a9a7603b7e4d85c487c7381656fa83632f20065e5ed782ab1dbbb5083
+    # via -r doc/requirements-doc.txt
+sphinxext-opengraph==0.13.0 \
+    --hash=sha256:103335d08567ad8468faf1425f575e3b698e9621f9323949a6c8b96d9793e80b \
+    --hash=sha256:936c07828edc9ad9a7b07908b29596dc84ed0b3ceaa77acdf51282d232d4d80e
     # via -r doc/requirements-doc.txt
 sqlalchemy==2.0.44 \
     --hash=sha256:0765e318ee9179b3718c4fd7ba35c434f4dd20332fbc6857a5e8df17719c24d7 \
@@ -1813,9 +1822,9 @@ termcolor==3.3.0 \
     --hash=sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5 \
     --hash=sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5
     # via tensorflow
-tf-keras==2.20.0 \
-    --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
-    --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
+tf-keras==2.20.1 \
+    --hash=sha256:3f0e0a34d9a4c8758f24fdc1053e6e335f16ab5534c7d34f1899b8924779760c \
+    --hash=sha256:884be5938fb0b2b53b1583c1ae2b660ef87215377c29b5b6a77fd221b472aeaf
     # via -r doc/requirements-doc.txt
 toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
