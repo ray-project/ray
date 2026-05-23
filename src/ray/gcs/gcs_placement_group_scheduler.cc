@@ -496,7 +496,6 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
   std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
   // Currently, take the first non-node-id key as the label domain the scheduler should
   // pin to.
-  // TODO: extend once nested topology levels are supported.
   std::optional<std::vector<std::string>> topology_keys =
       placement_group.GetTopologyStrategyKeys(/*level=*/0);
   if (topology_keys.has_value()) {
