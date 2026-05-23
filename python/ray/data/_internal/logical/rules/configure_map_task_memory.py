@@ -95,9 +95,6 @@ class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
         # memory pressure scales with the size of the blocks it processes.
         if self._is_write_op(op):
             memory = op.metrics.average_bytes_inputs_per_task
-            # Fallback for the first task(s) before metrics are updated.
-            if memory is None and op.metrics.bytes_inputs_received > 0:
-                memory = float(op.metrics.bytes_inputs_received)
         else:
             memory = op.metrics.average_bytes_per_output
         return int(memory) if memory is not None else None
