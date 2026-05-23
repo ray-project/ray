@@ -264,10 +264,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     if (pg_data.topology_strategy_size() > 0) {
       const auto &entries = pg_data.topology_strategy(0).entries();
       if (!entries.empty()) {
-        // v1 invariant: at most one entry per level. ray.io/node-id is never
-        // stored in topology_strategy (it's folded into PlacementGroupSpec's
-        // `strategy` field on the Python side), so any entry here is a real
-        // topology label above the node level.
         const auto &[topology_label_key, _strategy] = *entries.begin();
 
         auto *locality_req = bundle_selector->mutable_locality_requirement();
