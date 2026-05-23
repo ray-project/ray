@@ -62,6 +62,7 @@ def _rewrite_iceberg_file(
     import time as _time
     import uuid as _uuid
 
+    import numpy as np
     import pyarrow as pa
     from pyiceberg.expressions import AlwaysTrue
     from pyiceberg.io.pyarrow import ArrowScan, _dataframe_to_data_files
@@ -73,9 +74,7 @@ def _rewrite_iceberg_file(
 
     # Cast target pulled from keys_ref once.  Applied per batch so PyArrow's join
     # doesn't raise ArrowInvalid on utf8/large_utf8 or similar width mismatches.
-    target_key_schema = pa.schema(
-        [keys_ref.schema.field(c) for c in upsert_cols]
-    )
+    target_key_schema = pa.schema([keys_ref.schema.field(c) for c in upsert_cols])
 
     record_batches = ArrowScan(
         table_metadata=table_metadata,
@@ -84,7 +83,7 @@ def _rewrite_iceberg_file(
         row_filter=AlwaysTrue(),
     ).to_record_batches(tasks=[file_scan_task])
 
-    preserved_batches: List["pa.Table"] = []
+    preserved_rows: Optional["pa.Table"] = None
     total_in_rows = 0
     total_preserved_rows = 0
     n_batches = 0
@@ -98,13 +97,19 @@ def _rewrite_iceberg_file(
 
         batch_keys = batch_table.select(upsert_cols).cast(target_key_schema)
 
-        idx_col = pa.array(range(len(batch_table)), type=pa.int64())
+        idx_col = pa.array(np.arange(len(batch_table), dtype=np.int64))
         preserved_keys = batch_keys.append_column("__row_idx__", idx_col).join(
             keys_ref, keys=upsert_cols, join_type="left anti"
         )
 
         if len(preserved_keys) > 0:
-            preserved_batches.append(batch_table.take(preserved_keys["__row_idx__"]))
+            new_rows = batch_table.take(preserved_keys["__row_idx__"])
+            if preserved_rows is None:
+                preserved_rows = new_rows
+            else:
+                preserved_rows = pa.concat_tables(
+                    [preserved_rows, new_rows], promote_options="permissive"
+                )
             total_preserved_rows += len(preserved_keys)
 
     t_read = _time.perf_counter()
@@ -135,9 +140,6 @@ def _rewrite_iceberg_file(
         logger.debug("[rewrite] %s: 0 rows matched -> untouched", file_name)
         return (None, [])
 
-    # promote_options="permissive" mirrors pyiceberg's own to_table() concat
-    # (pyiceberg/io/pyarrow.py) to tolerate per-batch schema drift (e.g. utf8 vs large_utf8).
-    preserved_rows = pa.concat_tables(preserved_batches, promote_options="permissive")
     # Derive a deterministic write_uuid from the source file path so that
     # task retries overwrite the same object rather than leaking orphan files.
     preserved_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
@@ -492,6 +494,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 memory=int(
                     task.file.file_size_in_bytes
                     * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+                    * 3  # Bump memory estimate to account for the anti-join and the preserved rows (also since to_record_batches materializes the entire table in memory, see https://github.com/apache/iceberg-python/issues/3036)
                 ),
                 num_cpus=1,
             ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
