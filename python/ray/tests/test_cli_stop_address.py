@@ -334,5 +334,26 @@ def test_ray_stop_address_resets_matching_current_cluster(monkeypatch):
     assert reset_calls == [True]
 
 
+def test_reaper_cmdline_matched_by_extract():
+    """Reaper tagged with --gcs-address should be picked up by Strategy 1."""
+    cmdline = [
+        sys.executable,
+        "-u",
+        "/some/path/ray_process_reaper.py",
+        "--gcs-address=10.0.0.1:6379",
+    ]
+    assert scripts._extract_gcs_address_from_cmdline(cmdline) == "10.0.0.1:6379"
+
+
+def test_reaper_cmdline_without_tag_not_matched():
+    """Untagged reaper (port=0 case) returns None — conservative skip."""
+    cmdline = [
+        sys.executable,
+        "-u",
+        "/some/path/ray_process_reaper.py",
+    ]
+    assert scripts._extract_gcs_address_from_cmdline(cmdline) is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

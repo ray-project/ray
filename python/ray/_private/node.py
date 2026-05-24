@@ -1022,7 +1022,21 @@ class Node:
         assert (
             not self.kernel_fate_share
         ), "a reaper should not be used with kernel fate-sharing"
-        process_info = ray._private.services.start_reaper(fate_share=False)
+        # Tag reaper cmdline with GCS address so `ray stop --address` can
+        # stop it together with the rest of the cluster.
+        # TODO(future-outlier): support --port=0. The reaper spawns before
+        # gcs_server binds the actual port, so we cannot know it here.
+        # Future options: (a) defer reaper start until after gcs_server bind
+        if self.head:
+            port = self._ray_params.port
+            gcs_address = (
+                build_address(self._ray_params.node_ip_address, port) if port else None
+            )
+        else:
+            gcs_address = self._ray_params.gcs_address
+        process_info = ray._private.services.start_reaper(
+            gcs_address=gcs_address, fate_share=False
+        )
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
