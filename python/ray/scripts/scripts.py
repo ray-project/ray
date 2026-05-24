@@ -1327,13 +1327,17 @@ def start(
 
 
 def _normalize_gcs_address(address: str) -> Tuple[Set[str], int]:
-    """Normalize a GCS address string to possible hosts and port.
+    """Normalize a GCS address string into a (hosts, port) form for matching.
 
-    Uses the same resolution as Ray (resolve_ip_for_localhost) so that
-    e.g. 127.0.0.1:6380 matches processes started with the node's primary IP.
-    Hostnames are resolved to their first getaddrinfo result because Slurm users
-    often pass hostnames while Ray process command lines store resolved IP
-    addresses. This avoids overmatching every IP on a multi-homed host.
+    The hosts set absorbs equivalent representations of the same address:
+    - localhost / 127.0.0.1 / ::1 are replaced with the node's primary IP
+      via resolve_ip_for_localhost, so addresses typed as localhost match
+      processes whose cmdline records the primary IP.
+    - The host is run through socket.getaddrinfo and all resolved IPs are
+      included, so a hostname matches whichever local IP a process is
+      bound to on a multi-homed host. Taking only the first result is
+      unreliable because resolver order (IPv4 vs IPv6, DNS round-robin,
+      /etc/hosts ordering) is not under our control.
 
     Args:
         address: GCS address string (e.g., "127.0.0.1:6379" or "localhost:6379").
@@ -1352,8 +1356,13 @@ def _normalize_gcs_address(address: str) -> Tuple[Set[str], int]:
     hosts = {host}
     try:
         addrinfo = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        if addrinfo:
-            hosts.add(addrinfo[0][4][0])
+        # socket.getaddrinfo returns 5-tuples (family, type, proto, canonname, sockaddr).
+        # sockaddr is (host, port) for IPv4 and (host, port, flowinfo, scope_id) for IPv6,
+        # so info[4][0] is the resolved IP string. Example:
+        #   [(AF_INET, SOCK_STREAM, 6, '', ('142.250.196.110', 80))]  -> '142.250.196.110'
+        # https://docs.python.org/3/library/socket.html#socket.getaddrinfo
+        for info in addrinfo:
+            hosts.add(info[4][0])
     except socket.gaierror as e:
         logger.debug("Failed to resolve GCS address host %s: %s", host, e)
     return hosts, port
@@ -1520,11 +1529,31 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     return None
 
 
-def _cmdline_matches_gcs_address(
-    cmdline: List[str],
-    target_address: str,
-    normalized_target_address: Optional[Tuple[Set[str], int]] = None,
-) -> bool:
+def is_same_gcs_address(address: str, target_address: str) -> bool:
+    """Check whether two GCS addresses refer to the same cluster.
+
+    Addresses are normalized so that equivalent forms (e.g., "localhost:6379"
+    and "127.0.0.1:6379") compare equal.
+
+    Args:
+        address: GCS address to test.
+        target_address: Reference GCS address to compare against.
+
+    Returns:
+        True if both addresses refer to the same cluster, False otherwise
+        (including when either address fails to parse).
+    """
+    try:
+        target_hosts, target_port = _normalize_gcs_address(target_address)
+        address_hosts, address_port = _normalize_gcs_address(address)
+        return target_port == address_port and not target_hosts.isdisjoint(
+            address_hosts
+        )
+    except Exception:
+        return False
+
+
+def _cmdline_matches_gcs_address(cmdline: List[str], target_address: str) -> bool:
     """Check if a process's command line matches the target GCS address.
 
     Address-filtered stop only matches processes whose command line exposes a
@@ -1535,7 +1564,6 @@ def _cmdline_matches_gcs_address(
     Args:
         cmdline: List of command line arguments.
         target_address: Target GCS address to match (e.g., "127.0.0.1:6379").
-        normalized_target_address: Precomputed target address normalization.
 
     Returns:
         True if the process belongs to the target cluster, False otherwise.
@@ -1543,33 +1571,7 @@ def _cmdline_matches_gcs_address(
     extracted_address = _extract_gcs_address_from_cmdline(cmdline)
     if extracted_address is None:
         return False
-
-    try:
-        target_hosts, target_port = normalized_target_address or _normalize_gcs_address(
-            target_address
-        )
-        extracted_hosts, extracted_port = _normalize_gcs_address(extracted_address)
-        return target_port == extracted_port and bool(target_hosts & extracted_hosts)
-    except Exception:
-        # If address parsing fails, don't match.
-        return False
-
-
-def is_same_gcs_address(
-    address: str,
-    target_address: str,
-    normalized_target_address: Optional[Tuple[Set[str], int]] = None,
-) -> bool:
-    try:
-        target_hosts, target_port = normalized_target_address or _normalize_gcs_address(
-            target_address
-        )
-        address_hosts, address_port = _normalize_gcs_address(address)
-        return target_port == address_port and not target_hosts.isdisjoint(
-            address_hosts
-        )
-    except Exception:
-        return False
+    return is_same_gcs_address(extracted_address, target_address)
 
 
 @cli.command()
@@ -1612,12 +1614,12 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
     total_procs_found = 0
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
-    normalized_stop_address = None
 
     if stop_address is not None:
-        # Validate address format.
+        # Validate address format; result is discarded because callees
+        # re-normalize internally.
         try:
-            normalized_stop_address = _normalize_gcs_address(stop_address)
+            _normalize_gcs_address(stop_address)
         except Exception as e:
             cli_logger.error(
                 "Invalid address format: {}. "
@@ -1674,9 +1676,7 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
                     # If stop_address is set, only include processes whose
                     # command line matches the target GCS address.
                     if stop_address is not None:
-                        if not _cmdline_matches_gcs_address(
-                            proc_args, stop_address, normalized_stop_address
-                        ):
+                        if not _cmdline_matches_gcs_address(proc_args, stop_address):
                             continue
                     found.append(candidate)
             for proc, proc_cmd, proc_args in found:
@@ -1810,9 +1810,7 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
         ray._common.utils.reset_ray_address()
     else:
         current_address = ray._private.utils.read_ray_address()
-        if current_address and is_same_gcs_address(
-            current_address, stop_address, normalized_stop_address
-        ):
+        if current_address and is_same_gcs_address(current_address, stop_address):
             ray._common.utils.reset_ray_address()
 
 

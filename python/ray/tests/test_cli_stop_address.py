@@ -119,10 +119,13 @@ def test_ray_stop_address_helpers_extract_and_match(monkeypatch, tmp_path):
     assert not scripts._cmdline_matches_gcs_address(
         ["raylet", "--gcs-address=10.0.0.2:6379"], "head-node:6380"
     )
+    # multi-ip-head resolves to two IPs; both should match the hostname.
+    # Resolver order (IPv4 vs IPv6, DNS round-robin, /etc/hosts) is not
+    # under our control, so we include all getaddrinfo results.
     assert scripts._cmdline_matches_gcs_address(
         ["raylet", "--gcs-address=10.0.0.3:6379"], "multi-ip-head:6379"
     )
-    assert not scripts._cmdline_matches_gcs_address(
+    assert scripts._cmdline_matches_gcs_address(
         ["raylet", "--gcs-address=10.0.0.4:6379"], "multi-ip-head:6379"
     )
     assert scripts.is_same_gcs_address("10.0.0.1:6379", "localhost:6379")
