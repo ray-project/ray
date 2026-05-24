@@ -703,6 +703,225 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
 
 
 @pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Multi-cluster single-host setup only runs on Linux and macOS in CI.",
+)
+def test_ray_stop_address_targets_specific_multi_node_cluster(
+    configure_lang, monkeypatch, tmp_path, cleanup_ray
+):
+    """`ray stop --address=<gcs>` must stop only the targeted multi-node
+    cluster when multiple multi-node Ray clusters run on the same machine.
+
+    Builds two clusters (A and B), each with a head + worker node, launches
+    a long-running task on each, then stops A and asserts B's task is still
+    running on B's worker.
+
+    Regression test for https://github.com/ray-project/ray/issues/48521.
+    """
+    from ray._private import services
+
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+
+    gcs_a = "127.0.0.1:6380"
+    gcs_b = "127.0.0.1:6381"
+
+    cluster_a_head = [
+        "--head",
+        "--port=6380",
+        "--dashboard-port=8265",
+        "--ray-client-server-port=10001",
+        "--node-manager-port=6710",
+        "--object-manager-port=6711",
+        "--dashboard-agent-listen-port=52365",
+        "--dashboard-agent-grpc-port=52367",
+        "--runtime-env-agent-port=52369",
+        "--metrics-export-port=8080",
+        "--min-worker-port=11000",
+        "--max-worker-port=11499",
+    ]
+    cluster_a_worker = [
+        f"--address={gcs_a}",
+        "--node-manager-port=6712",
+        "--object-manager-port=6713",
+        "--dashboard-agent-listen-port=52366",
+        "--dashboard-agent-grpc-port=52368",
+        "--runtime-env-agent-port=52370",
+        "--metrics-export-port=8082",
+        "--min-worker-port=11500",
+        "--max-worker-port=11999",
+    ]
+    cluster_b_head = [
+        "--head",
+        "--port=6381",
+        "--dashboard-port=8266",
+        "--ray-client-server-port=10011",
+        "--node-manager-port=6720",
+        "--object-manager-port=6721",
+        "--dashboard-agent-listen-port=52375",
+        "--dashboard-agent-grpc-port=52377",
+        "--runtime-env-agent-port=52379",
+        "--metrics-export-port=8081",
+        "--min-worker-port=12000",
+        "--max-worker-port=12499",
+    ]
+    cluster_b_worker = [
+        f"--address={gcs_b}",
+        "--node-manager-port=6722",
+        "--object-manager-port=6723",
+        "--dashboard-agent-listen-port=52376",
+        "--dashboard-agent-grpc-port=52378",
+        "--runtime-env-agent-port=52380",
+        "--metrics-export-port=8083",
+        "--min-worker-port=12500",
+        "--max-worker-port=12999",
+    ]
+
+    for args in (cluster_a_head, cluster_a_worker, cluster_b_head, cluster_b_worker):
+        _die_on_error(runner.invoke(scripts.start, args))
+
+    def _gcs_addresses():
+        services.find_gcs_addresses.cache_clear()
+        return services.find_gcs_addresses()
+
+    def _has_address(target, addresses):
+        """find_gcs_addresses() returns the raw raylet --gcs-address value (e.g.
+        the machine's primary IP), not "127.0.0.1". Compare via the PR's own
+        normalization helper so "127.0.0.1:6380" and "10.0.0.1:6380" match when
+        they refer to the same local cluster."""
+        return any(scripts.is_same_gcs_address(addr, target) for addr in addresses)
+
+    def _strip_ansi(s):
+        """`ray stop` colorizes its log output with ANSI escapes — strip them
+        before substring-matching expected messages."""
+        import re
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", s)
+
+    wait_for_condition(
+        lambda: _has_address(gcs_a, _gcs_addresses())
+        and _has_address(gcs_b, _gcs_addresses()),
+        timeout=30,
+    )
+
+    import subprocess
+    import textwrap
+
+    def _spawn_long_task_driver(address):
+        """Spawn a subprocess that submits a long sleep task and stays connected
+        (driver disconnect would cancel the task, so the driver itself sleeps too)."""
+        code = textwrap.dedent(
+            f"""
+            import ray, time
+            ray.init(address={address!r})
+            @ray.remote
+            def long_sleep():
+                time.sleep(300)
+            long_sleep.remote()
+            time.sleep(300)
+            """
+        )
+        return subprocess.Popen(
+            [sys.executable, "-c", code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    def _cluster_used_cpu(address):
+        """Return CPUs currently in use on `address`, or -1 if the cluster is unreachable."""
+        code = textwrap.dedent(
+            f"""
+            import ray
+            ray.init(address={address!r})
+            print(ray.cluster_resources().get('CPU', 0)
+                  - ray.available_resources().get('CPU', 0))
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return -1
+        try:
+            return float(result.stdout.strip().split("\n")[-1])
+        except ValueError:
+            return -1
+
+    driver_a = _spawn_long_task_driver(gcs_a)
+    driver_b = _spawn_long_task_driver(gcs_b)
+
+    try:
+        # Both clusters must have at least 1 CPU in use before we stop A —
+        # otherwise we'd be testing an empty cluster.
+        wait_for_condition(
+            lambda: _cluster_used_cpu(gcs_a) >= 1.0 and _cluster_used_cpu(gcs_b) >= 1.0,
+            timeout=60,
+        )
+
+        stop_result = runner.invoke(scripts.stop, ["--address", gcs_a])
+        _die_on_error(stop_result)
+
+        # Output must confirm: (1) --address filter triggered, (2) processes
+        # actually got stopped (not a silent no-op).
+        stop_a_clean = _strip_ansi(stop_result.output)
+        _fail_if_false(
+            f"GCS address={gcs_a}" in stop_a_clean,
+            stop_result.output,
+            "ray stop did not log the --address filter — fell back to full stop?",
+        )
+        _fail_if_false(
+            "Stopped all" in stop_a_clean
+            and "Did not find any active Ray processes" not in stop_a_clean,
+            stop_result.output,
+            "ray stop reported no processes killed — filter matched nothing",
+        )
+
+        wait_for_condition(
+            lambda: not _has_address(gcs_a, _gcs_addresses()), timeout=30
+        )
+        _fail_if_false(
+            _has_address(gcs_b, _gcs_addresses()),
+            stop_result.output,
+            f"Cluster B was killed by mistake; find_gcs_addresses={_gcs_addresses()}",
+        )
+
+        # Core assertion: B's in-flight task must still be consuming CPU.
+        assert (
+            _cluster_used_cpu(gcs_b) >= 1.0
+        ), "B's task died when A was stopped — `ray stop --address` did not isolate clusters"
+
+        # Symmetric cleanup: `ray stop --address gcs_b` must also work on B alone,
+        # mirroring Step 7 of the manual reproduction script.
+        stop_b = runner.invoke(scripts.stop, ["--address", gcs_b])
+        _die_on_error(stop_b)
+        stop_b_clean = _strip_ansi(stop_b.output)
+        _fail_if_false(
+            f"GCS address={gcs_b}" in stop_b_clean and "Stopped all" in stop_b_clean,
+            stop_b.output,
+            "ray stop --address gcs_b did not target/stop B's cluster",
+        )
+        wait_for_condition(
+            lambda: not _has_address(gcs_b, _gcs_addresses()), timeout=30
+        )
+
+        # Final `ray stop` (no --address) must report a clean host — both
+        # per-cluster stops above already removed everything.
+        final_stop = runner.invoke(scripts.stop, [])
+        _die_on_error(final_stop)
+        _fail_if_false(
+            "Did not find any active Ray processes" in _strip_ansi(final_stop.output),
+            final_stop.output,
+            "Host is not clean after stopping both clusters by --address",
+        )
+    finally:
+        driver_a.kill()
+        driver_b.kill()
+
+
+@pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )

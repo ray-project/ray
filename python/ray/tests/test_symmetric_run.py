@@ -198,9 +198,10 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 assert "--num-cpus=4" in ray_start_calls[0][0][0]
 
 
-def test_symmetric_run_two_clusters_coexist_on_same_host(cleanup_ray):
+def test_symmetric_run_address_targets_specific_multi_node_cluster(cleanup_ray):
     """Two `ray symmetric-run` instances with distinct --address must run
-    independently on the same host: each cleans up only its own cluster on exit.
+    independently on the same host: each `ray stop --address` in their
+    `finally` clauses cleans up only its own cluster, leaving the other alive.
 
     Mirrors the manual verification in the PR description:
       1. Run command A, then command B in another terminal ~1 second later.

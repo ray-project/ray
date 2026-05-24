@@ -760,7 +760,6 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
-        "test_cli_stop_address.py",
         "test_symmetric_run.py",
     ],
     tags = [
