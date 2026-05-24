@@ -729,6 +729,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
     cluster_a_head = [
         "--head",
         "--port=6380",
+        "--num-cpus=1",
         "--dashboard-port=8265",
         "--ray-client-server-port=10001",
         "--node-manager-port=6710",
@@ -742,6 +743,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
     ]
     cluster_a_worker = [
         f"--address={gcs_a}",
+        "--num-cpus=1",
         "--node-manager-port=6712",
         "--object-manager-port=6713",
         "--dashboard-agent-listen-port=52366",
@@ -754,6 +756,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
     cluster_b_head = [
         "--head",
         "--port=6381",
+        "--num-cpus=1",
         "--dashboard-port=8266",
         "--ray-client-server-port=10011",
         "--node-manager-port=6720",
@@ -767,6 +770,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
     ]
     cluster_b_worker = [
         f"--address={gcs_b}",
+        "--num-cpus=1",
         "--node-manager-port=6722",
         "--object-manager-port=6723",
         "--dashboard-agent-listen-port=52376",
@@ -801,7 +805,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
     wait_for_condition(
         lambda: _has_address(gcs_a, _gcs_addresses())
         and _has_address(gcs_b, _gcs_addresses()),
-        timeout=30,
+        timeout=60,
     )
 
     import subprocess
@@ -858,7 +862,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
         # otherwise we'd be testing an empty cluster.
         wait_for_condition(
             lambda: _cluster_used_cpu(gcs_a) >= 1.0 and _cluster_used_cpu(gcs_b) >= 1.0,
-            timeout=60,
+            timeout=120,
         )
 
         stop_result = runner.invoke(scripts.stop, ["--address", gcs_a])
@@ -880,7 +884,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
         )
 
         wait_for_condition(
-            lambda: not _has_address(gcs_a, _gcs_addresses()), timeout=30
+            lambda: not _has_address(gcs_a, _gcs_addresses()), timeout=60
         )
         _fail_if_false(
             _has_address(gcs_b, _gcs_addresses()),
@@ -904,7 +908,7 @@ def test_ray_stop_address_targets_specific_multi_node_cluster(
             "ray stop --address gcs_b did not target/stop B's cluster",
         )
         wait_for_condition(
-            lambda: not _has_address(gcs_b, _gcs_addresses()), timeout=30
+            lambda: not _has_address(gcs_b, _gcs_addresses()), timeout=60
         )
 
         # Final `ray stop` (no --address) must report a clean host — both

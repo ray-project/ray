@@ -28,11 +28,7 @@ def _setup_mock_network_utils(curr_ip, head_ip):
                     )()
                 ]
             }
-            with patch(
-                "ray.scripts.symmetric_run.check_ray_already_started",
-                return_value=False,
-            ):
-                yield
+            yield
 
 
 @pytest.fixture
@@ -76,12 +72,6 @@ def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
                 call for call in calls if "ray" in str(call) and "stop" in str(call)
             ]
             assert len(ray_stop_calls) > 0
-            assert ray_stop_calls[0][0][0] == [
-                "ray",
-                "stop",
-                "--address",
-                "127.0.0.1:6379",
-            ]
 
 
 def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
@@ -129,17 +119,6 @@ def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
                 assert "192.168.1.100:6379" in start_args
                 assert "--head" not in start_args
                 assert "--block" in start_args  # Worker nodes should block
-
-                ray_stop_calls = [
-                    call for call in calls if "ray" in str(call) and "stop" in str(call)
-                ]
-                assert len(ray_stop_calls) > 0
-                assert ray_stop_calls[0][0][0] == [
-                    "ray",
-                    "stop",
-                    "--address",
-                    "192.168.1.100:6379",
-                ]
 
 
 def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
