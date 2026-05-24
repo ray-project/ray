@@ -485,7 +485,7 @@ class Checkpointable(abc.ABC):
 
         # If the pickle file is from another python version, use provided
         # args instead.
-        except ValueError:
+        except (ValueError, AttributeError, ImportError):
             logger.warning(
                 "Could not restore original class from checkpoint at '%s' "
                 "(possible version mismatch), falling back to %s.",
