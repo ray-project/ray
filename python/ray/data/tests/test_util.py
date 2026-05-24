@@ -7,6 +7,7 @@ import pytest
 from typing_extensions import Hashable
 
 import ray
+from ray._common.retry import matches_error
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -316,6 +317,105 @@ def test_iterate_with_retry():
         list(iterate_with_retry(MockIterable, description="get item", max_attempts=2))
         == expected
     )
+
+
+def test_iterate_with_retry_unwrap_cause():
+    """unwrap_cause=True makes `match` patterns search e.__cause__ as well."""
+    attempts = 0
+
+    class MockIterable:
+        def __init__(self):
+            nonlocal attempts
+            attempts += 1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            try:
+                raise RuntimeError("transient inner")
+            except RuntimeError as inner:
+                raise ValueError("outer wrapper") from inner
+
+    # unwrap_cause=True: pattern matches the cause → all attempts consumed.
+    attempts = 0
+    with pytest.raises(ValueError, match="outer wrapper"):
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get item",
+                match=["transient inner"],
+                max_attempts=2,
+                unwrap_cause=True,
+            )
+        )
+    assert attempts == 2
+
+    # unwrap_cause=False: cause invisible → not retryable → only one attempt.
+    attempts = 0
+    with pytest.raises(ValueError, match="outer wrapper"):
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get item",
+                match=["transient inner"],
+                max_attempts=2,
+                unwrap_cause=False,
+            )
+        )
+    assert attempts == 1
+
+
+def test_iterate_with_retry_matches_class_name():
+    """Patterns can match the exception class name (e.g., 'RateLimit')."""
+
+    class RateLimitError(Exception):
+        pass
+
+    attempts = 0
+
+    class MockIterable:
+        def __init__(self):
+            nonlocal attempts
+            attempts += 1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise RateLimitError("Error code: 429")
+
+    attempts = 0
+    with pytest.raises(RateLimitError):
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get item",
+                match=["RateLimit"],
+                max_attempts=2,
+            )
+        )
+    assert attempts == 2
+
+
+@pytest.mark.parametrize(
+    "pattern, error_message, expected",
+    [
+        # Plain substring match.
+        ("transient", "transient network error", True),
+        # Regex match when substring check fails.
+        ("40[0-9]", "HTTP 404 not found", True),
+        # Substring takes priority: literal "(503)" found before regex is tried.
+        ("(503)", "error (503) returned", True),
+        # Invalid regex falls back to False, not re.error.
+        ("[unclosed", "some error message", False),
+        # No match at all.
+        ("rate limit", "connection refused", False),
+    ],
+)
+def test_matches_error(pattern, error_message, expected):
+    """Retry helper matches substring first, then regex; invalid patterns do not raise."""
+    assert matches_error(pattern, error_message) is expected
 
 
 def test_find_partition_index_single_column_ascending():

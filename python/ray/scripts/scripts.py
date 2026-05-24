@@ -24,7 +24,7 @@ import ray
 import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, get_localhost_ip, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
@@ -602,10 +602,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--dashboard-host",
     required=False,
-    default=ray_constants.DEFAULT_DASHBOARD_IP,
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 127.0.0.1",
+    default=get_localhost_ip(),
+    help="the host to bind the dashboard server to. Use localhost "
+    "(127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all "
+    "interfaces. Defaults to localhost.",
 )
 @click.option(
     "--dashboard-port",
@@ -892,17 +892,11 @@ def start(
             )
     labels_dict = {**labels_from_file, **labels_from_string}
 
-    available_memory_bytes = ray._private.utils.estimate_available_memory()
-    object_store_memory = ray._private.utils.resolve_object_store_memory(
-        available_memory_bytes, object_store_memory
-    )
-
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
 
     # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
@@ -936,7 +930,6 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
-        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
