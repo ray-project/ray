@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import math
 import os
@@ -20,16 +21,19 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    MiB,
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
@@ -66,7 +70,6 @@ if TYPE_CHECKING:
     from pyarrow.dataset import ParquetFileFragment
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
-    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Type aliases for tensor column schema
 ColumnName = str
 # Shape of the tensor
@@ -127,6 +130,13 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 # Arrow's nested type chunking limit
 # See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
 _ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
+
+_MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
+
+# Opt-in env var to allow reading Parquet files that contain
+# ray.data.arrow_pickled_object columns. Disabled by default because
+# pickle.load on attacker-controlled data enables arbitrary code execution.
+AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
 
 class _ParquetFragment:
@@ -192,71 +202,83 @@ class _SplitPredicateResult:
     """Result of splitting a predicate by column type.
 
     Attributes:
-        data_predicate: Expression containing only data column predicates
-            (for PyArrow pushdown), or None if no data predicates exist.
-        partition_predicate: Expression containing only partition column predicates
-            (for partition pruning), or None if no partition predicates exist.
+        data_predicate: Conjuncts referencing only data columns (for PyArrow
+            pushdown), or None if none could be extracted.
+        partition_predicate: Conjuncts referencing only partition columns
+            (for partition pruning), or None if none could be extracted.
+        residual_predicate: Conjuncts that mix partition and data columns
+            and can't be split safely (e.g. an ``OR`` straddling both
+            kinds). The caller must keep these as a ``Filter`` above the
+            read; dropping them would over-include rows.
     """
 
     data_predicate: Optional[Expr]
     partition_predicate: Optional[Expr]
+    residual_predicate: Optional[Expr]
 
 
 def _split_predicate_by_columns(
     predicate: Expr,
     partition_columns: set,
 ) -> _SplitPredicateResult:
-    """Split a predicate into data-only and partition-only parts.
+    """Split a predicate into data, partition, and residual parts.
 
-    This function extracts both data column predicates and partition column
-    predicates from AND chains, enabling both PyArrow pushdown (data part) and
-    partition pruning (partition part).
+    This function walks the top-level ``AND`` chain and classifies each
+    conjunct by the columns it references:
+
+    - References only data columns (or none) → data bucket; pyarrow can
+      evaluate it at scan time.
+    - References only partition columns → partition bucket; the partition
+      parser can evaluate it from file paths.
+    - References both kinds (i.e. a non-``AND`` whose column set spans
+      both) → residual bucket; semantics-preserving splitting is
+      impossible (e.g. ``data > 5 OR partition == "US"``), so the caller
+      must keep these as a ``Filter`` above the read.
 
     Args:
         predicate: The predicate expression to analyze.
         partition_columns: Set of partition column names.
 
     Returns:
-        _SplitPredicateResult containing:
-        - data_predicate: Expression with only data columns (for PyArrow pushdown),
-          or None if no data predicates can be extracted.
-        - partition_predicate: Expression with only partition columns (for pruning),
-          or None if no partition predicates can be extracted.
+        :class:`_SplitPredicateResult` with the three buckets. Combining
+        ``data_predicate``, ``partition_predicate``, and
+        ``residual_predicate`` with ``AND`` reproduces the original
+        predicate exactly.
 
     Examples:
         >>> from ray.data.expressions import col
         >>> # Pure data predicate:
         >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
-        >>> result.data_predicate is not None  # Should have data predicate
+        >>> result.data_predicate is not None
         True
-        >>> result.partition_predicate is None  # Should not have partition predicate
+        >>> result.partition_predicate is None and result.residual_predicate is None
         True
 
         >>> # Pure partition predicate:
         >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
-        >>> result.data_predicate is None  # Should not have data predicate
+        >>> result.partition_predicate is not None
         True
-        >>> result.partition_predicate is not None  # Should have partition predicate
+        >>> result.data_predicate is None and result.residual_predicate is None
         True
 
-        >>> # Mixed AND - can split both parts:
+        >>> # Mixed AND - can split into data and partition parts:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) & (col("partition_col") == "US"),
         ...     {"partition_col"}
         ... )
-        >>> result.data_predicate is not None  # Should have data predicate
+        >>> result.data_predicate is not None and result.partition_predicate is not None
         True
-        >>> result.partition_predicate is not None  # Should have partition predicate
+        >>> result.residual_predicate is None
         True
 
-        >>> # Mixed OR - can't split safely:
+        >>> # Mixed OR - kept as residual; caller wraps it in a Filter above:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) | (col("partition_col") == "US"),
         ...     {"partition_col"}
         ... )
-        >>> result.data_predicate is None  # Should not have data predicate
+        >>> result.data_predicate is None and result.partition_predicate is None
         True
-        >>> result.partition_predicate is None  # Should not have partition predicate
+        >>> result.residual_predicate is not None
         True
     """
     referenced_cols = set(get_column_references(predicate))
@@ -264,20 +286,26 @@ def _split_predicate_by_columns(
     partition_cols_in_predicate = referenced_cols & partition_columns
 
     if not partition_cols_in_predicate:
-        # Pure data predicate
-        return _SplitPredicateResult(data_predicate=predicate, partition_predicate=None)
+        # Pure data predicate (or no column refs).
+        return _SplitPredicateResult(
+            data_predicate=predicate,
+            partition_predicate=None,
+            residual_predicate=None,
+        )
 
     if not data_cols:
-        # Pure partition predicate
-        return _SplitPredicateResult(data_predicate=None, partition_predicate=predicate)
+        # Pure partition predicate.
+        return _SplitPredicateResult(
+            data_predicate=None,
+            partition_predicate=predicate,
+            residual_predicate=None,
+        )
 
-    # Mixed predicate - try to split if it's an AND chain
+    # Mixed predicate - keep splitting if it's an AND chain.
     if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-        # Recursively split left and right sides
         left_result = _split_predicate_by_columns(predicate.left, partition_columns)
         right_result = _split_predicate_by_columns(predicate.right, partition_columns)
 
-        # Helper to combine predicates from both sides
         def combine_predicates(
             left: Optional[Expr], right: Optional[Expr]
         ) -> Optional[Expr]:
@@ -285,20 +313,28 @@ def _split_predicate_by_columns(
                 return left & right
             return left or right
 
-        data_predicate = combine_predicates(
-            left_result.data_predicate, right_result.data_predicate
-        )
-        partition_predicate = combine_predicates(
-            left_result.partition_predicate, right_result.partition_predicate
-        )
-
         return _SplitPredicateResult(
-            data_predicate=data_predicate, partition_predicate=partition_predicate
+            data_predicate=combine_predicates(
+                left_result.data_predicate, right_result.data_predicate
+            ),
+            partition_predicate=combine_predicates(
+                left_result.partition_predicate, right_result.partition_predicate
+            ),
+            residual_predicate=combine_predicates(
+                left_result.residual_predicate, right_result.residual_predicate
+            ),
         )
 
-    # For OR, NOT, or other operations with mixed columns,
-    # we can't safely split - must evaluate the full predicate together
-    return _SplitPredicateResult(data_predicate=None, partition_predicate=None)
+    # ``OR``/``NOT``/etc. straddling both column kinds — not safely
+    # splittable. Surface as residual so the caller doesn't silently drop
+    # it (the prior version returned ``(None, None)`` here, which let the
+    # surrounding ``AND`` chain push partial conjuncts and over-include
+    # rows that should have been filtered by this one).
+    return _SplitPredicateResult(
+        data_predicate=None,
+        partition_predicate=None,
+        residual_predicate=predicate,
+    )
 
 
 class ParquetDatasource(Datasource):
@@ -318,6 +354,28 @@ class ParquetDatasource(Datasource):
 
     _FILE_EXTENSIONS = ["parquet"]
 
+    # Denotes number of batches to read ahead in a fragment. Default is 16
+    # as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Dataset.html#pyarrow.dataset.Dataset.to_batches
+    # Chose 8 based on past experiments.
+    _DEFAULT_BATCH_READAHEAD = env_integer("RAY_DATA_PARQUET_READER_BATCH_READAHEAD", 8)
+    # NOTE: We're essentially stubbing out this value as currently
+    #       ParquetDatasource reads individual fragments independently
+    # Default is 4. This refers to the number of files to readahead, which was chosen based on past experiments.
+    _DEFAULT_FRAGMENT_READAHEAD = env_integer(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_READAHEAD", 1
+    )
+
+    # Default is False as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+    # This parameter when set to True, reads files through buffered input streams rather than loading entire row groups at once.
+    _DEFAULT_FRAGMENT_USE_BUFFERED_STREAM = env_bool(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_USE_BUFFERED_STREAM", True
+    )
+    # Default is 8 KiB as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+    # Based on experiments, this was a good default.
+    _DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE = env_integer(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_SCAN_BUFFER_SIZE", 8 * MiB
+    )
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -333,6 +391,7 @@ class ParquetDatasource(Datasource):
         partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         super().__init__()
@@ -348,11 +407,9 @@ class ParquetDatasource(Datasource):
 
         local_scheduling = None
         if not supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            local_scheduling = {
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            }
 
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
@@ -477,13 +534,14 @@ class ParquetDatasource(Datasource):
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
         )
 
     def _init_state(
         self,
         *,
         supports_distributed_reads: bool,
-        local_scheduling: Optional["NodeAffinitySchedulingStrategy"],
+        local_scheduling: Optional[Dict[str, str]],
         source_paths_ref: "ray.ObjectRef",
         filesystem: "pyarrow.fs.FileSystem",
         fragments: List["ParquetFileFragment"],
@@ -499,6 +557,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]],
         shuffle: Union["FileShuffleConfig", Literal["files"], None],
         include_paths: bool,
+        include_row_hash: bool = False,
     ):
         """Shared initialization for all instance state and sampling estimates.
 
@@ -506,6 +565,9 @@ class ParquetDatasource(Datasource):
         and ``from_state`` (used by alternate constructors like
         ``from_pyarrow_dataset``).
         """
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._supports_distributed_reads = supports_distributed_reads
         self._local_scheduling = local_scheduling
         self._source_paths_ref = source_paths_ref
@@ -520,7 +582,6 @@ class ParquetDatasource(Datasource):
         ]
         self._pq_paths = [f.path for f in fragments]
         self._block_udf = _block_udf
-        self._scanner_kwargs = to_batch_kwargs or {}
         self._projection_map = projection_map
         self._partition_columns = partition_columns
         self._partition_columns_selected = partition_columns_selected
@@ -529,6 +590,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = partition_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
+        self._include_row_hash = include_row_hash
         self._partitioning = partitioning
         _validate_shuffle_arg(shuffle)
         self._shuffle = shuffle
@@ -554,8 +616,12 @@ class ParquetDatasource(Datasource):
             sampled_file_infos,
         )
 
-        self._default_batch_size = _estimate_reader_batch_size(
+        estimated_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
+        )
+
+        self._scanner_kwargs = self._get_scanner_kwargs(
+            to_batch_kwargs, estimated_batch_size
         )
 
     @classmethod
@@ -583,6 +649,7 @@ class ParquetDatasource(Datasource):
         schema: Optional["pyarrow.lib.Schema"] = None,
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
 
@@ -615,13 +682,9 @@ class ParquetDatasource(Datasource):
                 )
 
             if is_local:
-                from ray.util.scheduling_strategies import (
-                    NodeAffinitySchedulingStrategy,
-                )
-
-                local_scheduling = NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                local_scheduling = {
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
 
             infos = filesystem.get_file_info(pq_paths)
             file_sizes = [info.size if info.size is not None else 0 for info in infos]
@@ -654,6 +717,7 @@ class ParquetDatasource(Datasource):
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
         )
 
     @property
@@ -666,6 +730,47 @@ class ParquetDatasource(Datasource):
             return 0
 
         return self._estimate_in_mem_size(self._pq_fragments)
+
+    def _get_scanner_kwargs(
+        self,
+        to_batch_kwargs: Optional[Dict[str, Any]],
+        batch_size: Optional[int],
+    ) -> dict[str, Any]:
+        import pyarrow.dataset as pds
+
+        scanner_kwargs: Dict[str, Any] = (to_batch_kwargs or {}).copy()
+
+        # NOTE: We inject ``batch_size`` via kwargs, since Scanner doesn't accept
+        # nulls. Use setdefault so a user-provided ``batch_size`` in
+        # ``to_batch_kwargs`` wins.
+        if batch_size is not None:
+            scanner_kwargs.setdefault("batch_size", batch_size)
+
+        # Override default `batch_readahead` value to reduce amount of data prefetched
+        # by Pyarrow's Parquet reader
+        pyarrow_version = get_pyarrow_version()
+        if (
+            pyarrow_version is not None
+            and pyarrow_version >= _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS
+        ):
+            scanner_kwargs.setdefault("batch_readahead", self._DEFAULT_BATCH_READAHEAD)
+            scanner_kwargs.setdefault(
+                "fragment_readahead", self._DEFAULT_FRAGMENT_READAHEAD
+            )
+
+            # Refer https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+            # Read files through buffered input streams rather than loading
+            # entire row groups at once.
+            if self._DEFAULT_FRAGMENT_USE_BUFFERED_STREAM:
+                scanner_kwargs.setdefault(
+                    "fragment_scan_options",
+                    pds.ParquetFragmentScanOptions(
+                        use_buffered_stream=True,
+                        buffer_size=self._DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE,
+                    ),
+                )
+
+        return scanner_kwargs
 
     def get_read_tasks(
         self,
@@ -690,6 +795,7 @@ class ParquetDatasource(Datasource):
             projected_columns=self.get_current_projection(),
             _block_udf=self._block_udf,
             include_paths=self._include_paths,
+            include_row_hash=self._include_row_hash,
         )
 
         read_tasks = []
@@ -719,40 +825,39 @@ class ParquetDatasource(Datasource):
             (
                 block_udf,
                 to_batches_kwargs,
-                default_read_batch_size_rows,
                 data_columns,
-                data_columns_rename_map,
                 partition_columns,
                 read_schema,
                 include_paths,
+                include_row_hash,
                 partitioning,
             ) = (
                 self._block_udf,
                 self._scanner_kwargs,
-                self._default_batch_size,
                 self._get_data_columns(),
-                self.get_column_renames(),
                 self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
+                self._include_row_hash,
                 self._partitioning,
             )
 
+            allow_pickle = self._allow_pickle_object_columns
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
                         block_udf,
                         to_batches_kwargs,
-                        default_read_batch_size_rows,
                         data_columns,
-                        data_columns_rename_map,
                         partition_columns,
                         read_schema,
                         f,
                         include_paths,
+                        include_row_hash,
                         partitioning,
                         filter_expr,
                         filter_columns,
+                        allow_pickle,
                     ),
                     meta,
                     schema=target_schema,
@@ -794,6 +899,8 @@ class ParquetDatasource(Datasource):
             #       via _derive_schema, so we only need to add it when there is a projection.
             if self._include_paths and "path" not in result:
                 result = result + ["path"]
+            if self._include_row_hash and "row_hash" not in result:
+                result = result + ["row_hash"]
 
         return result
 
@@ -853,11 +960,13 @@ class ParquetDatasource(Datasource):
 
         # Get partition columns and filter them out from the projection
         partition_cols = self._partition_columns
-        # Also filter out "path" column if include_paths is True, as it's a
-        # synthetic column added after reading from the file
+        # Also filter out synthetic columns (path, row_hash) as they are
+        # added after reading from the file
         cols_to_filter = set(partition_cols)
         if self._include_paths:
             cols_to_filter.add("path")
+        if self._include_row_hash:
+            cols_to_filter.add("row_hash")
         data_cols = [
             col for col in self._projection_map.keys() if col not in cols_to_filter
         ]
@@ -883,6 +992,16 @@ class ParquetDatasource(Datasource):
 
         # Split predicate into data and partition parts
         split_result = _split_predicate_by_columns(predicate_expr, partition_cols)
+
+        # If a mixed-column conjunct can't be safely split (e.g. ``data > 5
+        # OR partition == "US"``), the V1 ``Read.apply_predicate`` wrapper
+        # has no way to keep it as a ``Filter`` above the read — its return
+        # type is ``Read``, not ``LogicalOperator``. Pushing the splittable
+        # parts and silently dropping the residual would over-include rows.
+        # Return ``self`` so ``PredicatePushdown`` keeps the original
+        # ``Filter`` above intact.
+        if split_result.residual_predicate is not None:
+            return self
 
         # Apply partition pruning if we have a partition predicate
         if (
@@ -935,6 +1054,7 @@ class ParquetDatasource(Datasource):
         projected_columns: Optional[List[str]],
         _block_udf,
         include_paths: bool = False,
+        include_row_hash: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
 
@@ -968,6 +1088,15 @@ class ParquetDatasource(Datasource):
         if include_paths and target_schema.get_field_index("path") == -1:
             target_schema = target_schema.append(pa.field("path", pa.string()))
 
+        if include_row_hash:
+            idx = target_schema.get_field_index("row_hash")
+            if idx == -1:
+                target_schema = target_schema.append(pa.field("row_hash", pa.uint64()))
+            elif target_schema.field(idx).type != pa.uint64():
+                target_schema = target_schema.set(
+                    idx, pa.field("row_hash", pa.uint64())
+                )
+
         # Project schema if necessary
         if projected_columns is not None:
             target_schema = pa.schema(
@@ -995,20 +1124,40 @@ class ParquetDatasource(Datasource):
         return target_schema
 
 
+def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
+    pickle_cols = [
+        field.name
+        for field in table.schema
+        if isinstance(field.type, ArrowPythonObjectType)
+    ]
+    if pickle_cols:
+        raise ValueError(
+            f"This Parquet file contains columns stored as "
+            f"'ray.data.arrow_pickled_object': {pickle_cols}. Reading these "
+            f"columns requires unpickling, which can execute arbitrary code "
+            f"and is unsafe with untrusted files.\n\n"
+            f"If you trust the source of this data, set the environment "
+            f"variable {AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
+            f"reading these columns. In a Ray cluster, this variable must "
+            f"be set on all worker nodes (e.g. via 'runtime_env')."
+        )
+
+
 def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
-    default_read_batch_size_rows: Optional[int],
     data_columns: Optional[List[str]],
-    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
     include_paths: bool,
+    include_row_hash: bool,
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
+    allow_pickle: bool = False,
 ) -> Iterator["pyarrow.Table"]:
+    """Yield Arrow tables from Parquet fragments via ``to_batches_kwargs``."""
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
 
@@ -1025,13 +1174,12 @@ def read_fragments(
                 fragment.original,
                 schema=schema,
                 data_columns=data_columns,
-                data_columns_rename_map=data_columns_rename_map,
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
+                include_row_hash=include_row_hash,
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
-                batch_size=default_read_batch_size_rows,
                 to_batches_kwargs=to_batches_kwargs,
             ),
             "reading batches",
@@ -1039,6 +1187,8 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
+                if not allow_pickle:
+                    _check_for_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:
@@ -1248,7 +1398,6 @@ def _iter_batches_with_nested_fallback(
     *,
     columns: Optional[List[str]] = None,
     schema: Optional["pyarrow.Schema"] = None,
-    batch_size: Optional[int] = None,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
     use_threads: bool = False,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -1266,8 +1415,6 @@ def _iter_batches_with_nested_fallback(
     ``fragment.subset(filter=)`` and row-level filtering is done post-read.
     """
     to_batches_kwargs = dict(to_batches_kwargs or {})
-    if batch_size is not None:
-        to_batches_kwargs.setdefault("batch_size", batch_size)
 
     read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
 
@@ -1390,21 +1537,22 @@ def _read_batches_from(
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
-    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
-    batch_size: Optional[int] = None,
     include_path: bool = False,
+    include_row_hash: bool = False,
     use_threads: bool = False,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Iterable["pyarrow.Table"]:
-    """Get an iterable of batches from a parquet fragment."""
+    """Get an iterable of batches from a parquet fragment.
+
+    Row batching is controlled via ``to_batches_kwargs["batch_size"]`` (when
+    present), which is coerced to values PyArrow accepts as a C ``int``.
+    """
 
     import pyarrow as pa
-
-    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})
@@ -1423,9 +1571,6 @@ def _read_batches_from(
         # Cannot determine columns from an opaque PyArrow filter expression,
         # so invalidate filter_columns to fall back to reading all columns.
         filter_columns = None
-    # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
-    if batch_size is not None:
-        to_batches_kwargs.setdefault("batch_size", batch_size)
 
     if to_batches_kwargs.get("batch_size") is not None:
         to_batches_kwargs["batch_size"] = _coerce_pyarrow_fragment_batch_size(
@@ -1436,8 +1581,10 @@ def _read_batches_from(
         fragment, partition_columns, partitioning
     )
 
+    row_offset = 0
+
     def _generate_tables() -> "pa.Table":
-        """Inner generator that yields tables without renaming."""
+        nonlocal row_offset
 
         def _postprocess_table(table):
             if partition_col_values:
@@ -1476,11 +1623,19 @@ def _read_batches_from(
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
                 schema=schema,
-                batch_size=batch_size,
                 use_threads=use_threads,
                 to_batches_kwargs=to_batches_kwargs,
             ):
-                yield _postprocess_table(pa.Table.from_batches([batch]))
+                table = _postprocess_table(pa.Table.from_batches([batch]))
+                if include_row_hash:
+                    hashes = _compute_row_hashes(
+                        fragment.path, row_offset, table.num_rows
+                    )
+                    table = ArrowBlockAccessor.for_block(table).fill_column(
+                        "row_hash", pa.array(hashes, type=pa.uint64())
+                    )
+                    row_offset += table.num_rows
+                yield table
 
         except pa.lib.ArrowInvalid as e:
             error_message = str(e)
@@ -1496,10 +1651,39 @@ def _read_batches_from(
                 )
             raise
 
-    # Apply renames to all tables from the generator
-    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
-        _generate_tables(), data_columns_rename_map
+    yield from _generate_tables()
+
+
+def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
+    """Compute deterministic uint64 hashes from file path and output row position.
+
+    ``start_row`` is the position within the output stream (post-filter), not
+    the physical file offset.  This means hashes are reproducible for a given
+    pipeline configuration (same file + same filter) but will differ across
+    reads with different filters.
+
+    Hashes the file path with MD5 to obtain a 64-bit seed, adds the row indices,
+    then applies the splitmix64 finalizer (a bijective 64-bit mixing function) to
+    produce well-distributed, reproducible hashes.  Fully vectorized via numpy.
+    """
+    path_seed = np.uint64(
+        int.from_bytes(
+            hashlib.md5(file_path.encode("utf-8")).digest()[:8], byteorder="little"
+        )
     )
+    keys = path_seed + np.arange(start_row, start_row + num_rows, dtype=np.uint64)
+
+    # splitmix64 finalizer – a bijective 64-bit mixing function from
+    # Steele, Lea & Flood, "Fast Splittable Pseudorandom Number Generators",
+    # OOPSLA 2014.  Also used in Java's SplittableRandom.
+    # Reference: https://xorshift.di.unimi.it/splitmix64.c
+    keys ^= keys >> np.uint64(30)
+    keys *= np.uint64(0xBF58476D1CE4E5B9)
+    keys ^= keys >> np.uint64(27)
+    keys *= np.uint64(0x94D049BB133111EB)
+    keys ^= keys >> np.uint64(31)
+
+    return keys
 
 
 def _parse_partition_column_values(
@@ -1556,13 +1740,14 @@ def _fetch_parquet_file_info(
         # Limit prefetching to just 1 batch
         to_batches_kwargs["batch_readahead"] = 1
 
+    to_batches_kwargs["batch_size"] = batch_size
+
     avg_row_size: Optional[int] = None
     # Use first non-empty batch to estimate the avg size of the row in-memory
     for batch in _iter_batches_with_nested_fallback(
         row_group_fragment,
         columns=columns,
         schema=schema,
-        batch_size=batch_size,
         to_batches_kwargs=to_batches_kwargs,
     ):
         if batch.num_rows > 0:
@@ -1631,22 +1816,26 @@ def _fetch_file_infos(
     *,
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-    local_scheduling: Optional[bool],
+    local_scheduling: Optional[Dict[str, str]],
 ) -> List[Optional[_ParquetFileInfo]]:
     fetch_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
+
+    # Retry in case of transient errors during sampling.
+    task_options = {"retry_exceptions": [OSError]}
+    if local_scheduling:
+        task_options["label_selector"] = local_scheduling
+    else:
+        task_options[
+            "scheduling_strategy"
+        ] = DataContext.get_current().scheduling_strategy
 
     for fragment in sampled_fragments:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
-            fetch_file_info.options(
-                scheduling_strategy=local_scheduling
-                or DataContext.get_current().scheduling_strategy,
-                # Retry in case of transient errors during sampling.
-                retry_exceptions=[OSError],
-            ).remote(
+            fetch_file_info.options(**task_options).remote(
                 fragment,
                 columns=columns,
                 schema=schema,

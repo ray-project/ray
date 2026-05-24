@@ -136,7 +136,7 @@ superset
 teardown
 tiktoken
 TPU(s)?
-tokenization
+[Tt]okenization
 uncaptured
 URI(s)?
 UUID

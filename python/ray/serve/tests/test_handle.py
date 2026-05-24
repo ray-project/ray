@@ -1,15 +1,22 @@
+import logging
 import re
 
 import pytest
 
+import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray.serve._private.common import OBJ_REF_NOT_SUPPORTED_ERROR
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import (
+    OBJ_REF_NOT_SUPPORTED_ERROR,
+    DeploymentID,
+    RequestMetadata,
+)
 from ray.serve._private.replica_result import (
     ActorReplicaResult,
     ReplicaResult,
     gRPCReplicaResult,
 )
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.conftest import _shared_serve_instance  # noqa
@@ -118,6 +125,101 @@ def test_compose_apps(serve_instance, inner_by_reference, outer_by_reference):
             inp2=handle2.remote("hi3", inp2="hi4"),
         ).result()
         == "app1|app2|hi1|hi2|app2|hi3|hi4"
+    )
+
+
+def test_dispatch_rejects_selection_from_different_deployment():
+    handle = DeploymentHandle("deployment-a", "app")
+    selection = ReplicaSelection(
+        replica_id="replica-1",
+        node_ip="127.0.0.1",
+        port=None,
+        node_id="node-1",
+        availability_zone=None,
+        _replica=object(),
+        _deployment_id=DeploymentID(name="deployment-b", app_name="app"),
+        _request_metadata=RequestMetadata(
+            request_id="request-id",
+            internal_request_id="internal-request-id",
+            call_method="__call__",
+        ),
+        _method_name="__call__",
+        _slot_token="slot-1",
+    )
+
+    with pytest.raises(ValueError, match="different deployment"):
+        handle.dispatch(selection)
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(30)
+async def test_non_grpc_exception_no_self_cause(serve_instance):
+    """Regression test for https://github.com/ray-project/ray/issues/62358."""
+
+    @ray.remote
+    class _ExceptionChainDetector:
+        def __init__(self):
+            self._processed = False
+            self._cycle_detected = False
+
+        def record_result(self, cycle_detected: bool):
+            self._processed = True
+            self._cycle_detected = cycle_detected
+
+        def processed(self):
+            return self._processed
+
+        def cycle_detected(self):
+            return self._cycle_detected
+
+    detector = _ExceptionChainDetector.remote()
+
+    class CauseWalker(logging.Handler):
+        """Walk the exception chain to catch self-referential causes."""
+
+        def __init__(self, detector_handle):
+            super().__init__()
+            self._detector = detector_handle
+
+        def emit(self, record):
+            if not record.exc_info or record.exc_info[1] is None:
+                return
+
+            exc = record.exc_info[1]
+            if not isinstance(exc, ValueError) or str(exc) != "user code exception":
+                return
+
+            cycle_detected = False
+            try:
+                seen = set()
+                while exc.__cause__ is not None:
+                    if id(exc) in seen:
+                        cycle_detected = True
+                        return
+
+                    seen.add(id(exc))
+                    exc = exc.__cause__
+            finally:
+                self._detector.record_result.remote(cycle_detected)
+
+    @serve.deployment
+    class App:
+        def __init__(self, detector_handle):
+            logging.getLogger("ray.serve").addHandler(CauseWalker(detector_handle))
+
+        async def fail(self):
+            raise ValueError("user code exception")
+
+    handle = serve.run(App.bind(detector))
+
+    with pytest.raises(ValueError, match="user code exception"):
+        await handle.fail.remote()
+
+    wait_for_condition(lambda: ray.get(detector.processed.remote()), timeout=10)
+
+    assert not ray.get(detector.cycle_detected.remote()), (
+        "Self-referential __cause__ chain detected: "
+        "raise e from e was used on a non-gRPC request"
     )
 
 

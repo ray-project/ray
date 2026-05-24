@@ -99,21 +99,3 @@ TEST(SignalTest, SIGILL_Test) {
 
 #endif  // !_WIN32
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      /*log_filepath=*/
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      /*err_log_filepath=*/
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  ::testing::InitGoogleTest(&argc, argv);
-  int failed = RUN_ALL_TESTS();
-  return failed;
-}

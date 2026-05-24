@@ -16,7 +16,6 @@ ray_cc_test(
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/util:clock",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -33,7 +32,6 @@ ray_cc_test(
         "//src/ray/raylet/scheduling:scheduling_context",
         "//src/ray/raylet/scheduling:scheduling_options",
         "//src/ray/util:clock",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -48,7 +46,6 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:local_resource_manager",
         "//src/ray/util:clock",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -68,7 +65,6 @@ ray_cc_test(
         "//src/ray/raylet/scheduling:local_lease_manager",
         "//src/ray/raylet/tests:util",
         "//src/ray/util:clock",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -90,7 +86,6 @@ ray_cc_test(
         "//src/ray/raylet/scheduling:local_lease_manager",
         "//src/ray/raylet/tests:util",
         "//src/ray/util:clock",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -103,6 +98,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/raylet/scheduling:cluster_resource_manager",
-        "@com_google_googletest//:gtest_main",
     ],
 )

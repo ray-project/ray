@@ -17,15 +17,13 @@ subprocess.check_call(
         "torch==2.8.0",
         "torchvision==0.23.0",
         "matplotlib==3.10.6",
-        "pyarrow==14.0.2",
+        "pyarrow==17.0.0",
     ]
 )
 
 # 01. Imports
 
 # --- Standard library: file IO, paths, timestamps, temp dirs, cleanup ---
-import csv  # Simple CSV logging for metrics in single-GPU section
-import datetime  # Timestamps for run directories / filenames
 import os  # Filesystem utilities (paths, env vars)
 import tempfile  # Ephemeral dirs for checkpoint staging with ray.train.report()
 import shutil  # Cleanup of artifacts (later cells)

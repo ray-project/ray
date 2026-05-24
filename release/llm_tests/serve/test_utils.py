@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Union
 import requests
 from openai import OpenAI
 
-import anyscale
 import boto3
 import ray
 import yaml
@@ -32,6 +31,7 @@ SECRET_NAME = "llm_release_test_hf_token"
 # Buildkite is also configured to have read access to this bucket
 S3_BUCKET = "rayllm-ci-results"
 S3_PREFIX = "vllm_perf_results"
+ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR = "ANYSCALE_JOB_CLUSTER_COMPUTE_NAME"
 
 
 def check_service_state(
@@ -169,11 +169,20 @@ def start_service(
         logger.info(f"Service '{service_name}' terminated successfully.")
 
 
-def get_current_compute_config():
-    """Get the compute config of the current job."""
-    job_id = os.environ["ANYSCALE_JOB_ID"]
-    job_status = anyscale.job.status(id=job_id)
-    return job_status.config.compute_config
+def get_service_compute_config(
+    compute_config: Optional[str] = None,
+) -> str:
+    """Get the compute config to use when starting the Anyscale Service."""
+    service_compute_config = compute_config or os.environ.get(
+        ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR
+    )
+    if service_compute_config is None:
+        raise RuntimeError(
+            "No compute config was provided for the Anyscale Service. Set "
+            f"--compute-config or {ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR}; "
+            "release jobs should provide this automatically."
+        )
+    return service_compute_config
 
 
 def get_applications(serve_config_file: str) -> List[Any]:

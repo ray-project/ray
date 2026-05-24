@@ -55,17 +55,19 @@ def construct_train_func(
     fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
+
     Args:
         train_func: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        config (Optional[Dict]): Configurations to pass into
-            ``train_func``. If None then an empty Dict will be created.
+        config: Configurations to pass into ``train_func``. If None then an
+            empty Dict will be created.
         train_func_context: Context manager for user's `train_func`, which executes
             backend-specific logic before and after the training function.
-        fn_arg_name (Optional[str]): The name of training function to use for error
-            messages.
+        fn_arg_name: The name of training function to use for error messages.
+
     Returns:
         A valid training function.
+
     Raises:
         ValueError: if the input ``train_func`` is invalid.
     """
@@ -186,6 +188,12 @@ def get_module_name(obj: object) -> str:
 def get_callable_name(fn: Callable) -> str:
     """Returns a readable name for any callable.
 
+    Args:
+        fn: The callable to extract a name from.
+
+    Returns:
+        A human-readable name for the callable.
+
     Examples:
 
         >>> get_callable_name(lambda x: x)
@@ -290,7 +298,7 @@ async def wait_with_logging(
     predicate: Optional[Callable[[], bool]] = None,
     generate_warning_message: Optional[Callable[[], str]] = None,
     warn_interval_s: float = 60,
-    timeout_s: float = -1,
+    timeout_s: Optional[float] = None,
 ):
     """Waits for condition to be notified, logging warnings and eventually timing out.
 
@@ -303,7 +311,7 @@ async def wait_with_logging(
         generate_warning_message: A function that generates the warning message to log.
             If None, no warning is logged.
         warn_interval_s: The interval in seconds to log a warning.
-        timeout_s: The timeout in seconds.
+        timeout_s: The timeout in seconds. Defaults to``None`` to not time out.
     """
 
     async def _wait_loop():
@@ -326,7 +334,7 @@ async def wait_with_logging(
 
     await asyncio.wait_for(
         _wait_loop(),
-        timeout=timeout_s if timeout_s >= 0 else None,
+        timeout=timeout_s,
     )
 
 

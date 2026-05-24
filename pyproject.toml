@@ -1,5 +1,5 @@
 [project]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 [tool.ruff]
 line-length = 88
@@ -37,6 +37,7 @@ ignore = [
     "B026",
     "B027",
     "B904",
+    "B905",
     "C419",
     # Below are auto-fixable rules
     "I001",

@@ -37,7 +37,7 @@ import pyarrow
 import pyarrow.fs
 
 import ray
-from ray._common.retry import call_with_retry
+from ray._common.retry import call_with_retry, format_exception, matches_error
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -895,13 +895,15 @@ def find_partition_index(
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
 
-        # Nulls sort last in Arrow, so they accumulate at the tail of col_vals.
-        # Stripping them before searching avoids a TypeError from np.searchsorted
-        # on None values — and if desired_val is also None, the answer is simply
-        # the end of the non-null region.
-        col_vals = col_vals[
-            ~pd.isna(col_vals)
-        ]  # remove nulls from the tail of col_vals
+        # Nulls and NaN sort last in Arrow, so they accumulate at the tail of
+        # col_vals. Strip them before np.searchsorted to avoid incorrect bounds.
+        # Use O(1) null_count as a fast path, and fall back to np.isnan for
+        # float columns that may contain NaN without Arrow nulls.
+        column = table[col_name]
+        if hasattr(column, "null_count") and column.null_count > 0:
+            col_vals = col_vals[~pd.isna(col_vals)]
+        elif col_vals.dtype.kind == "f" and np.isnan(col_vals).any():
+            col_vals = col_vals[~np.isnan(col_vals)]
         if desired_val is None:
             return left + len(col_vals)
 
@@ -1525,6 +1527,7 @@ def iterate_with_retry(
     match: Optional[List[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
+    unwrap_cause: bool = False,
 ) -> Any:
     """Iterate through an iterable with retries.
 
@@ -1533,12 +1536,16 @@ def iterate_with_retry(
 
     Args:
         iterable_factory: A no-argument function that creates the iterable.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
         description: An imperitive description of the function being retried. For
             example, "open the file".
+        match: A list of patterns to match in the exception message. Each pattern
+            is first checked as a substring, then as a regex. If ``None``, any
+            error is retried.
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
+        unwrap_cause: If ``True``, include ``e.__cause__`` in the string matched
+            against ``match``. Use this when exceptions are wrapped (e.g.
+            ``UserCodeException``) and the original error is in the cause chain.
     """
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
@@ -1555,16 +1562,21 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
+            error_str = format_exception(e, include_cause=unwrap_cause)
+            is_retryable = match is None or any(
+                matches_error(pattern, error_str) for pattern in match
+            )
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
-                    f"Retrying {attempt+1} attempts to {description} "
-                    f"after {backoff} seconds."
+                    f"Retrying attempt {attempt + 1} to {description} "
+                    f"after {backoff:.1f}s due to: {e}"
                 )
                 time.sleep(backoff)
             else:
+                if unwrap_cause:
+                    raise e
                 raise e from None
 
 
@@ -1813,13 +1825,47 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
         return x
 
+    def needs_proxy(dtype: "np.dtype | pd.api.extensions.ExtensionDtype") -> bool:
+        if dtype == "object":
+            return True
+        if isinstance(dtype, pd.ArrowDtype):
+            pa_type = dtype.pyarrow_dtype
+            return (
+                pyarrow.types.is_list(pa_type)
+                or pyarrow.types.is_large_list(pa_type)
+                or pyarrow.types.is_fixed_size_list(pa_type)
+                or pyarrow.types.is_struct(pa_type)
+                or pyarrow.types.is_map(pa_type)
+            )
+        return False
+
+    # Cast Arrow-backed *float* columns to numpy floats — pandas's multi-column
+    # ``sort_values`` builds an ordered Categorical per key column, which rejects
+    # arrow-backed floats containing both ``-0.0`` and ``0.0`` ("categories must
+    # be unique") because they're stored distinctly but compare equal under
+    # numpy. We deliberately leave other Arrow scalar types alone: int columns
+    # may contain ``<NA>`` (which can't fit in numpy ``int64``), and string
+    # columns sort ``<NA>`` first whereas object-with-``None`` sorts last,
+    # which would diverge from the expected DataFrame on the other side.
+    arrow_to_numpy = {}
+    for col in df.columns:
+        dtype = df[col].dtype
+        if isinstance(dtype, pd.ArrowDtype) and pyarrow.types.is_floating(
+            dtype.pyarrow_dtype
+        ):
+            numpy_dtype = getattr(dtype, "numpy_dtype", None)
+            if numpy_dtype is not None:
+                arrow_to_numpy[col] = numpy_dtype
+    if arrow_to_numpy:
+        df = df.astype(arrow_to_numpy)
+
     sort_cols = []
     temp_cols = []
     # Sort by all columns to ensure deterministic order.
     columns = sorted(df.columns)
 
     for col in columns:
-        if df[col].dtype == "object":
+        if needs_proxy(df[col].dtype):
             # Create a temporary column for sorting to handle unhashable types.
             # Use UUID to avoid collisions with existing column names.
             temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"

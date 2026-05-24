@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray import serve
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, DeploymentTargetInfo
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
@@ -59,8 +60,6 @@ class CapacityQueue:
         self,
         acquire_timeout_s: float,
         token_ttl_s: Optional[float],
-        deployment_id_name: str,
-        deployment_id_app: str,
         _enable_long_poll: bool = True,
     ):
         self._acquire_timeout_s = acquire_timeout_s
@@ -85,10 +84,9 @@ class CapacityQueue:
         # Subscribe to replica updates from the Serve controller so the queue
         # automatically registers new replicas and unregisters dead ones.
         self._long_poll_client: Optional[LongPollClient] = None
-        if _enable_long_poll and deployment_id_name:
-            deployment_id = DeploymentID(
-                name=deployment_id_name, app_name=deployment_id_app
-            )
+        if _enable_long_poll:
+            deployment_context = serve.get_deployment_actor_context()
+            deployment_id = deployment_context.deployment_id
             controller_handle = ray.get_actor(
                 SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
@@ -101,6 +99,7 @@ class CapacityQueue:
                     ): self._update_deployment_targets,
                 },
                 call_in_event_loop=get_or_create_event_loop(),
+                client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
             )
 
         # Start background TTL reaper if token_ttl_s is set.

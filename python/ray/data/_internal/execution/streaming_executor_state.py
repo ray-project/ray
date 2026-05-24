@@ -2,8 +2,10 @@
 
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
+
 import dataclasses
 import logging
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -34,6 +36,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
+    terminal_operator_from_topology,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
@@ -48,6 +51,155 @@ logger = logging.getLogger(__name__)
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
+
+# Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
+WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
+
+
+class IdleDetector:
+    """Utility class for detecting idle operators.
+
+    Note, stalling can happen when there are less resources than Data executor
+    expects. E.g., when some resources are preempted by non-Data code, see
+    `test_no_deadlock_on_resource_contention` as an example.
+
+    This class is used to detect potential stalling and allow the execution
+    to make progress.
+    """
+
+    # The interval to detect idle operators.
+    # When downstream is idle, we'll allow reading at least one task output
+    # per this interval,
+    DETECTION_INTERVAL_S = 10.0
+    # Print a warning if an operator is idle for this time.
+    WARN_ON_IDLE_TIME_S = 60.0
+    # Whether a warning has been printed.
+    _warn_printed = False
+
+    def __init__(self):
+        # per-op fields
+        self.last_num_outputs = defaultdict(int)
+        self.last_output_time = defaultdict(lambda: time.time())
+        self.last_detection_time = defaultdict(lambda: time.time())
+
+    def detect_idle(self, op: PhysicalOperator):
+        cur_time = time.time()
+        if cur_time - self.last_detection_time[op] > self.DETECTION_INTERVAL_S:
+            cur_num_outputs = op.metrics.num_task_outputs_generated
+            if cur_num_outputs > self.last_num_outputs[op]:
+                self.last_num_outputs[op] = cur_num_outputs
+                self.last_output_time[op] = cur_time
+                self.last_detection_time[op] = cur_time
+            else:
+                self.print_warning_if_idle_for_too_long(
+                    op, cur_time - self.last_output_time[op]
+                )
+                return True
+
+        return False
+
+    @classmethod
+    def print_warning_if_idle_for_too_long(cls, op: PhysicalOperator, idle_time: float):
+        """Print a warning if an operator is idle for too long."""
+        if idle_time < cls.WARN_ON_IDLE_TIME_S or cls._warn_printed:
+            return
+        cls._warn_printed = True
+        msg = (
+            f"Operator {op} is running but has no outputs for {idle_time} seconds."
+            " Execution may be slower than expected.\n"
+            "Ignore this warning if your UDF is expected to be slow."
+            " Otherwise, this can happen when there are fewer cluster resources"
+            " available to Ray Data than expected."
+            " If you have non-Data tasks or actors running in the cluster, exclude"
+            " their resources from Ray Data with"
+            " `DataContext.get_current().execution_options.exclude_resources`."
+            " This message will only print once."
+        )
+
+        logger.warning(msg)
+
+
+class OutputBackpressureGuard:
+    """Escape hatch for streaming output backpressure.
+
+    When backpressure policies collectively allow 0 bytes of task output to be
+    read for an operator, the pipeline can deadlock if downstream is also
+    starved (no active tasks, no queued inputs). This guard inspects the
+    topology and resource state and decides whether to unblock the backpressure.
+
+    The guard owns per-operator idle-detection state across the lifetime of
+    a single executor, so it must be constructed once and reused across
+    scheduling-loop iterations.
+    """
+
+    def __init__(self, topology: Topology, resource_manager: ResourceManager):
+        self._topology = topology
+        self._resource_manager = resource_manager
+        self._idle_detector = IdleDetector()
+
+    def should_unblock(self, op: PhysicalOperator) -> bool:
+        """Return True if output backpressure should be relaxed for ``op``
+        to preserve pipeline liveness."""
+        downstream_eligible_ops = list(
+            self._resource_manager.get_downstream_eligible_ops(op)
+        )
+
+        # If this operator is a terminal one (no downstream eligible ops):
+        # - No external consumer (e.g., write pipelines where we control draining):
+        #   always unblock to maintain liveness.
+        # - External consumer (iter_batches, streaming_split): only unblock if
+        #   consumers are starving (blocked waiting in get_output_blocking). This
+        #   prevents blocks from piling up when consumers are slow, while still
+        #   maintaining liveness when the budget is too small for even one block.
+        if not downstream_eligible_ops:
+            if not self._resource_manager.has_external_consumer:
+                return True
+            # Check the DAG root rather than the last eligible op because
+            # consumers block in get_output_blocking on the root's OpState,
+            # which may differ (e.g., OutputSplitter or LimitOperator).
+            output_op = terminal_operator_from_topology(self._topology)
+            output_op_state = self._topology[output_op]
+            return output_op_state.num_waiting_consumers > 0
+
+        for downstream_op in downstream_eligible_ops:
+            # To maintain liveness of the pipeline, we relax output backpressure
+            # in one of the following cases.
+            if downstream_op.num_active_tasks() == 0:
+                downstream_op_state = self._topology[downstream_op]
+
+                # Case 1: Downstream operator
+                #   - Does *not* have running tasks and
+                #   - Is not able to schedule (resource constrained)
+                #
+                # In this case by relaxing output backpressure we allow upstream
+                # operator's task to complete sooner to free up resources.
+                if not self._can_submit_new_task(downstream_op):
+                    return True
+
+                # Case 2: Downstream operator
+                #   - Does *not* have running tasks and
+                #   - *Can* schedule new tasks
+                #   - Does *not* have any input blocks in the queue
+                #
+                # In this case we relax output backpressure to produce at least
+                # 1 block for downstream operator.
+                elif downstream_op_state.total_enqueued_input_blocks() == 0:
+                    return True
+
+        # As a last resort we check whether operator has been idling (ie not
+        # producing any outputs) for a while, and unblock in that case.
+        return self._idle_detector.detect_idle(op)
+
+    def _can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        """Whether ``op`` can submit a new task under current resource budgets.
+
+        Falls back to True when no op-level resource allocator is enabled —
+        in that case there is no budget-based throttling to wait on, so the
+        liveness check shouldn't claim downstream is blocked on resources.
+        """
+        if not self._resource_manager.op_resource_allocator_enabled():
+            return True
+        return self._resource_manager.op_resource_allocator.can_submit_new_task(op)
 
 
 class OpBufferQueue:
@@ -186,6 +338,16 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Tracks consumers blocked in get_output_blocking().
+        # Used to detect consumer starvation. Guarded by
+        # _waiting_consumers_lock since += is not atomic.
+        self._num_waiting_consumers: int = 0
+        self._waiting_consumers_lock = threading.Lock()
+
+    @property
+    def num_waiting_consumers(self) -> int:
+        """Return the number of consumers currently blocked in get_output_blocking."""
+        return self._num_waiting_consumers
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,24 +415,26 @@ class OpState:
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        out_ref, diverged = dedupe_schemas_with_validation(
-            self._schema,
-            ref,
-            enforce_schemas=self.op.data_context.enforce_schemas,
-        )
+        if ref.schema is not None:
+            out_ref, diverged = dedupe_schemas_with_validation(
+                self._schema,
+                ref,
+                enforce_schemas=self.op.data_context.enforce_schemas,
+            )
 
-        if (
-            diverged
-            and not self._warned_on_schema_divergence
-            and self.op.data_context.enforce_schemas
-        ):
-            warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
-            logger.warning(warning_message)
+            if (
+                diverged
+                and not self._warned_on_schema_divergence
+                and self.op.data_context.enforce_schemas
+            ):
+                warning_message = _build_schemas_mismatch_warning(
+                    self._schema, ref.schema
+                )
+                logger.warning(warning_message)
 
-        ref = out_ref
-
-        self._schema = ref.schema
-        self._warned_on_schema_divergence |= diverged
+            ref = out_ref
+            self._schema = ref.schema
+            self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
@@ -280,6 +444,11 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        # Update actor pool utilization metrics for monitoring scaling behavior
+        self.op.metrics.num_active_actors = actor_info.active
+        self.op.metrics.num_idle_actors = actor_info.idle
+        self.op.metrics.pool_utilization = actor_info.pool_utilization
+        self.op.metrics.num_tasks_in_flight = actor_info.tasks_in_flight
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
@@ -306,6 +475,8 @@ class OpState:
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
+        This method must be thread-safe.
+
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
 
@@ -313,20 +484,35 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
-        while True:
-            # Check if StreamingExecutor has caught an exception or is done execution.
-            if self._exception is not None:
-                raise self._exception
-            elif self._finished and not self.output_queue.has_next(output_split_idx):
-                raise StopIteration()
-            ref = self.output_queue.pop(output_split_idx)
-            if ref is not None:
-                # Update outqueue metrics when blocks are removed from this operator's outqueue
-                # TODO: Abstract queue-releated metrics to queue.
-                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                return ref
-            time.sleep(0.01)
+        starving = False
+        try:
+            while True:
+                # Check if StreamingExecutor has caught an exception or is done
+                # execution.
+                if self._exception is not None:
+                    raise self._exception
+                elif self._finished and not self.output_queue.has_next(
+                    output_split_idx
+                ):
+                    raise StopIteration()
+                ref = self.output_queue.pop(output_split_idx)
+                if ref is not None:
+                    # Update outqueue metrics when blocks are removed from
+                    # this operator's outqueue.
+                    # TODO: Abstract queue-releated metrics to queue.
+                    self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                    self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    return ref
+                if not starving:
+                    # Queue is empty — mark this consumer as starving.
+                    with self._waiting_consumers_lock:
+                        self._num_waiting_consumers += 1
+                    starving = True
+                time.sleep(0.01)
+        finally:
+            if starving:
+                with self._waiting_consumers_lock:
+                    self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
@@ -393,6 +579,7 @@ def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
+    output_backpressure_guard: OutputBackpressureGuard,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -402,6 +589,9 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        output_backpressure_guard: Escape hatch for streaming output
+            backpressure. Bumps a fully-throttled output limit (0 bytes) to
+            1 byte when the guard signals a stall.
     Returns:
         The number of errored blocks.
     """
@@ -433,8 +623,16 @@ def process_completed_tasks(
             max_bytes_to_read is None or max_bytes_to_read >= 0
         ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
 
-        # If no policy provides a limit, there's no limit
-        op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
+        # Apply the escape hatch after aggregating across all policies so it
+        # fires regardless of which policy drove the limit to 0.
+        if max_bytes_to_read == 0 and output_backpressure_guard.should_unblock(op):
+            max_bytes_to_read = 1
+
+        # When the guard bumped the limit above 0, clear the policy attribution too
+        in_backpressure = max_bytes_to_read == 0
+        op.notify_in_task_output_backpressure(
+            in_backpressure, limiting_policy if in_backpressure else None
+        )
 
         if max_bytes_to_read is not None:
             remaining_output_budget[state] = max_bytes_to_read
@@ -446,7 +644,7 @@ def process_completed_tasks(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=0.1,
+            timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
         )
 
         # Organize tasks by the operator they belong to, and sort them by task index.
@@ -537,14 +735,19 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators have completed.
+    # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
-        if dependents_completed:
+        # For terminal operators (no output dependencies, e.g. OutputSplitter),
+        # mark execution finished once the operator has fully completed so that
+        # internal queues are properly cleared via clear_internal_input_queue()
+        # and clear_internal_output_queue().
+        terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
+        if dependents_completed or terminal_completed:
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.

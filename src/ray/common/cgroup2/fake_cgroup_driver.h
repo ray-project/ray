@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/cgroup2/cgroup_manager.h"
 #include "ray/common/status.h"
@@ -225,6 +226,21 @@ class FakeCgroupDriver : public CgroupDriverInterface {
 
   Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid) override {
     return add_process_to_cgroup_s_;
+  }
+
+  StatusOr<std::string> GetConstraintValue(const std::string &cgroup_path,
+                                           const std::string &constraint_name) override {
+    auto cgroup_it = cgroups_->find(cgroup_path);
+    if (cgroup_it == cgroups_->end()) {
+      return Status::InvalidArgument(
+          absl::StrFormat("Cgroup %s does not exist", cgroup_path));
+    }
+    auto constraint_it = cgroup_it->second.constraints_.find(constraint_name);
+    if (constraint_it == cgroup_it->second.constraints_.end()) {
+      return Status::InvalidArgument(absl::StrFormat(
+          "Constraint %s does not exist in cgroup %s", constraint_name, cgroup_path));
+    }
+    return constraint_it->second;
   }
 };
 

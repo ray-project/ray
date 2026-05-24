@@ -250,6 +250,41 @@ def ray_tpu_cluster(ray_start_cluster):
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_v6e_tpu_cluster(ray_start_cluster):
+    """
+    Simulates a Ray cluster with two v6e-8 slices (2x4 topology).
+
+    """
+    pod_type = "v6e-8"
+    topology = "2x4"
+    cluster = ray_start_cluster
+
+    for i in range(2):
+        env_common = {
+            "TPU_NAME": f"test-v6e-slice-{i}",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        head_labels = {
+            "ray.io/tpu-slice-name": f"test-v6e-slice-{i}",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
+        # A single-host v6e-8 has 8 chips on one node
+        cluster.add_node(
+            num_cpus=4,
+            resources={"TPU": 8, f"TPU-{pod_type}-head": 1},
+            env_vars={**env_common, "TPU_WORKER_ID": "0"},
+            labels=head_labels,
+        )
+
+    ray.init(address=cluster.address)
+    yield cluster
+    ray.shutdown()
+
+
 def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
     """Tests that the slice name can be fetched from a PG."""
     tpu_head_pg = ray.util.placement_group(bundles=[{"TPU-v4-16-head": 1}])
@@ -764,6 +799,172 @@ def test_get_tpu_nodes_for_slice(mock_nodes_call, mock_is_initialized):
 def test_get_tpu_nodes_for_slice_uninitialized(mock_is_initialized):
     """Test that the utility gracefully handles an uninitialized Ray context."""
     assert ray.util.tpu.get_tpu_nodes_for_slice("slice-A") == []
+
+
+def test_get_tpu_worker_resources_chips_per_vm_override():
+    """Test that chips_per_vm correctly overrides the default resource calculations."""
+
+    # Default behavior: v6e 2x4 defaults to a single 8-chip host
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e"
+    )
+    assert num_workers == 1
+    assert resources["TPU"] == 8
+
+    # Override behavior: v6e 2x4 forced to 4 chips per VM (2 hosts)
+    num_workers_override, resources_override = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e", chips_per_vm=4
+    )
+    assert num_workers_override == 2
+    assert resources_override["TPU"] == 4
+
+
+def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
+    """Test that SlicePlacementGroup respects chips_per_vm for host calculation."""
+
+    # Default behavior (1 VM with 8 chips)
+    default_pg = SlicePlacementGroup(topology="2x4", accelerator_version="v6e")
+    assert default_pg.chips_per_host == 8
+    assert default_pg.num_hosts == 1
+    assert default_pg.num_bundles == 1
+    assert default_pg.bundle_resources["TPU"] == 8
+
+    # User-specified override behavior (2 VMs with 4 chips each)
+    override_pg = SlicePlacementGroup(
+        topology="2x4", accelerator_version="v6e", chips_per_vm=4
+    )
+    assert override_pg.chips_per_host == 4
+    assert override_pg.num_hosts == 2
+    assert override_pg.num_bundles == 2
+    assert override_pg.bundle_resources["TPU"] == 4
+
+
+def test_user_bundle_label_selector_merged(ray_tpu_cluster):
+    """Verifies that user-passed bundle_label_selector is merged with dynamic TPU labels."""
+    user_selectors = [{"env": "prod"}, {"env": "test"}]
+
+    # 2x2x2 v4 = 2 hosts = 2 bundles
+    slice_pg = SlicePlacementGroup(
+        topology="2x2x2", accelerator_version="v4", bundle_label_selector=user_selectors
+    )
+
+    assert len(slice_pg._bundle_label_selector) == 2
+
+    # Verify slice 0
+    assert slice_pg._bundle_label_selector[0]["env"] == "prod"
+    assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[0]
+
+    # Verify slice 1
+    assert slice_pg._bundle_label_selector[1]["env"] == "test"
+    assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[1]
+
+
+def test_user_bundle_label_selector_collision_dynamic_wins(ray_v6e_tpu_cluster):
+    """Verifies that dynamic TPU labels take precedence on collision."""
+    user_selectors = [{ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"}]
+
+    # v6e-8 is single host (1 bundle)
+    slice_pg = SlicePlacementGroup(
+        topology="2x4", accelerator_version="v6e", bundle_label_selector=user_selectors
+    )
+
+    assert len(slice_pg._bundle_label_selector) == 1
+    # The dynamic value should win (it generates test-v6e-slice-N)
+    actual_val = slice_pg._bundle_label_selector[0][
+        ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+    ]
+    assert actual_val != "user-requested-slice"
+    assert "test-v6e-slice-" in actual_val
+
+
+def test_user_bundle_label_selector_length_mismatch_raises():
+    """Verifies that providing wrong length of selector list raises ValueError."""
+    user_selectors = [{"env": "prod"}]  # Only 1 provided but 2x2x2 v4 has 2 hosts
+
+    with pytest.raises(ValueError, match="bundle_label_selector length"):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            bundle_label_selector=user_selectors,
+        )
+
+
+def test_release_head_pgs_idempotent(ray_tpu_cluster):
+    """Verifies that release_head_pgs() is idempotent."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    assert len(slice_pg.head_placement_groups) == 1
+
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+    # Call again, should not raise
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+
+def test_shutdown_idempotent(ray_tpu_cluster):
+    """Verifies that shutdown() is idempotent."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    slice_pg.shutdown()
+    assert slice_pg.placement_group is None
+    assert len(slice_pg.head_placement_groups) == 0
+
+    # Call again, should not raise
+    slice_pg.shutdown()
+
+
+def test_shutdown_safe_after_construction_failure():
+    """Verifies that shutdown() is safe to call on a partially-constructed instance."""
+    with patch(
+        "ray.util.tpu.SlicePlacementGroup._reserve_slice",
+        side_effect=RuntimeError("Test failure"),
+    ):
+        with pytest.raises(RuntimeError, match="Test failure"):
+            SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    # If the above didn't crash or leak resources, we are good.
+    # We can also manually construct a partial instance and call shutdown.
+    partial_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    partial_pg._head_pgs = []
+    partial_pg._placement_group = None
+
+    # Should not raise even though it's missing attributes
+    partial_pg.shutdown()
+
+
+def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
+    """Validates Slice PG lifecycle: wait until ready, release head PGs, then shutdown."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    # Wait for ready
+    ray.get(slice_pg.placement_group.ready())
+
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+    slice_pg.shutdown()
+    assert slice_pg.placement_group is None
+
+
+def test_chips_per_vm_zero_raises_value_error():
+    """Verifies that passing chips_per_vm=0 explicitly raises a ValueError instead of silently using the topology default."""
+    with pytest.raises(ValueError):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            chips_per_vm=0,
+        )
+
+    # Also verify when custom resources already include a "TPU" key
+    with pytest.raises(ValueError):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            resources_per_bundle={"TPU": 4},
+            chips_per_vm=0,
+        )
 
 
 if __name__ == "__main__":
