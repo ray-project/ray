@@ -2368,7 +2368,7 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
   scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("CPU_group_1_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
 
-  const NodeResources &node_resources =
+  const NodeResourcesBase &node_resources =
       scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(id_.Binary()));
 
@@ -2416,7 +2416,7 @@ TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources
   scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("GPU_group_0_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
 
-  const NodeResources &node_resources =
+  const NodeResourcesBase &node_resources =
       scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(id_.Binary()));
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 8);

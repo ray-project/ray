@@ -25,7 +25,7 @@ using namespace ::ray::raylet_scheduling_policy;  // NOLINT
 ClusterResourceScheduler::ClusterResourceScheduler(
     instrumented_io_context &io_service,
     scheduling::NodeID local_node_id,
-    const NodeResources &local_node_resources,
+    const NodeResourcesBase &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock,
@@ -67,7 +67,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 void ClusterResourceScheduler::Init(
     instrumented_io_context &io_service,
-    const NodeResources &local_node_resources,
+    const NodeResourcesBase &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
@@ -80,7 +80,7 @@ void ClusterResourceScheduler::Init(
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
       shutdown_raylet_gracefully,
-      [this](const NodeResources &local_resource_update) {
+      [this](const NodeResourcesBase &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       },
       resource_usage_gauge,

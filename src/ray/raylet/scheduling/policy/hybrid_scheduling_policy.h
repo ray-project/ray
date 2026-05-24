@@ -76,7 +76,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// satisfy the filter and resource requirement.
   bool IsNodeFeasible(const scheduling::NodeID &node_id,
                       const NodeFilter &node_filter,
-                      const NodeResources &node_resources,
+                      const NodeResourcesBase &node_resources,
                       const ResourceRequest &resource_request) const;
 
   /// helper function compute a score between 0-1 indicates

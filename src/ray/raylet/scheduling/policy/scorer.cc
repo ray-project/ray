@@ -18,7 +18,7 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 double LeastResourceScorer::Score(const ResourceRequest &required_resources,
-                                  const NodeResources &node_resources) {
+                                  const NodeResourcesBase &node_resources) {
   if (!node_resources.IsAvailable(required_resources)) {
     return -1.;
   }

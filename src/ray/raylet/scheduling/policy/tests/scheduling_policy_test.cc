@@ -756,7 +756,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   ASSERT_EQ(result_1.selected_nodes.size(), 15);
 
   for (const scheduling::NodeID &node_id : result_1.selected_nodes) {
-    const NodeResources &node_resources =
+    const NodeResourcesBase &node_resources =
         cluster_resource_manager->GetNodeResources(node_id);
     absl::flat_hash_map<std::string, std::string>::const_iterator it =
         node_resources.labels.find(kDomainLabelKey);
@@ -786,7 +786,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   ASSERT_EQ(result_2.selected_nodes.size(), 3);
 
   for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
-    const NodeResources &node_resources =
+    const NodeResourcesBase &node_resources =
         cluster_resource_manager->GetNodeResources(node_id);
     absl::flat_hash_map<std::string, std::string>::const_iterator it =
         node_resources.labels.find(kDomainLabelKey);

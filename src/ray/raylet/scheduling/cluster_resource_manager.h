@@ -91,7 +91,7 @@ class ClusterResourceManager {
   std::string GetNodeResourceViewString(scheduling::NodeID node_id) const;
 
   /// Get local resource.
-  const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
+  const NodeResourcesBase &GetNodeResources(scheduling::NodeID node_id) const;
 
   /// Subtract available resource from a given node.
   /// Return false if such node doesn't exist.
@@ -185,7 +185,8 @@ class ClusterResourceManager {
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(scheduling::NodeID node_id, const NodeResources &node_resources);
+  void AddOrUpdateNode(scheduling::NodeID node_id,
+                       const NodeResourcesBase &node_resources);
 
   void AddOrUpdateNode(
       scheduling::NodeID node_id,
@@ -194,14 +195,16 @@ class ClusterResourceManager {
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(scheduling::NodeID node_id, NodeResources *ret_resources) const;
+  bool GetNodeResources(scheduling::NodeID node_id,
+                        NodeResourcesBase *ret_resources) const;
 
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<scheduling::NodeID, Node> nodes_;
 
   /// Resource message updated
-  absl::flat_hash_map<scheduling::NodeID, NodeResources> received_node_resources_;
+  absl::flat_hash_map<scheduling::NodeID, std::unique_ptr<NodeResourcesBase>>
+      received_node_resources_;
 
   BundleLocationIndex bundle_location_index_;
 

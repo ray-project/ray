@@ -35,7 +35,7 @@ ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_servi
         for (auto &[node_id, resource] : received_node_resources_) {
           auto modified_ts = GetNodeResourceModifiedTs(node_id);
           if (modified_ts && *modified_ts + syncer_delay < absl::Now()) {
-            AddOrUpdateNode(node_id, resource);
+            AddOrUpdateNode(node_id, *resource);
           }
         }
       },
@@ -62,14 +62,19 @@ void ClusterResourceManager::AddOrUpdateNode(
 }
 
 void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
-                                             const NodeResources &node_resources) {
+                                             const NodeResourcesBase &node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
-    nodes_.emplace(node_id, node_resources);
+    std::unique_ptr<NodeResourcesBase> copy;
+    if (!node_resources.IsV2()) {
+      copy = std::make_unique<NodeResources>(
+          static_cast<const NodeResources &>(node_resources));
+    }
+    nodes_.emplace(node_id, Node(std::move(copy)));
   } else {
     // This node exists, so update its resources.
-    it->second = Node(node_resources);
+    it->second.UpdateView(node_resources);
   }
 }
 
@@ -108,7 +113,8 @@ bool ClusterResourceManager::UpdateNode(
   }
 
   AddOrUpdateNode(node_id, local_view);
-  received_node_resources_[node_id] = std::move(local_view);
+  received_node_resources_[node_id] =
+      std::make_unique<NodeResources>(std::move(local_view));
   return true;
 }
 
@@ -130,25 +136,34 @@ bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
   local_view->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
   auto rnr_it = received_node_resources_.find(node_id);
   if (rnr_it != received_node_resources_.end()) {
-    rnr_it->second.is_draining = is_draining;
-    rnr_it->second.draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+    rnr_it->second->is_draining = is_draining;
+    rnr_it->second->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
   }
 
   return true;
 }
 
 bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
-                                              NodeResources *ret_resources) const {
+                                              NodeResourcesBase *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
-    *ret_resources = it->second.GetLocalView();
+    const auto &node_resources = it->second.GetLocalView();
+    RAY_CHECK(node_resources.IsV2() == ret_resources->IsV2())
+        << "ret_resources type must match the node's resource version";
+    if (node_resources.IsV2()) {
+      *static_cast<NodeResourcesV2 *>(ret_resources) =
+          static_cast<const NodeResourcesV2 &>(node_resources);
+    } else {
+      *static_cast<NodeResources *>(ret_resources) =
+          static_cast<const NodeResources &>(node_resources);
+    }
     return true;
   } else {
     return false;
   }
 }
 
-const NodeResources &ClusterResourceManager::GetNodeResources(
+const NodeResourcesBase &ClusterResourceManager::GetNodeResources(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
   return node.GetLocalView();
@@ -179,7 +194,10 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
     available = 0;
   }
   local_view->total.Set(resource_id, total);
-  local_view->SetAvailableResource(resource_id, available);
+  if (!local_view->IsV2()) {
+    static_cast<NodeResources *>(local_view)
+        ->SetAvailableResource(resource_id, available);
+  }
 }
 
 bool ClusterResourceManager::DeleteResources(
@@ -192,7 +210,9 @@ bool ClusterResourceManager::DeleteResources(
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
     local_view->total.Set(resource_id, 0);
-    local_view->SetAvailableResource(resource_id, 0);
+    if (!local_view->IsV2()) {
+      static_cast<NodeResources *>(local_view)->SetAvailableResource(resource_id, 0);
+    }
   }
   return true;
 }
@@ -215,9 +235,12 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
     return false;
   }
 
-  NodeResources *resources = it->second.GetMutableLocalView();
+  NodeResourcesBase *resources = it->second.GetMutableLocalView();
 
-  resources->SubtractAvailable(resource_request.GetResourceSet());
+  if (!resources->IsV2()) {
+    static_cast<NodeResources *>(resources)->SubtractAvailable(
+        resource_request.GetResourceSet());
+  }
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
@@ -265,7 +288,10 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
       if (new_available > total) {
         new_available = total;
       }
-      node_resources->SetAvailableResource(resource_id, new_available);
+      if (!node_resources->IsV2()) {
+        static_cast<NodeResources *>(node_resources)
+            ->SetAvailableResource(resource_id, new_available);
+      }
     }
   }
   return true;

@@ -23,7 +23,7 @@ namespace raylet_scheduling_policy {
 bool HybridSchedulingPolicy::IsNodeFeasible(
     const scheduling::NodeID &node_id,
     const NodeFilter &node_filter,
-    const NodeResources &node_resources,
+    const NodeResourcesBase &node_resources,
     const ResourceRequest &resource_request) const {
   if (!is_node_alive_(node_id)) {
     return false;
@@ -42,7 +42,8 @@ bool HybridSchedulingPolicy::IsNodeFeasible(
 }
 
 namespace {
-float ComputeNodeScoreImpl(const NodeResources &node_resources, float spread_threshold) {
+float ComputeNodeScoreImpl(const NodeResourcesBase &node_resources,
+                           float spread_threshold) {
   float critical_resource_utilization =
       node_resources.CalculateCriticalResourceUtilization();
   if (critical_resource_utilization < spread_threshold) {

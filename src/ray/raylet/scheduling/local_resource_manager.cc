@@ -30,11 +30,11 @@ namespace ray {
 
 LocalResourceManager::LocalResourceManager(
     scheduling::NodeID local_node_id,
-    const NodeResources &node_resources,
+    const NodeResourcesBase &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    std::function<void(const NodeResources &)> resource_change_subscriber,
+    std::function<void(const NodeResourcesBase &)> resource_change_subscriber,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock)
     : local_node_id_(local_node_id),
@@ -44,7 +44,10 @@ LocalResourceManager::LocalResourceManager(
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber),
       resource_usage_gauge_(resource_usage_gauge) {
-  RAY_CHECK(node_resources.total == node_resources.GetAvailable());
+  if (!node_resources.IsV2()) {
+    const auto &v1 = static_cast<const NodeResources &>(node_resources);
+    RAY_CHECK(v1.total == v1.GetAvailable());
+  }
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;

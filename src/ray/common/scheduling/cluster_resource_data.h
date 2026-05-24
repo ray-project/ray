@@ -15,6 +15,7 @@
 #pragma once
 
 #include <boost/range/adaptor/map.hpp>
+#include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -527,16 +528,70 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  explicit Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(const NodeResources &resources)
+      : local_view_(std::make_unique<NodeResources>(resources)) {}
 
-  NodeResources *GetMutableLocalView() {
+  explicit Node(std::unique_ptr<NodeResourcesBase> resources)
+      : local_view_(std::move(resources)) {}
+
+  Node(const Node &other) : local_view_modified_ts_(other.local_view_modified_ts_) {
+    if (other.local_view_->IsV2()) {
+      local_view_ = std::make_unique<NodeResourcesV2>(
+          static_cast<const NodeResourcesV2 &>(*other.local_view_));
+    } else {
+      local_view_ = std::make_unique<NodeResources>(
+          static_cast<const NodeResources &>(*other.local_view_));
+    }
+  }
+
+  Node &operator=(const Node &other) {
+    if (this != &other) {
+      if (other.local_view_->IsV2()) {
+        local_view_ = std::make_unique<NodeResourcesV2>(
+            static_cast<const NodeResourcesV2 &>(*other.local_view_));
+      } else {
+        local_view_ = std::make_unique<NodeResources>(
+            static_cast<const NodeResources &>(*other.local_view_));
+      }
+      local_view_modified_ts_ = other.local_view_modified_ts_;
+    }
+    return *this;
+  }
+
+  Node(Node &&) = default;
+  Node &operator=(Node &&) = default;
+
+  /// Update the local view in-place when the type matches, or replace the
+  /// pointer when the type changes. This preserves existing references to
+  /// *local_view_ when the type is unchanged.
+  void UpdateView(const NodeResourcesBase &resources) {
+    if (local_view_ && resources.IsV2() == local_view_->IsV2()) {
+      if (resources.IsV2()) {
+        static_cast<NodeResourcesV2 &>(*local_view_) =
+            static_cast<const NodeResourcesV2 &>(resources);
+      } else {
+        static_cast<NodeResources &>(*local_view_) =
+            static_cast<const NodeResources &>(resources);
+      }
+    } else {
+      if (resources.IsV2()) {
+        local_view_ = std::make_unique<NodeResourcesV2>(
+            static_cast<const NodeResourcesV2 &>(resources));
+      } else {
+        local_view_ = std::make_unique<NodeResources>(
+            static_cast<const NodeResources &>(resources));
+      }
+    }
+  }
+
+  NodeResourcesBase *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();
-    return &local_view_;
+    return local_view_.get();
   }
 
   std::optional<absl::Time> GetViewModifiedTs() const { return local_view_modified_ts_; }
 
-  const NodeResources &GetLocalView() const { return local_view_; }
+  const NodeResourcesBase &GetLocalView() const { return *local_view_; }
 
  private:
   /// Our local view of the remote node's resources. This may be dirty
@@ -545,7 +600,7 @@ struct Node {
   /// get overwritten by the last reported view on each heartbeat tick, to
   /// make sure that our local view does not skew too much from the actual
   /// resources when light heartbeats are enabled.
-  NodeResources local_view_;
+  std::unique_ptr<NodeResourcesBase> local_view_;
   /// The timestamp this node got updated.
   std::optional<absl::Time> local_view_modified_ts_;
 };

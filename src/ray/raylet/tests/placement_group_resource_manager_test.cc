@@ -110,7 +110,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
 
   void CheckRemainingResourceCorrect(NodeResources &node_resources) {
-    auto local_node_resource =
+    const auto &local_node_resource =
         cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
             scheduling::NodeID("local"));
     ASSERT_TRUE(local_node_resource == node_resources);

@@ -54,7 +54,7 @@ class ClusterResourceScheduler {
   /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
   ClusterResourceScheduler(instrumented_io_context &io_service,
                            scheduling::NodeID local_node_id,
-                           const NodeResources &local_node_resources,
+                           const NodeResourcesBase &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
                            ray::observability::MetricInterface &resource_usage_gauge,
                            ClockInterface &clock,
@@ -143,7 +143,7 @@ class ClusterResourceScheduler {
 
  private:
   void Init(instrumented_io_context &io_service,
-            const NodeResources &local_node_resources,
+            const NodeResourcesBase &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity,
             std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
