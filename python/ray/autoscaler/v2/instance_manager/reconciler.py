@@ -3,7 +3,7 @@ import math
 import time
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from typing import ClassVar, Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient
@@ -1182,8 +1182,14 @@ class Reconciler:
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
 
-        # Layer 3 of the cluster-idle predicate; catches driver-only work.
+        # Drop the observable signal if any user driver is attached.
         Reconciler._apply_cluster_idle_driver_mask(reply, gcs_client)
+
+        # Promote the observable signal into a termination decision once it
+        # has held for idle_termination_seconds.
+        Reconciler._gate_cluster_idle(
+            reply, autoscaling_config.get_idle_termination_seconds()
+        )
 
         # KubeRay is the only provider with the annotation contract today.
         if reply.cluster_idle_termination_expired and isinstance(
@@ -1276,17 +1282,41 @@ class Reconciler:
     def _apply_cluster_idle_driver_mask(
         reply: SchedulingReply, gcs_client: Optional[GcsClient]
     ) -> None:
-        """Cluster-idle Layer 3: mask the predicate when drivers are attached.
+        """Drops cluster_idle_observable when any user driver is attached.
 
-        Fails closed: GCS query failure (active=None) cancels the signal.
+        Fails closed: GCS query failure (active=None) drops the signal.
         """
-        if not reply.cluster_idle_termination_expired:
+        if not reply.cluster_idle_observable:
             return
         active = count_active_drivers(gcs_client) if gcs_client is not None else None
         if active is None or active > 0:
-            reply.cluster_idle_termination_expired = False
+            reply.cluster_idle_observable = False
+            logger.debug("Cluster idle masked by attached drivers: active=%s", active)
+
+    # Monotonic timestamp of the first reconcile loop in the current
+    # cluster-idle window. None when the signal is not currently held.
+    _cluster_idle_observed_since: ClassVar[Optional[float]] = None
+
+    @staticmethod
+    def _gate_cluster_idle(
+        reply: SchedulingReply, threshold_s: Optional[float]
+    ) -> None:
+        """Promotes cluster_idle_observable into cluster_idle_termination_expired
+        once the signal has been continuously held for threshold_s seconds.
+        """
+        if threshold_s is None or not reply.cluster_idle_observable:
+            Reconciler._cluster_idle_observed_since = None
+            return
+        now = time.monotonic()
+        if Reconciler._cluster_idle_observed_since is None:
+            Reconciler._cluster_idle_observed_since = now
+            return
+        if now - Reconciler._cluster_idle_observed_since >= threshold_s:
+            reply.cluster_idle_termination_expired = True
             logger.info(
-                "Cluster idle predicate masked by Layer 3: active_drivers=%s", active
+                "Cluster idle held for %.0fs >= idle_termination_seconds=%.0fs",
+                now - Reconciler._cluster_idle_observed_since,
+                threshold_s,
             )
 
     @staticmethod

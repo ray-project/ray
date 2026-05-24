@@ -1748,64 +1748,54 @@ def _make_cluster_idle_request(
     )
 
 
-def test_cluster_idle_fires_when_all_layers_pass():
+def test_cluster_idle_observable_when_all_conditions_pass():
     scheduler = ResourceDemandScheduler(event_logger)
     reply = scheduler.schedule(_make_cluster_idle_request())
-    assert reply.cluster_idle_termination_expired is True
+    assert reply.cluster_idle_observable is True
+    assert reply.cluster_idle_termination_expired is False
 
 
 def test_cluster_idle_disabled_when_threshold_none():
     scheduler = ResourceDemandScheduler(event_logger)
     request = _make_cluster_idle_request(idle_termination_seconds=None)
     reply = scheduler.schedule(request)
-    assert reply.cluster_idle_termination_expired is False
+    assert reply.cluster_idle_observable is False
 
 
 @pytest.mark.parametrize(
     "kwargs,reason",
     [
-        # Gate 0: worker above minReplicas.
-        ({"worker_count": 1, "worker_min": 0}, "gate-0-above-min"),
-        # Layer 1: any alive worker is busy.
+        # Worker count above min_worker_nodes.
+        ({"worker_count": 1, "worker_min": 0}, "above-min"),
+        # Remaining worker is busy (idle_duration_ms == 0).
         (
             {"worker_count": 1, "worker_min": 1, "worker_idle_ms": 0},
-            "layer-1-worker-busy",
+            "worker-busy",
         ),
-        # Layer 1: alive worker idle below threshold.
-        (
-            {
-                "worker_count": 1,
-                "worker_min": 1,
-                "worker_idle_ms": 1_000,
-                "idle_termination_seconds": 10,
-            },
-            "layer-1-below-threshold",
-        ),
-        # Layer 2: outstanding resource demand of any kind.
+        # Outstanding resource demand of any kind.
         (
             {"resource_requests": [ResourceRequestUtil.make({"CPU": 1})]},
-            "layer-2-resource-request",
+            "resource-request",
         ),
         (
             {"gang_resource_requests": [[ResourceRequestUtil.make({"CPU": 1})]]},
-            "layer-2-gang-request",
+            "gang-request",
         ),
         (
             {"cluster_resource_constraints": [ResourceRequestUtil.make({"CPU": 1})]},
-            "layer-2-cluster-constraint",
+            "cluster-constraint",
         ),
     ],
 )
-def test_cluster_idle_blocked(kwargs, reason):
+def test_cluster_idle_observable_blocked(kwargs, reason):
     scheduler = ResourceDemandScheduler(event_logger)
     reply = scheduler.schedule(_make_cluster_idle_request(**kwargs))
-    assert reply.cluster_idle_termination_expired is False, reason
+    assert reply.cluster_idle_observable is False, reason
 
 
-def test_cluster_idle_skips_head_for_layer_1():
-    """Head's idle_duration_ms is unreliable (Ray-internal actors keep
-    NODE_WORKERS busy). _check_cluster_idle must fire when workers are idle
-    even if the head reports busy."""
+def test_cluster_idle_observable_skips_head_idle_signal():
+    """Head's idle_duration_ms is unreliable (Ray-internal actors). The
+    predicate must hold when workers are idle even if the head reports busy."""
     scheduler = ResourceDemandScheduler(event_logger)
     request = _make_cluster_idle_request(
         head_idle_ms=0,
@@ -1814,24 +1804,22 @@ def test_cluster_idle_skips_head_for_layer_1():
         worker_idle_ms=999_000,
     )
     reply = scheduler.schedule(request)
-    assert reply.cluster_idle_termination_expired is True
+    assert reply.cluster_idle_observable is True
 
 
-def test_cluster_idle_fires_with_no_workers_head_only():
-    """Head-only cluster (minReplicas: 0 and no workers): Layer 1 is a no-op
-    because there are no workers to check; Layer 2 alone gates the
-    predicate."""
+def test_cluster_idle_observable_with_no_workers_head_only():
+    """Head-only cluster (minReplicas: 0): the worker idle check is a no-op
+    and the predicate holds as long as no demand exists."""
     scheduler = ResourceDemandScheduler(event_logger)
     request = _make_cluster_idle_request(head_idle_ms=0, worker_count=0)
     reply = scheduler.schedule(request)
-    assert reply.cluster_idle_termination_expired is True
+    assert reply.cluster_idle_observable is True
 
 
-def test_cluster_idle_fires_after_per_node_drains_workers():
-    """Per-node idle termination drains idle workers in the same scheduling
-    tick before _check_cluster_idle runs. Gate 0 sees count_by_type == min
-    (workers marked TO_TERMINATE are excluded from the count) and the cluster
-    idle predicate fires."""
+def test_cluster_idle_observable_after_per_node_drains_workers():
+    """Per-node idle marks idle workers as TO_TERMINATE in the same scheduling
+    tick. Those are excluded from the worker count, so the predicate becomes
+    observable."""
     scheduler = ResourceDemandScheduler(event_logger)
     request = _make_cluster_idle_request(
         worker_count=1,
@@ -1840,7 +1828,7 @@ def test_cluster_idle_fires_after_per_node_drains_workers():
         idle_timeout_s=1,
     )
     reply = scheduler.schedule(request)
-    assert reply.cluster_idle_termination_expired is True
+    assert reply.cluster_idle_observable is True
     _, to_terminate = _launch_and_terminate(reply)
     assert any(
         cause == TerminationRequest.Cause.IDLE for _, _, cause in to_terminate
