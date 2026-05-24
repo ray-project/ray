@@ -1555,7 +1555,7 @@ def _cmdline_matches_gcs_address(
         return False
 
 
-def _address_matches_gcs_address(
+def is_same_gcs_address(
     address: str,
     target_address: str,
     normalized_target_address: Optional[Tuple[Set[str], int]] = None,
@@ -1565,7 +1565,9 @@ def _address_matches_gcs_address(
             target_address
         )
         address_hosts, address_port = _normalize_gcs_address(address)
-        return target_port == address_port and bool(target_hosts & address_hosts)
+        return target_port == address_port and not target_hosts.isdisjoint(
+            address_hosts
+        )
     except Exception:
         return False
 
@@ -1808,7 +1810,7 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
         ray._common.utils.reset_ray_address()
     else:
         current_address = ray._private.utils.read_ray_address()
-        if current_address and _address_matches_gcs_address(
+        if current_address and is_same_gcs_address(
             current_address, stop_address, normalized_stop_address
         ):
             ray._common.utils.reset_ray_address()

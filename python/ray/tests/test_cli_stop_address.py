@@ -125,8 +125,8 @@ def test_ray_stop_address_helpers_extract_and_match(monkeypatch, tmp_path):
     assert not scripts._cmdline_matches_gcs_address(
         ["raylet", "--gcs-address=10.0.0.4:6379"], "multi-ip-head:6379"
     )
-    assert scripts._address_matches_gcs_address("10.0.0.1:6379", "localhost:6379")
-    assert not scripts._address_matches_gcs_address("10.0.0.2:6379", "localhost:6379")
+    assert scripts.is_same_gcs_address("10.0.0.1:6379", "localhost:6379")
+    assert not scripts.is_same_gcs_address("10.0.0.2:6379", "localhost:6379")
 
     def raise_gaierror(host, port, family, socktype):
         raise scripts.socket.gaierror()

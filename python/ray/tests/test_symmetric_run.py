@@ -198,5 +198,39 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 assert "--num-cpus=4" in ray_start_calls[0][0][0]
 
 
+def test_check_ray_already_started_allows_different_addresses(monkeypatch):
+    """Distinct GCS addresses on the same host should be allowed to coexist."""
+    from ray.scripts.symmetric_run import check_ray_already_started
+
+    # An existing cluster at port 6380, but we're asking about port 6379.
+    monkeypatch.setattr(
+        "ray._private.services.find_gcs_addresses",
+        lambda: frozenset({"127.0.0.1:6380"}),
+    )
+    assert check_ray_already_started("127.0.0.1:6379") is False
+
+
+def test_check_ray_already_started_blocks_same_address(monkeypatch):
+    """Same GCS address must still block to avoid port/identity conflicts."""
+    from ray.scripts.symmetric_run import check_ray_already_started
+
+    monkeypatch.setattr(
+        "ray._private.services.find_gcs_addresses",
+        lambda: frozenset({"127.0.0.1:6379"}),
+    )
+    assert check_ray_already_started("127.0.0.1:6379") is True
+
+
+def test_check_ray_already_started_no_clusters(monkeypatch):
+    """Empty cluster list should never block."""
+    from ray.scripts.symmetric_run import check_ray_already_started
+
+    monkeypatch.setattr(
+        "ray._private.services.find_gcs_addresses",
+        lambda: frozenset(),
+    )
+    assert check_ray_already_started("127.0.0.1:6379") is False
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
