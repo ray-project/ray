@@ -1477,7 +1477,7 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     1. Most processes: --gcs-address=ip:port
     2. C++ worker wrappers: --ray_address=ip:port
     3. Java worker wrappers: -Dray.address=ip:port
-    4. ray.util.client.server: --address=ip:port (equivalent to GCS address)
+    4. ray.util.client.server: --address=ip:port
     5. gcs_server: --node-ip-address=ip + --gcs_server_port=port
 
     Args:

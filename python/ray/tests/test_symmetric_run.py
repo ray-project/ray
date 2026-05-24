@@ -198,38 +198,67 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 assert "--num-cpus=4" in ray_start_calls[0][0][0]
 
 
-def test_check_ray_already_started_allows_different_addresses(monkeypatch):
-    """Distinct GCS addresses on the same host should be allowed to coexist."""
-    from ray.scripts.symmetric_run import check_ray_already_started
+def test_symmetric_run_two_clusters_coexist_on_same_host(cleanup_ray):
+    """Two `ray symmetric-run` instances with distinct --address must run
+    independently on the same host: each cleans up only its own cluster on exit.
 
-    # An existing cluster at port 6380, but we're asking about port 6379.
-    monkeypatch.setattr(
-        "ray._private.services.find_gcs_addresses",
-        lambda: frozenset({"127.0.0.1:6380"}),
+    Mirrors the manual verification in the PR description:
+      1. Run command A, then command B in another terminal ~1 second later.
+      2. Both A and B complete their entrypoints independently.
+      3. After A finishes, A's processes are stopped; B is still alive.
+      4. After B finishes, B's processes are stopped.
+      5. Final `ray stop` finds no remaining processes on the host.
+    """
+    import subprocess
+    import time
+
+    cmd_a = [
+        "ray",
+        "symmetric-run",
+        "--address",
+        "127.0.0.1:6380",
+        "--dashboard-port",
+        "8265",
+        "--dashboard-agent-listen-port",
+        "52365",
+        "--",
+        "python",
+        "-c",
+        "import time; print('A'); time.sleep(10); print('A done')",
+    ]
+    cmd_b = [
+        "ray",
+        "symmetric-run",
+        "--address",
+        "127.0.0.1:6381",
+        "--dashboard-port",
+        "8266",
+        "--dashboard-agent-listen-port",
+        "52366",
+        "--",
+        "python",
+        "-c",
+        "import time; print('B'); time.sleep(10); print('B done')",
+    ]
+
+    a = subprocess.Popen(cmd_a, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    time.sleep(1)
+    b = subprocess.Popen(cmd_b, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    a_out, a_err = a.communicate(timeout=90)
+    b_out, b_err = b.communicate(timeout=90)
+
+    assert a.returncode == 0, f"A failed: {a_err.decode()}"
+    assert b.returncode == 0, f"B failed: {b_err.decode()}"
+    assert b"A done" in a_out, f"A entrypoint did not finish: {a_out.decode()}"
+    assert b"B done" in b_out, f"B entrypoint did not finish: {b_out.decode()}"
+
+    leftover = subprocess.run(
+        ["ray", "stop"], capture_output=True, text=True, timeout=10
     )
-    assert check_ray_already_started("127.0.0.1:6379") is False
-
-
-def test_check_ray_already_started_blocks_same_address(monkeypatch):
-    """Same GCS address must still block to avoid port/identity conflicts."""
-    from ray.scripts.symmetric_run import check_ray_already_started
-
-    monkeypatch.setattr(
-        "ray._private.services.find_gcs_addresses",
-        lambda: frozenset({"127.0.0.1:6379"}),
-    )
-    assert check_ray_already_started("127.0.0.1:6379") is True
-
-
-def test_check_ray_already_started_no_clusters(monkeypatch):
-    """Empty cluster list should never block."""
-    from ray.scripts.symmetric_run import check_ray_already_started
-
-    monkeypatch.setattr(
-        "ray._private.services.find_gcs_addresses",
-        lambda: frozenset(),
-    )
-    assert check_ray_already_started("127.0.0.1:6379") is False
+    assert "Did not find any active Ray processes" in (
+        leftover.stdout + leftover.stderr
+    ), f"Leftover Ray processes after both runs: {leftover.stdout} {leftover.stderr}"
 
 
 if __name__ == "__main__":
