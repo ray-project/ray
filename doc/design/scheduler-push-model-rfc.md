@@ -14,7 +14,7 @@ the relevant code path report what changed.**
 | subsystem      | today's anti-pattern                                                                                                                            | this RFC                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; N small RPCs per scheduler iteration                | Drain each ready task's gen up to its budget — looking up `size_bytes` inline via the Ray Core primitive (no RPC) so we stop pulling at the budget — then issue **one** batched `ray.get(meta_refs)` over what was drained |
-| **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers)             | Ops push resource deltas at mutation sites (emit / dispatch / done); `update_usages` shrinks to an aggregator      |
+| **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers) — O(N_ops) work per call                | Ops push deltas at mutation sites (emit / dispatch / done) into a single live global aggregate on `ResourceManager`; `update_usages` becomes **O(1)** — just dispatches to the budget allocator |
 
 On the wide-schema `worker_scaling` release-test matrix (m5.2xlarge × {36,
 72, 143, 358} nodes for {500, 1000, 2000, 5000} workers), the two parts
@@ -329,59 +329,103 @@ iterations) or under-utilize the batched call.
 
 ### Design
 
-Invert the control flow on resource accounting. Each event that changes
-per-op resource usage updates the `ResourceManager`'s cache **at the
-mutation site**, by delta. The manager keeps a per-op cache that's always
-current. `update_usages` shrinks to an aggregation pass + budget
-allocator.
+Invert the control flow on resource accounting. Each event that
+changes resource usage applies the **delta** at the mutation site,
+to both the per-op cache and a single **global running aggregate**
+on `ResourceManager`. Because the scheduler thread is single-threaded
+and every mutation site already knows its delta, threading the delta
+to the global is free. `update_usages` then becomes **O(1)** — no
+per-op summation, just (optionally) `_update_allocated_budgets`.
 
 #### 2a. New op-level hooks on `PhysicalOperator`
 
+Each hook updates two places:
+
+1. The op's local cache (so per-op readers like
+   `current_logical_usage()` and the per-op `obj_store_mem_used`
+   metric stay correct).
+2. The `ResourceManager`'s global aggregate (so `update_usages`
+   doesn't have to re-sum).
+
 ```python
 class PhysicalOperator:
-    # Maintained by the hooks; readers (current_logical_usage etc.)
-    # become trivial properties over these fields.
+    # Per-op cache. Readers (current_logical_usage etc.) become
+    # trivial properties over these fields.
     _cached_logical_usage:        ExecutionResources
     _cached_running_usage:        ExecutionResources
     _cached_pending_usage:        ExecutionResources
     _cached_obj_store_mem_bytes:  int
 
+    # ResourceManager set at op-bind time so the hooks can push deltas.
+    _resource_manager:            ResourceManager
+
     def on_output_bytes_added(self, n: int) -> None:
         """Called by DataOpTask.on_data_ready after each RefBundle emit."""
         self._cached_obj_store_mem_bytes += n
+        self._resource_manager._apply_obj_store_delta(n)
 
     def on_output_bytes_consumed(self, n: int) -> None:
         """Called when a downstream op pops bytes from this op's output
         queue, or when an external consumer reads via iter_batches /
         streaming_split."""
         self._cached_obj_store_mem_bytes -= n
+        self._resource_manager._apply_obj_store_delta(-n)
 
     def on_task_dispatched(self, task_bundle: ExecutionResources) -> None:
         """Called by dispatch_next_task after submitting a remote task."""
         self._cached_running_usage = self._cached_running_usage.add(task_bundle)
         self._cached_pending_usage = self._cached_pending_usage.subtract(task_bundle)
+        self._resource_manager._apply_dispatch_delta(task_bundle)
 
     def on_task_completed(self, task_bundle: ExecutionResources) -> None:
         """Called from task_done_callback."""
         self._cached_running_usage = self._cached_running_usage.subtract(task_bundle)
+        self._resource_manager._apply_complete_delta(task_bundle)
 ```
 
-#### 2b. `ResourceManager.update_usages` becomes an aggregator
+#### 2b. `ResourceManager` keeps the global aggregate live
 
 ```python
-def update_usages(self) -> None:
-    # No re-derivation; just sum the cached values that the hooks maintained.
-    self._global_usage         = sum_resources(op._cached_logical_usage for op in self._topology)
-    self._global_running_usage = sum_resources(op._cached_running_usage for op in self._topology)
-    self._global_pending_usage = sum_resources(op._cached_pending_usage for op in self._topology)
-    if self._op_resource_allocator is not None:
-        self._update_allocated_budgets()
+class ResourceManager:
+    # Live global aggregates, kept current by the delta appliers.
+    # No per-op poll loop, no re-derivation.
+    _global_usage:         ExecutionResources
+    _global_running_usage: ExecutionResources
+    _global_pending_usage: ExecutionResources
+
+    def _apply_obj_store_delta(self, n: int) -> None:
+        # Single scalar mutation. Constructed ExecutionResources is
+        # materialized on read, not on every delta.
+        self._global_obj_store_mem_bytes += n
+
+    def _apply_dispatch_delta(self, task_bundle: ExecutionResources) -> None:
+        self._global_running_usage = self._global_running_usage.add(task_bundle)
+        self._global_pending_usage = self._global_pending_usage.subtract(task_bundle)
+
+    def _apply_complete_delta(self, task_bundle: ExecutionResources) -> None:
+        self._global_running_usage = self._global_running_usage.subtract(task_bundle)
+
+    def update_usages(self) -> None:
+        # O(1). No per-op iteration. Aggregates are already current.
+        if self._op_resource_allocator is not None:
+            self._update_allocated_budgets()
 ```
 
-Hot path becomes O(N_ops) scalar additions — not O(N_ops × constructors
-× `safe_round` calls). `_update_allocated_budgets` still runs (it does
-the across-op fair-share work), but it now reads from the cached
-aggregates instead of re-deriving them.
+`update_usages` itself shrinks from "iterate all N ops + construct
+N×K `ExecutionResources` + call `safe_round` 4× each" to **a single
+function call** — and even that call is a no-op when no allocator is
+configured. The per-call cost drops to ~0 regardless of N_ops or
+dispatch count.
+
+`_update_allocated_budgets` still runs and reads `_global_*` plus
+per-op cached values; it's the only across-op work that remains, and
+it's per-call-bounded rather than per-op-bounded.
+
+Safety note: this is sound because the scheduler thread is
+single-threaded — every mutation site (`on_data_ready`,
+`dispatch_next_task`, `task_done_callback`, output-queue pop) runs on
+the scheduler thread or is funnelled through it. No locking required
+on the global aggregate.
 
 #### 2c. Call-site changes
 
@@ -410,12 +454,14 @@ just observed from different sides.
 
 | frame (at 5000_tasks)                    | today  | projected | reasoning |
 | ---                                      | ---:   | ---:      | --- |
-| `update_usages` (inclusive)              | ~110 s | ~10-20 s  | drops to "sum N scalars per call" + budget allocator |
-| `safe_round` (leaf)                      |  ~46 s |   <5 s    | called only at construction, not in hot path |
-| `_update_allocated_budgets`              |  ~30 s | ~20-25 s  | still runs, reads cached values |
+| `update_usages` (inclusive)              | ~110 s |   <5 s    | O(1) per call — just dispatches to `_update_allocated_budgets` when configured |
+| `safe_round` (leaf)                      |  ~46 s |   <5 s    | only at delta application, not on every `update_usages` |
+| `_update_allocated_budgets`              |  ~30 s | ~20-25 s  | still runs, reads the live global aggregate |
 
-Projected scheduler-thread reduction at 5000 workers: **~110 s → ~30 s
-update_usages**, ~14 % of the 600 s total at that scale.
+Projected scheduler-thread reduction at 5000 workers: **~110 s → ~25 s
+on the `update_usages` family**, ~14 % of the 600 s total at that
+scale. The O(1) shape also means the win scales with N_ops — at
+higher op-count topologies it grows.
 
 ## Combined effect
 
@@ -561,11 +607,18 @@ unchanged.
    covered by new tests for budget-aware drain + cache-miss fallback.
 
 ### Part 2
-1. **Cache drift.** Any future code path that mutates op state without
-   calling a hook silently corrupts the cached usage. Mitigation: keep
-   `current_logical_usage` etc. as canonical readers backed by the
-   cache; add a debug-mode invariant check that periodically compares
-   cached vs. freshly-recomputed values.
+1. **Cache + global-aggregate drift.** Any future code path that
+   mutates op state without going through a hook silently corrupts
+   both the per-op cache *and* the global aggregate. The global makes
+   the drift especially nasty because a single missed delta poisons
+   `_update_allocated_budgets` for the rest of the dataset.
+   Mitigation: (a) keep `current_logical_usage` etc. as canonical
+   readers backed by the cache, so anyone reading sees the cached
+   value (no temptation to compute from raw state); (b) add a
+   debug-mode invariant check that periodically recomputes the
+   global from scratch and asserts equality; (c) bind the
+   `ResourceManager` reference at op-construction so missing the
+   global-update side is a `None` deref, not a silent skew.
 2. **Op subclass migration.** Each subclass override needs auditing.
    Mitigation: do one op at a time; the cached field defaults to a
    freshly-recomputed value if the subclass hasn't migrated yet
@@ -574,7 +627,10 @@ unchanged.
    from the output queue outside the scheduler thread. Need to either
    fire the `on_output_bytes_consumed` hook from those paths or model
    "externally-consumed bytes" separately. Either way, an explicit
-   decision rather than today's implicit recomputation.
+   decision rather than today's implicit recomputation. Because the
+   global aggregate is unlocked (single-thread assumption), any
+   off-scheduler-thread mutation must funnel through a thread-safe
+   queue rather than calling the hook directly.
 
 ## Open questions
 
