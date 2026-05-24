@@ -1028,7 +1028,7 @@ class Node:
         # gcs_server binds the actual port, so we cannot know it here.
         # Future options: (a) defer reaper start until after gcs_server bind
         if self.head:
-            port = self._ray_params.port
+            port = self._ray_params.gcs_server_port
             gcs_address = (
                 build_address(self._ray_params.node_ip_address, port) if port else None
             )

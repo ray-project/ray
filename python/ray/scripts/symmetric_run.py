@@ -294,8 +294,17 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
         # This can be triggered by ctrl-c on the user's side.
         click.echo("Interrupted by user.", err=True)
     finally:
-        # Stop Ray cluster.
-        subprocess.run(["ray", "stop", "--address", address])
+        # Stop Ray cluster. Use the resolved host/port (not the original
+        # `address` string) so cleanup still matches the running processes
+        # if DNS fails or the hostname resolves differently at stop time.
+        subprocess.run(
+            [
+                "ray",
+                "stop",
+                "--address",
+                ray._common.network_utils.build_address(resolved_gcs_host, gcs_port),
+            ]
+        )
 
         # Propagate the exit code of the user script.
         if result is not None and result.returncode != 0:
