@@ -13,7 +13,7 @@ the relevant code path report what changed.**
 
 | subsystem      | today's anti-pattern                                                                                                                            | this RFC                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; N small RPCs per scheduler iteration                | Drain all gens first, look up block sizes locally (Ray Core primitive), trim by per-op budget, then issue **one** batched `ray.get(meta_refs)` covering only the pairs that fit budget |
+| **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; N small RPCs per scheduler iteration                | Drain each ready task's gen up to its budget — looking up `size_bytes` inline via the Ray Core primitive (no RPC) so we stop pulling at the budget — then issue **one** batched `ray.get(meta_refs)` over what was drained |
 | **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers)             | Ops push resource deltas at mutation sites (emit / dispatch / done); `update_usages` shrinks to an aggregator      |
 
 On the wide-schema `worker_scaling` release-test matrix (m5.2xlarge × {36,
@@ -174,33 +174,39 @@ The redundancy:
 ### Design
 
 Restructure `process_completed_tasks` so each scheduler iteration
-issues **one** batched `ray.get(meta_refs, ...)` instead of N
-per-pair calls. Use the Ray Core size primitive to know each block's
-byte size *before* fetching its metadata, so the batched call covers
-**only the pairs whose blocks fit the per-op budget** — no
-speculative over-fetch, no cross-iteration cache state.
+issues **one** batched `ray.get(meta_refs, ...)` instead of N per-pair
+calls. The drain itself is budget-aware: as each `block_ref` is pulled
+from the gen, look up its `size_bytes` via the Ray Core primitive
+inline and stop pulling when the running sum exceeds the task's
+budget. The batched `ray.get` then covers exactly what was drained —
+no speculative over-fetch, no separate trim pass, no cross-iteration
+cache state.
 
 ```
 process_completed_tasks(topology, ...)
    │
    ├── ray.wait(active_task_refs) → ready set
    │
-   ├── # 1. Drain each ready task's gen into its pending-pairs queue.
+   ├── # 1. Drain each ready task's gen up to its per-task budget.
+   │   #    For each pulled block_ref, look up size_bytes inline,
+   │   #    queue (block_ref, size_bytes, meta_ref) on the task,
+   │   #    and collect meta_ref into to_fetch.
+   │   to_fetch = []
    │   for task in ready_tasks:
-   │       while task.peek_pending_pair() is not None: pass
+   │       bytes_read = 0
+   │       while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
+   │           block_ref  = gen._next_sync(timeout=0)
+   │           if block_ref.is_nil(): break              # gen not ready
+   │           size_bytes = ray.experimental.get_object_sizes([block_ref])[0]
+   │           meta_ref   = gen._next_sync(timeout=METADATA_WAIT_TIMEOUT_S)
+   │           task._pending.append((block_ref, size_bytes, meta_ref))
+   │           to_fetch.append(meta_ref)
+   │           bytes_read += size_bytes
    │
-   ├── # 2. Look up each queued block's byte size (local, no RPC).
-   │   sizes = ray.experimental.get_object_sizes(all_pending_block_refs)
-   │
-   ├── # 3. Per op, walk that op's tasks' queued pairs in order,
-   │   #    sum block sizes against remaining_output_budget, and
-   │   #    collect the prefix of meta_refs that fit.
-   │   to_fetch = [...]
-   │
-   ├── # 4. ONE batched ray.get covering only the trimmed prefix.
+   ├── # 2. ONE batched ray.get covering only what was drained.
    │   bytes_by_meta_ref = dict(zip(to_fetch, ray.get(to_fetch, timeout=…)))
    │
-   └── # 5. Each task pops queue pairs in order and emits.
+   └── # 3. Each task pops queue pairs in order and emits.
        for task in ready_tasks:
            task.on_data_ready(budget, bytes_by_meta_ref)
 ```
@@ -209,41 +215,43 @@ process_completed_tasks(topology, ...)
 Every site that reads `bundle.metadata.X` (size_bytes, num_rows,
 exec_stats, task_exec_stats, input_files) keeps working unmodified.
 
-### 1a. `DataOpTask` queue holds `(block_ref, meta_ref)` pairs
+### 1a. `DataOpTask` queues `(block_ref, size_bytes, meta_ref)` triples
 
 Replace the single `_pending_block_ref` / `_pending_meta_ref` scalar
-slots with a `Deque[(block_ref, meta_ref)]` queue, plus a
+slots with a `Deque[(block_ref, size_bytes, meta_ref)]` queue, plus a
 `_partial_block_ref` stash for the half-pulled-pair case (the gen
 yields block then metadata; they can arrive in separate scheduler
-ticks). `peek_pending_pair()` is a drainable method (call in a loop
-until it returns `None`).
+ticks).
 
 ```python
 class DataOpTask:
-    _pending_pairs: Deque[Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]]]
+    _pending: Deque[Tuple[ObjectRef[Block], int, ObjectRef[BlockMetadata]]]
     _partial_block_ref: ObjectRef[Block]
     _gen_exhausted: bool
     _gen_errored_block: Optional[ObjectRef]
 
-    def peek_pending_pair(self) -> Optional[Tuple[ObjectRef, ObjectRef]]:
-        """Pull one (block_ref, meta_ref) pair from the gen into
-        _pending_pairs. Returns None if no full pair is immediately
-        ready. Loop to drain."""
+    def drain_up_to(self, max_bytes_to_read) -> List[ObjectRef[BlockMetadata]]:
+        """Pull (block_ref, meta_ref) pairs from the gen until either
+        the gen has no more ready output or the running sum of
+        size_bytes (from the Ray Core primitive) exceeds
+        max_bytes_to_read. Each pulled triple is appended to _pending.
+        Returns the meta_refs added this iteration so the caller can
+        collect them into a batched ray.get list."""
         ...
 
     def on_data_ready(self, max_bytes_to_read, bytes_by_meta_ref=None):
-        """Pop queued pairs in order, look up bytes in the caller-
-        supplied dict, emit RefBundles. Per-ref ray.get fallback on
-        cache miss."""
+        """Pop queued triples in order, look up the deserialized
+        metadata in bytes_by_meta_ref, emit RefBundles. Per-ref
+        ray.get fallback on cache miss."""
         ...
 ```
 
 Why a queue rather than a scalar: pulling from the generator is
-**destructive** — once we peek, the ref is gone from the stream.
-Pairs that don't get emitted this iteration (because they didn't fit
-the budget, or the batched `ray.get` timed out) must persist on the
-task. Per-iteration state lives in the caller-supplied
-`bytes_by_meta_ref` dict.
+**destructive** — once we pull, the ref is gone from the stream.
+Triples that don't get emitted this iteration (because the batched
+`ray.get` timed out, or because the per-op budget in `on_data_ready`
+emits only a prefix) must persist on the task. Per-iteration state
+lives in the caller-supplied `bytes_by_meta_ref` dict.
 
 ### 1b. Assumed dependency: cheap per-ref `size_bytes` from Ray Core
 
@@ -278,8 +286,8 @@ warning as a cache-miss fallback. The fallback runs when:
 2. `on_data_ready` was called outside `process_completed_tasks` (tests,
    debugging) with no `bytes_by_meta_ref`.
 
-A convenience `fetch_and_drain(max_bytes_to_read)` wraps `peek` +
-`on_data_ready` for direct callers (tests).
+A convenience `fetch_and_emit(max_bytes_to_read)` wraps `drain_up_to`
++ per-ref `ray.get` + `on_data_ready` for direct callers (tests).
 
 ### Expected impact (data path)
 
@@ -306,14 +314,16 @@ Two observations from the py-spy breakdowns:
   time actually *grows* for the tasks variant (164 s → 218 s). The
   dispatch side starts to dominate — Part 2 below.
 
-Cost: `peek_pending_pair` adds 2-3 % of scheduler-thread time across
-all variants. Small price for the batching infrastructure.
+Cost: the budget-aware drain (`_next_sync` + inline size lookup) adds
+2-3 % of scheduler-thread time across all variants. Small price for
+the batching infrastructure.
 
-Compared to a per-pair `ray.get` baseline, the size-aware batched
-design also keeps the per-iteration over-fetch ceiling at ~1 pair past
-budget (the prefix sum can overshoot by one). Without size info we'd
-either over-fetch up to the entire gen backlog (and need to carry
-cached bytes across iterations) or under-utilize the batched call.
+Compared to a per-pair `ray.get` baseline, the size-aware drain also
+keeps the per-iteration over-fetch ceiling at ~1 pair past budget
+(the running sum can overshoot by one when the next pulled block
+crosses the budget). Without size info we'd either over-fetch up to
+the entire gen backlog (and need to carry cached bytes across
+iterations) or under-utilize the batched call.
 
 ## Part 2: Control path — push, don't poll
 
@@ -437,9 +447,9 @@ tasks variant and 1.4× on the actors variant.
 | file | changes |
 | --- | --- |
 | Ray Core API surface for per-ref `size_bytes` (exact shape TBD with Core team) | exposes the cheap, reliable size lookup that the budget-aware trim depends on |
-| `data/_internal/execution/interfaces/physical_operator.py` | `DataOpTask` switches from scalar `_pending_*_ref` slots to a `Deque[(block_ref, meta_ref)]` queue + partial-block stash; `peek_pending_pair` drainable; `on_data_ready` takes `bytes_by_meta_ref` dict; per-ref `ray.get` fallback for cache miss; `fetch_and_drain` convenience |
-| `data/_internal/execution/streaming_executor_state.py` | `process_completed_tasks` runs the 5-step flow above (drain peek → size lookup → budget trim → batched `ray.get` → emit) |
-| `data/tests/test_streaming_executor.py` + `tests/util.py` | tests updated to new `on_data_ready` signature; new tests for peek-drain + size-aware trim + cache-miss fallback |
+| `data/_internal/execution/interfaces/physical_operator.py` | `DataOpTask` switches from scalar `_pending_*_ref` slots to a `Deque[(block_ref, size_bytes, meta_ref)]` queue + partial-block stash; new `drain_up_to(max_bytes_to_read)` pulls inline with the size lookup; `on_data_ready` takes `bytes_by_meta_ref` dict; per-ref `ray.get` fallback for cache miss |
+| `data/_internal/execution/streaming_executor_state.py` | `process_completed_tasks` runs the 3-step flow above (budget-aware drain with inline size lookup → batched `ray.get` → emit) |
+| `data/tests/test_streaming_executor.py` + `tests/util.py` | tests updated to new `on_data_ready` signature; new tests for budget-aware drain + cache-miss fallback |
 
 `RefBundle` layout and the streaming-generator protocol are
 **unchanged**. The 68 production sites that read
@@ -548,7 +558,7 @@ unchanged.
 3. **Queue state on `DataOpTask`.** The per-task pending-pairs deque
    adds state that must be drained correctly on task completion /
    error / cancellation. Mitigation: drain in `task_done_callback`;
-   covered by new tests for peek-drain + cache-miss fallback.
+   covered by new tests for budget-aware drain + cache-miss fallback.
 
 ### Part 2
 1. **Cache drift.** Any future code path that mutates op state without
