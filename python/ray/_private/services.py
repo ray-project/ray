@@ -1079,7 +1079,10 @@ def start_ray_process(
     )
 
 
-def start_reaper(gcs_address: Optional[str] = None, fate_share=None):
+def start_reaper(
+    gcs_address: Optional[str] = None,
+    fate_share: Optional[bool] = None,
+):
     """Start the reaper process.
 
     This is a lightweight process that simply
@@ -1092,6 +1095,8 @@ def start_reaper(gcs_address: Optional[str] = None, fate_share=None):
             `ray stop --address` can identify and stop it together with
             the rest of the cluster. Skipped when unknown (e.g., user
             requested --port=0 and the actual port is not yet bound).
+        fate_share: Whether to share fate between the reaper and this
+            process.
 
     Returns:
         ProcessInfo for the process that was started.
