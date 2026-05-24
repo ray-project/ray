@@ -14,7 +14,7 @@ the relevant code path report what changed.**
 | subsystem      | today's anti-pattern                                                                                                                            | this RFC                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; N small RPCs per scheduler iteration                | Drain each ready task's gen up to its budget — looking up `size_bytes` inline via the Ray Core primitive (no RPC) so we stop pulling at the budget — then issue **one** batched `ray.get(meta_refs)` over what was drained |
-| **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers) — O(N_ops) work per call                | Ops push deltas at mutation sites (emit / dispatch / done) into a single live global aggregate on `ResourceManager`; `update_usages` becomes **O(1)** — just dispatches to the budget allocator |
+| **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers) | Ops push deltas at mutation sites (emit / dispatch / done) into a single live global aggregate on `ResourceManager`; per-op re-summation is gone, and the `_update_allocated_budgets` algorithm is preserved but runs on scalar-array workspace + cached invariants — **exact equivalence, ~10× cheaper per call** |
 
 On the wide-schema `worker_scaling` release-test matrix (m5.2xlarge × {36,
 72, 143, 358} nodes for {500, 1000, 2000, 5000} workers), the two parts
@@ -406,20 +406,17 @@ class ResourceManager:
         self._global_running_usage = self._global_running_usage.subtract(task_bundle)
 
     def update_usages(self) -> None:
-        # O(1). No per-op iteration. Aggregates are already current.
+        # O(1). Aggregates are already current; the allocator's
+        # _update_allocated_budgets still runs per dispatch (see 2c)
+        # but now consumes the live aggregate instead of recomputing.
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
 ```
 
-`update_usages` itself shrinks from "iterate all N ops + construct
-N×K `ExecutionResources` + call `safe_round` 4× each" to **a single
-function call** — and even that call is a no-op when no allocator is
-configured. The per-call cost drops to ~0 regardless of N_ops or
-dispatch count.
-
-`_update_allocated_budgets` still runs and reads `_global_*` plus
-per-op cached values; it's the only across-op work that remains, and
-it's per-call-bounded rather than per-op-bounded.
+The per-op summation (the ~80 s of "construct N×K `ExecutionResources`
++ call `safe_round` 4× each" in today's profile) is gone. What
+remains is `_update_allocated_budgets` itself, which we make cheap in
+2c.
 
 Safety note: this is sound because the scheduler thread is
 single-threaded — every mutation site (`on_data_ready`,
@@ -427,7 +424,64 @@ single-threaded — every mutation site (`on_data_ready`,
 the scheduler thread or is funnelled through it. No locking required
 on the global aggregate.
 
-#### 2c. Call-site changes
+#### 2c. Make `_update_allocated_budgets` cheap per call (exact equivalence)
+
+Today's `update_budgets` is ~1.5 ms per call × 20 000 calls/iter ≈
+30 s at 5000 workers. Per-call work:
+
+1. Two passes over `eligible_ops` (reserved-portion, then shared-pool
+   distribution with borrow / cap logic).
+2. Many `ExecutionResources` constructor calls — each invokes
+   `safe_round` 4× on cpu / gpu / memory / object_store_memory.
+3. Calls to `subtract`, `add`, `copy`, `scale`, `min`, `max` — each
+   builds a new `ExecutionResources` instance.
+
+We keep the **algorithm exactly as today** (same fair-share
+distribution, same borrow / cap, same final `_op_budgets`) and just
+shrink the constant factor:
+
+- **Inputs that don't change per dispatch get cached.** `_total_shared`,
+  `_op_reserved`, `eligible_ops`, `_get_completed_ops_usage()`,
+  `get_global_limits()`. `eligible_ops` is invalidated when an op
+  finishes; `_op_reserved` is invalidated when `_update_reservation`
+  runs (i.e., when `limits` changes — every 10 s). The hot path reads
+  the cached values directly, skipping the recompute.
+- **Per-op work runs on scalar fields, not `ExecutionResources`
+  instances.** The allocator keeps `cpu / gpu / memory / object_store`
+  as parallel float arrays indexed by op-id. The arithmetic in the two
+  passes becomes plain `float` math — no constructor allocation, no
+  `safe_round` (rounding is deferred until a caller materializes an
+  `ExecutionResources` via `get_budget(op)`).
+- **`_global_running_usage` is read from the live aggregate** (Part
+  2b) rather than re-summed from per-op caches.
+
+Net effect: same `_op_budgets` after every dispatch as today —
+bit-identical given the same inputs — but ~10× cheaper per call.
+
+```python
+class ReservationOpResourceAllocator:
+    # Cached invariants (refreshed when their inputs change).
+    _total_shared_cpu: float
+    _total_shared_obj_store: float
+    ...
+    _op_reserved_cpu: List[float]            # parallel to _eligible_ops
+    _op_reserved_obj_store: List[float]
+    _eligible_ops: List[PhysicalOperator]
+
+    # Per-call workspace (no allocation).
+    _op_budget_cpu: List[float]
+    _op_budget_obj_store: List[float]
+
+    def update_budgets(self, *, limits: ExecutionResources) -> None:
+        # Same two-pass algorithm as today, on scalar arrays. No
+        # ExecutionResources constructors in the hot path.
+        ...
+```
+
+Projected: ~30 s → ~2-3 s at 5000 workers, with exact equivalence to
+today's per-dispatch budget values.
+
+#### 2d. Call-site changes
 
 ```python
 # DataOpTask.on_data_ready, after emitting each RefBundle:
@@ -436,7 +490,7 @@ self._op.on_output_bytes_added(meta.size_bytes)               # new
 
 # OpState.dispatch_next_task, after submitting:
 op.submit_task(task)
-op.on_task_dispatched(task.task_resource_bundle)              # new
+op.on_task_dispatched(task.task_resource_bundle)              # new (per-op + global delta)
 
 # DataOpTask.task_done_callback wrapper:
 op.on_task_completed(task.task_resource_bundle)               # new
@@ -454,14 +508,22 @@ just observed from different sides.
 
 | frame (at 5000_tasks)                    | today  | projected | reasoning |
 | ---                                      | ---:   | ---:      | --- |
-| `update_usages` (inclusive)              | ~110 s |   <5 s    | O(1) per call — just dispatches to `_update_allocated_budgets` when configured |
-| `safe_round` (leaf)                      |  ~46 s |   <5 s    | only at delta application, not on every `update_usages` |
-| `_update_allocated_budgets`              |  ~30 s | ~20-25 s  | still runs, reads the live global aggregate |
+| `update_usages` (inclusive, excluding allocator) |  ~80 s |  <1 s | per-op summation gone; live global aggregate read directly |
+| `_update_allocated_budgets`              |  ~30 s |  ~2-3 s   | same algorithm, scalar-array workspace + cached invariants — no per-call `ExecutionResources` construction |
+| `safe_round` (leaf, both)                |  ~46 s |  <3 s     | only at delta application + on the boundary where budgets are materialized for callers |
 
-Projected scheduler-thread reduction at 5000 workers: **~110 s → ~25 s
-on the `update_usages` family**, ~14 % of the 600 s total at that
-scale. The O(1) shape also means the win scales with N_ops — at
-higher op-count topologies it grows.
+Projected scheduler-thread reduction at 5000 workers: **~140 s → ~5 s
+on the `update_usages` + `_update_allocated_budgets` family**, ~22 %
+of the 600 s total at that scale. The wins compound with N_ops *and*
+with dispatch count per iteration — at higher op-count or higher
+dispatch-density topologies they grow.
+
+**Equivalence guarantee:** `_op_budgets` after every dispatch is
+bit-identical to today's values given the same inputs. The
+optimization is purely a constant-factor reduction (skip redundant
+re-summation, use scalar fields instead of `ExecutionResources`
+constructors); the fair-share algorithm, the borrow / cap logic, and
+the per-dispatch call cadence are all preserved.
 
 ## Combined effect
 
@@ -469,10 +531,10 @@ Each part attacks a different cost; they compose.
 
 | 5000_tasks scheduler thread | today | + Part 1 | + Parts 1 & 2 |
 | --- | ---: | ---: | ---: |
-| `process_completed_tasks`  | 315 s |  ~280 s | ~280 s   |
-| `update_usages`            | 110 s |  ~110 s |  ~30 s   |
-| `dispatch_next_task`       | 120 s |  ~120 s | ~120 s   |
-| **Total**                  | ~600 s| ~580 s | **~500 s** |
+| `process_completed_tasks`            | 315 s |  ~280 s | ~280 s   |
+| `update_usages` + `_update_allocated_budgets` | 140 s | ~140 s |  ~5 s   |
+| `dispatch_next_task`                 | 120 s |  ~120 s | ~120 s   |
+| **Total**                            | ~600 s| ~580 s | **~440 s** |
 
 The data-path win is concentrated in mid-range scale (1000-2000
 workers, where `on_data_ready` per-call `ray.get` overhead
