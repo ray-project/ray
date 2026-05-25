@@ -347,76 +347,115 @@ Each hook updates two places:
 2. The `ResourceManager`'s global aggregate (so `update_usages`
    doesn't have to re-sum).
 
+**Hook frequency matters.** At 5000 workers a scheduler iteration
+fires ~20 000 `on_task_dispatched`, ~20 000 `on_task_completed`, and
+hundreds-to-thousands of `on_output_bytes_*` calls. If each hook
+builds a new `ExecutionResources` via `add` / `subtract` /
+`copy`, the constructor + `safe_round` overhead adds **~2-5 s of
+hook cost per iteration** — that would eat most of what we saved on
+the allocator. So the cached state is stored as **scalar fields**,
+not `ExecutionResources` instances; each hook is 1-4 float adds.
+`ExecutionResources` is materialized only when an external caller
+reads via a property.
+
 ```python
 class PhysicalOperator:
-    # Per-op cache. Readers (current_logical_usage etc.) become
-    # trivial properties over these fields.
-    _cached_logical_usage:        ExecutionResources
-    _cached_running_usage:        ExecutionResources
-    _cached_pending_usage:        ExecutionResources
-    _cached_obj_store_mem_bytes:  int
+    # Cached state as plain scalars. Each hook is 1-4 float adds; no
+    # ExecutionResources construction, no safe_round per call.
+    _cached_logical_cpu:    float
+    _cached_logical_gpu:    float
+    _cached_logical_memory: float
+    _cached_running_cpu:    float
+    _cached_running_gpu:    float
+    _cached_running_memory: float
+    _cached_pending_cpu:    float
+    _cached_pending_gpu:    float
+    _cached_pending_memory: float
+    _cached_obj_store_mem_bytes: int
 
-    # ResourceManager set at op-bind time so the hooks can push deltas.
-    _resource_manager:            ResourceManager
+    # Bound at op construction so missing the global-update side is a
+    # deref error, not a silent skew.
+    _resource_manager: ResourceManager
 
     def on_output_bytes_added(self, n: int) -> None:
-        """Called by DataOpTask.on_data_ready after each RefBundle emit."""
-        self._cached_obj_store_mem_bytes += n
-        self._resource_manager._apply_obj_store_delta(n)
+        self._cached_obj_store_mem_bytes                 += n
+        self._resource_manager._global_obj_store_mem_bytes += n
 
     def on_output_bytes_consumed(self, n: int) -> None:
-        """Called when a downstream op pops bytes from this op's output
-        queue, or when an external consumer reads via iter_batches /
-        streaming_split."""
-        self._cached_obj_store_mem_bytes -= n
-        self._resource_manager._apply_obj_store_delta(-n)
+        self._cached_obj_store_mem_bytes                 -= n
+        self._resource_manager._global_obj_store_mem_bytes -= n
 
     def on_task_dispatched(self, task_bundle: ExecutionResources) -> None:
-        """Called by dispatch_next_task after submitting a remote task."""
-        self._cached_running_usage = self._cached_running_usage.add(task_bundle)
-        self._cached_pending_usage = self._cached_pending_usage.subtract(task_bundle)
-        self._resource_manager._apply_dispatch_delta(task_bundle)
+        self._cached_running_cpu    += task_bundle.cpu
+        self._cached_running_gpu    += task_bundle.gpu
+        self._cached_running_memory += task_bundle.memory
+        self._cached_pending_cpu    -= task_bundle.cpu
+        self._cached_pending_gpu    -= task_bundle.gpu
+        self._cached_pending_memory -= task_bundle.memory
+        rm = self._resource_manager
+        rm._global_running_cpu    += task_bundle.cpu
+        rm._global_running_gpu    += task_bundle.gpu
+        rm._global_running_memory += task_bundle.memory
+        rm._global_pending_cpu    -= task_bundle.cpu
+        rm._global_pending_gpu    -= task_bundle.gpu
+        rm._global_pending_memory -= task_bundle.memory
 
     def on_task_completed(self, task_bundle: ExecutionResources) -> None:
-        """Called from task_done_callback."""
-        self._cached_running_usage = self._cached_running_usage.subtract(task_bundle)
-        self._resource_manager._apply_complete_delta(task_bundle)
+        self._cached_running_cpu    -= task_bundle.cpu
+        self._cached_running_gpu    -= task_bundle.gpu
+        self._cached_running_memory -= task_bundle.memory
+        rm = self._resource_manager
+        rm._global_running_cpu    -= task_bundle.cpu
+        rm._global_running_gpu    -= task_bundle.gpu
+        rm._global_running_memory -= task_bundle.memory
+
+    # Readers materialize ExecutionResources on demand. Constructor +
+    # safe_round runs at most once per get_*_usage() call, not on
+    # every hook firing.
+    def current_logical_usage(self) -> ExecutionResources:
+        return ExecutionResources(
+            cpu=self._cached_logical_cpu,
+            gpu=self._cached_logical_gpu,
+            memory=self._cached_logical_memory,
+        )
 ```
 
 #### 2b. `ResourceManager` keeps the global aggregate live
 
 ```python
 class ResourceManager:
-    # Live global aggregates, kept current by the delta appliers.
-    # No per-op poll loop, no re-derivation.
-    _global_usage:         ExecutionResources
-    _global_running_usage: ExecutionResources
-    _global_pending_usage: ExecutionResources
+    # Plain scalar fields, mirroring per-op storage. Updated by hooks.
+    _global_running_cpu:           float
+    _global_running_gpu:           float
+    _global_running_memory:        float
+    _global_pending_cpu:           float
+    _global_pending_gpu:           float
+    _global_pending_memory:        float
+    _global_obj_store_mem_bytes:   int
 
-    def _apply_obj_store_delta(self, n: int) -> None:
-        # Single scalar mutation. Constructed ExecutionResources is
-        # materialized on read, not on every delta.
-        self._global_obj_store_mem_bytes += n
-
-    def _apply_dispatch_delta(self, task_bundle: ExecutionResources) -> None:
-        self._global_running_usage = self._global_running_usage.add(task_bundle)
-        self._global_pending_usage = self._global_pending_usage.subtract(task_bundle)
-
-    def _apply_complete_delta(self, task_bundle: ExecutionResources) -> None:
-        self._global_running_usage = self._global_running_usage.subtract(task_bundle)
+    def get_global_running_usage(self) -> ExecutionResources:
+        return ExecutionResources(
+            cpu=self._global_running_cpu,
+            gpu=self._global_running_gpu,
+            memory=self._global_running_memory,
+            object_store_memory=self._global_obj_store_mem_bytes,
+        )
 
     def update_usages(self) -> None:
-        # O(1). Aggregates are already current; the allocator's
+        # Aggregates are already current. The allocator's
         # _update_allocated_budgets still runs per dispatch (see 2c)
-        # but now consumes the live aggregate instead of recomputing.
+        # but now consumes the live scalar aggregate instead of
+        # recomputing it.
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
 ```
 
 The per-op summation (the ~80 s of "construct N×K `ExecutionResources`
-+ call `safe_round` 4× each" in today's profile) is gone. What
-remains is `_update_allocated_budgets` itself, which we make cheap in
-2c.
++ call `safe_round` 4× each" in today's profile) is gone. So is the
+matching cost in the hooks themselves — even though they're now
+called ~40 000 times per iteration at 5000 workers, the cumulative
+cost of all hook firings is **~50–100 ms**. What remains is
+`_update_allocated_budgets` itself, which we make cheap in 2c.
 
 Safety note: this is sound because the scheduler thread is
 single-threaded — every mutation site (`on_data_ready`,
@@ -510,13 +549,15 @@ just observed from different sides.
 | ---                                      | ---:   | ---:      | --- |
 | `update_usages` (inclusive, excluding allocator) |  ~80 s |  <1 s | per-op summation gone; live global aggregate read directly |
 | `_update_allocated_budgets`              |  ~30 s |  ~2-3 s   | same algorithm, scalar-array workspace + cached invariants — no per-call `ExecutionResources` construction |
-| `safe_round` (leaf, both)                |  ~46 s |  <3 s     | only at delta application + on the boundary where budgets are materialized for callers |
+| `safe_round` (leaf, both)                |  ~46 s |  <3 s     | only when callers materialize `ExecutionResources` via `get_*_usage()`, not on every hook firing |
+| **new** hook overhead (~40 k calls/iter) |   —    |  ~50-100 ms | scalar-field deltas, no `ExecutionResources` constructor in the hot path |
 
 Projected scheduler-thread reduction at 5000 workers: **~140 s → ~5 s
 on the `update_usages` + `_update_allocated_budgets` family**, ~22 %
-of the 600 s total at that scale. The wins compound with N_ops *and*
-with dispatch count per iteration — at higher op-count or higher
-dispatch-density topologies they grow.
+of the 600 s total at that scale, with the new hook overhead adding
+**<100 ms** on top. The wins compound with N_ops *and* with dispatch
+count per iteration — at higher op-count or higher dispatch-density
+topologies they grow.
 
 **Equivalence guarantee:** `_op_budgets` after every dispatch is
 bit-identical to today's values given the same inputs. The
@@ -524,6 +565,16 @@ optimization is purely a constant-factor reduction (skip redundant
 re-summation, use scalar fields instead of `ExecutionResources`
 constructors); the fair-share algorithm, the borrow / cap logic, and
 the per-dispatch call cadence are all preserved.
+
+**Why the hooks don't undo the win:** every dispatch / completion /
+emit / pop fires a hook (~40 000 calls per iteration at 5000
+workers), so a naive implementation that built a fresh
+`ExecutionResources` per call would add ~2-5 s of hook overhead and
+eat most of the savings. Storing the cached state as scalar floats
+keeps each hook at 1-4 plain adds (<1 µs); the cumulative cost
+across all hook firings is well under 100 ms. `ExecutionResources`
+is materialized only at the boundary where a caller reads via
+`get_*_usage()` — at most a handful of times per iteration.
 
 ## Combined effect
 
