@@ -1361,60 +1361,63 @@ def _normalize_gcs_address(address: str) -> Tuple[Set[str], int]:
     return hosts, port
 
 
+def _tokenize_cmdline(cmdline: List[str], marker: str) -> List[str]:
+    """Flatten setproctitle-concatenated args around a marker.
+
+    Processes whose argv was rewritten by setproctitle (e.g.,
+    "ray::DashboardAgent --flag=value") fuse multiple args into one
+    string. When the marker appears inside such a fused string this
+    helper re-splits it (preferring shlex, falling back to whitespace
+    on malformed quoting) so callers can match the flag normally.
+    """
+    tokens = []
+    for arg in cmdline:
+        if marker in arg and " " in arg:
+            try:
+                tokens.extend(shlex.split(arg))
+            except ValueError:
+                tokens.extend(arg.split())
+        else:
+            tokens.append(arg)
+    return tokens
+
+
 def _extract_flag_value(cmdline: List[str], flag: str) -> Optional[str]:
     """Extract the value of --flag from a command line argument list.
 
     Handles normal args (--flag=value or --flag value) and setproctitle cases
     where args are concatenated into a single string
-    (e.g., "ray::DashboardAgent --flag=value").
+    (e.g., "ray::DashboardAgent --flag=value"). Tries both kebab-case
+    (--flag-name) and snake_case (--flag_name) spellings because Ray
+    processes mix CLI conventions: Python click uses hyphens while C++
+    gflags accepts both.
 
     Args:
         cmdline: List of command line arguments from psutil.Process.cmdline().
-        flag: Flag name without leading dashes (e.g., "gcs-address").
+        flag: Flag name without leading dashes; either spelling works
+            (e.g., "gcs-address" or "gcs_address").
 
     Returns:
         The flag value if found, None otherwise.
     """
-    tokens = []
-    for arg in cmdline:
-        if f"--{flag}" in arg and " " in arg:
-            try:
-                tokens.extend(shlex.split(arg))
-            except ValueError:
-                tokens.extend(arg.split())
-        else:
-            tokens.append(arg)
-
-    prefix = f"--{flag}="
-    for idx, arg in enumerate(tokens):
-        if arg == f"--{flag}":
-            if idx + 1 < len(tokens):
-                value = tokens[idx + 1].strip("\"'")
-                if value and not value.startswith("-"):
-                    return value
-        if arg.startswith(prefix):
-            return arg.split("=", 1)[1].strip("\"'")
+    for variant in {flag.replace("_", "-"), flag.replace("-", "_")}:
+        tokens = _tokenize_cmdline(cmdline, f"--{variant}")
+        prefix = f"--{variant}="
+        for idx, arg in enumerate(tokens):
+            if arg == f"--{variant}":
+                if idx + 1 < len(tokens):
+                    value = tokens[idx + 1].strip("\"'")
+                    if value and not value.startswith("-"):
+                        return value
+            if arg.startswith(prefix):
+                return arg.split("=", 1)[1].strip("\"'")
     return None
-
-
-def _cmdline_contains(cmdline: List[str], value: str) -> bool:
-    """Return whether any command line argument contains the given substring."""
-    return any(value in arg for arg in cmdline)
 
 
 def _extract_java_property_value(cmdline: List[str], key: str) -> Optional[str]:
     """Extract a JVM property value from a command line argument list."""
-    tokens = []
     prefix = f"-D{key}="
-    for arg in cmdline:
-        if prefix in arg and " " in arg:
-            try:
-                tokens.extend(shlex.split(arg))
-            except ValueError:
-                tokens.extend(arg.split())
-        else:
-            tokens.append(arg)
-
+    tokens = _tokenize_cmdline(cmdline, prefix)
     for arg in tokens:
         if arg.startswith(prefix):
             return arg.split("=", 1)[1].strip("\"'")
@@ -1425,42 +1428,49 @@ def _read_persisted_gcs_server_port(cmdline: List[str]) -> Optional[str]:
     """Read the dynamically bound GCS server port from the session directory.
 
     When GCS starts with --gcs_server_port=0, its command line keeps the
-    requested port 0. The C++ GCS server persists the actual bound port under
-    the session directory, keyed by node ID. The bounded retry covers the small
-    window between process start and the port file being written.
+    requested port 0; the actual bound port is written to a file under the
+    session directory once GCS has bound. Delegates to the canonical
+    wait_for_persisted_port helper (also used by node.py) with a short
+    timeout so a `ray stop` loop does not block on a process whose port
+    file may never appear.
     """
-    session_dir = _extract_flag_value(cmdline, "session-dir") or _extract_flag_value(
-        cmdline, "session_dir"
-    )
-    node_id = _extract_flag_value(cmdline, "node-id") or _extract_flag_value(
-        cmdline, "node_id"
-    )
+    session_dir = _extract_flag_value(cmdline, "session-dir")
+    node_id = _extract_flag_value(cmdline, "node-id")
     if not session_dir or not node_id:
         return None
 
     try:
-        filename = ray._raylet.get_port_filename(
-            node_id, ray._raylet.GCS_SERVER_PORT_NAME
+        port = ray._raylet.wait_for_persisted_port(
+            session_dir,
+            node_id,
+            ray._raylet.GCS_SERVER_PORT_NAME,
+            timeout_ms=200,
         )
-    except Exception:
+    except RuntimeError:
         return None
+    return str(port)
 
-    port_path = os.path.join(session_dir, filename)
-    port = ""
-    for attempt in range(3):
-        try:
-            with open(port_path, encoding="utf-8") as f:
-                port = f.read(64).strip()
-            break
-        except OSError:
-            if attempt == 2:
-                return None
-            time.sleep(0.05)
 
+def _extract_gcs_server_self_address(cmdline: List[str]) -> Optional[str]:
+    """Extract the GCS address from a gcs_server process's own command line.
+
+    Unlike other Ray processes which receive --gcs-address, gcs_server itself
+    advertises its identity via --node-ip-address + --gcs_server_port. When
+    started with --gcs_server_port=0 the dynamically bound port is read from
+    the persisted file under the session directory.
+    """
+    node_ip = _extract_flag_value(cmdline, "node-ip-address")
+    gcs_port = _extract_flag_value(cmdline, "gcs_server_port")
+    if not node_ip or not gcs_port:
+        return None
     try:
-        return str(int(port))
+        if int(gcs_port) == 0:
+            gcs_port = _read_persisted_gcs_server_port(cmdline)
     except ValueError:
         return None
+    if gcs_port is None:
+        return None
+    return build_address(node_ip, gcs_port)
 
 
 def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
@@ -1498,26 +1508,16 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
         return addr
 
     # Strategy 4: --address=ip:port is a GCS address only for Ray Client server.
-    if _cmdline_contains(cmdline, "ray.util.client.server"):
+    if any("ray.util.client.server" in arg for arg in cmdline):
         addr = _extract_flag_value(cmdline, "address")
         if addr:
             return addr
 
-    # Strategy 5: gcs_server uses --node-ip-address + --gcs_server_port.
-    # C++ gflags may show underscore or hyphen variants in argv.
-    node_ip = _extract_flag_value(cmdline, "node-ip-address") or _extract_flag_value(
-        cmdline, "node_ip_address"
-    )
-    gcs_port = _extract_flag_value(cmdline, "gcs_server_port")
-    if node_ip and gcs_port:
-        try:
-            if int(gcs_port) == 0:
-                gcs_port = _read_persisted_gcs_server_port(cmdline)
-        except ValueError:
-            return None
-        if gcs_port is None:
-            return None
-        return build_address(node_ip, gcs_port)
+    # Strategy 5: gcs_server's own process advertises identity via
+    # --node-ip-address + --gcs_server_port.
+    addr = _extract_gcs_server_self_address(cmdline)
+    if addr:
+        return addr
 
     return None
 
