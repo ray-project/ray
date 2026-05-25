@@ -806,7 +806,6 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
         _tensor_transport: Optional[str] = None,
     ):
@@ -820,7 +819,6 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
@@ -890,7 +888,6 @@ class Worker:
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
-            owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
             tensor_transport=tensor_transport,
@@ -1876,17 +1873,11 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
-        available_memory_bytes = ray._private.utils.estimate_available_memory()
-        object_store_memory = ray._private.utils.resolve_object_store_memory(
-            available_memory_bytes, object_store_memory
-        )
-
         resource_isolation_config = ResourceIsolationConfig(
             enable_resource_isolation=enable_resource_isolation,
             cgroup_path=cgroup_path,
             system_reserved_cpu=system_reserved_cpu,
             system_reserved_memory=system_reserved_memory,
-            object_store_memory=object_store_memory,
         )
 
         # Use a random port by not specifying Redis port / GCS server port.
@@ -1908,7 +1899,6 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
-            available_memory_bytes=available_memory_bytes,
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
@@ -3029,12 +3019,7 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner: [Experimental] The actor that should own this object. This
-            allows creating objects with lifetimes decoupled from that of the
-            creating process. The owner actor must be passed a reference to the
-            object prior to the object creator exiting, otherwise the reference
-            will still be lost. *Note that this argument is an experimental API
-            and should be avoided if possible.*
+        _owner: This experimental argument has been removed in Ray 2.56.
         _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
             Currently, this only supports one-sided tensor transports such as "nixl".
             When this is None (default), Ray will use the object store.
@@ -3042,29 +3027,19 @@ def put(
     Returns:
         The object ref assigned to this value.
     """
+    if _owner is not None:
+        raise ValueError(
+            "The experimental `_owner` argument to `ray.put` has been removed in "
+            "Ray 2.56."
+        )
+
     worker = global_worker
     worker.check_connected()
-
-    if _owner is None:
-        serialize_owner_address = None
-    elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure GlobalState is connected
-        ray._private.state.state._connect_and_get_accessor()
-        serialize_owner_address = (
-            ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.get_actor_info(_owner._actor_id)
-            )
-        )
-        if not serialize_owner_address:
-            raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-    else:
-        raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
     with profiling.profile("ray.put"):
         try:
             object_ref = worker.put_object(
                 value,
-                owner_address=serialize_owner_address,
                 _tensor_transport=_tensor_transport,
             )
         except ObjectStoreFullError:
