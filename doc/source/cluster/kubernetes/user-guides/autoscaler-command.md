@@ -6,7 +6,7 @@ KubeRay generates a start command for the autoscaler container.
 Sometimes, you may want to execute certain commands either before or instead of the generated autoscaler start command.
 This document shows you how to do that using the `command` and `args` fields in `autoscalerOptions`.
 
-## Part 1: Specify a custom autoscaler command
+## Specify a custom autoscaler command
 
 Starting with KubeRay v1.7.0, you can set `command` and `args` in `autoscalerOptions` to override the generated autoscaler container command.
 This works similarly to how `KUBERAY_GEN_RAY_START_CMD` works for Ray head/worker Pods (see {ref}`kuberay-pod-command`).
