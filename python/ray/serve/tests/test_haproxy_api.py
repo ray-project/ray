@@ -2297,11 +2297,11 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
 
 
 @pytest.mark.asyncio
-async def test_stderr_redirected_to_file(haproxy_api_cleanup):
-    """HAProxy stderr must be a file (not a PIPE) so the 64KB kernel pipe
-    buffer can't fill and block admin-socket threads under load. Each
-    spawn gets its own file so a reload doesn't lose the prior worker's
-    diagnostics.
+async def test_std_streams_redirected_to_files(haproxy_api_cleanup):
+    """Both HAProxy stdout and stderr must be files (not PIPEs) so a
+    full 64KB kernel pipe buffer can never block admin-socket threads
+    under load. Each spawn gets its own files so a reload doesn't lose
+    the prior worker's diagnostics.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         config = HAProxyConfig(
@@ -2327,18 +2327,25 @@ async def test_stderr_redirected_to_file(haproxy_api_cleanup):
         haproxy_api_cleanup(api)
 
         await api.start()
-        first_path = api._proc._stderr_path
-        # No pipe + HAProxy's -db startup banner landed in the file.
+        first_stderr = api._proc._stderr_path
+        first_stdout = api._proc._stdout_path
+        # No pipes — both streams went to files.
         assert api._proc.stderr is None
-        assert os.path.getsize(first_path) > 0
+        assert api._proc.stdout is None
+        # HAProxy's -db startup banner landed on stderr.
+        assert os.path.getsize(first_stderr) > 0
+        # stdout file exists even if it stays empty by default.
+        assert os.path.exists(first_stdout)
 
-        # Reload must open a new file so the prior worker's log survives.
+        # Reload must open new files so the prior worker's logs survive.
         config.reload_id = f"reload-{int(time.time() * 1000)}"
         await api._graceful_reload()
-        second_path = api._proc._stderr_path
-        assert second_path != first_path
         assert api._proc.stderr is None
-        assert os.path.exists(first_path)
+        assert api._proc.stdout is None
+        assert api._proc._stderr_path != first_stderr
+        assert api._proc._stdout_path != first_stdout
+        assert os.path.exists(first_stderr)
+        assert os.path.exists(first_stdout)
 
         await api.stop()
 

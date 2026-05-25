@@ -163,6 +163,17 @@ def _write_if_changed(path: str, content: str) -> bool:
     return True
 
 
+def _tail_file(path: str, n_bytes: int = 4096) -> str:
+    """Return up to the last ``n_bytes`` of ``path``, or "" on any error."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - n_bytes))
+            return f.read().decode("utf-8", errors="ignore").strip()
+    except OSError:
+        return ""
+
+
 def get_haproxy_binary() -> str:
     """Return the path to the HAProxy binary.
 
@@ -680,7 +691,7 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
-        # Counter for per-spawn stderr file names; known pre-spawn (unlike pid).
+        # Counter for per-spawn stdout/stderr file names; known pre-spawn (unlike pid).
         self._spawn_seq: int = 0
 
         # Ensure required directories exist during initialization
@@ -733,19 +744,24 @@ class HAProxyApi(ProxyApi):
         # Add any extra args (like -sf for graceful reload)
         args.extend(extra_args)
 
-        # Redirect stderr to a file → no 64KB pipe buffer to deadlock on.
+        # Redirect both std streams to files → no 64KB pipe buffer to deadlock on.
         self._spawn_seq += 1
-        stderr_path = f"{self.cfg.socket_path}.stderr.{self._spawn_seq}.log"
-        with open(stderr_path, "wb", buffering=0) as stderr_file:
+        base = f"{self.cfg.socket_path}.{self._spawn_seq}"
+        stdout_path = f"{base}.stdout.log"
+        stderr_path = f"{base}.stderr.log"
+        with open(stdout_path, "wb", buffering=0) as stdout_file, open(
+            stderr_path, "wb", buffering=0
+        ) as stderr_file:
             proc = await asyncio.create_subprocess_exec(
                 *args,
-                stdout=asyncio.subprocess.PIPE,
+                stdout=stdout_file,
                 stderr=stderr_file,
             )
+        proc._stdout_path = stdout_path
         proc._stderr_path = stderr_path
         logger.info(
             f"Starting HAProxy (spawn #{self._spawn_seq}, pid={proc.pid}, "
-            f"stderr={stderr_path}); args={args}"
+            f"stdout={stdout_path}, stderr={stderr_path}); args={args}"
         )
 
         try:
@@ -802,17 +818,10 @@ class HAProxyApi(ProxyApi):
         # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
-                stdout = await proc.stdout.read() if proc.stdout else b""
-                # Recover stderr from the file we redirected it to at spawn.
-                stderr_text = ""
-                try:
-                    with open(proc._stderr_path, "rb") as f:
-                        f.seek(0, 2)
-                        f.seek(max(0, f.tell() - 4096))
-                        stderr_text = f.read().decode("utf-8", errors="ignore").strip()
-                except OSError:
-                    pass
-                output = stderr_text or stdout.decode("utf-8", errors="ignore").strip()
+                # Both streams were redirected to files at spawn; tail them.
+                stderr_text = _tail_file(proc._stderr_path)
+                stdout_text = _tail_file(proc._stdout_path)
+                output = stderr_text or stdout_text
 
                 raise RuntimeError(
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
