@@ -1400,16 +1400,23 @@ def _extract_flag_value(cmdline: List[str], flag: str) -> Optional[str]:
     Returns:
         The flag value if found, None otherwise.
     """
-    for variant in {flag.replace("_", "-"), flag.replace("-", "_")}:
-        tokens = _tokenize_cmdline(cmdline, f"--{variant}")
-        prefix = f"--{variant}="
+    # Try kebab-case first (Python click convention), then snake_case
+    # (C++ gflags). Tuple, not set, so iteration order is deterministic
+    # when both spellings happen to appear in the same cmdline.
+    for variant in (flag.replace("_", "-"), flag.replace("-", "_")):
+        long_flag = f"--{variant}"
+        prefix = f"{long_flag}="
+        tokens = _tokenize_cmdline(cmdline, long_flag)
         for idx, arg in enumerate(tokens):
-            if arg == f"--{variant}":
+            # Form 1: `--flag value` (two argv elements). A `-`-prefixed
+            # next token is treated as the next flag, not this flag's value.
+            if arg == long_flag:
                 if idx + 1 < len(tokens):
                     value = tokens[idx + 1].strip("\"'")
                     if value and not value.startswith("-"):
                         return value
-            if arg.startswith(prefix):
+            # Form 2: `--flag=value` (single argv element).
+            elif arg.startswith(prefix):
                 return arg.split("=", 1)[1].strip("\"'")
     return None
 
