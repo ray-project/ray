@@ -2296,5 +2296,57 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
         await api.stop()
 
 
+@pytest.mark.asyncio
+async def test_stderr_redirected_to_file(haproxy_api_cleanup):
+    """HAProxy stderr must be a file (not a PIPE) so the 64KB kernel pipe
+    buffer can't fill and block admin-socket threads under load.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            pass_health_checks=True,
+            socket_path=socket_path,
+            has_received_routes=True,
+            has_received_servers=True,
+            reload_id=f"initial-{int(time.time() * 1000)}",
+        )
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=config_file_path,
+        )
+        haproxy_api_cleanup(api)
+
+        await api.start()
+        assert api._proc is not None
+        # No pipe — file redirect leaves proc.stderr as None.
+        assert api._proc.stderr is None
+        first_path = api._proc._stderr_path
+        assert os.path.exists(first_path)
+        assert first_path.endswith(".stderr.1.log")
+
+        # Graceful reload must bump the spawn counter and open a new file.
+        config.reload_id = f"reload-{int(time.time() * 1000)}"
+        await api._graceful_reload()
+        assert api._proc.stderr is None
+        second_path = api._proc._stderr_path
+        assert second_path != first_path
+        assert second_path.endswith(".stderr.2.log")
+        assert os.path.exists(second_path)
+
+        await api.stop()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
