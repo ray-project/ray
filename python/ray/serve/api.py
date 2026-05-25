@@ -110,6 +110,8 @@ def start(
           ``ray.serve.config.ControllerOptions``. Only applied on first
           controller creation -- ignored if a Serve controller is already
           running in this Ray cluster.
+        **kwargs: Reserved for forward-compatibility; passed through to the
+            internal Serve start helper.
     """
     http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
@@ -187,6 +189,9 @@ def get_replica_context() -> ReplicaContext:
 
     A replica tag uniquely identifies a single replica for a Ray Serve
     deployment.
+
+    Returns:
+        The ``ReplicaContext`` for the currently executing replica.
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
@@ -394,6 +399,9 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
             Pass nothing to defer the app to replica init time; in that mode
             the class must define ``__serve_build_asgi_app__``, which is
             invoked after the user constructor and must return an ASGI app.
+
+    Returns:
+        A class decorator that wraps the deployment class with the ASGI app.
     """
 
     def decorator(cls: Optional[Type[Any]] = None) -> Callable:
@@ -931,6 +939,8 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        _local_testing_mode: Internal flag for running the application in
+            local-testing mode. Not part of the public contract.
         external_scaler_enabled: Whether external autoscaling is enabled for
             this application.
         controller_options: [EXPERIMENTAL] Options for the Serve controller
@@ -1024,12 +1034,19 @@ def multiplexed(
 
 
     Args:
+        func: When ``@serve.multiplexed`` is applied without arguments, this is
+            the wrapped async loader function. When applied with arguments,
+            ``func`` is ``None`` and a decorator is returned instead.
         max_num_models_per_replica: the maximum number of models
             to be loaded on each replica. By default, it is 3, which
             means that each replica can cache up to 3 models. You can
             set it to a larger number if you have enough memory on
             the node resource, in opposite, you can set it to a smaller
             number if you want to save memory on the node resource.
+
+    Returns:
+        The decorated async function (when ``func`` is supplied) or a decorator
+        that produces one.
     """
 
     if func is not None:
@@ -1186,6 +1203,9 @@ def get_app_handle(name: str) -> DeploymentHandle:
     Args:
         name: Name of application to get a handle to.
 
+    Returns:
+        A ``DeploymentHandle`` pointing at the application's ingress deployment.
+
     Raises:
         RayServeException: If no Serve controller is running, or if the
             application does not exist.
@@ -1232,6 +1252,13 @@ def get_deployment_handle(
             from inside a Serve application and `app_name` is not
             specified, this will default to the application from which
             this API is called.
+        _check_exists: Internal flag controlling whether the controller is
+            queried to confirm the deployment exists before returning a handle.
+        _record_telemetry: Internal flag controlling whether handle creation
+            is recorded for usage telemetry.
+
+    Returns:
+        A ``DeploymentHandle`` pointing at the requested deployment.
 
     Raises:
         RayServeException: If no Serve controller is running, or if

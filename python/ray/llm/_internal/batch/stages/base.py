@@ -151,77 +151,76 @@ class StatefulStageUDF:
         Args:
             batch: The input batch.
 
-        Returns:
-            An async iterator of the outputs.
+        Yields:
+            Dict[str, Any]: An async iterator of the outputs.
         """
         # Handle the case where the batch is empty.
         # FIXME: This should not happen.
         if isinstance(batch, pyarrow.lib.Table) and batch.num_rows == 0:
             yield {}
-            return
+        else:
+            if self.data_column not in batch:
+                raise ValueError(
+                    f"[Internal] {self.data_column} not found in batch {batch}"
+                )
 
-        if self.data_column not in batch:
-            raise ValueError(
-                f"[Internal] {self.data_column} not found in batch {batch}"
-            )
+            inputs = batch.pop(self.data_column)
+            if hasattr(inputs, "tolist"):
+                inputs = inputs.tolist()
 
-        inputs = batch.pop(self.data_column)
-        if hasattr(inputs, "tolist"):
-            inputs = inputs.tolist()
+            # Separate error rows from normal rows BEFORE validation. Error rows
+            # (those with __inference_error__ set) bypass the UDF to avoid crashes
+            # when expected fields are missing (e.g., generated_tokens for DetokenizeUDF).
+            normal_rows = []
+            error_row_indices = set()
+            for idx, row in enumerate(inputs):
+                if row.get("__inference_error__", "") != "":
+                    error_row_indices.add(idx)
+                else:
+                    normal_rows.append(row)
 
-        # Separate error rows from normal rows BEFORE validation. Error rows
-        # (those with __inference_error__ set) bypass the UDF to avoid crashes
-        # when expected fields are missing (e.g., generated_tokens for DetokenizeUDF).
-        normal_rows = []
-        error_row_indices = set()
-        for idx, row in enumerate(inputs):
-            if row.get("__inference_error__", "") != "":
-                error_row_indices.add(idx)
-            else:
-                normal_rows.append(row)
+            # Validate only normal rows - error rows may be missing required keys
+            self.validate_inputs(normal_rows)
 
-        # Validate only normal rows - error rows may be missing required keys
-        self.validate_inputs(normal_rows)
+            # Assign the index of the row in the batch to the idx_in_batch_column.
+            # This is because the UDF output may be out-of-order (if asyncio.as_completed
+            # is used internally for example), and we need to carry over unused input
+            # columns to the next stage. Thus, we use the row index in batch to match
+            # the output of the UDF with the input.
+            for idx, row in enumerate(inputs):
+                row[self.IDX_IN_BATCH_COLUMN] = idx
 
-        # Assign the index of the row in the batch to the idx_in_batch_column.
-        # This is because the UDF output may be out-of-order (if asyncio.as_completed
-        # is used internally for example), and we need to carry over unused input
-        # columns to the next stage. Thus, we use the row index in batch to match
-        # the output of the UDF with the input.
-        for idx, row in enumerate(inputs):
-            row[self.IDX_IN_BATCH_COLUMN] = idx
+            # Collect all outputs first, then return them in the original order
+            # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
+            not_output_rows = set(range(len(inputs))) - error_row_indices
+            if normal_rows:
+                async for output in self.udf(normal_rows):
+                    if self.IDX_IN_BATCH_COLUMN not in output:
+                        raise ValueError(
+                            "The output of the UDF must contain the column "
+                            f"{self.IDX_IN_BATCH_COLUMN}."
+                        )
+                    idx_in_batch = output.pop(self.IDX_IN_BATCH_COLUMN)
+                    if idx_in_batch not in not_output_rows:
+                        raise ValueError(
+                            f"The row {idx_in_batch} is output twice. "
+                            "This is likely due to the UDF is not one-to-one."
+                        )
+                    not_output_rows.remove(idx_in_batch)
 
-        # Collect all outputs first, then return them in the original order
-        # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
-        not_output_rows = set(range(len(inputs))) - error_row_indices
-        if normal_rows:
-            async for output in self.udf(normal_rows):
-                if self.IDX_IN_BATCH_COLUMN not in output:
-                    raise ValueError(
-                        "The output of the UDF must contain the column "
-                        f"{self.IDX_IN_BATCH_COLUMN}."
-                    )
-                idx_in_batch = output.pop(self.IDX_IN_BATCH_COLUMN)
-                if idx_in_batch not in not_output_rows:
-                    raise ValueError(
-                        f"The row {idx_in_batch} is output twice. "
-                        "This is likely due to the UDF is not one-to-one."
-                    )
-                not_output_rows.remove(idx_in_batch)
+                    # Add stage outputs to the data column of the row.
+                    inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
+                    inputs[idx_in_batch].update(output)
 
-                # Add stage outputs to the data column of the row.
-                inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
-                inputs[idx_in_batch].update(output)
+            if not_output_rows:
+                raise ValueError(f"The rows {not_output_rows} are not output.")
 
-        if not_output_rows:
-            raise ValueError(f"The rows {not_output_rows} are not output.")
+            # Clean up idx column from error rows (normal rows already cleaned above)
+            for idx in error_row_indices:
+                inputs[idx].pop(self.IDX_IN_BATCH_COLUMN, None)
 
-        # Clean up idx column from error rows (normal rows already cleaned above)
-        for idx in error_row_indices:
-            inputs[idx].pop(self.IDX_IN_BATCH_COLUMN, None)
-
-        # Return all updated inputs in the original order
-        yield {self.data_column: inputs}
+            # Return all updated inputs in the original order
+            yield {self.data_column: inputs}
 
     def validate_inputs(self, inputs: List[Dict[str, Any]]):
         """Validate the inputs to make sure the required keys are present.

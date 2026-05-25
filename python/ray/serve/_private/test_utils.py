@@ -878,6 +878,9 @@ def check_replica_counts(
         by_state: A list of tuples of the form
             (replica state, number of replicas, filter function).
             Used for more fine grained checks.
+
+    Returns:
+        True when all assertions pass (raises ``AssertionError`` otherwise).
     """
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_id)
