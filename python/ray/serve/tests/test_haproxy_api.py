@@ -2299,17 +2299,16 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
 @pytest.mark.asyncio
 async def test_stderr_redirected_to_file(haproxy_api_cleanup):
     """HAProxy stderr must be a file (not a PIPE) so the 64KB kernel pipe
-    buffer can't fill and block admin-socket threads under load.
+    buffer can't fill and block admin-socket threads under load. Each
+    spawn gets its own file so a reload doesn't lose the prior worker's
+    diagnostics.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
-        socket_path = os.path.join(temp_dir, "admin.sock")
-
         config = HAProxyConfig(
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             stats_port=8404,
             pass_health_checks=True,
-            socket_path=socket_path,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
             has_received_routes=True,
             has_received_servers=True,
             reload_id=f"initial-{int(time.time() * 1000)}",
@@ -2320,30 +2319,26 @@ async def test_stderr_redirected_to_file(haproxy_api_cleanup):
             app_name="test_app",
             servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
         )
-
         api = HAProxyApi(
             cfg=config,
             backend_configs={"test_backend": backend},
-            config_file_path=config_file_path,
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
         )
         haproxy_api_cleanup(api)
 
         await api.start()
-        assert api._proc is not None
-        # No pipe — file redirect leaves proc.stderr as None.
-        assert api._proc.stderr is None
         first_path = api._proc._stderr_path
-        assert os.path.exists(first_path)
-        assert first_path.endswith(".stderr.1.log")
+        # No pipe + HAProxy's -db startup banner landed in the file.
+        assert api._proc.stderr is None
+        assert os.path.getsize(first_path) > 0
 
-        # Graceful reload must bump the spawn counter and open a new file.
+        # Reload must open a new file so the prior worker's log survives.
         config.reload_id = f"reload-{int(time.time() * 1000)}"
         await api._graceful_reload()
-        assert api._proc.stderr is None
         second_path = api._proc._stderr_path
         assert second_path != first_path
-        assert second_path.endswith(".stderr.2.log")
-        assert os.path.exists(second_path)
+        assert api._proc.stderr is None
+        assert os.path.exists(first_path)
 
         await api.stop()
 

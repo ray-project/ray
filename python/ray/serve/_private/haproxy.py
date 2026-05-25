@@ -736,7 +736,7 @@ class HAProxyApi(ProxyApi):
         # Redirect stderr to a file → no 64KB pipe buffer to deadlock on.
         self._spawn_seq += 1
         stderr_path = f"{self.cfg.socket_path}.stderr.{self._spawn_seq}.log"
-        with open(stderr_path, "ab", buffering=0) as stderr_file:
+        with open(stderr_path, "wb", buffering=0) as stderr_file:
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 stdout=asyncio.subprocess.PIPE,
