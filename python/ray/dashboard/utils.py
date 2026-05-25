@@ -243,13 +243,14 @@ class RateLimitedModule(abc.ABC):
     """
 
     def __init__(self, max_num_call: int, logger: Optional[logging.Logger] = None):
-        """
+        """Initialize the rate limiter.
+
         Args:
             max_num_call: Maximal number of concurrent invocations of all decorated
                 functions in the instance.
                 Setting to -1 will disable rate limiting.
-
-            logger: Logger
+            logger: Optional logger used to emit a warning when the rate limit
+                is hit.
         """
         self.max_num_call_ = max_num_call
         self.num_call_ = 0
@@ -752,6 +753,9 @@ def compose_state_message(
             This is a string representation of `gcs_pb2.NodeDeathInfo.Reason`.
         death_reason_message: The message of node death.
             This corresponds to `gcs_pb2.NodeDeathInfo.ReasonMessage`.
+
+    Returns:
+        The composed state message, or None when no information is available.
     """
     if death_reason == "EXPECTED_TERMINATION":
         state_message = "Expected termination"

@@ -82,12 +82,11 @@ class CpuProfilingManager:
         self.profiler_name = "py-spy"
 
     async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
-        """
-        Capture and dump a trace for a specified process.
+        """Capture and dump a trace for a specified process.
 
         Args:
             pid: The process ID (PID) of the target process for trace capture.
-            native (bool, optional): If True, includes native (C/C++) stack frames.
+            native: If True, includes native (C/C++) stack frames.
                 Default is False.
 
         Returns:
@@ -119,19 +118,20 @@ class CpuProfilingManager:
             return True, decode(stdout)
 
     async def cpu_profile(
-        self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
+        self,
+        pid: int,
+        format: str = "flamegraph",
+        duration: float = 5,
+        native: bool = False,
     ) -> (bool, str):
-        """
-        Perform CPU profiling on a specified process.
+        """Perform CPU profiling on a specified process.
 
         Args:
             pid: The process ID (PID) of the target process to be profiled.
-                format (str, optional): The format of the CPU profile output.
-                Default is "flamegraph".
-            duration (float, optional): The duration of the profiling
-                session in seconds. Default is 5 seconds.
-            native (bool, optional): If True, includes native (C/C++) stack frames.
-                Default is False.
+            format: The format of the CPU profile output. Default is "flamegraph".
+            duration: The duration of the profiling session in seconds.
+                Default is 5 seconds.
+            native: If True, includes native (C/C++) stack frames. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -199,17 +199,13 @@ class MemoryProfilingManager:
         format: str = "flamegraph",
         leaks: bool = False,
     ) -> (bool, str):
-        """
-        Convert the Memray profile result to specified format.
+        """Convert the Memray profile result to specified format.
 
         Args:
             pid: The process ID (PID) associated with the profiling operation.
-                profiler_filename: The filename of the profiler output to
-                be processed.
-            format (str, optional): The format of the profile result.
-                Default is "flamegraph".
-            leaks (bool, optional): If True, include memory leak information in
-                the profile result.
+            profiler_filename: The filename of the profiler output to be processed.
+            format: The format of the profile result. Default is "flamegraph".
+            leaks: If True, include memory leak information in the profile result.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -272,18 +268,15 @@ class MemoryProfilingManager:
         trace_python_allocators: bool = False,
         verbose: bool = False,
     ) -> (bool, str):
-        """
-        Attach a Memray profiler to a specified process.
+        """Attach a Memray profiler to a specified process.
 
         Args:
             pid: The process ID (PID) of the target process which
                 the profiler attached to.
-            native (bool, optional): If True, includes native (C/C++) stack frames.
+            native: If True, includes native (C/C++) stack frames. Default is False.
+            trace_python_allocators: If True, includes Python stack frames.
                 Default is False.
-            trace_python_allocators (bool, optional): If True, includes Python
-                stack frames. Default is False.
-            verbose (bool, optional): If True, enables verbose output.
-                Default is False.
+            verbose: If True, enables verbose output. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -334,14 +327,12 @@ class MemoryProfilingManager:
         pid: int,
         verbose: bool = False,
     ) -> (bool, str):
-        """
-        Detach a profiler from a specified process.
+        """Detach a profiler from a specified process.
 
         Args:
             pid: The process ID (PID) of the target process the
                 profiler detached from.
-            verbose (bool, optional): If True, enables verbose output.
-                Default is False.
+            verbose: If True, enables verbose output. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success

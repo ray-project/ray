@@ -244,10 +244,11 @@ class ReportHead(SubprocessModule):
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
 
-        Params:
-            task_id: The ID of the task.
-            attempt_number: The attempt number of the task.
-            node_id: The ID of the node.
+        Args:
+            req: A request with the following query parameters:
+                task_id: The ID of the task.
+                attempt_number: The attempt number of the task.
+                node_id: The ID of the node.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the traceback information.
@@ -339,6 +340,17 @@ class ReportHead(SubprocessModule):
         """Retrieves the CPU profile for a specific task.
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
+
+        Args:
+            req: A request with the following query parameters:
+                task_id: The ID of the task.
+                attempt_number: The attempt number of the task.
+                node_id: The ID of the node.
+                duration: Optional. Duration in seconds for profiling
+                    (default: 5, max: 60).
+                format: Optional. Output format (default: "flamegraph").
+                native: Optional. Whether to use native profiling
+                    (default: false).
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the CPU profile data.
@@ -436,10 +448,14 @@ class ReportHead(SubprocessModule):
     async def get_traceback(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Retrieves the traceback information for a specific worker.
 
-        Params:
-            pid: Required. The PID of the worker.
-            ip or node_id: Required. The IP address or hex ID of the node.
+        Args:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                ip or node_id: Required. The IP address or hex ID of the node.
 
+        Returns:
+            aiohttp.web.Response: The HTTP response containing the traceback
+            information, or an HTTPInternalServerError if the request fails.
         """
         if not RAY_DASHBOARD_ENABLE_PROFILING:
             return self._profiling_disabled_response()
@@ -487,12 +503,19 @@ class ReportHead(SubprocessModule):
     async def cpu_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Retrieves the CPU profile for a specific worker.
 
-        Params:
-            pid: Required. The PID of the worker.
-            ip or node_id: Required. The IP address or hex ID of the node.
-            duration: Optional. Duration in seconds for profiling (default: 5, max: 60).
-            format: Optional. Output format (default: "flamegraph").
-            native: Optional. Whether to use native profiling (default: false).
+        Args:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                ip or node_id: Required. The IP address or hex ID of the node.
+                duration: Optional. Duration in seconds for profiling
+                    (default: 5, max: 60).
+                format: Optional. Output format (default: "flamegraph").
+                native: Optional. Whether to use native profiling
+                    (default: false).
+
+        Returns:
+            aiohttp.web.Response: The HTTP response containing the CPU profile data,
+            or an HTTPInternalServerError if the request fails.
 
         Raises:
             ValueError: If pid is not provided.
@@ -651,17 +674,20 @@ class ReportHead(SubprocessModule):
         Note that for tasks, one worker process works on one task at a time
         or one worker works on multiple async tasks.
 
+        Args:
+            req: A request with one of the following sets of query parameters.
+
+                Worker:
+                    pid: The PID of the worker.
+                    ip or node_id: The IP address or hex ID of the node.
+
+                Task:
+                    task_id: The ID of the task.
+                    attempt_number: The attempt number of the task.
+                    node_id: The ID of the node.
+
         Returns:
             aiohttp.web.Response: The HTTP response containing the memory profile data.
-
-        Params (1):
-            pid: The PID of the worker.
-            ip or node_id: The IP address or hex ID of the node.
-
-        Params (2):
-            task_id: The ID of the task.
-            attempt_number: The attempt number of the task.
-            node_id: The ID of the node.
 
         Raises:
             aiohttp.web.HTTPInternalServerError: If no stub

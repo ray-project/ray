@@ -377,6 +377,8 @@ class JobManager:
 
         Args:
             user_runtime_env: The runtime_env specified by the user.
+            submission_id: The submission id of the job; used to derive the log
+                file path piped into the runtime env config.
             resources_specified: Whether the user specified resources in the
                 submit_job() call. If so, we will skip the workaround introduced
                 in #24546 for GPU detection and just use the user's resource
@@ -490,6 +492,8 @@ class JobManager:
         Args:
             entrypoint: Driver command to execute in subprocess shell.
                 Represents the entrypoint to start user application.
+            submission_id: Optional caller-provided submission id. When None, a
+                new id is generated via ``generate_job_id()``.
             runtime_env: Runtime environment used to execute driver command,
                 which could contain its own ray.init() to configure runtime
                 env at ray cluster, task and actor level.
