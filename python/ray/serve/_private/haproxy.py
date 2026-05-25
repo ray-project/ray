@@ -803,27 +803,15 @@ class HAProxyApi(ProxyApi):
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
                 stdout = await proc.stdout.read() if proc.stdout else b""
-                if proc.stderr is not None:
-                    stderr_text = (
-                        (await proc.stderr.read())
-                        .decode("utf-8", errors="ignore")
-                        .strip()
-                    )
-                else:
-                    # stderr was redirected to a file at spawn; read the
-                    # tail of that file to recover the diagnostic.
-                    stderr_text = ""
-                    path = getattr(proc, "_stderr_path", None)
-                    if path:
-                        try:
-                            with open(path, "rb") as f:
-                                f.seek(0, 2)
-                                f.seek(max(0, f.tell() - 4096))
-                                stderr_text = (
-                                    f.read().decode("utf-8", errors="ignore").strip()
-                                )
-                        except OSError:
-                            pass
+                # Recover stderr from the file we redirected it to at spawn.
+                stderr_text = ""
+                try:
+                    with open(proc._stderr_path, "rb") as f:
+                        f.seek(0, 2)
+                        f.seek(max(0, f.tell() - 4096))
+                        stderr_text = f.read().decode("utf-8", errors="ignore").strip()
+                except OSError:
+                    pass
                 output = stderr_text or stdout.decode("utf-8", errors="ignore").strip()
 
                 raise RuntimeError(
