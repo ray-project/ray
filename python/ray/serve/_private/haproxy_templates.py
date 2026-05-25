@@ -183,8 +183,16 @@ backend {{ backend.name or 'unknown' }}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
     {%- if backend.fallback_server %}
-    # Fallback to head node's Serve proxy when no ingress replicas are available
-    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
+    # Fallback to head node's Serve proxy when no ingress replicas are available.
+    # Uses MORE lenient health-check timing than primary replicas because:
+    #   - the fallback is shared across ALL backends and accumulates ~12-24
+    #     independent health-check streams per HAProxy instance × N cluster nodes,
+    #   - marking it DOWN takes the only path for scale-to-zero queueing offline,
+    #   - brief Python event-loop blips can produce 250-500ms response delays
+    #     that should not trigger DOWN.
+    # `fall 3 inter 2s fastinter 500ms` requires 3 consecutive failures over
+    # roughly 1s before declaring DOWN, filtering transient overload.
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup inter 2s fastinter 500ms fall 3
     {%- endif %}
 {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router

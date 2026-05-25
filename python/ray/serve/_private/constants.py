@@ -796,6 +796,12 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
 # packet coalescing.
 RAY_SERVE_HAPROXY_TCP_NODELAY = get_env_bool("RAY_SERVE_HAPROXY_TCP_NODELAY", "1")
 
+# When 1, HAProxy skips emitting gRPC backends entirely. Useful when gRPC isn't
+# actually used by the service: each gRPC backend adds another fallback-server
+# entry that the head node's gRPC fallback proxy must health-check, doubling
+# the health-check load on the head node. Default 0 (gRPC backends present).
+RAY_SERVE_HAPROXY_DISABLE_GRPC = get_env_bool("RAY_SERVE_HAPROXY_DISABLE_GRPC", "0")
+
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
