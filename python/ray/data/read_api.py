@@ -846,7 +846,7 @@ def read_zarr(
 
     Two output schemas, selected by ``align_axis_0``:
 
-    **Default (long-form, ``align_axis_0=None``)** — one row per chunk of
+    Default (long-form, ``align_axis_0=None``) — one row per chunk of
     one array. Columns:
 
     * ``array``: the source array's path (e.g., ``"data/camera0_rgb"``, or
@@ -858,10 +858,10 @@ def read_zarr(
     * ``chunk``: the chunk's data at its natural shape
       (possibly shorter at trailing boundaries — no padding is applied).
 
-    Arrays read in the same call need **not** share any dimension. Different
+    Arrays read in the same call need not share any dimension. Different
     ranks, shapes, dtypes, and native chunk sizes coexist as separate rows.
 
-    **Aligned (wide-form, ``align_axis_0=True``)** — one row per axis-0
+    Aligned (wide-form, ``align_axis_0=True``) — one row per axis-0
     chunk, with one column per selected array. Columns:
 
     * ``t_start``, ``t_stop``: global axis-0 range of this row.
@@ -873,6 +873,16 @@ def read_zarr(
     don't, ``read_zarr`` raises ``ValueError`` with a hint pointing at the
     largest aligned subset. Use ``array_paths`` to pick which arrays to
     read — ``align_axis_0`` itself does not filter.
+
+    Which schema do I want? Stay on the default (long-form) when
+    reading one array, or when the arrays in the store don't all share
+    ``shape[0]`` (e.g., CMIP6 data variables alongside lat/lon coords,
+    anndata's ``X`` alongside ``var/*``, or OME-Zarr image+label arrays at
+    different resolutions). Switch to ``align_axis_0=True`` when you want
+    paired multi-array rows where each row is one "sample" or "timestep"
+    of every array at once — the canonical cases are supervised ML data
+    (paired ``images`` + ``labels``) and robotics imitation learning
+    (paired ``image`` + ``state`` + ``action`` at each timestep).
 
     Metadata discovery follows these rules:
 
@@ -925,7 +935,7 @@ def read_zarr(
     Custom codecs:
         Zarr stores compressed with non-stdlib codecs (e.g.,
         ``imagecodecs_jpegxl`` for UMI camera arrays) require the codec
-        package to be imported and registered in **every Ray worker**, not
+        package to be imported and registered in every Ray worker, not
         just the driver. Use ``ray.init`` with a worker setup hook::
 
             ray.init(runtime_env={"worker_process_setup_hook": (
@@ -958,7 +968,7 @@ def read_zarr(
         chunk_shape: Optional override for the chunk geometry along the
             leading axes. Two forms:
 
-            * ``list[int]`` — applied as a **prefix** to every selected
+            * ``list[int]`` — applied as a prefix to every selected
               array, overriding the leading axes and keeping trailing axes
               at each array's native chunking. ``chunk_shape=[16]`` re-tiles
               a 4-D array with native chunks ``(1, 224, 224, 3)`` into

@@ -1,10 +1,16 @@
 """Zarr v2 datasource for Ray Data.
 
-Each output row corresponds to **one chunk of one array** in the store.
-Arrays read in the same call need not share any dimension; they coexist as
-separate rows in the output, distinguished by an ``array`` column. See
-:class:`ZarrV2Datasource` for the row schema and :func:`ray.data.read_zarr`
-for the public API.
+Two output schemas, selected at the call site:
+
+* Long-form (default). Each output row corresponds to one chunk of one
+  array. Arrays in the same call need not share any dimension; they coexist
+  as separate rows distinguished by an ``array`` column.
+* Wide-form (``align_axis_0=True``). Each output row is one axis-0 chunk
+  shared across all selected arrays; the row carries one column per array
+  plus ``t_start`` / ``t_stop`` for the global range.
+
+See :class:`ZarrV2Datasource` for the row schemas and
+:func:`ray.data.read_zarr` for the public API.
 """
 
 from __future__ import annotations
@@ -83,7 +89,7 @@ class ZarrArrayMeta:
     ) -> tuple[int, ...]:
         """Resolve the user's ``chunk_shape`` against this array's native chunks.
 
-        ``user_chunk_shape`` is treated as a **prefix** that overrides the
+        ``user_chunk_shape`` is treated as a prefix that overrides the
         leading axes; trailing axes keep the array's native chunk values.
         This lets a single ``chunk_shape=[16]`` apply meaningfully across
         arrays of different ranks (e.g., 4-D images alongside 2-D poses).
@@ -436,7 +442,7 @@ class ZarrV2Datasource(Datasource):
 
     Two output schemas, selected at the call site via ``align_axis_0``:
 
-    **Long-form (default, ``align_axis_0=None``)** — one row per chunk per
+    Long-form (default, ``align_axis_0=None``) — one row per chunk per
     array. Columns:
 
     * ``array``: the source array's path within the store
@@ -451,7 +457,7 @@ class ZarrV2Datasource(Datasource):
     Arrays in the same call need not share any dimension; they coexist as
     separate rows distinguished by ``array``.
 
-    **Wide-form (opt-in, ``align_axis_0=True``)** — one row per axis-0
+    Wide-form (opt-in, ``align_axis_0=True``) — one row per axis-0
     chunk, with one column per selected array. Columns:
 
     * ``t_start`` / ``t_stop``: global axis-0 range of this row.
@@ -599,7 +605,7 @@ class ZarrV2Datasource(Datasource):
         returns the ordered list of selected array names after asserting
         they all share ``shape[0]``.
 
-        ``align_axis_0`` does **not** filter ``_selected_arrays`` — the user
+        ``align_axis_0`` does not filter ``_selected_arrays`` — the user
         chooses which arrays to read via ``array_paths``, and this method
         only validates that the resulting set is mutually aligned.
         """
