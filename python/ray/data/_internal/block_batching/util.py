@@ -119,15 +119,6 @@ def resolve_block_refs(
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
-
-        # EXPERIMENT: heap-copy to unpin object store shared memory.
-        if isinstance(block, pa.Table):
-            block = pa.table(
-                [deepcopy_array(col) for col in block.columns],
-                names=block.column_names,
-            )
-        del block_ref
-
         yield block
 
     if stats:

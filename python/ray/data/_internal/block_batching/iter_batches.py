@@ -13,7 +13,6 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
-    resolve_block_refs,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -21,7 +20,6 @@ from ray.data._internal.stats import DatasetStats, _StatsManager
 from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
-from ray.types import ObjectRef
 
 DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
     "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
@@ -154,9 +152,7 @@ class BatchIterator:
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
-    def _prefetch_blocks(
-        self, ref_bundles: Iterator[RefBundle]
-    ) -> Iterator[ObjectRef[Block]]:
+    def _prefetch_blocks(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Block]:
         return prefetch_batches_locally(
             ref_bundles=ref_bundles,
             prefetcher=self._prefetcher,
@@ -165,11 +161,6 @@ class BatchIterator:
             eager_free=self._eager_free,
             stats=self._stats,
         )
-
-    def _resolve_block_refs(
-        self, block_refs: Iterator[ObjectRef[Block]]
-    ) -> Iterator[Block]:
-        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(
@@ -212,44 +203,56 @@ class BatchIterator:
         return restore_original_order(batches)
 
     def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Batch]:
-        # Step 1: Prefetch logical batches locally.
+        # Step 1: Prefetch and resolve blocks locally.
+        # Blocks are resolved via ray.get(), copied to heap memory, and the
+        # object store reference is freed before yielding.
         block_iter = self._prefetch_blocks(ref_bundles)
 
-        # Step 2: Resolve the blocks.
-        block_iter = self._resolve_block_refs(block_iter)
-
-        # Step 3: Batch and shuffle the resolved blocks.
+        # Step 2: Batch and shuffle the resolved blocks.
         batch_iter = self._blocks_to_batches(block_iter)
 
-        # Step 4: Format and collate the batches in a threadpool.
+        # Step 3: Format and collate the batches in a threadpool.
         batch_iter = self._format_batches(batch_iter)
 
-        # Step 5: Finalize the batches (e.g., move to GPU).
+        # Step 4: Finalize the batches (e.g., move to GPU).
         batch_iter = self._finalize_batches(batch_iter)
 
-        # Step 6: Restore the original order of the batches, as the prior
+        # Step 5: Restore the original order of the batches, as the prior
         # threadpool operations may have reordered the batches non-deterministically.
         batch_iter = self._restore_original_batch_order(batch_iter)
 
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
-        async_batch_iter = make_async_gen(
-            self._ref_bundles,
-            fn=self._pipeline,
-            num_workers=1,
-            preserve_ordering=False,
-            buffer_size=1,  # EXPERIMENT: minimize untracked ObjectRef buffering
+        import queue
+        import threading
+
+        SENTINEL = object()
+        result_queue: queue.Queue = queue.Queue(maxsize=1)
+
+        def _producer():
+            try:
+                for batch in self._pipeline(self._ref_bundles):
+                    result_queue.put(batch)
+                result_queue.put(SENTINEL)
+            except Exception as e:
+                result_queue.put(e)
+
+        producer_thread = threading.Thread(
+            target=_producer, name="batch_iterator_producer", daemon=True
         )
+        producer_thread.start()
 
         self.before_epoch_start()
 
         while True:
             with self.get_next_batch_context():
-                try:
-                    batch = next(async_batch_iter)
-                except StopIteration:
+                item = result_queue.get()
+                if item is SENTINEL:
                     break
+                if isinstance(item, Exception):
+                    raise item
+                batch = item
             with self.yield_batch_context(batch):
                 yield batch.data
 
@@ -368,10 +371,15 @@ def prefetch_batches_locally(
     batch_size: Optional[int],
     eager_free: bool = False,
     stats: Optional[DatasetStats] = None,
-) -> Iterator[ObjectRef[Block]]:
-    """Given an iterator of batched RefBundles, returns an iterator over the
-    corresponding block references while prefetching `num_batches_to_prefetch`
-    batches in advance.
+) -> Iterator[Block]:
+    """Given an iterator of batched RefBundles, returns an iterator over
+    resolved blocks while prefetching `num_batches_to_prefetch` batches
+    in advance.
+
+    Each block reference is resolved via ``ray.get()``, copied to heap
+    memory, and the object store reference is freed before the block is
+    yielded.  This ensures no object store shared-memory is pinned across
+    the generator suspension.
 
     Args:
         ref_bundles: An iterator over batched RefBundles.
@@ -381,11 +389,44 @@ def prefetch_batches_locally(
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
         stats: Dataset stats object used to store ref bundle retrieval time.
+
+    Yields:
+        Block: Resolved blocks copied to heap memory.
     """
+    import pyarrow as pa
+
+    from ray.data._internal.block_batching.util import (
+        _calculate_ref_hits,
+        deepcopy_array,
+    )
+
+    hits = 0
+    misses = 0
+    unknowns = 0
 
     def get_next_ref_bundle() -> RefBundle:
         with stats.iter_get_ref_bundles_s.timer() if stats else nullcontext():
             return next(ref_bundles)
+
+    def resolve_and_detach(block_ref):
+        nonlocal hits, misses, unknowns
+        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
+        hits += current_hit
+        misses += current_miss
+        unknowns += current_unknown
+
+        with stats.iter_get_s.timer() if stats else nullcontext():
+            block = ray.get(block_ref)
+
+        if isinstance(block, pa.Table):
+            block = pa.table(
+                [deepcopy_array(col) for col in block.columns],
+                names=block.column_names,
+            )
+
+        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        del block_ref
+        return block
 
     sliding_window = collections.deque()
     current_window_size = 0
@@ -395,7 +436,7 @@ def prefetch_batches_locally(
             stats.iter_prefetched_bytes = 0
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
-                yield block_ref
+                yield resolve_and_detach(block_ref)
         return
 
     if batch_size is not None:
@@ -404,9 +445,6 @@ def prefetch_batches_locally(
         num_rows_to_prefetch = None
 
     # Create and fetch the initial window.
-    # Stop adding if the number of rows in this window is greater than requested
-    # batch size, or if the batch size is None and the number of blocks in this window
-    # is greater than requested batches to prefetch.
     while (batch_size is not None and current_window_size < num_rows_to_prefetch) or (
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
@@ -441,8 +479,15 @@ def prefetch_batches_locally(
             stats.iter_prefetched_bytes = sum(
                 metadata.size_bytes or 0 for _, metadata in sliding_window
             )
-        yield block_ref
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+
+        block = resolve_and_detach(block_ref)
+        del block_ref
+        yield block
+
+    if stats:
+        stats.iter_blocks_local = hits
+        stats.iter_blocks_remote = misses
+        stats.iter_unknown_location = unknowns
     prefetcher.stop()
 
 
