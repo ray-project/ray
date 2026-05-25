@@ -680,9 +680,7 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
-        # Monotonic counter used to name per-spawn stderr log files. Pid
-        # would be unique too but isn't known until after fork, which
-        # forced a temp-name-then-rename dance; this is simpler.
+        # Counter for per-spawn stderr file names; known pre-spawn (unlike pid).
         self._spawn_seq: int = 0
 
         # Ensure required directories exist during initialization
@@ -735,9 +733,7 @@ class HAProxyApi(ProxyApi):
         # Add any extra args (like -sf for graceful reload)
         args.extend(extra_args)
 
-        # Redirect stderr to a file (no pipe → no 64KB buffer to deadlock
-        # on). Use a monotonic counter rather than pid so the path is known
-        # pre-spawn; the path travels with the proc for later diagnostics.
+        # Redirect stderr to a file → no 64KB pipe buffer to deadlock on.
         self._spawn_seq += 1
         stderr_path = f"{self.cfg.socket_path}.stderr.{self._spawn_seq}.log"
         with open(stderr_path, "ab", buffering=0) as stderr_file:
