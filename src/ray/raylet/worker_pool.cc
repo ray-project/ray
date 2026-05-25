@@ -1360,12 +1360,20 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
   // Skip if the startup allocated instances mismatch.
   bool allocated_instances_match = false;
   const auto &worker_allocated_instances = worker.GetStartupAllocatedInstances();
-  if (worker_allocated_instances == pop_worker_request.allocated_instances_) {
+  const auto &request_allocated_instances = pop_worker_request.allocated_instances_;
+
+  bool worker_has_instances =
+      worker_allocated_instances && !worker_allocated_instances->IsEmpty();
+  bool request_has_instances =
+      request_allocated_instances && !request_allocated_instances->IsEmpty();
+
+  if (!worker_has_instances && !request_has_instances) {
     allocated_instances_match = true;
-  } else if (worker_allocated_instances && pop_worker_request.allocated_instances_ &&
-             *worker_allocated_instances == *pop_worker_request.allocated_instances_) {
+  } else if (worker_has_instances && request_has_instances &&
+             *worker_allocated_instances == *request_allocated_instances) {
     allocated_instances_match = true;
   }
+
   if (!allocated_instances_match) {
     return WorkerUnfitForLeaseReason::OTHERS;
   }
