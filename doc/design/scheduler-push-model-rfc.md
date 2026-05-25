@@ -14,7 +14,7 @@ the relevant code path report what changed.**
 | subsystem      | today's anti-pattern                                                                                                                            | this RFC                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Data path**  | `on_data_ready` issues `ray.get(meta_ref)` once *per ready pair* across *every* ready task; N small RPCs per scheduler iteration                | Drain each ready task's gen up to its budget — looking up `size_bytes` inline via the Ray Core primitive (no RPC) so we stop pulling at the budget — then issue **one** batched `ray.get(meta_refs)` over what was drained |
-| **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers) | Ops push deltas at mutation sites (emit / dispatch / done) into a single live global aggregate on `ResourceManager`; per-op re-summation is gone, and the `_update_allocated_budgets` algorithm is preserved but runs on scalar-array workspace + cached invariants — **exact equivalence, ~10× cheaper per call** |
+| **Control path** | `update_usages` re-derives every op's resource bundle from scratch *on every dispatch* (~20 k calls per iteration at 5000 workers) | Ops push deltas at mutation sites (emit / dispatch / done) into a single live global aggregate on `ResourceManager`; per-op re-summation is gone, `safe_round` is dropped from the `ExecutionResources` constructor, and `_update_allocated_budgets` is preserved verbatim with cached invariants — **exact equivalence, ~10× cheaper per call, minimal call-site churn** |
 
 On the wide-schema `worker_scaling` release-test matrix (m5.2xlarge × {36,
 72, 143, 358} nodes for {500, 1000, 2000, 5000} workers), the two parts
@@ -349,113 +349,98 @@ Each hook updates two places:
 
 **Hook frequency matters.** At 5000 workers a scheduler iteration
 fires ~20 000 `on_task_dispatched`, ~20 000 `on_task_completed`, and
-hundreds-to-thousands of `on_output_bytes_*` calls. If each hook
-builds a new `ExecutionResources` via `add` / `subtract` /
-`copy`, the constructor + `safe_round` overhead adds **~2-5 s of
-hook cost per iteration** — that would eat most of what we saved on
-the allocator. So the cached state is stored as **scalar fields**,
-not `ExecutionResources` instances; each hook is 1-4 float adds.
-`ExecutionResources` is materialized only when an external caller
-reads via a property.
+hundreds-to-thousands of `on_output_bytes_*` calls. Naively each hook
+builds a new `ExecutionResources` via `add` / `subtract`, and every
+construction calls `safe_round` 4× on cpu / gpu / memory /
+object_store. The `safe_round` leaf is already ~46 s of today's
+profile — left unchanged, the hooks would re-pay it.
+
+**The cheap fix is to drop `safe_round` from the
+`ExecutionResources` constructor.** It's a one-line change that
+attacks the leaf cost directly, without rewriting every call-site to
+work in scalar fields. `ExecutionResources` stays the data model
+everywhere; arithmetic stays on `add` / `subtract`; the hooks are:
 
 ```python
 class PhysicalOperator:
-    # Cached state as plain scalars. Each hook is 1-4 float adds; no
-    # ExecutionResources construction, no safe_round per call.
-    _cached_logical_cpu:    float
-    _cached_logical_gpu:    float
-    _cached_logical_memory: float
-    _cached_running_cpu:    float
-    _cached_running_gpu:    float
-    _cached_running_memory: float
-    _cached_pending_cpu:    float
-    _cached_pending_gpu:    float
-    _cached_pending_memory: float
-    _cached_obj_store_mem_bytes: int
+    _cached_logical_usage:        ExecutionResources
+    _cached_running_usage:        ExecutionResources
+    _cached_pending_usage:        ExecutionResources
+    _cached_obj_store_mem_bytes:  int
 
     # Bound at op construction so missing the global-update side is a
     # deref error, not a silent skew.
     _resource_manager: ResourceManager
 
     def on_output_bytes_added(self, n: int) -> None:
-        self._cached_obj_store_mem_bytes                 += n
+        self._cached_obj_store_mem_bytes                   += n
         self._resource_manager._global_obj_store_mem_bytes += n
 
     def on_output_bytes_consumed(self, n: int) -> None:
-        self._cached_obj_store_mem_bytes                 -= n
+        self._cached_obj_store_mem_bytes                   -= n
         self._resource_manager._global_obj_store_mem_bytes -= n
 
     def on_task_dispatched(self, task_bundle: ExecutionResources) -> None:
-        self._cached_running_cpu    += task_bundle.cpu
-        self._cached_running_gpu    += task_bundle.gpu
-        self._cached_running_memory += task_bundle.memory
-        self._cached_pending_cpu    -= task_bundle.cpu
-        self._cached_pending_gpu    -= task_bundle.gpu
-        self._cached_pending_memory -= task_bundle.memory
+        self._cached_running_usage = self._cached_running_usage.add(task_bundle)
+        self._cached_pending_usage = self._cached_pending_usage.subtract(task_bundle)
         rm = self._resource_manager
-        rm._global_running_cpu    += task_bundle.cpu
-        rm._global_running_gpu    += task_bundle.gpu
-        rm._global_running_memory += task_bundle.memory
-        rm._global_pending_cpu    -= task_bundle.cpu
-        rm._global_pending_gpu    -= task_bundle.gpu
-        rm._global_pending_memory -= task_bundle.memory
+        rm._global_running_usage   = rm._global_running_usage.add(task_bundle)
+        rm._global_pending_usage   = rm._global_pending_usage.subtract(task_bundle)
 
     def on_task_completed(self, task_bundle: ExecutionResources) -> None:
-        self._cached_running_cpu    -= task_bundle.cpu
-        self._cached_running_gpu    -= task_bundle.gpu
-        self._cached_running_memory -= task_bundle.memory
+        self._cached_running_usage = self._cached_running_usage.subtract(task_bundle)
         rm = self._resource_manager
-        rm._global_running_cpu    -= task_bundle.cpu
-        rm._global_running_gpu    -= task_bundle.gpu
-        rm._global_running_memory -= task_bundle.memory
-
-    # Readers materialize ExecutionResources on demand. Constructor +
-    # safe_round runs at most once per get_*_usage() call, not on
-    # every hook firing.
-    def current_logical_usage(self) -> ExecutionResources:
-        return ExecutionResources(
-            cpu=self._cached_logical_cpu,
-            gpu=self._cached_logical_gpu,
-            memory=self._cached_logical_memory,
-        )
+        rm._global_running_usage   = rm._global_running_usage.subtract(task_bundle)
 ```
+
+With `safe_round` gone from `__init__`, each `add` / `subtract` is
+just a constructor with 4 attribute assignments — ~1-2 µs instead
+of ~50-100 µs. Cumulative hook cost across ~40 000 firings: ~50-100
+ms.
+
+**Accuracy.** Today `safe_round` rounds cpu / gpu to 5 decimal
+digits and memory / object_store_memory to integers, with the
+rationale that Ray Core itself allocates fractional resources at
+5-digit precision. Dropping it means:
+
+- *Float drift on CPU / GPU.* Per-op accumulation drift is ~1e-15;
+  even after a full dataset's worth of add/subtract roundtrips it
+  stays well under 1e-9 — three orders of magnitude tighter than
+  Ray Core's 5-digit precision. Resource comparisons (`<= limit`,
+  budget thresholds) are unaffected.
+- *Memory should remain integer.* Memory and object_store_memory are
+  byte counts; today `safe_round(_, 0)` enforces integer storage.
+  Solution: type them as `int` end-to-end, or call `int(...)` at the
+  `__init__` boundary only (cheap — one cast vs. four `round` calls).
+- *Exact-equality usage of `is_zero()` / `__eq__`.* Today's
+  `is_zero` does `cpu == 0.0`. With drift, a should-be-zero value
+  may end up at 1e-15 and stall any loop keyed on it. Fix:
+  `abs(cpu) < EPS` (and same for `__eq__`) — a single-line change to
+  two methods.
 
 #### 2b. `ResourceManager` keeps the global aggregate live
 
 ```python
 class ResourceManager:
-    # Plain scalar fields, mirroring per-op storage. Updated by hooks.
-    _global_running_cpu:           float
-    _global_running_gpu:           float
-    _global_running_memory:        float
-    _global_pending_cpu:           float
-    _global_pending_gpu:           float
-    _global_pending_memory:        float
+    # Live global aggregates, kept current by the delta appliers.
+    # No per-op poll loop, no re-derivation.
+    _global_usage:                 ExecutionResources
+    _global_running_usage:         ExecutionResources
+    _global_pending_usage:         ExecutionResources
     _global_obj_store_mem_bytes:   int
-
-    def get_global_running_usage(self) -> ExecutionResources:
-        return ExecutionResources(
-            cpu=self._global_running_cpu,
-            gpu=self._global_running_gpu,
-            memory=self._global_running_memory,
-            object_store_memory=self._global_obj_store_mem_bytes,
-        )
 
     def update_usages(self) -> None:
         # Aggregates are already current. The allocator's
         # _update_allocated_budgets still runs per dispatch (see 2c)
-        # but now consumes the live scalar aggregate instead of
-        # recomputing it.
+        # but now consumes the live aggregate instead of recomputing.
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
 ```
 
-The per-op summation (the ~80 s of "construct N×K `ExecutionResources`
-+ call `safe_round` 4× each" in today's profile) is gone. So is the
-matching cost in the hooks themselves — even though they're now
-called ~40 000 times per iteration at 5000 workers, the cumulative
-cost of all hook firings is **~50–100 ms**. What remains is
-`_update_allocated_budgets` itself, which we make cheap in 2c.
+The per-op summation (the ~80 s of constructor + `safe_round` work
+in today's `update_usages`) is gone. What remains in the hot path
+are the allocator's own per-call constructions, which we address in
+2c — also primarily by leveraging the cheaper constructor.
 
 Safety note: this is sound because the scheduler thread is
 single-threaded — every mutation site (`on_data_ready`,
@@ -476,44 +461,43 @@ Today's `update_budgets` is ~1.5 ms per call × 20 000 calls/iter ≈
    builds a new `ExecutionResources` instance.
 
 We keep the **algorithm exactly as today** (same fair-share
-distribution, same borrow / cap, same final `_op_budgets`) and just
-shrink the constant factor:
+distribution, same borrow / cap, same final `_op_budgets`) and shrink
+the constant factor in two layers:
 
-- **Inputs that don't change per dispatch get cached.** `_total_shared`,
+- **Drop `safe_round` from `ExecutionResources.__init__`** (per 2a).
+  Every constructor call in `update_budgets` — `subtract`, `add`,
+  `copy`, `scale`, `min`, `max` — drops 4 `safe_round` calls and
+  becomes ~10× cheaper without touching the algorithm or the
+  call-sites.
+- **Cache the inputs that don't change per dispatch.** `_total_shared`,
   `_op_reserved`, `eligible_ops`, `_get_completed_ops_usage()`,
   `get_global_limits()`. `eligible_ops` is invalidated when an op
   finishes; `_op_reserved` is invalidated when `_update_reservation`
   runs (i.e., when `limits` changes — every 10 s). The hot path reads
   the cached values directly, skipping the recompute.
-- **Per-op work runs on scalar fields, not `ExecutionResources`
-  instances.** The allocator keeps `cpu / gpu / memory / object_store`
-  as parallel float arrays indexed by op-id. The arithmetic in the two
-  passes becomes plain `float` math — no constructor allocation, no
-  `safe_round` (rounding is deferred until a caller materializes an
-  `ExecutionResources` via `get_budget(op)`).
-- **`_global_running_usage` is read from the live aggregate** (Part
-  2b) rather than re-summed from per-op caches.
+- **Read `_global_running_usage` from the live aggregate** (Part 2b)
+  rather than re-summing per-op caches.
 
 Net effect: same `_op_budgets` after every dispatch as today —
-bit-identical given the same inputs — but ~10× cheaper per call.
+bit-identical given the same inputs — but ~10× cheaper per call,
+**with no `ExecutionResources` → scalar-array refactor**.
 
 ```python
 class ReservationOpResourceAllocator:
     # Cached invariants (refreshed when their inputs change).
-    _total_shared_cpu: float
-    _total_shared_obj_store: float
-    ...
-    _op_reserved_cpu: List[float]            # parallel to _eligible_ops
-    _op_reserved_obj_store: List[float]
+    _total_shared: ExecutionResources
+    _op_reserved:  Dict[PhysicalOperator, ExecutionResources]
     _eligible_ops: List[PhysicalOperator]
-
-    # Per-call workspace (no allocation).
-    _op_budget_cpu: List[float]
-    _op_budget_obj_store: List[float]
+    _completed_ops_usage: ExecutionResources
+    _limits:       ExecutionResources
 
     def update_budgets(self, *, limits: ExecutionResources) -> None:
-        # Same two-pass algorithm as today, on scalar arrays. No
-        # ExecutionResources constructors in the hot path.
+        # Same two-pass algorithm as today; same code structure.
+        # Calls through .add / .subtract / .copy / .scale, but each
+        # constructor inside those is ~10x cheaper now that
+        # safe_round is gone from __init__.
+        if limits != self._limits:
+            self._refresh_cached_invariants(limits)
         ...
 ```
 
@@ -548,9 +532,9 @@ just observed from different sides.
 | frame (at 5000_tasks)                    | today  | projected | reasoning |
 | ---                                      | ---:   | ---:      | --- |
 | `update_usages` (inclusive, excluding allocator) |  ~80 s |  <1 s | per-op summation gone; live global aggregate read directly |
-| `_update_allocated_budgets`              |  ~30 s |  ~2-3 s   | same algorithm, scalar-array workspace + cached invariants — no per-call `ExecutionResources` construction |
-| `safe_round` (leaf, both)                |  ~46 s |  <3 s     | only when callers materialize `ExecutionResources` via `get_*_usage()`, not on every hook firing |
-| **new** hook overhead (~40 k calls/iter) |   —    |  ~50-100 ms | scalar-field deltas, no `ExecutionResources` constructor in the hot path |
+| `_update_allocated_budgets`              |  ~30 s |  ~2-3 s   | same algorithm, cached invariants; constructors ~10× cheaper now that `safe_round` is gone from `__init__` |
+| `safe_round` (leaf, both)                |  ~46 s |  0 s      | removed from the constructor entirely — see 2a |
+| **new** hook overhead (~40 k calls/iter) |   —    |  ~50-100 ms | each hook does 1-2 `.add`/`.subtract` calls; cheap constructor keeps the cumulative cost negligible |
 
 Projected scheduler-thread reduction at 5000 workers: **~140 s → ~5 s
 on the `update_usages` + `_update_allocated_budgets` family**, ~22 %
@@ -560,21 +544,22 @@ count per iteration — at higher op-count or higher dispatch-density
 topologies they grow.
 
 **Equivalence guarantee:** `_op_budgets` after every dispatch is
-bit-identical to today's values given the same inputs. The
-optimization is purely a constant-factor reduction (skip redundant
-re-summation, use scalar fields instead of `ExecutionResources`
-constructors); the fair-share algorithm, the borrow / cap logic, and
-the per-dispatch call cadence are all preserved.
+bit-identical to today's values given the same inputs *modulo the
+single-place `safe_round` removal* — and that removal is bounded:
+cpu/gpu drift stays below 1e-9 (vs. Ray Core's own 5-digit
+precision), memory/object_store stays integer via type discipline,
+and `is_zero` / `__eq__` get an epsilon-tolerant variant. The
+fair-share algorithm, the borrow / cap logic, and the per-dispatch
+call cadence are all preserved verbatim.
 
 **Why the hooks don't undo the win:** every dispatch / completion /
 emit / pop fires a hook (~40 000 calls per iteration at 5000
-workers), so a naive implementation that built a fresh
-`ExecutionResources` per call would add ~2-5 s of hook overhead and
-eat most of the savings. Storing the cached state as scalar floats
-keeps each hook at 1-4 plain adds (<1 µs); the cumulative cost
-across all hook firings is well under 100 ms. `ExecutionResources`
-is materialized only at the boundary where a caller reads via
-`get_*_usage()` — at most a handful of times per iteration.
+workers). With the unchanged `ExecutionResources` arithmetic but the
+cheaper constructor, each hook costs ~1-2 µs and the cumulative
+hook overhead lands under 100 ms — well under what we save on the
+allocator. The alternative of refactoring every call-site to scalar
+fields was rejected as too invasive given how widely
+`ExecutionResources` is used across the codebase.
 
 ## Combined effect
 
@@ -618,13 +603,14 @@ tasks variant and 1.4× on the actors variant.
 
 | file | changes |
 | --- | --- |
-| `data/_internal/execution/resource_manager.py` | `update_usages` becomes aggregator-only; per-op poll loop removed |
-| `data/_internal/execution/interfaces/physical_operator.py` | 4 new hooks (`on_output_bytes_added` / `consumed`, `on_task_dispatched` / `completed`); 4 new cached fields; readers (`current_logical_usage` etc.) become trivial properties over the cache |
+| `data/_internal/execution/interfaces/execution_options.py` | drop `safe_round` from `ExecutionResources.__init__`; cast `memory` / `object_store_memory` to `int` at the boundary; switch `is_zero` and `__eq__` to epsilon-tolerant comparisons |
+| `data/_internal/execution/resource_manager.py` | `update_usages` becomes aggregator-only; per-op poll loop removed. Live global aggregate (`_global_*`) kept current by the hooks. Allocator caches `_total_shared`, `_op_reserved`, `eligible_ops`, `_completed_ops_usage`, `_limits` and refreshes only when their inputs change |
+| `data/_internal/execution/interfaces/physical_operator.py` | 4 new hooks (`on_output_bytes_added` / `consumed`, `on_task_dispatched` / `completed`); 4 new cached `ExecutionResources` fields + scalar obj-store-byte counter; readers (`current_logical_usage` etc.) become trivial properties over the cache; `_resource_manager` bound at op construction |
 | `data/_internal/execution/streaming_executor.py` | dispatch loop calls `op.on_task_dispatched(...)` after `dispatch_next_task` |
 | `data/_internal/execution/interfaces/physical_operator.py` (DataOpTask) | `on_data_ready` calls `self._op.on_output_bytes_added(meta.size_bytes)` after each emit |
 | Op subclasses with custom resource accounting (`MapOperator`, `LimitOperator`, `OutputSplitter`, `ActorPoolMapOperator`, ...) | migrate `current_logical_usage` overrides to push deltas via the hooks |
 | Downstream-consume sites (output queue pops, external consumer reads) | call `op.on_output_bytes_consumed(...)` |
-| Tests | every mock that replaced `current_logical_usage` updates to push deltas or set cached fields |
+| Tests | every mock that replaced `current_logical_usage` updates to push deltas or set cached fields; new tests cover float-drift bounds and epsilon-tolerant `is_zero` / `__eq__` |
 
 ## Rollout
 
@@ -732,11 +718,21 @@ unchanged.
    global from scratch and asserts equality; (c) bind the
    `ResourceManager` reference at op-construction so missing the
    global-update side is a `None` deref, not a silent skew.
-2. **Op subclass migration.** Each subclass override needs auditing.
+2. **Float drift from dropping `safe_round`.** `ExecutionResources`
+   no longer quantizes cpu/gpu to 5 decimals at construction;
+   long-running add/subtract chains can produce values like
+   0.999…998 instead of 1.0. Bounded mitigation: drift stays under
+   ~1e-9 — three orders of magnitude tighter than Ray Core's own
+   5-digit precision — so comparisons against limits and budgets are
+   unaffected. The two places that *do* care are `is_zero` and
+   `__eq__`; both switch to `abs(x) < EPS` (single-line change to
+   each). Memory and object_store_memory stay integer-typed end-to-
+   end (cast at `__init__` boundary) so byte counts can't drift.
+3. **Op subclass migration.** Each subclass override needs auditing.
    Mitigation: do one op at a time; the cached field defaults to a
    freshly-recomputed value if the subclass hasn't migrated yet
    (gradual rollout).
-3. **External consumers.** `iter_batches` / `streaming_split` pop bytes
+4. **External consumers.** `iter_batches` / `streaming_split` pop bytes
    from the output queue outside the scheduler thread. Need to either
    fire the `on_output_bytes_consumed` hook from those paths or model
    "externally-consumed bytes" separately. Either way, an explicit
