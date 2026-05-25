@@ -146,6 +146,12 @@ class DeploymentConfig(BaseModel):
         rolling_update_percentage: The fraction of replicas (of
             ``target_num_replicas``) to update at a time during a rolling
             update. Must be in ``(0.0, 1.0]``. Defaults to 0.2 (20%).
+        prefer_local_node_routing: Feature flag to turn on node locality
+            routing. Applies to both proxy-to-replica and replica-to-replica
+            routing. On by default.
+        prefer_local_az_routing: Feature flag to turn on AZ locality routing.
+            Applies to both proxy-to-replica and replica-to-replica routing.
+            On by default.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -220,6 +226,16 @@ class DeploymentConfig(BaseModel):
     deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
+    prefer_local_node_routing: bool = Field(
+        default=True,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    prefer_local_az_routing: bool = Field(
+        default=True,
+        update_type=DeploymentOptionUpdateType.LightWeight,
     )
 
     rolling_update_percentage: float = Field(

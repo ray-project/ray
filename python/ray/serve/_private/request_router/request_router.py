@@ -116,6 +116,22 @@ class LocalityMixin:
 
         self._colocated_replica_ids = new_colocated_replica_ids
 
+    def update_locality_routing_params(
+        self,
+        prefer_local_node_routing: bool,
+        prefer_local_az_routing: bool,
+    ) -> None:
+        """Update locality routing parameters at runtime.
+
+        Args:
+            prefer_local_node_routing: Whether to prefer routing to replicas on
+                the same node as the caller.
+            prefer_local_az_routing: Whether to prefer routing to replicas in
+                the same availability zone as the caller.
+        """
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
+
     def apply_locality_routing(
         self,
         pending_request: Optional[PendingRequest] = None,
@@ -647,6 +663,24 @@ class RequestRouter(ABC):
         self.initial_backoff_s = initial_backoff_s
         self.backoff_multiplier = backoff_multiplier
         self.max_backoff_s = max_backoff_s
+
+    def update_locality_routing_params(
+        self,
+        prefer_local_node_routing: bool,
+        prefer_local_az_routing: bool,
+    ) -> None:
+        """Update locality routing parameters at runtime.
+
+        Request router implementations that use these parameters should override
+        this method.
+
+        Args:
+            prefer_local_node_routing: Whether to prefer routing to replicas on
+                the same node as the caller.
+            prefer_local_az_routing: Whether to prefer routing to replicas in
+                the same availability zone as the caller.
+        """
+        pass
 
     async def _backoff(self, attempt: int) -> None:
         """Sleep for the appropriate backoff time for a given retry attempt.
