@@ -144,6 +144,13 @@ class ResourceManager:
             )
         )
 
+        # Wire each operator back to this manager so it can push incremental
+        # refreshes via `notify_resource_usage_changed` whenever its
+        # resource usage mutates (dispatch / completion / actor pool
+        # lifecycle / etc.).
+        for op in self._topology:
+            op.set_resource_manager(self)
+
     @property
     def has_external_consumer(self) -> bool:
         """Return whether there is any external consumer."""
