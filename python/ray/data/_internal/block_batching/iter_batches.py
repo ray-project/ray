@@ -228,7 +228,7 @@ class BatchIterator:
         import threading
 
         SENTINEL = object()
-        result_queue: queue.Queue = queue.Queue(maxsize=1)
+        result_queue: queue.Queue = queue.Queue(maxsize=max(self._prefetch_batches, 1))
 
         def _producer():
             try:
