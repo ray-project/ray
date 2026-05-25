@@ -11,6 +11,10 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDPrefillServer as _PDPrefillServer,
     PDProxyServer as _PDProxyServer,  # TODO(Kourosh): Deprecated, remove in Ray 2.58.
 )
+from ray.llm._internal.serve.serving_patterns.prefill_decode.sglang_pd_server import (
+    SGLangPDDecodeServer as _SGLangPDDecodeServer,
+    SGLangPDPrefillServer as _SGLangPDPrefillServer,
+)
 from ray.util.annotations import PublicAPI
 
 #############
@@ -159,6 +163,16 @@ class DPServer(_DPServer):
             model_handle = serve.run(dp_app)
     """
 
+    pass
+
+
+@PublicAPI(stability="beta")
+class SGLangPDPrefillServer(_SGLangPDPrefillServer):
+    pass
+
+
+@PublicAPI(stability="beta")
+class SGLangPDDecodeServer(_SGLangPDDecodeServer):
     pass
 
 

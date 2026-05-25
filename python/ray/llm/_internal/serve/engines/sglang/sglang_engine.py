@@ -213,6 +213,20 @@ class SGLangServer:
         sampling_params = self._build_sampling_params(request)
         if sampling_params:
             generate_kwargs["sampling_params"] = sampling_params
+
+        # PD disaggregation: pass bootstrap fields if present on the request.
+        # These are set by SGLangPDDecodeServer before calling the local engine
+        # (decode role) or before forwarding to the prefill server (prefill role).
+        bootstrap_room = getattr(request, "bootstrap_room", None)
+        if bootstrap_room is not None:
+            generate_kwargs["bootstrap_room"] = bootstrap_room
+            bootstrap_host = getattr(request, "bootstrap_host", None)
+            if bootstrap_host is not None:
+                generate_kwargs["bootstrap_host"] = bootstrap_host
+            bootstrap_port = getattr(request, "bootstrap_port", None)
+            if bootstrap_port is not None:
+                generate_kwargs["bootstrap_port"] = bootstrap_port
+
         return generate_kwargs
 
     async def _generate_raw(
