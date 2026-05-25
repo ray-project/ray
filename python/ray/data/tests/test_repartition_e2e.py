@@ -576,6 +576,84 @@ def test_streaming_repartition_empty_dataset(
     assert ds.count() == 0, "Expected empty dataset"
 
 
+def test_streaming_repartition_filter_fusion_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test Filter -> StreamingRepartition(non-strict) fusion with data correctness."""
+    num_rows = 100
+    target = 20
+
+    ds = ray.data.range(num_rows, override_num_blocks=10)
+    # Filter keeps only even numbers
+    ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    ds = ds.repartition(target_num_rows_per_block=target, strict=False)
+
+    result = sorted([row["id"] for row in ds.take_all()])
+    expected = list(range(0, num_rows, 2))
+    assert result == expected, f"Expected {expected}, got {result}"
+
+
+def test_streaming_repartition_expression_filter_fusion_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test expression-based Filter (fn=None) -> StreamingRepartition(non-strict)
+    fusion."""
+    num_rows = 100
+    target = 20
+
+    ds = ray.data.range(num_rows, override_num_blocks=10)
+    # Expression-based filter: fn is None, predicate_expr is set
+    ds = ds.filter(expr="id >= 50")
+    ds = ds.repartition(target_num_rows_per_block=target, strict=False)
+
+    result = sorted([row["id"] for row in ds.take_all()])
+    expected = list(range(50, num_rows))
+    assert result == expected, f"Expected {expected}, got {result}"
+
+
+def test_streaming_repartition_map_rows_fusion_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test MapRows -> StreamingRepartition(non-strict) fusion with data
+    correctness."""
+    num_rows = 100
+    target = 20
+
+    ds = ray.data.range(num_rows, override_num_blocks=10)
+    # Double each value
+    ds = ds.map(lambda x: {"id": x["id"] * 2})
+    ds = ds.repartition(target_num_rows_per_block=target, strict=False)
+
+    result = sorted([row["id"] for row in ds.take_all()])
+    expected = sorted([i * 2 for i in range(num_rows)])
+    assert result == expected, f"Expected {expected}, got {result}"
+
+
+def test_streaming_repartition_flat_map_fusion_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test FlatMap -> StreamingRepartition(non-strict) fusion with data
+    correctness."""
+    num_rows = 50
+    target = 20
+
+    ds = ray.data.range(num_rows, override_num_blocks=5)
+    # Duplicate each row
+    ds = ds.flat_map(lambda x: [{"id": x["id"]}, {"id": x["id"] + 1000}])
+    ds = ds.repartition(target_num_rows_per_block=target, strict=False)
+
+    result = sorted([row["id"] for row in ds.take_all()])
+    expected = sorted(
+        [i for i in range(num_rows)] + [i + 1000 for i in range(num_rows)]
+    )
+    assert result == expected, "Data mismatch after flat_map fusion"
+    assert len(result) == num_rows * 2
+
+
 if __name__ == "__main__":
     import sys
 

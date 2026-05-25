@@ -31,7 +31,10 @@ from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
     AbstractUDFMap,
+    Filter,
+    FlatMap,
     MapBatches,
+    MapRows,
     RandomShuffle,
     Repartition,
     StreamingRepartition,
@@ -90,10 +93,14 @@ class FuseOperators(Rule):
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
     ) -> PhysicalOperator:
-        """Fuse (MapBatches -> StreamingRepartition) pair.
+        """Fuse (MapBatches/Filter/MapRows/FlatMap -> StreamingRepartition) pair.
 
-        This will ensure the map_batch's function receive the correct number of rows.
-        We also ensure the output rows is `batch_size`.
+        In strict mode, only MapBatches is supported (requires batch_size % target == 0).
+        In non-strict mode, Filter, MapRows, and FlatMap are also supported since
+        they don't have batch_size constraints; min_rows_per_bundle is None for them.
+
+        For MapBatches in strict mode, this ensures the map_batch's function receives
+        the correct number of rows, and output rows equal batch_size.
 
         Why don't we fuse `StreamingRepartition -> MapBatches`?
 
@@ -123,7 +130,10 @@ class FuseOperators(Rule):
         while (
             len(upstream_ops) == 1
             and isinstance(self._op_map[dag], StreamingRepartition)
-            and isinstance(self._op_map[upstream_ops[0]], MapBatches)
+            and isinstance(
+                self._op_map[upstream_ops[0]],
+                (MapBatches, Filter, MapRows, FlatMap),
+            )
             and self._can_fuse(dag, upstream_ops[0])
         ):
             dag = self._get_fused_streaming_repartition_operator(dag, upstream_ops[0])
@@ -276,31 +286,40 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # only allow fusion of MapBatches -> StreamingRepartition
+        # Allow fusion of MapBatches/Filter/MapRows/FlatMap -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
             if not (
-                isinstance(up_logical_op, MapBatches)
-                and down_logical_op.target_num_rows_per_block is not None
+                down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
             ):
                 return False
 
-            # Non-strict mode: can always fuse, no matter what batch_size is.
-            # This allows fusion without cross-task buffering by using default bundler.
-            if not down_logical_op.strict:
-                return True
+            # Filter/MapRows/FlatMap: only fuse in non-strict mode
+            if isinstance(up_logical_op, (Filter, MapRows, FlatMap)):
+                return not down_logical_op.strict
 
-            # Strict mode: only fuse when batch_size is a multiple of target_num_rows_per_block.
-            # When batch_size % target == 0, each batch can be perfectly sliced into chunks
-            # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
-            # docstring for details.
-            # "auto" batch_size is resolved at task runtime, so divisibility is unknown at
-            # plan time — skip fusion and let the operators run separately.
-            return (
-                isinstance(up_logical_op.batch_size, int)
-                and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
-                == 0
-            )
+            # MapBatches: fuse in both modes
+            if isinstance(up_logical_op, MapBatches):
+                # Non-strict mode: can always fuse, no matter what batch_size is.
+                # This allows fusion without cross-task buffering by using default bundler.
+                if not down_logical_op.strict:
+                    return True
+
+                # Strict mode: only fuse when batch_size is a multiple of
+                # target_num_rows_per_block.
+                # When batch_size % target == 0, each batch can be perfectly sliced
+                # into chunks without cross-task buffering.
+                # "auto" batch_size is resolved at task runtime, so divisibility is
+                # unknown at plan time — skip fusion.
+                return (
+                    isinstance(up_logical_op.batch_size, int)
+                    and up_logical_op.batch_size
+                    % down_logical_op.target_num_rows_per_block
+                    == 0
+                )
+
+            # Other operators cannot fuse with StreamingRepartition.
+            return False
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
             return False
@@ -312,7 +331,8 @@ class FuseOperators(Rule):
         self, down_op: PhysicalOperator, up_op: PhysicalOperator
     ) -> PhysicalOperator:
         assert self._can_fuse(down_op, up_op), (
-            "Current rule supports fusing MapBatches->StreamingRepartition, but received: "
+            "Current rule supports fusing MapBatches/Filter/MapRows/FlatMap"
+            "->StreamingRepartition, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
         )
 
@@ -320,10 +340,10 @@ class FuseOperators(Rule):
 
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
-        assert isinstance(up_logical_op, MapBatches)
+        assert isinstance(up_logical_op, (MapBatches, Filter, MapRows, FlatMap))
         assert isinstance(down_logical_op, StreamingRepartition)
 
-        batch_size = up_logical_op.batch_size
+        batch_size = getattr(up_logical_op, "batch_size", None)
 
         # Choose ref_bundler and fusion behavior based on strict mode
         if down_logical_op.strict:
@@ -357,10 +377,11 @@ class FuseOperators(Rule):
 
         assert up_op.data_context is down_op.data_context
 
-        # In non-strict mode, use min_rows_per_bundle to ensure creating batches with batch_size.
-        # In strict mode, ref_bundler handles bundling, so do not set min_rows_per_bundle.
+        # In non-strict mode, use min_rows_per_bundle to ensure creating batches
+        # with batch_size. In strict mode, ref_bundler handles bundling.
         # "auto" batch_size is resolved at task runtime, so we cannot set a fixed
-        # min_rows_per_bundle at plan time — leave it as None and let bundling use its default.
+        # min_rows_per_bundle at plan time.
+        # For non-MapBatches operators, batch_size is None so min_rows is None.
         min_rows = (
             None if (down_logical_op.strict or batch_size == "auto") else batch_size
         )
@@ -385,10 +406,15 @@ class FuseOperators(Rule):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         input_op = up_logical_op.input_dependencies[0]
+        # For expression-based Filter, fn is None; use an identity placeholder
+        # since the fused logical op is only for metadata and further fusion checks.
+        fn = up_logical_op.fn
+        if fn is None:
+            fn = lambda x: x  # noqa: E731
         logical_op = AbstractUDFMap(
             name,
             input_op,
-            up_logical_op.fn,
+            fn,
             can_modify_num_rows=up_logical_op.can_modify_num_rows,
             fn_args=up_logical_op.fn_args,
             fn_kwargs=up_logical_op.fn_kwargs,

@@ -975,6 +975,110 @@ def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
     assert expected_optimized_plan in captured
 
 
+@pytest.mark.parametrize(
+    "op_type",
+    ["filter", "map_rows", "flat_map"],
+)
+def test_streaming_repartition_non_mapbatches_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+    op_type,
+):
+    """Test that Filter/MapRows/FlatMap fuse with StreamingRepartition in non-strict mode."""
+    n = 100
+    target_rows = 20
+
+    ds = ray.data.range(n, override_num_blocks=2)
+
+    if op_type == "filter":
+        ds = ds.filter(lambda x: True)
+        expected_prefix = "Filter(<lambda>)"
+    elif op_type == "map_rows":
+        ds = ds.map(lambda x: x)
+        expected_prefix = "Map(<lambda>)"
+    elif op_type == "flat_map":
+        ds = ds.flat_map(lambda x: [x])
+        expected_prefix = "FlatMap(<lambda>)"
+
+    ds = ds.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    expected_fused_name = (
+        f"{expected_prefix}->StreamingRepartition"
+        f"[num_rows_per_block={target_rows},strict=False]"
+    )
+
+    assert len(ds.take_all()) == n
+    stats = ds.stats()
+    assert expected_fused_name in stats, (
+        f"Expected '{expected_fused_name}' in stats for {op_type}: {stats}"
+    )
+
+
+@pytest.mark.parametrize(
+    "op_type",
+    ["filter", "map_rows", "flat_map"],
+)
+def test_streaming_repartition_non_mapbatches_no_fusion_strict(
+    ray_start_regular_shared_2_cpus,
+    op_type,
+):
+    """Test that Filter/MapRows/FlatMap do NOT fuse with StreamingRepartition
+    in strict mode."""
+    n = 100
+    target_rows = 20
+
+    ds = ray.data.range(n, override_num_blocks=2)
+
+    if op_type == "filter":
+        ds = ds.filter(lambda x: True)
+        op_name = "Filter(<lambda>)"
+    elif op_type == "map_rows":
+        ds = ds.map(lambda x: x)
+        op_name = "Map(<lambda>)"
+    elif op_type == "flat_map":
+        ds = ds.flat_map(lambda x: [x])
+        op_name = "FlatMap(<lambda>)"
+
+    ds = ds.repartition(target_num_rows_per_block=target_rows, strict=True)
+
+    fused_name = (
+        f"{op_name}->StreamingRepartition"
+        f"[num_rows_per_block={target_rows},strict=True]"
+    )
+
+    assert len(ds.take_all()) == n
+    stats = ds.stats()
+    assert fused_name not in stats, (
+        f"Did not expect '{fused_name}' in stats for {op_type} "
+        f"in strict mode: {stats}"
+    )
+
+
+def test_streaming_repartition_chain_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test chain fusion: Map -> Filter -> StreamingRepartition(non-strict).
+
+    The Map and Filter should first be fused by map fusion, then the result
+    should be fused with StreamingRepartition.
+    """
+    n = 100
+    target_rows = 20
+
+    ds = ray.data.range(n, override_num_blocks=2)
+    ds = ds.map(lambda x: x)
+    ds = ds.filter(lambda x: True)
+    ds = ds.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    assert len(ds.take_all()) == n
+    stats = ds.stats()
+
+    # Map and Filter should be fused first, then fused with StreamingRepartition
+    assert (
+        f"Map(<lambda>)->Filter(<lambda>)->StreamingRepartition"
+        f"[num_rows_per_block={target_rows},strict=False]"
+    ) in stats, f"Expected chain fusion in stats: {stats}"
+
+
 if __name__ == "__main__":
     import sys
 
