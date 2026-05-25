@@ -614,6 +614,10 @@ class ActorPoolMapOperator(MapOperator):
 
         # Trigger Actor Pool's state refresh
         self._actor_pool.refresh_actor_state()
+        # `refresh_actor_state` can shift cpu/gpu/memory between pending
+        # and running usage when an actor enters or leaves the RESTARTING
+        # state, so the cache needs a refresh too.
+        self.notify_resource_usage_changed()
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
