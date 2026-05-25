@@ -503,7 +503,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
             topology[op].dispatch_next_task()
 
-            self._resource_manager.update_usages()
+            # Per-dispatch hot path: only the dispatched op's slot can
+            # have changed. The incremental refresh is O(1) per call vs
+            # the full O(N_ops) update_usages re-derivation.
+            self._resource_manager.update_usages_for_op(op)
 
             i += 1
             if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:

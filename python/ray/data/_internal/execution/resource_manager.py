@@ -209,59 +209,114 @@ class ResourceManager:
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
     def update_usages(self):
-        """Recalculate resource usages."""
-        # TODO(hchen): This method will be called frequently during the execution loop.
-        # And some computations are redundant. We should either remove redundant
-        # computations or remove this method entirely and compute usages on demand.
-        self._global_usage = ExecutionResources(0, 0, 0)
-        self._global_running_usage = ExecutionResources(0, 0, 0)
-        self._global_pending_usage = ExecutionResources(0, 0, 0)
+        """Recalculate resource usages for every operator from scratch.
+
+        Called at the start of each scheduling-loop iteration and after
+        `process_completed_tasks`. The per-dispatch hot path uses
+        `update_usages_for_op` instead, which only refreshes the slot of
+        the single op whose state changed.
+        """
+        self._global_usage = ExecutionResources.zero()
+        self._global_running_usage = ExecutionResources.zero()
+        self._global_pending_usage = ExecutionResources.zero()
         self._op_usages.clear()
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
 
         # Iterate from last to first operator.
         for op, state in reversed(self._topology.items()):
-            # Update `self._op_usages`, `self._op_running_usages`,
-            # and `self._op_pending_usages`.
-            op_usage = op.current_logical_usage()
-            op_running_usage = op.running_logical_usage()
-            op_pending_usage = op.pending_logical_usage()
-
-            assert not op_usage.object_store_memory
-            assert not op_running_usage.object_store_memory
-            assert not op_pending_usage.object_store_memory
-
-            used_object_store = self._estimate_object_store_memory_usage(op, state)
-
-            op_usage = op_usage.copy(object_store_memory=used_object_store)
-            op_running_usage = op_running_usage.copy(
-                object_store_memory=used_object_store
-            )
-
-            if isinstance(op, ReportsExtraResourceUsage):
-                op_usage.add(op.extra_resource_usage())
-
-            self._op_usages[op] = op_usage
-            self._op_running_usages[op] = op_running_usage
-            self._op_pending_usages[op] = op_pending_usage
-
-            # Update `self._global_usage`, `self._global_running_usage`,
-            # and `self._global_pending_usage`.
-            self._global_usage = self._global_usage.add(op_usage)
+            self._recompute_op_slot(op, state)
+            self._global_usage = self._global_usage.add(self._op_usages[op])
             self._global_running_usage = self._global_running_usage.add(
-                op_running_usage
+                self._op_running_usages[op]
             )
             self._global_pending_usage = self._global_pending_usage.add(
-                op_pending_usage
+                self._op_pending_usages[op]
             )
-
-            # Update operator's object store usage, which is used by
-            # DatasetStats and updated on the Ray Data dashboard.
-            op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
+
+    def update_usages_for_op(self, op: "PhysicalOperator"):
+        """Incremental update after a dispatch on `op`.
+
+        Refreshes the affected ops' slots in `_op_*_usages` and applies
+        the deltas to `_global_*_usage`. The dispatched op's slot
+        changes (new pending task / running task), and its immediate
+        upstream's obj_store accounting changes (a bundle was popped
+        from the upstream's outqueue and given to `op` as input).
+        Other ops' cached slots are untouched. O(1 + N_input_deps)
+        per call vs the O(N_ops) full re-derivation.
+
+        Falls back to the full recompute when the op has no cached
+        slot yet (i.e., it hasn't been seen by `update_usages` once).
+        """
+        if op not in self._op_usages:
+            # Initial population — fall through to the full recompute so
+            # the per-op caches and the globals end up in lockstep.
+            self.update_usages()
+            return
+
+        # The dispatched op plus its immediate input dependencies (whose
+        # outqueues just lost a bundle to `op`).
+        affected_ops = [op] + [
+            input_op
+            for input_op in op.input_dependencies
+            if input_op in self._op_usages
+        ]
+        for affected_op in affected_ops:
+            self._refresh_op_with_delta(affected_op)
+
+        if self._op_resource_allocator is not None:
+            self._update_allocated_budgets()
+
+    def _refresh_op_with_delta(self, op: "PhysicalOperator") -> None:
+        """Refresh one op's cache slot and apply the diff to the globals."""
+        state = self._topology[op]
+
+        old_usage = self._op_usages[op]
+        old_running = self._op_running_usages[op]
+        old_pending = self._op_pending_usages[op]
+
+        self._recompute_op_slot(op, state)
+
+        self._global_usage = self._global_usage.subtract(old_usage).add(
+            self._op_usages[op]
+        )
+        self._global_running_usage = self._global_running_usage.subtract(
+            old_running
+        ).add(self._op_running_usages[op])
+        self._global_pending_usage = self._global_pending_usage.subtract(
+            old_pending
+        ).add(self._op_pending_usages[op])
+
+    def _recompute_op_slot(self, op: "PhysicalOperator", state: "OpState") -> None:
+        """Refresh just this op's entry in `_op_*_usages` (does not touch
+        the globals; callers handle the delta).
+        """
+        op_usage = op.current_logical_usage()
+        op_running_usage = op.running_logical_usage()
+        op_pending_usage = op.pending_logical_usage()
+
+        assert not op_usage.object_store_memory
+        assert not op_running_usage.object_store_memory
+        assert not op_pending_usage.object_store_memory
+
+        used_object_store = self._estimate_object_store_memory_usage(op, state)
+
+        op_usage = op_usage.copy(object_store_memory=used_object_store)
+        op_running_usage = op_running_usage.copy(object_store_memory=used_object_store)
+
+        if isinstance(op, ReportsExtraResourceUsage):
+            op_usage.add(op.extra_resource_usage())
+
+        self._op_usages[op] = op_usage
+        self._op_running_usages[op] = op_running_usage
+        self._op_pending_usages[op] = op_pending_usage
+
+        # Update operator's object store usage, which is used by
+        # DatasetStats and updated on the Ray Data dashboard.
+        op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
@@ -674,6 +729,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         assert 0.0 <= self._reservation_ratio <= 1.0
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Cached inputs to `_update_reservation`. `_update_reservation` only
+        # depends on `limits` and the set of eligible ops (and the per-op
+        # `min_max_resource_requirements`). All three are stable between most
+        # dispatches — limits refresh every 10s, eligible_ops only changes
+        # when an op completes. Skip the recompute when the inputs match
+        # the previous call.
+        self._cached_reservation_limits: Optional[ExecutionResources] = None
+        self._cached_reservation_eligible_ops: Optional[List[PhysicalOperator]] = None
         # Memory reserved exclusively for the outputs of each operator.
         # "Op outputs" refer to blocks that have been taken out of an operator,
         # i.e., `RessourceManager._mem_op_outputs`.
@@ -828,11 +891,21 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        # Remaining resources to be distributed across operators
-        remaining_shared = self._update_reservation(limits)
+        # `_update_reservation` populates `_op_reserved`, `_reserved_for_op_outputs`,
+        # `_reserved_min_resources`, and `_total_shared`. All depend only on
+        # `limits` and the set of eligible ops (plus each op's
+        # `min_max_resource_requirements`, which is also stable). Skip when
+        # the inputs match the previous call.
+        eligible_ops = self._resource_manager.get_eligible_ops()
+        if (
+            self._cached_reservation_limits != limits
+            or self._cached_reservation_eligible_ops != eligible_ops
+        ):
+            self._update_reservation(limits)
+            self._cached_reservation_limits = limits
+            self._cached_reservation_eligible_ops = list(eligible_ops)
 
         self._op_budgets.clear()
-        eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 

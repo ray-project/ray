@@ -7,6 +7,12 @@ from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
 
+# Tolerance for float-drift in cpu / gpu / memory comparisons. Set well
+# under Ray Core's 5-digit resource-allocation precision so that drift
+# from accumulated add/subtract operations never affects scheduling
+# decisions but `is_zero` and `__eq__` are still robust against it.
+_EPS = 1e-9
+
 
 class ExecutionResources:
     """Specifies resources usage or resource limits for execution.
@@ -29,13 +35,10 @@ class ExecutionResources:
             object_store_memory: Amount of object store memory.
             memory: Amount of logical memory in bytes.
         """
-
-        # NOTE: Ray Core allocates fractional resources in up to 5th decimal
-        #       digit, hence we round the values here up to it
-        self._cpu: Optional[float] = safe_round(cpu, 5)
-        self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
-        self._memory: Optional[float] = safe_round(memory, 0)
+        self._cpu: Optional[float] = cpu
+        self._gpu: Optional[float] = gpu
+        self._object_store_memory: Optional[float] = object_store_memory
+        self._memory: Optional[float] = memory
 
     @classmethod
     def from_resource_dict(
@@ -106,10 +109,10 @@ class ExecutionResources:
 
     def __eq__(self, other: "ExecutionResources") -> bool:
         return (
-            self.cpu == other.cpu
-            and self.gpu == other.gpu
-            and self.object_store_memory == other.object_store_memory
-            and self.memory == other.memory
+            _close(self.cpu, other.cpu)
+            and _close(self.gpu, other.gpu)
+            and _close(self.object_store_memory, other.object_store_memory)
+            and _close(self.memory, other.memory)
         )
 
     def __hash__(self) -> int:
@@ -133,12 +136,12 @@ class ExecutionResources:
         return ExecutionResources.for_limits()
 
     def is_zero(self) -> bool:
-        """Returns True if all resources are zero."""
+        """Returns True if all resources are zero (within float-drift tolerance)."""
         return (
-            self.cpu == 0.0
-            and self.gpu == 0.0
-            and self.object_store_memory == 0.0
-            and self.memory == 0.0
+            abs(self.cpu) < _EPS
+            and abs(self.gpu) < _EPS
+            and abs(self.object_store_memory) < _EPS
+            and abs(self.memory) < _EPS
         )
 
     def is_non_negative(self) -> bool:
@@ -415,3 +418,9 @@ def safe_round(
         return value
     else:
         return round(value, ndigits)
+
+
+def _close(a: float, b: float) -> bool:
+    # `a == b` catches both inf==inf (where `a - b` would be NaN) and the
+    # common case of exact equality without a subtraction.
+    return a == b or abs(a - b) < _EPS

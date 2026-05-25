@@ -324,6 +324,107 @@ class TestResourceManager:
             global_cpu, 0, global_mem
         )
 
+    def test_update_usages_for_op_matches_full_update(self):
+        """Incremental refresh must produce the same per-op and global state
+        as the full O(N_ops) `update_usages()` recompute."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        # Initial per-op state (same mock pattern as test_update_usage).
+        initial_cpu = {o1: 0, o2: 3, o3: 5}
+        initial_pending_outputs = {o1: 0, o2: 100, o3: 200}
+        initial_internal_outqueue = {o1: 0, o2: 300, o3: 400}
+        initial_external_outqueue = {o1: 100, o2: 500, o3: 600}
+        initial_internal_inqueue = {o1: 0, o2: 700, o3: 800}
+        initial_pending_inputs = {o1: 0, o2: 900, o3: 1000}
+
+        for op in [o1, o2, o3]:
+            op.current_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=initial_cpu[op], gpu=0, memory=0)
+            )
+            op.running_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=initial_cpu[op], gpu=0, memory=0)
+            )
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
+            op._metrics = MagicMock(
+                obj_store_mem_pending_task_outputs=initial_pending_outputs[op],
+                obj_store_mem_internal_outqueue=initial_internal_outqueue[op],
+                obj_store_mem_internal_inqueue=initial_internal_inqueue[op],
+                obj_store_mem_pending_task_inputs=initial_pending_inputs[op],
+            )
+            op._metrics.obj_store_mem_internal_inqueue_for_input = MagicMock(
+                return_value=initial_internal_inqueue[op],
+            )
+            topo[op].add_output(
+                MagicMock(
+                    size_bytes=MagicMock(return_value=initial_external_outqueue[op]),
+                    output_split_idx=None,
+                )
+            )
+
+        # Two parallel managers: one will only ever see full recomputes,
+        # the other will receive an incremental update for o3.
+        def build_manager():
+            rm = ResourceManager(
+                topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            )
+            rm._op_resource_allocator = None
+            rm.update_usages()
+            return rm
+
+        rm_baseline = build_manager()
+        rm_incremental = build_manager()
+
+        # Simulate a dispatch on o3: bump its cpu by 5 and its pending-task
+        # outputs by 50. The dispatch also consumes a bundle from o2's
+        # outqueue, so o2's internal_outqueue drops by 50 (a typical bundle
+        # size moves from o2 into o3's pending inputs accounting).
+        o3.current_logical_usage = MagicMock(
+            return_value=ExecutionResources(cpu=initial_cpu[o3] + 5, gpu=0, memory=0)
+        )
+        o3.running_logical_usage = MagicMock(
+            return_value=ExecutionResources(cpu=initial_cpu[o3] + 5, gpu=0, memory=0)
+        )
+        o3._metrics.obj_store_mem_pending_task_outputs = (
+            initial_pending_outputs[o3] + 50
+        )
+        o2._metrics.obj_store_mem_internal_outqueue = initial_internal_outqueue[o2] - 50
+
+        rm_baseline.update_usages()
+        rm_incremental.update_usages_for_op(o3)
+
+        # Per-op state must match across both managers.
+        for op in [o1, o2, o3]:
+            assert rm_baseline.get_op_usage(op) == rm_incremental.get_op_usage(op), op
+            assert (
+                rm_baseline._op_running_usages[op]
+                == rm_incremental._op_running_usages[op]
+            ), op
+            assert (
+                rm_baseline._op_pending_usages[op]
+                == rm_incremental._op_pending_usages[op]
+            ), op
+            assert (
+                rm_baseline._mem_op_internal[op] == rm_incremental._mem_op_internal[op]
+            ), op
+            assert (
+                rm_baseline._mem_op_outputs[op] == rm_incremental._mem_op_outputs[op]
+            ), op
+
+        # Globals must match.
+        assert rm_baseline.get_global_usage() == rm_incremental.get_global_usage()
+        assert (
+            rm_baseline.get_global_running_usage()
+            == rm_incremental.get_global_running_usage()
+        )
+        assert (
+            rm_baseline.get_global_pending_usage()
+            == rm_incremental.get_global_pending_usage()
+        )
+
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
         # Set block metadata size_bytes to 1 (rather than mocking the method on the
