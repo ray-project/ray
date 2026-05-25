@@ -47,8 +47,10 @@ class TaskPoolMapOperator(MapOperator):
         """Create an TaskPoolMapOperator instance.
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
+            data_context: The :class:`DataContext` to use for this operator.
             name: The name of this operator.
             target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the

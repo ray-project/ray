@@ -67,9 +67,11 @@ class NAry(LogicalOperator):
         *input_ops: LogicalOperator,
         num_outputs: Optional[int] = None,
     ):
-        """
+        """Initialize the n-ary operator.
+
         Args:
-            input_ops: The input operators.
+            *input_ops: The input operators.
+            num_outputs: The estimated number of output bundles, or ``None`` if unknown.
         """
         super().__init__(
             _num_outputs=num_outputs,

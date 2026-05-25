@@ -280,6 +280,10 @@ class SplitCoordinator:
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
 
+        Args:
+            split_idx: The split index of the caller; used as the barrier key
+                so all split consumers synchronize before a new epoch starts.
+
         Returns:
             UUID for the epoch, which must be used when accessing results via get().
         """

@@ -247,13 +247,13 @@ def _shuffle_block(
         key_columns: Columns to be used by hash-partitioning algorithm
         pool: Hash-shuffling operator's pool of aggregators that are due to receive
               corresponding partitions (of the block)
+        block_transformer: Block transformer that will be applied to every block prior
+            to shuffling
         send_empty_blocks: If set to true, empty blocks will NOT be filtered and
             still be fanned out to individual aggregators to distribute schemas
             (only known once we receive incoming block)
         override_partition_id: Target (overridden) partition id that input block will be
             assigned to
-        block_transformer: Block transformer that will be applied to every block prior
-            to shuffling
 
     Returns:
         A tuple of

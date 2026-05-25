@@ -120,6 +120,9 @@ class BaseFileMetadataProvider(FileMetadataProvider):
                 given filesystem.
             filesystem: The filesystem implementation that should be used for
                 expanding all paths and reading their files.
+            partitioning: Partitioning describing how files under directories are
+                organized into partitions. If ``None``, paths are not interpreted as
+                partitioned.
             ignore_missing_paths: If True, ignores any file paths in ``paths`` that
                 are not found. Defaults to False.
 
@@ -453,6 +456,8 @@ def _expand_directory(
         exclude_prefixes: The file relative path prefixes that should be
             excluded from the returned file set. Default excluded prefixes are
             "." and "_".
+        ignore_missing_path: If True, returns an empty list when ``path`` does not
+            exist instead of raising.
 
     Returns:
         An iterator of (file_path, file_size) tuples.

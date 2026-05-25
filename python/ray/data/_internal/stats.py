@@ -1222,7 +1222,7 @@ class DatasetStatsSummary:
         self,
         already_printed: Optional[Set[str]] = None,
         include_parent: bool = True,
-        add_global_stats=True,
+        add_global_stats: bool = True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -1497,8 +1497,8 @@ class OperatorStatsSummary:
         and generates a `OperatorStatsSummary` object with the results.
 
         Args:
-            block_stats: List of `BlockStats` to calculate stats of
             operator_name: Name of operator associated with `blocks`
+            block_stats: List of `BlockStats` to calculate stats of
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
@@ -1701,10 +1701,13 @@ class OperatorStatsSummary:
             )
         return out
 
-    def __repr__(self, level=0) -> str:
+    def __repr__(self, level: int = 0) -> str:
         """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
         `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
         that summarizes operator execution statistics.
+
+        Args:
+            level: The indentation level to use when formatting nested summaries.
 
         Returns:
             String with summary statistics for executing the given operator.

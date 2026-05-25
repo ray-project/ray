@@ -46,7 +46,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         """Create a ZipOperator.
 
         Args:
-            input_ops: Operators generating input data for this operator to zip.
+            data_context: The :class:`DataContext` to use for this operator.
+            *input_ops: Operators generating input data for this operator to zip.
         """
         assert len(input_ops) >= 2
         self._input_buffers: List[FIFOBundleQueue] = [
