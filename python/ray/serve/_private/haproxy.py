@@ -1124,6 +1124,14 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
+    def has_alive_old_procs(self) -> bool:
+        """True if any soft-stopping HAProxy workers from prior reloads remain.
+
+        Also prunes already-exited entries to keep ``_old_procs`` bounded.
+        """
+        self._old_procs = [p for p in self._old_procs if p.returncode is None]
+        return len(self._old_procs) > 0
+
     async def disable(self) -> None:
         """Force haproxy health checks to fail."""
         try:
@@ -1407,19 +1415,22 @@ class HAProxyManager(ProxyActorInterface):
             self._draining_start_time = None
 
     async def is_drained(self, _after: Optional[Any] = None) -> bool:
-        """Check whether the haproxy is drained or not.
+        """Drained iff past min drain period AND no old workers still serving
+        AND current worker reports idle.
 
-        An haproxy is drained if it has no ongoing requests
-        AND it has been draining for more than
-        `PROXY_MIN_DRAINING_PERIOD_S` seconds.
+        The admin socket only sees the current (post-reload) worker; old
+        soft-stopping workers can still hold in-flight long-running requests
+        invisible to ``is_system_idle``. Gating on ``has_alive_old_procs``
+        prevents SIGKILL from severing those connections.
         """
         if not self._is_draining():
             return False
-
+        if (time.time() - self._draining_start_time) <= PROXY_MIN_DRAINING_PERIOD_S:
+            return False
+        if self._haproxy.has_alive_old_procs():
+            return False
         haproxy_stats = await self._haproxy.get_haproxy_stats()
-        return haproxy_stats.is_system_idle and (
-            (time.time() - self._draining_start_time) > PROXY_MIN_DRAINING_PERIOD_S
-        )
+        return haproxy_stats.is_system_idle
 
     async def check_health(self) -> bool:
         # If haproxy is already shutdown, return False.
