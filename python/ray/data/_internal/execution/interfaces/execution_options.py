@@ -7,11 +7,22 @@ from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
 
-# Tolerance for float-drift in cpu / gpu / memory comparisons. Set well
-# under Ray Core's 5-digit resource-allocation precision so that drift
-# from accumulated add/subtract operations never affects scheduling
-# decisions but `is_zero` and `__eq__` are still robust against it.
-_EPS = 1e-9
+# Tolerances for float-drift in resource comparisons. Different fields
+# need different tolerances because they live at very different
+# magnitudes:
+#
+#   - `cpu` / `gpu` are O(1) (e.g., `0.5`, `16.0`). Drift per add/subtract
+#     is ~`2^-52 × magnitude` ≈ `1e-16`. Even after a long-running
+#     dataset, drift stays well below 1e-9 — three orders of magnitude
+#     tighter than Ray Core's own 5-digit allocation precision.
+#
+#   - `memory` / `object_store_memory` are byte counts in the range
+#     ~`1e8`–`1e10`. Per-op drift can reach `1e-5` bytes; for varying
+#     sizes, drift grows roughly as `sqrt(N)`. At even 10⁹ ops the
+#     accumulated drift stays well under 1 byte, so a 1-byte tolerance
+#     is comfortable.
+_EPS_FRACTIONAL = 1e-9
+_EPS_BYTES = 1.0
 
 
 class ExecutionResources:
@@ -109,10 +120,10 @@ class ExecutionResources:
 
     def __eq__(self, other: "ExecutionResources") -> bool:
         return (
-            _close(self.cpu, other.cpu)
-            and _close(self.gpu, other.gpu)
-            and _close(self.object_store_memory, other.object_store_memory)
-            and _close(self.memory, other.memory)
+            _close(self.cpu, other.cpu, _EPS_FRACTIONAL)
+            and _close(self.gpu, other.gpu, _EPS_FRACTIONAL)
+            and _close(self.object_store_memory, other.object_store_memory, _EPS_BYTES)
+            and _close(self.memory, other.memory, _EPS_BYTES)
         )
 
     def __hash__(self) -> int:
@@ -138,19 +149,19 @@ class ExecutionResources:
     def is_zero(self) -> bool:
         """Returns True if all resources are zero (within float-drift tolerance)."""
         return (
-            abs(self.cpu) < _EPS
-            and abs(self.gpu) < _EPS
-            and abs(self.object_store_memory) < _EPS
-            and abs(self.memory) < _EPS
+            abs(self.cpu) < _EPS_FRACTIONAL
+            and abs(self.gpu) < _EPS_FRACTIONAL
+            and abs(self.object_store_memory) < _EPS_BYTES
+            and abs(self.memory) < _EPS_BYTES
         )
 
     def is_non_negative(self) -> bool:
-        """Returns True if all resources are non-negative."""
+        """Returns True if all resources are non-negative (within float-drift tolerance)."""
         return (
-            self.cpu >= 0
-            and self.gpu >= 0
-            and self.object_store_memory >= 0
-            and self.memory >= 0
+            self.cpu >= -_EPS_FRACTIONAL
+            and self.gpu >= -_EPS_FRACTIONAL
+            and self.object_store_memory >= -_EPS_BYTES
+            and self.memory >= -_EPS_BYTES
         )
 
     def object_store_memory_str(self) -> str:
@@ -420,7 +431,7 @@ def safe_round(
         return round(value, ndigits)
 
 
-def _close(a: float, b: float) -> bool:
+def _close(a: float, b: float, eps: float) -> bool:
     # `a == b` catches both inf==inf (where `a - b` would be NaN) and the
     # common case of exact equality without a subtraction.
-    return a == b or abs(a - b) < _EPS
+    return a == b or abs(a - b) < eps
