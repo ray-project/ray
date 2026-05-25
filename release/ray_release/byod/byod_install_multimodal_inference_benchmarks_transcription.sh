@@ -3,6 +3,6 @@
 
 set -exo pipefail
 
-conda install -y -c conda-forge "ffmpeg=7.*"
+conda install -y -c conda-forge "ffmpeg=6.*"
 
 uv pip install -r python_depset.lock --system --no-deps --index-strategy unsafe-best-match
