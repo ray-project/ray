@@ -53,6 +53,10 @@ defaults
     option abortonclose
     option splice-request
     option splice-response
+    # Failover to a peer slot on every retry (`1`), only when no partial
+    # body has been sent: connect failure or a backend 503.
+    option redispatch 1
+    retry-on conn-failure 503
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
@@ -60,9 +64,11 @@ defaults
     {%- if config.enable_hap_optimization %}
     option idle-close-on-response
     {%- endif %}
-    # Normalize 502 and 504 errors to 500 per Serve's default behavior
+    # Normalize 502/503/504 to 500 per Serve's default behavior. 503
+    # covers HAProxy's own "all retries exhausted / no server" response.
     {%- if config.error_file_path %}
     errorfile 502 {{ config.error_file_path }}
+    errorfile 503 {{ config.error_file_path }}
     errorfile 504 {{ config.error_file_path }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}

@@ -292,11 +292,17 @@ defaults
     option abortonclose
     option splice-request
     option splice-response
+    # Failover to a peer slot on every retry (`1`), only when no partial
+    # body has been sent: connect failure or a backend 503.
+    option redispatch 1
+    retry-on conn-failure 503
     # Set TCP_NODELAY on all connections
     option http-no-delay
     option idle-close-on-response
-    # Normalize 502 and 504 errors to 500 per Serve's default behavior
+    # Normalize 502/503/504 to 500 per Serve's default behavior. 503
+    # covers HAProxy's own "all retries exhausted / no server" response.
     errorfile 502 {temp_dir}/500.http
+    errorfile 503 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
     balance random(2)
@@ -697,9 +703,9 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
                 return f.read()
 
     unset = render({})
-    # Match the actual HAProxy directive at line-start (4-space indent), not
-    # any occurrences of "retry-on" inside template comments.
-    assert "\n    retry-on " not in unset
+    # Defaults block always emits its own `retry-on conn-failure 503`; this
+    # test asserts the per-ingress-backend retry knobs only render when set.
+    assert unset.count("\n    retry-on ") == 1
     assert "\n    retries " not in unset
     assert "ingress-request-router" in unset  # backend still rendered
 
@@ -710,6 +716,8 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
             "ingress_timeout_server_s": 5,
         }
     )
+    # Defaults retry-on + ingress retry-on = 2 occurrences.
+    assert set_cfg.count("\n    retry-on ") == 2
     assert "retry-on conn-failure empty-response response-timeout" in set_cfg
     assert "\n    retries 4\n" in set_cfg
     assert "\n    timeout server 5s\n" in set_cfg
@@ -1892,12 +1900,15 @@ async def test_errorfile_creation_and_config(haproxy_api_cleanup):
         # Start HAProxy and verify config contains errorfile directives
         await api.start()
 
-        # Verify config file contains errorfile directives for both 502 and 504 pointing to the same file
+        # Verify config file contains errorfile directives for 502, 503 and 504 pointing to the same file
         with open(config_file_path, "r") as f:
             config_content = f.read()
             assert (
                 f"errorfile 502 {expected_error_file_path}" in config_content
             ), "HAProxy config should contain 502 errorfile directive"
+            assert (
+                f"errorfile 503 {expected_error_file_path}" in config_content
+            ), "HAProxy config should contain 503 errorfile directive"
             assert (
                 f"errorfile 504 {expected_error_file_path}" in config_content
             ), "HAProxy config should contain 504 errorfile directive"
