@@ -535,14 +535,14 @@ def test_chunk_shape_resolution_across_mixed_rank(
 
 
 def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
-    """Wide-row schema: ``t_start``, ``t_stop``, one column per aligned array."""
+    """Wide-row schema: ``t_start``, ``t_stop``, one column per selected array."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store),
-        align_axis_0=["img", "state", "label"],
+        align_axis_0=True,
         chunk_shape=[4],
     )
     df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    assert list(df.columns) == ["t_start", "t_stop", "img", "state", "label"]
+    assert set(df.columns) == {"t_start", "t_stop", "img", "state", "label"}
     # shape[0]=8, chunk_shape=[4] -> 2 rows.
     assert len(df) == 2
     # Reconstruct each array by concatenating slices in order.
@@ -560,18 +560,20 @@ def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
 
 
 @pytest.mark.parametrize(
-    "align_axis_0,extra_cols",
+    "array_paths,extra_cols",
     [
-        # ``True`` aligns every selected array (here: all three).
-        (True, {"img", "state", "label"}),
-        # An explicit subset filters non-listed arrays out of the output.
+        # No filter: all discovered arrays end up aligned.
+        (None, {"img", "state", "label"}),
+        # array_paths selects which arrays to read; align_axis_0 just
+        # asserts that the selected set is mutually aligned.
         (["img", "state"], {"img", "state"}),
     ],
 )
-def test_align_axis_0_column_set(aligned_zarrv2_store, align_axis_0, extra_cols):
+def test_align_axis_0_column_set(aligned_zarrv2_store, array_paths, extra_cols):
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store),
-        align_axis_0=align_axis_0,
+        array_paths=array_paths,
+        align_axis_0=True,
         chunk_shape=[4],
     )
     df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
@@ -592,13 +594,12 @@ def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
         )
 
 
-def test_align_axis_0_rejects_missing_array_name(aligned_zarrv2_store):
-    with pytest.raises(
-        ValueError, match=r"align_axis_0 names not found in store: \['nope'\]"
-    ):
+def test_align_axis_0_rejects_non_bool(aligned_zarrv2_store):
+    """``align_axis_0`` must be a bool or None — no list form."""
+    with pytest.raises(TypeError, match=r"align_axis_0 must be a bool or None"):
         zarrv2_datasource.ZarrV2Datasource(
             str(aligned_zarrv2_store),
-            align_axis_0=["img", "nope"],
+            align_axis_0=["img", "state"],
         )
 
 
@@ -1137,6 +1138,106 @@ def test_read_zarr_integration_public_s3(ray_start_regular_shared):
     assert {c.shape for c in label_rows["chunk"]} == {(200,)}
     assert all(c.dtype == np.uint8 for c in image_rows["chunk"])
     assert all(c.dtype == np.uint8 for c in label_rows["chunk"])
+
+
+# ---------------------------------------------------------------------------
+# Custom codec registration in Ray workers
+# ---------------------------------------------------------------------------
+
+
+# Hook string registers a custom (non-stdlib) codec in each worker process.
+# numcodecs.registry is process-local — built-in codecs (blosc, gzip, zstd)
+# register themselves at import time, but anything else (including
+# ``imagecodecs_jpegxl``) must be explicitly registered in every process
+# that decodes chunks. Ray workers are separate Python processes, so the
+# driver's registration does NOT propagate. The standard fix is to run
+# this registration in each worker via ``runtime_env``'s
+# ``worker_process_setup_hook``.
+_CUSTOM_CODEC_HOOK = """
+import numcodecs
+import numpy as np
+
+class _RayZarrTestCodec(numcodecs.abc.Codec):
+    codec_id = "ray_zarr_test_codec"
+
+    def encode(self, buf):
+        return bytes(buf)
+
+    def decode(self, buf, out=None):
+        arr = np.frombuffer(buf, dtype=np.uint8)
+        if out is not None:
+            out[:] = arr.view(out.dtype)
+            return out
+        return arr.copy()
+
+numcodecs.register_codec(_RayZarrTestCodec)
+"""
+
+
+@pytest.fixture
+def custom_codec_zarr_store(tmp_path):
+    """A Zarr store compressed with a custom codec that numcodecs doesn't
+    auto-register. The driver registers the codec briefly to write the
+    store; Ray workers need their own registration to decode chunks.
+    """
+    import numcodecs
+
+    # Register driver-side so we can write the store.
+    exec(_CUSTOM_CODEC_HOOK, {})
+
+    store_path = tmp_path / "codec_test.zarr"
+    arr = zarr.open(
+        str(store_path),
+        mode="w",
+        shape=(8,),
+        chunks=(4,),
+        dtype="u1",
+        compressor=numcodecs.get_codec({"id": "ray_zarr_test_codec"}),
+    )
+    arr[:] = np.arange(8, dtype="u1")
+    zarr.consolidate_metadata(str(store_path))
+    return store_path
+
+
+def test_custom_codec_fails_in_worker_without_setup_hook(custom_codec_zarr_store):
+    """Driver-side codec registration does NOT propagate to Ray workers.
+
+    Without ``worker_process_setup_hook``, the worker's ``numcodecs.registry``
+    has no entry for ``ray_zarr_test_codec``; chunk decode raises in the
+    worker and Ray Data surfaces the failure on the driver.
+    """
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=1, logging_level="ERROR", log_to_driver=False)
+    try:
+        ds = ray.data.read_zarr(str(custom_codec_zarr_store))
+        with pytest.raises(Exception) as exc_info:
+            ds.take_all()
+        # Verify the error is about our codec, not something unrelated.
+        assert "ray_zarr_test_codec" in str(exc_info.value)
+    finally:
+        ray.shutdown()
+
+
+def test_custom_codec_succeeds_with_worker_setup_hook(custom_codec_zarr_store):
+    """``worker_process_setup_hook`` runs once per worker, before any task,
+    registering the codec in the worker's process. Chunk decode succeeds.
+    """
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(
+        num_cpus=1,
+        logging_level="ERROR",
+        log_to_driver=False,
+        runtime_env={"worker_process_setup_hook": _CUSTOM_CODEC_HOOK},
+    )
+    try:
+        ds = ray.data.read_zarr(str(custom_codec_zarr_store))
+        rows = sorted(ds.take_all(), key=lambda r: tuple(r["chunk_index"]))
+        recon = np.concatenate([r["chunk"] for r in rows])
+        np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
+    finally:
+        ray.shutdown()
 
 
 if __name__ == "__main__":

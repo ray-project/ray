@@ -451,15 +451,18 @@ class ZarrV2Datasource(Datasource):
     Arrays in the same call need not share any dimension; they coexist as
     separate rows distinguished by ``array``.
 
-    **Wide-form (opt-in, ``align_axis_0=[...]`` or ``True``)** — one row per
-    axis-0 chunk, with one column per aligned array. Columns:
+    **Wide-form (opt-in, ``align_axis_0=True``)** — one row per axis-0
+    chunk, with one column per selected array. Columns:
 
     * ``t_start`` / ``t_stop``: global axis-0 range of this row.
     * ``<array_name>``: that array's ``[t_start:t_stop, ...]`` slice
-      (one column per aligned array).
+      (one column per selected array).
 
-    Aligned arrays must share ``shape[0]`` and must end up with the same
-    axis-0 chunk size after :paramref:`chunk_shape` resolution.
+    All selected arrays must share ``shape[0]`` and must end up with the
+    same axis-0 chunk size after :paramref:`chunk_shape` resolution; if
+    they don't, ``__init__`` raises ``ValueError`` with a hint pointing at
+    the largest aligned subset. Use :paramref:`array_paths` to pick which
+    arrays to read — ``align_axis_0`` itself does not filter.
 
     See :func:`ray.data.read_zarr` for the public API.
     """
@@ -471,7 +474,7 @@ class ZarrV2Datasource(Datasource):
         chunk_shape: List[int] | dict[str, List[int] | None] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
-        align_axis_0: List[str] | bool | None = None,
+        align_axis_0: bool | None = None,
         overlap: int | None = None,
     ) -> None:
         super().__init__()
@@ -589,36 +592,26 @@ class ZarrV2Datasource(Datasource):
 
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
-    def _resolve_align_axis_0(
-        self, align_axis_0: List[str] | bool | None
-    ) -> list[str] | None:
-        """Validate ``align_axis_0``, filter ``_selected_arrays``, return aligned list.
+    def _resolve_align_axis_0(self, align_axis_0: bool | None) -> list[str] | None:
+        """Validate ``align_axis_0`` and return the aligned array names in order.
 
-        Returns ``None`` when alignment is off (long-form mode). Returns the
-        ordered list of aligned array names otherwise; ``_selected_arrays`` is
-        filtered down to exactly those keys.
+        Returns ``None`` when alignment is off (long-form mode). Otherwise
+        returns the ordered list of selected array names after asserting
+        they all share ``shape[0]``.
+
+        ``align_axis_0`` does **not** filter ``_selected_arrays`` — the user
+        chooses which arrays to read via ``array_paths``, and this method
+        only validates that the resulting set is mutually aligned.
         """
-        if align_axis_0 is None or align_axis_0 is False:
+        if not align_axis_0:
             return None
 
-        if align_axis_0 is True:
-            aligned_names = list(self._selected_arrays.keys())
-        else:
-            missing = [n for n in align_axis_0 if n not in self._selected_arrays]
-            if missing:
-                available = sorted(self._selected_arrays.keys())
-                raise ValueError(
-                    f"align_axis_0 names not found in store: {missing!r}. "
-                    f"Available: {available!r}."
-                )
-            aligned_names = list(align_axis_0)
+        if align_axis_0 is not True:
+            raise TypeError(
+                f"align_axis_0 must be a bool or None, got "
+                f"{type(align_axis_0).__name__}"
+            )
 
-        # Filter to aligned subset (drops non-listed arrays from the output).
-        self._selected_arrays = {
-            name: self._selected_arrays[name] for name in aligned_names
-        }
-
-        # Validate shape[0] alignment, with a helpful subset hint on mismatch.
         shape0_by_array = {
             name: meta.shape[0] if meta.shape else 0
             for name, meta in self._selected_arrays.items()
@@ -631,14 +624,14 @@ class ZarrV2Datasource(Datasource):
                 n for n, s in shape0_by_array.items() if s == most_common_size
             )
             raise ValueError(
-                f"Arrays in align_axis_0 must share shape[0]. Got: "
-                f"{shape0_by_array}. Largest aligned subset has "
-                f"shape[0]={most_common_size}: {aligned_subset}. Pass that "
-                f"subset to align_axis_0, or read mismatched arrays in "
-                f"separate read_zarr calls."
+                f"All selected arrays must share shape[0] when "
+                f"align_axis_0=True. Got: {shape0_by_array}. Largest aligned "
+                f"subset has shape[0]={most_common_size}: {aligned_subset}. "
+                f"Pass that subset via array_paths=[...] to read only those "
+                f"arrays."
             )
 
-        return aligned_names
+        return list(self._selected_arrays.keys())
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Total bytes = sum over selected arrays of ``prod(shape) * itemsize``."""

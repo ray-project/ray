@@ -832,7 +832,7 @@ def read_zarr(
     chunk_shape: Optional[Union[List[int], Dict[str, Optional[List[int]]]]] = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
-    align_axis_0: Optional[Union[List[str], bool]] = None,
+    align_axis_0: Optional[bool] = None,
     overlap: Optional[int] = None,
     *,
     concurrency: Optional[int] = None,
@@ -855,22 +855,24 @@ def read_zarr(
     * ``chunk_slices``: per-axis ``(start, stop)`` of this chunk in the
       source array's coordinate space — useful for mapping a chunk back
       to its global position without recomputing from the chunk shape.
-    * ``chunk``: the chunk's data as an ``ndarray`` at its natural shape
+    * ``chunk``: the chunk's data at its natural shape
       (possibly shorter at trailing boundaries — no padding is applied).
 
     Arrays read in the same call need **not** share any dimension. Different
     ranks, shapes, dtypes, and native chunk sizes coexist as separate rows.
 
-    **Aligned (wide-form, ``align_axis_0=[...]`` or ``True``)** — one row
-    per axis-0 chunk, with one column per aligned array. Columns:
+    **Aligned (wide-form, ``align_axis_0=True``)** — one row per axis-0
+    chunk, with one column per selected array. Columns:
 
     * ``t_start``, ``t_stop``: global axis-0 range of this row.
     * ``<array_name>``: that array's ``[t_start:t_stop, ...]`` slice as
-      an ``ndarray`` (one column per aligned array).
+      one column per selected array.
 
-    Aligned arrays must share ``shape[0]`` and must end up with the same
-    axis-0 chunk size after ``chunk_shape`` resolution. Non-aligned arrays
-    in the store are filtered out of the output.
+    All selected arrays must share ``shape[0]`` and must end up with the
+    same axis-0 chunk size after ``chunk_shape`` resolution; if they
+    don't, ``read_zarr`` raises ``ValueError`` with a hint pointing at the
+    largest aligned subset. Use ``array_paths`` to pick which arrays to
+    read — ``align_axis_0`` itself does not filter.
 
     Metadata discovery follows these rules:
 
@@ -920,16 +922,6 @@ def read_zarr(
         >>> ds.count()
         4
 
-        Per-array chunking: coalesce tiny image chunks but leave pose arrays
-        at native chunking.
-
-        >>> ds = ray.data.read_zarr(
-        ...     "/path/to/umi_dataset.zarr.zip",
-        ...     array_paths=["data/camera0_rgb", "data/robot0_eef_pos"],
-        ...     align_axis_0=True,
-        ...     chunk_shape={"data/camera*_rgb": [64], "default": [64]},
-        ... )
-
     Custom codecs:
         Zarr stores compressed with non-stdlib codecs (e.g.,
         ``imagecodecs_jpegxl`` for UMI camera arrays) require the codec
@@ -949,14 +941,12 @@ def read_zarr(
         S3 anonymous reads use the standard URL convention
         ``s3://anonymous@<bucket>/<key>``. GCS does not have this idiom;
         instead, pass ``filesystem=pyarrow.fs.GcsFileSystem(anonymous=True)``
-        explicitly. Otherwise the GCS filesystem will hang for ~30 seconds
-        probing Application Default Credentials before falling back.
+        explicitly.
 
     Args:
         path: Path to the Zarr v2 store.
         filesystem: Optional preconfigured filesystem. Accepts either a
-            :class:`pyarrow.fs.FileSystem` (matching other Ray Data
-            ``read_*`` APIs) or an :class:`fsspec.spec.AbstractFileSystem`.
+            :class:`pyarrow.fs.FileSystem` or an :class:`fsspec.spec.AbstractFileSystem`.
             pyarrow filesystems are wrapped internally with
             :class:`fsspec.implementations.arrow.ArrowFSWrapper` because
             Zarr's storage layer requires fsspec. Use this for private
@@ -980,9 +970,6 @@ def read_zarr(
               non-matching arrays fall back to the ``"default"`` key (if
               present) or to native chunks. ``None`` values mean "use
               native chunks for arrays matching this pattern."
-
-            ``chunk_shape`` is an I/O knob — semantic batching belongs
-            downstream (``map_batches``).
         array_paths: Optional list of array paths within the Zarr store to
             read. If unspecified, all arrays discovered in the store are
             included.
@@ -990,18 +977,13 @@ def read_zarr(
             ``.zarray`` files when ``array_paths`` is unspecified and
             ``.zmetadata`` is missing. This may be slow or expensive for large
             remote stores, so it is disabled by default.
-        align_axis_0: Opt-in switch to the wide-form schema. Either:
-
-            * a list of array names that should be emitted as aligned wide
-              rows, or
-            * ``True`` to align all selected arrays.
-
-            All listed/selected arrays must share ``shape[0]`` and must end
-            up with the same effective axis-0 chunk size after
-            ``chunk_shape`` resolution. Arrays not listed in
-            ``align_axis_0`` are filtered out of the output. When
-            ``align_axis_0`` is ``None`` (the default), the long-form
-            schema is used.
+        align_axis_0: Opt-in switch to the wide-form schema. Pass ``True``
+            to emit one row per axis-0 chunk with one column per selected
+            array, plus ``t_start`` and ``t_stop`` columns naming the
+            global axis-0 range. All selected arrays must share
+            ``shape[0]`` and must end up with the same effective axis-0
+            chunk size after ``chunk_shape`` resolution. The
+            default (``None``) uses the long-form chunk-per-row schema.
         overlap: When set with ``align_axis_0``, extends each row's per-array
             data forward by ``overlap`` timesteps from the next row's owned
             range (clipped at the end of the store). Used for sliding-window
@@ -1011,8 +993,7 @@ def read_zarr(
             ``flat_map`` doesn't need cross-row state. The row's ownership
             (the ``t_start``/``t_stop`` columns) is unchanged; only
             ``chunk.shape[0]`` of each per-array column grows by up to
-            ``overlap``. Requires ``align_axis_0``; raises ``ValueError``
-            otherwise. ``None`` (default) and ``0`` are equivalent — no
+            ``overlap``. Requires ``align_axis_0``. ``None`` (default) and ``0`` are equivalent — no
             overlap, each row's data exactly covers its owned range.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
