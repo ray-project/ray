@@ -4,7 +4,7 @@ import React from "react";
 import { Link, MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import { STYLE_WRAPPER } from "../../util/test-utils";
 import { MainNavPageInfo } from "./mainNavContext";
-import { MainNavLayout } from "./MainNavLayout";
+import { formatFreshnessLabel, MainNavLayout } from "./MainNavLayout";
 
 const TestPageA = () => {
   return (
@@ -109,6 +109,14 @@ const TestApp = ({ location = "/" }: { location?: string }) => {
 };
 
 describe("MainNavLayout", () => {
+  it("formats dashboard data freshness", () => {
+    expect(formatFreshnessLabel(undefined, 1_000)).toBe("No data loaded");
+    expect(formatFreshnessLabel(1_000, 30_000)).toBe("Updated just now");
+    expect(formatFreshnessLabel(1_000, 121_000)).toBe("Updated 2m ago");
+    expect(formatFreshnessLabel(1_000, 7_201_000)).toBe("Updated 2h ago");
+    expect(formatFreshnessLabel(1_000, 172_801_000)).toBe("Updated 2d ago");
+  });
+
   it("navigates and renders breadcrumbs correctly", async () => {
     const user = userEvent.setup();
 
