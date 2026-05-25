@@ -35,6 +35,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
+    RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -1216,6 +1217,11 @@ class HAProxyManager(ProxyActorInterface):
         # which can cause race conditions with SO_REUSEPORT
         self._reload_lock = asyncio.Lock()
 
+        # Coalescing state: each broadcast sets _update_pending=True and
+        # (re)arms _coalesce_task, which sleeps one window then applies.
+        self._update_pending: bool = False
+        self._coalesce_task: Optional[asyncio.Task] = None
+
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
@@ -1508,7 +1514,7 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy_start_task
             await self._haproxy.reload()
 
-    def _update_haproxy_backends(self) -> None:
+    def _update_haproxy_backends(self) -> asyncio.Task:
         backend_configs = []
         for target_group in self._target_groups:
             fallback_target = None
@@ -1530,11 +1536,11 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
-        self.event_loop.create_task(self._reload_haproxy())
+        return self.event_loop.create_task(self._reload_haproxy())
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups
-        self._update_haproxy_backends()
+        self._schedule_haproxy_update()
 
     def update_fallback_targets(
         self,
@@ -1550,7 +1556,43 @@ class HAProxyManager(ProxyActorInterface):
             elif protocol == RequestProtocol.GRPC:
                 self._grpc_fallback_target = target
 
-        self._update_haproxy_backends()
+        self._schedule_haproxy_update()
+
+    def _schedule_haproxy_update(self) -> None:
+        """Mark state dirty and ensure a coalescing task is running.
+
+        Multiple broadcasts within RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S
+        collapse into a single _update_haproxy_backends call. If coalescing
+        is disabled (window <= 0), apply synchronously to preserve the prior
+        behavior.
+        """
+        if RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S <= 0:
+            self._update_haproxy_backends()
+            return
+
+        self._update_pending = True
+        if self._coalesce_task is None or self._coalesce_task.done():
+            self._coalesce_task = self.event_loop.create_task(
+                self._coalesce_and_apply()
+            )
+
+    async def _coalesce_and_apply(self) -> None:
+        # Awaits the reload so failures propagate here and so broadcasts
+        # arriving during a slow reload coalesce into the next cycle
+        # instead of queueing behind the reload lock. On failure, re-arm
+        # for up to 2 retries; past that, wait for the next broadcast.
+        consecutive_failures = 0
+        while self._update_pending:
+            await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
+            self._update_pending = False
+            try:
+                await self._update_haproxy_backends()
+                consecutive_failures = 0
+            except Exception:
+                logger.exception("Coalesced HAProxy update failed.")
+                consecutive_failures += 1
+                if consecutive_failures < 3:
+                    self._update_pending = True
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""
