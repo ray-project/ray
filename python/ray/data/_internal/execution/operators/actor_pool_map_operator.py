@@ -270,6 +270,8 @@ class ActorPoolMapOperator(MapOperator):
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
             )
         )
+        # Initial pool of pending actors bumps `pending_logical_usage`.
+        self.notify_resource_usage_changed()
 
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.
@@ -348,6 +350,9 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
+            # Actor moved from pending to running: shifts the cpu/gpu/memory
+            # bundle from `pending_logical_usage` to `running_logical_usage`.
+            self.notify_resource_usage_changed()
 
         self._submit_metadata_task(
             res_ref,
@@ -419,12 +424,19 @@ class ActorPoolMapOperator(MapOperator):
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
                 self._actor_pool.on_task_completed(actor_to_return)
+                # Task done: decrements num_tasks_running and therefore
+                # obj_store_mem_pending_task_outputs.
+                self.notify_resource_usage_changed()
 
             from functools import partial
 
             self._submit_data_task(
                 gen, bundle, partial(_task_done_callback, actor_to_return=actor)
             )
+            # Task submitted: bumps num_tasks_running and therefore
+            # obj_store_mem_pending_task_outputs. Fire after
+            # `_submit_data_task` so the on_task_submitted bump is included.
+            self.notify_resource_usage_changed()
 
             num_submitted_tasks += 1
 
