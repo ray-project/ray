@@ -66,7 +66,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 kubectl get pod -l ray.io/node-type=head
 
 # Check the autoscaler container's command and args inside the head Pod.
-export RAYCLUSTER_HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
+export RAYCLUSTER_HEAD_POD=$(kubectl get pods --selector=ray.io/cluster=raycluster-autoscaler-overwrite-cmd,ray.io/node-type=head -o jsonpath='{.items[0].metadata.name}')
 kubectl get pods ${RAYCLUSTER_HEAD_POD} -o jsonpath='{range .spec.containers[?(@.name=="autoscaler")]}{"Command: "}{.command}{"\n"}{"Args: "}{.args}{"\n"}{end}'
 
 # The autoscaler container's args will look like:
