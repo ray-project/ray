@@ -42,6 +42,8 @@ class RuntimeEnvConfig(dict):
         eager_install: Indicates whether to install the runtime environment
             on the cluster at `ray.init()` time, before the workers are leased.
             This flag is set to `True` by default.
+        log_files: An optional list of log files to surface in the dashboard for
+            this runtime environment.
     """
 
     known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files"}
@@ -235,6 +237,9 @@ class RuntimeEnv(dict):
             storage), each of which is an archive that Ray unpacks and
             inserts into the PYTHONPATH of the workers. Supported formats for
             remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, and ``.tgz``.
+        py_executable: Path or command to the Python executable that Ray uses to
+            launch worker processes. By default, Ray uses the same interpreter
+            that is running the driver.
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
             Supported formats for remote URIs: ``.zip``, ``.tar.gz``, and ``.tgz``.
@@ -247,8 +252,6 @@ class RuntimeEnv(dict):
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
-        uv: Either a list of pip packages, or a Python dictionary that has one field:
-            1) ``packages`` (required, List[str]).
         conda: Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
@@ -259,14 +262,14 @@ class RuntimeEnv(dict):
             To use pip with conda, specify your pip dependencies within
             the conda YAML config:
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
-        container: Require a given (Docker) container image,
+        container: Require a given Docker container image,
             The Ray worker process runs in a container with this image.
             This parameter only works alone, or with the ``config`` or
             ``env_vars`` parameters.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
-        worker_process_setup_hook: (Experimental) The setup hook that's
+        worker_process_setup_hook: Experimental. The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.
             A module name (string type) or callable (function) can be passed.
             When a module name is passed, Ray worker should be able to access the
@@ -279,9 +282,16 @@ class RuntimeEnv(dict):
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
+        _validate: Whether to validate the runtime environment when the
+            ``RuntimeEnv`` is constructed. Disabling validation defers checks
+            to the worker side.
         image_uri: URI to a container image. The Ray worker process runs
             in a container with this image. This parameter only works alone,
             or with the ``config`` or ``env_vars`` parameters.
+        uv: Either a list of pip packages, or a Python dictionary that has one field:
+            1) ``packages`` (required, List[str]).
+        **kwargs: Additional runtime environment fields that are forwarded
+            verbatim to the underlying runtime environment dictionary.
     """
 
     known_fields: Set[str] = {
