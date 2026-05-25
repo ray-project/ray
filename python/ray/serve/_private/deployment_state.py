@@ -2022,9 +2022,7 @@ class DeploymentReplica:
             extra={"log_to_stderr": False},
         )
         self._shutdown_start_time = time.time()
-        graceful_timeout_from_actor = self._actor.graceful_stop()
-        timeout_s = graceful_timeout_from_actor
-        applied_direct_ingress_floor = False
+        timeout_s = self._actor.graceful_stop()
         if not graceful:
             timeout_s = 0
         elif self._actor._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
@@ -2032,23 +2030,7 @@ class DeploymentReplica:
             # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external
             # load balancers (e.g., ALB) time to deregister the replica.
             timeout_s = max(timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
-            applied_direct_ingress_floor = True
         self._shutdown_deadline = time.time() + timeout_s
-        # Diagnostic log to confirm which timeout value is actually in effect
-        # for this replica's graceful shutdown.
-        logger.info(
-            f"[shutdown-deadline] {self.replica_id} "
-            f"graceful={graceful} "
-            f"_actor._ingress={getattr(self._actor, '_ingress', None)} "
-            f"RAY_SERVE_ENABLE_DIRECT_INGRESS={RAY_SERVE_ENABLE_DIRECT_INGRESS} "
-            f"graceful_timeout_from_actor={graceful_timeout_from_actor}s "
-            f"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S="
-            f"{RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S}s "
-            f"applied_direct_ingress_floor={applied_direct_ingress_floor} "
-            f"final_timeout_s={timeout_s}s "
-            f"deadline_in={timeout_s}s",
-            extra={"log_to_stderr": False},
-        )
 
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
@@ -2057,17 +2039,9 @@ class DeploymentReplica:
 
         timeout_passed = time.time() >= self._shutdown_deadline
         if timeout_passed:
-            elapsed_s = (
-                time.time() - self._shutdown_start_time
-                if self._shutdown_start_time is not None
-                else float("nan")
-            )
             logger.info(
-                f"[force-kill] {self.replica_id} did not shut down after grace "
-                f"period, force-killing it. "
-                f"elapsed_since_stop={elapsed_s:.1f}s "
-                f"deadline_ts={self._shutdown_deadline:.1f} "
-                f"now_ts={time.time():.1f}"
+                f"{self.replica_id} did not shut down after grace "
+                "period, force-killing it."
             )
             self._actor.force_stop()
         return False

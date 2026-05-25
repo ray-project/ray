@@ -802,18 +802,10 @@ class HAProxyApi(ProxyApi):
             if old_proc is not None:
                 self._old_procs.append(old_proc)
 
-            # Diagnostic: prune already-exited old procs from the list so the
-            # logged count reflects what's actually still alive, then report.
-            still_alive_old_procs = [p for p in self._old_procs if p.returncode is None]
-            exited_old_procs = [p for p in self._old_procs if p.returncode is not None]
             logger.info(
                 "Graceful HAProxy reload completed in "
                 f"{(time.time() - reload_start) * 1000:.0f}ms "
-                f"(new pid={self._proc.pid}). "
-                f"[old-procs] tracked={len(self._old_procs)} "
-                f"alive={len(still_alive_old_procs)} "
-                f"exited_since_last_reload={len(exited_old_procs)} "
-                f"alive_pids={[p.pid for p in still_alive_old_procs]}"
+                f"(new pid={self._proc.pid})."
             )
         except Exception as e:
             logger.error(
@@ -1144,18 +1136,6 @@ class HAProxyApi(ProxyApi):
 
     async def stop(self) -> None:
         proc = self._proc
-        # Diagnostic: every time HAProxyApi.stop() is entered, log who's about
-        # to be killed. If this fires during a load test (i.e., outside actor
-        # shutdown), it explains in-flight 502s — the old workers holding
-        # active connections get SIGKILL'd here, dropping all of them.
-        logger.info(
-            f"[haproxy-stop] HAProxyApi.stop() invoked. "
-            f"current_proc_pid={proc.pid if proc else None} "
-            f"current_proc_returncode={proc.returncode if proc else None} "
-            f"num_old_procs={len(self._old_procs)} "
-            f"old_proc_pids={[p.pid for p in self._old_procs]} "
-            f"old_proc_returncodes={[p.returncode for p in self._old_procs]}"
-        )
         if proc is None:
             logger.info("HAProxy process not running, skipping shutdown.")
             return
@@ -1163,10 +1143,6 @@ class HAProxyApi(ProxyApi):
         try:
             # Kill the current process
             if proc.returncode is None:
-                logger.info(
-                    f"[haproxy-stop] SIGKILL'ing current HAProxy proc "
-                    f"pid={proc.pid}"
-                )
                 proc.kill()
                 await proc.wait()
                 self._proc = None
@@ -1175,18 +1151,9 @@ class HAProxyApi(ProxyApi):
             for old_proc in self._old_procs:
                 try:
                     if old_proc.returncode is None:
-                        logger.info(
-                            f"[haproxy-stop] SIGKILL'ing old HAProxy proc "
-                            f"pid={old_proc.pid} (still alive; reload-leftover)"
-                        )
                         old_proc.kill()
                         await old_proc.wait()
                         logger.info(f"Killed old HAProxy process (PID: {old_proc.pid})")
-                    else:
-                        logger.info(
-                            f"[haproxy-stop] old HAProxy proc pid={old_proc.pid} "
-                            f"already exited (returncode={old_proc.returncode}), skipping"
-                        )
                 except Exception as e:
                     logger.warning(f"Error killing old HAProxy process: {e}")
 
