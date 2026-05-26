@@ -19,52 +19,12 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/cgroup2/cgroup_manager_interface.h"
-#include "ray/common/cgroup2/cgroup_test_utils.h"
+#include "ray/common/cgroup2/fake_cgroup_manager.h"
+#include "ray/common/event_memory_monitor.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/threshold_memory_monitor.h"
 
 namespace ray {
-
-class FakeCgroupManager : public CgroupManagerInterface {
- public:
-  explicit FakeCgroupManager(int64_t user_memory_max_bytes,
-                             int64_t user_memory_high_bytes)
-      : user_memory_max_bytes_(user_memory_max_bytes),
-        user_memory_high_bytes_(user_memory_high_bytes) {
-    StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
-    RAY_CHECK(temp_dir_or.ok()) << temp_dir_or.status().ToString();
-    temp_dir_ = std::move(temp_dir_or.value());
-  }
-
-  Status AddProcessToWorkersCgroup(const std::string &) override { return Status::OK(); }
-  Status AddProcessToSystemCgroup(const std::string &) override { return Status::OK(); }
-
-  std::string GetUserCgroupPath() const override { return temp_dir_->GetPath(); }
-
-  StatusOr<std::string> GetSystemCgroupConstraintValue(
-      const std::string &) const override {
-    return Status::IOError("not implemented");
-  }
-
-  StatusOr<std::string> GetUserCgroupConstraintValue(
-      const std::string &constraint_name) const override {
-    if (constraint_name == "memory.max") {
-      return std::to_string(user_memory_max_bytes_);
-    }
-    if (constraint_name == "memory.high") {
-      return std::to_string(user_memory_high_bytes_);
-    }
-    return Status::IOError("constraint not found: " + constraint_name);
-  }
-
-  const std::string &GetPath() const { return temp_dir_->GetPath(); }
-
- private:
-  std::unique_ptr<TempDirectory> temp_dir_;
-  int64_t user_memory_max_bytes_;
-  int64_t user_memory_high_bytes_;
-};
 
 class MemoryMonitorFactoryTest : public ::testing::Test {
  protected:
@@ -77,7 +37,7 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
+      MemoryMonitorFactory::Create([](std::string) {},
                                    /*resource_isolation_enabled=*/false,
                                    cgroup_manager);
 
@@ -87,18 +47,19 @@ TEST_F(MemoryMonitorFactoryTest,
 }
 
 TEST_F(MemoryMonitorFactoryTest,
-       TestCreateWithResourceIsolationEnabledReturnsThresholdMonitors) {
+       TestCreateWithResourceIsolationEnabledReturnsThresholdAndEventMonitors) {
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
-  TempFile pressure_file(cgroup_manager.GetPath() + "/memory.pressure");
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
+      MemoryMonitorFactory::Create([](std::string) {},
                                    /*resource_isolation_enabled=*/true,
                                    cgroup_manager);
 
-  ASSERT_EQ(monitors.size(), 1u) << "Expected exactly one monitor";
-  EXPECT_NE(dynamic_cast<ThresholdMemoryMonitor *>(monitors[0].get()), nullptr)
-      << "Expected the sole monitor to be a ThresholdMemoryMonitor";
+  ASSERT_EQ(monitors.size(), 2u) << "Expected exactly two monitors";
+  EXPECT_NE(dynamic_cast<EventMemoryMonitor *>(monitors[0].get()), nullptr)
+      << "Expected the first monitor to be an EventMemoryMonitor";
+  EXPECT_NE(dynamic_cast<ThresholdMemoryMonitor *>(monitors[1].get()), nullptr)
+      << "Expected the second monitor to be a ThresholdMemoryMonitor";
 }
 
 }  // namespace ray

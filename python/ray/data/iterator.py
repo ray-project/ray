@@ -22,7 +22,6 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
@@ -120,6 +119,22 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
+        """Hook fired from the consumer's thread when iteration ends.
+
+        Called from the ``finally`` in ``_iter_batches`` on normal
+        exhaustion, early ``break``, or an exception. The default shuts
+        ``executor`` down (idempotent) so the local iterator path stops
+        producing blocks into the object store eagerly rather than waiting
+        for ``_ClosingIterator.__del__``. ``StreamSplitDataIterator``
+        overrides this to instead signal the ``SplitCoordinator`` actor
+        on the consumer thread, since its inner block-fetching generator
+        runs in a separate prefetch thread whose cleanup is GC-bound and
+        therefore not deterministic.
+        """
+        if executor is not None:
+            executor.shutdown(force=True)
+
     @PublicAPI
     def iter_batches(
         self,
@@ -139,6 +154,30 @@ class DataIterator(abc.ABC):
             ...     1000000
             ... ).iterator().iter_batches(): # doctest: +SKIP
             ...     print(batch) # doctest: +SKIP
+
+        .. note::
+
+            When you ``break`` out of the for-loop above, Ray Data shuts the
+            streaming executor down so it stops producing blocks into the
+            object store. This relies on Python firing ``GeneratorExit`` into
+            the implicit iterator created by the for-loop.
+
+            If you instead hold a reference to the iterator yourself, the
+            cleanup is deferred until that reference is dropped::
+
+                it = iter(ds.iter_batches())
+                for i, batch in enumerate(it):
+                    if i == 0:
+                        break
+                # The executor keeps producing blocks until ``it`` goes
+                # out of scope. Call ``it.close()`` to release resources
+                # eagerly, or stick with ``for batch in ds.iter_batches()``.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
 
         Time complexity: O(1)
 
@@ -253,10 +292,18 @@ class DataIterator(abc.ABC):
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            yield from batch_iterator
-
-            if stats:
-                stats.iter_total_s.add(time.perf_counter() - time_start)
+            try:
+                yield from batch_iterator
+                if stats:
+                    stats.iter_total_s.add(time.perf_counter() - time_start)
+            finally:
+                # On early exit (e.g. ``break`` in the for-loop), the inner
+                # ``_ClosingIterator`` would only shut down the executor via
+                # its ``__del__``, which is non-deterministic. The hook
+                # shuts it down eagerly (or, for ``StreamSplitDataIterator``,
+                # signals the remote ``SplitCoordinator``) so resources are
+                # released the moment the consumer stops pulling.
+                self._on_iteration_end(executor)
 
         return _IterableFromIterator(_create_iterator)
 
@@ -860,7 +907,7 @@ class DataIterator(abc.ABC):
         import torch
 
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
+        from ray.data.util.torch_utils import convert_table_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -899,27 +946,30 @@ class DataIterator(abc.ABC):
         def make_generator():
             for batch in self._iter_batches(
                 batch_size=batch_size,
-                batch_format="pandas",
+                batch_format="pyarrow",
                 prefetch_batches=prefetch_batches,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
+                    feature_batch = batch.select(
+                        [col for col in batch.column_names if col != label_column]
+                    )
+                    label_tensor = convert_table_to_torch_tensor(
                         batch,
                         [label_column],
                         label_column_dtype,
                         unsqueeze=unsqueeze_label_tensor,
                     )
-                    batch.pop(label_column)
                 else:
+                    feature_batch = batch
                     label_tensor = None
 
                 if isinstance(feature_columns, dict):
                     features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
+                        key: convert_table_to_torch_tensor(
+                            feature_batch,
                             feature_columns[key],
                             (
                                 feature_column_dtypes[key]
@@ -931,8 +981,8 @@ class DataIterator(abc.ABC):
                         for key in feature_columns
                     }
                 else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
+                    features_tensor = convert_table_to_torch_tensor(
+                        feature_batch,
                         columns=feature_columns,
                         column_dtypes=feature_column_dtypes,
                         unsqueeze=unsqueeze_feature_tensors,
@@ -1186,15 +1236,12 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats, self.get_context())
+        context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
-            execution_plan._context,
+            context,
         )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        return MaterializedDataset(logical_plan, context, stats)
 
 
 # Backwards compatibility alias.

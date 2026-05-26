@@ -2430,6 +2430,7 @@ mmh3==5.2.1 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   pyiceberg
+#   ray
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/py313/data-requirements.txt
