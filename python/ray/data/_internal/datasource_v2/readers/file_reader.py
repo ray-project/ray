@@ -204,7 +204,12 @@ class FileReader(Reader[FileManifest]):
         if len(input_split) == 0:
             return
 
-        paths = list(input_split.paths)
+        # Dedupe paths before handing them to pyarrow. When chunking is on,
+        # a manifest can carry multiple rows per file (each describing a
+        # different row-group slice); pyarrow only needs one fragment per
+        # file, and ``_get_fragments_to_read`` then fans out chunk-level
+        # sub-fragments using the per-row chunk metadata.
+        paths = list(dict.fromkeys(list(input_split.paths)))
         filesystem = self._filesystem or LocalFileSystem()
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
         # listing + column metadata is shared, but then iterate its
@@ -249,7 +254,7 @@ class FileReader(Reader[FileManifest]):
 
         rows_read = 0
         for table, fragment_path, fragment_row_offset in self._read_fragment_batches(
-            dataset, scanner_kwargs
+            dataset, scanner_kwargs, input_split
         ):
             if self._limit is not None:
                 if rows_read >= self._limit:
@@ -353,10 +358,35 @@ class FileReader(Reader[FileManifest]):
         """
         return self._format.value
 
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[Tuple[pds.Fragment, int]]:
+        """Return ``(fragment, file_row_offset)`` pairs to scan for this
+        manifest.
+
+        ``file_row_offset`` is the cumulative pre-filter row count of all
+        rows in the underlying file that precede this fragment. It seeds
+        the per-fragment hashing offset so chunked sub-fragments of the
+        same file produce unique ``_compute_row_hashes`` keys instead of
+        colliding on ``(path, 0, n)``.
+
+        Default impl returns one ``(fragment, 0)`` per file in the dataset
+        (paths are deduped in :meth:`read` before the dataset is built).
+        Subclasses that support per-row chunk metadata
+        (e.g. :class:`ParquetFileReader`) override this to fan a single
+        file fragment out into N sub-fragments — one per row-group slice —
+        based on :attr:`FileManifest.file_chunk_metadatas`, each paired
+        with its starting row offset in the file.
+        """
+        return [(fragment, 0) for fragment in dataset.get_fragments()]
+
     def _read_fragment_batches(
         self,
         dataset: pds.Dataset,
         scanner_kwargs: dict,
+        manifest: FileManifest,
     ) -> Iterator[Tuple[pa.Table, str, int]]:
         """Yield non-empty (table, fragment_path, fragment_row_offset) triples.
 
@@ -386,7 +416,7 @@ class FileReader(Reader[FileManifest]):
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
-        is the finite fragment manifest from ``dataset.get_fragments()``,
+        is the finite fragment manifest from ``_get_fragments_to_read``,
         which we materialize below anyway. File data is still read lazily
         by the worker threads.
         """
@@ -396,19 +426,24 @@ class FileReader(Reader[FileManifest]):
         # eagerly anyway, so materialize once here to (a) cap
         # ``num_workers`` at the actual fragment count and (b) avoid
         # an early-fallback when the manifest has a single fragment.
-        fragments = list(dataset.get_fragments())
-        if not fragments:
+        # Subclasses (e.g. ``ParquetFileReader``) override
+        # ``_get_fragments_to_read`` to fan out chunk-level
+        # sub-fragments from the manifest's chunk metadata.
+        fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
+        if not fragments_with_offsets:
             return
 
-        num_workers = min(_DEFAULT_NUM_THREADS, len(fragments))
+        num_workers = min(_DEFAULT_NUM_THREADS, len(fragments_with_offsets))
         if num_workers <= 1 or ctx.execution_options.preserve_order:
-            yield from self._read_fragments_sequential(iter(fragments), scanner_kwargs)
+            yield from self._read_fragments_sequential(
+                iter(fragments_with_offsets), scanner_kwargs
+            )
             return
 
         # Set `preserve_ordering=True` to ensure deterministic output ordering.
         # This is required so that Ray Data task retries (block reconstruction)
         yield from make_async_gen(
-            base_iterator=iter(fragments),
+            base_iterator=iter(fragments_with_offsets),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
             preserve_ordering=True,
             num_workers=num_workers,
@@ -416,17 +451,22 @@ class FileReader(Reader[FileManifest]):
 
     def _read_fragments_sequential(
         self,
-        fragments: Iterator[pds.Fragment],
+        fragments_with_offsets: Iterator[Tuple[pds.Fragment, int]],
         scanner_kwargs: dict,
     ) -> Iterator[Tuple[pa.Table, str, int]]:
-        """Read each fragment in ``fragments`` in order, yielding
+        """Read each fragment in ``fragments_with_offsets`` in order, yielding
         ``(table, fragment_path, fragment_row_offset)`` triples.
 
-        ``fragment_row_offset`` resets to 0 at every fragment boundary
-        so the per-fragment row-hash math in :meth:`read` keys off the
-        right window. ``iterate_with_retry`` is scoped to a single
-        fragment so a transient I/O failure only re-reads the failing
-        file (skipping batches already yielded), not the whole input.
+        Each input pair is ``(fragment, file_row_offset)``. The yielded
+        ``fragment_row_offset`` starts at ``file_row_offset`` (the row
+        position of the fragment's first row within its underlying file)
+        and accumulates per yielded batch, so the per-fragment row-hash
+        math in :meth:`read` keys off the right window even when chunking
+        fans one file into multiple sub-fragments sharing ``fragment.path``.
+
+        ``iterate_with_retry`` is scoped to a single fragment so a
+        transient I/O failure only re-reads the failing file (skipping
+        batches already yielded), not the whole input.
 
         This is the per-worker body for the threaded path in
         :meth:`_read_fragment_batches` (one thread per call, each
@@ -434,8 +474,8 @@ class FileReader(Reader[FileManifest]):
         and is also the entire read loop for the sequential path.
         """
         ctx = DataContext.get_current()
-        for fragment in fragments:
-            offset = 0
+        for fragment, file_row_offset in fragments_with_offsets:
+            offset = file_row_offset
             for table in iterate_with_retry(
                 partial(self._iter_fragment_tables, fragment, scanner_kwargs),
                 f"read fragment {fragment.path}",
