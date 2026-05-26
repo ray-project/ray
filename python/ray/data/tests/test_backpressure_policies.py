@@ -511,13 +511,13 @@ def test_resource_budget_policy_get_block_reason_delegates_to_allocator():
     # Case 2: allocator returns a reason string.
     allocator = MagicMock()
     allocator.diagnose_can_submit.return_value = (
-        "plasma_budget 0B < pending_output 168B"
+        "object_store_budget 0B < pending_output 168B"
     )
     rm._op_resource_allocator = allocator
     policy = ResourceBudgetBackpressurePolicy(
         ctx, topology={op: MagicMock()}, resource_manager=rm
     )
-    assert policy.get_block_reason(op) == "plasma_budget 0B < pending_output 168B"
+    assert policy.get_block_reason(op) == "object_store_budget 0B < pending_output 168B"
     allocator.diagnose_can_submit.assert_called_once_with(op)
 
 
@@ -534,13 +534,13 @@ def test_notify_in_task_submission_backpressure_stores_reason():
     op.notify_in_task_submission_backpressure(
         in_backpressure=True,
         policy_name="ResourceBudget",
-        reason="plasma_budget 0B < pending_output 168B",
+        reason="object_store_budget 0B < pending_output 168B",
     )
     assert op._in_task_submission_backpressure is True
     assert op._task_submission_backpressure_policy == "ResourceBudget"
     assert (
         op._task_submission_backpressure_reason
-        == "plasma_budget 0B < pending_output 168B"
+        == "object_store_budget 0B < pending_output 168B"
     )
 
     # Calling without a reason clears it.

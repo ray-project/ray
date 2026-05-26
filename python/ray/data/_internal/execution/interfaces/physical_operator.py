@@ -923,7 +923,7 @@ class PhysicalOperator(Operator):
             in_backpressure: Value this operator's in_backpressure should be set to.
             policy_name: Name of the backpressure policy that triggered.
             reason: Optional short string explaining WHY the policy is blocking
-                this op (e.g. ``"plasma_budget 7GB < pending_output 10GB"``).
+                this op (e.g. ``"object_store_budget 7GB < pending_output 10GB"``).
                 Surfaced in the progress bar.
         """
         # only update on change to in_backpressure
