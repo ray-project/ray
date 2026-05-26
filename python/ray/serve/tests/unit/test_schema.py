@@ -1113,8 +1113,6 @@ def global_f():
 def test_deployment_to_schema_to_deployment():
     @serve.deployment(
         num_replicas=3,
-        prefer_local_node_routing=False,
-        prefer_local_az_routing=False,
         ray_actor_options={
             "runtime_env": {
                 "working_dir": TEST_MODULE_PINNED_URI,
@@ -1142,8 +1140,6 @@ def test_deployment_to_schema_to_deployment():
     assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
         TEST_DEPLOY_GROUP_PINNED_URI,
     ]
-    assert deployment._deployment_config.prefer_local_node_routing is False
-    assert deployment._deployment_config.prefer_local_az_routing is False
 
 
 def test_unset_fields_schema_to_deployment_ray_actor_options():
