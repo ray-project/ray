@@ -456,46 +456,6 @@ def test_rejects_invalid_chunk_shape(zarrv2_group_store, chunk_shape):
 
 
 @pytest.mark.parametrize(
-    "chunk_shape,expected_axis_0",
-    [
-        # Glob exact-name matches per array.
-        ({"img": [4], "state": [4], "label": [4]}, {"img": 4, "state": 4, "label": 4}),
-        # "default" key catches arrays that match no other pattern.
-        ({"img": [4], "default": [2]}, {"img": 4, "state": 2, "label": 2}),
-        # None as prefix value means keep native chunks (native: state=4, label=8).
-        ({"img": [4], "default": None}, {"img": 4, "state": 4, "label": 8}),
-    ],
-)
-def test_chunk_shape_dict_resolution(
-    aligned_zarrv2_store, chunk_shape, expected_axis_0
-):
-    """Dict ``chunk_shape`` resolves per-array via fnmatch with ``"default"`` fallback."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store), chunk_shape=chunk_shape
-    )
-    for name, ax0 in expected_axis_0.items():
-        assert datasource._array_chunks[name][0] == ax0
-
-
-def test_chunk_shape_dict_rejects_invalid_prefix(aligned_zarrv2_store):
-    with pytest.raises(
-        ValueError, match=r"chunk_shape\['img'\] must be None or a non-empty list"
-    ):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(aligned_zarrv2_store),
-            chunk_shape={"img": [-1]},
-        )
-
-
-def test_chunk_shape_rejects_non_list_non_dict(aligned_zarrv2_store):
-    with pytest.raises(TypeError, match="chunk_shape must be a list, dict, or None"):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(aligned_zarrv2_store),
-            chunk_shape="invalid",
-        )
-
-
-@pytest.mark.parametrize(
     "chunk_shape,expected",
     [
         # No chunk_shape: every array reads at its native chunk size.
@@ -617,18 +577,6 @@ def test_align_axis_0_rejects_divergent_axis_0_chunks(aligned_zarrv2_store):
             str(aligned_zarrv2_store),
             align_axis_0=True,
         )
-
-
-def test_align_axis_0_with_per_pattern_chunk_shape(aligned_zarrv2_store):
-    """A dict ``chunk_shape`` can resolve all aligned arrays to the same prefix."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        align_axis_0=True,
-        chunk_shape={"img": [4], "state": [4], "label": [4]},
-    )
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    # 2 rows.
-    assert len(df) == 2
 
 
 # ---------------------------------------------------------------------------

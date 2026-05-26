@@ -15,7 +15,6 @@ See :class:`ZarrV2Datasource` for the row schemas and
 
 from __future__ import annotations
 
-import fnmatch
 import json
 import logging
 import math
@@ -371,68 +370,6 @@ def _create_aligned_read_fn(
     return read_fn
 
 
-def _resolve_chunk_shape_for_array(
-    array_name: str,
-    chunk_shape: tuple[int, ...] | dict[str, list[int] | None] | None,
-) -> tuple[int, ...] | None:
-    """Resolve the user's ``chunk_shape`` argument to a per-array prefix.
-
-    - ``None`` → return ``None`` (use the array's native chunks).
-    - ``tuple[int, ...]`` (validated global form) → return as-is.
-    - ``dict`` → return the prefix for the first glob pattern that matches
-      ``array_name``; fall back to ``"default"`` if no pattern matches.
-      Patterns use :mod:`fnmatch` semantics (``*``, ``?``, ``[abc]``).
-    """
-    if chunk_shape is None or isinstance(chunk_shape, tuple):
-        return chunk_shape  # type: ignore[return-value]
-
-    for pattern, prefix in chunk_shape.items():
-        if pattern == "default":
-            continue
-        if fnmatch.fnmatch(array_name, pattern):
-            return tuple(prefix) if prefix is not None else None
-    default = chunk_shape.get("default")
-    return tuple(default) if default is not None else None
-
-
-def _validate_chunk_shape_arg(chunk_shape) -> None:
-    """Validate the user-supplied ``chunk_shape`` (list, dict, or None)."""
-    if chunk_shape is None:
-        return
-    if isinstance(chunk_shape, list):
-        if not chunk_shape or any(
-            not isinstance(c, int) or c <= 0 for c in chunk_shape
-        ):
-            raise ValueError(
-                f"chunk_shape must be a non-empty list of positive integers, "
-                f"got {chunk_shape!r}"
-            )
-        return
-    if isinstance(chunk_shape, dict):
-        for pattern, prefix in chunk_shape.items():
-            if not isinstance(pattern, str):
-                raise ValueError(
-                    f"chunk_shape dict keys must be strings (glob patterns), "
-                    f"got {pattern!r}"
-                )
-            if prefix is None:
-                continue
-            if (
-                not isinstance(prefix, list)
-                or not prefix
-                or any(not isinstance(c, int) or c <= 0 for c in prefix)
-            ):
-                raise ValueError(
-                    f"chunk_shape[{pattern!r}] must be None or a non-empty "
-                    f"list of positive integers, got {prefix!r}"
-                )
-        return
-    raise TypeError(
-        f"chunk_shape must be a list, dict, or None, got "
-        f"{type(chunk_shape).__name__}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Datasource
 # ---------------------------------------------------------------------------
@@ -478,7 +415,7 @@ class ZarrV2Datasource(Datasource):
         self,
         path: str,
         filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
-        chunk_shape: List[int] | dict[str, List[int] | None] | None = None,
+        chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
         allow_full_metadata_scan: bool = False,
         align_axis_0: bool | None = None,
@@ -527,15 +464,21 @@ class ZarrV2Datasource(Datasource):
                 )
             self._store_path = self.paths[0].rstrip("/")
 
-        _validate_chunk_shape_arg(chunk_shape)
-        # Canonicalize the global-list form to a tuple so the
-        # per-array resolver returns hashable values; dicts stay as-is.
-        if isinstance(chunk_shape, list):
-            self.chunk_shape: (
-                tuple[int, ...] | dict[str, List[int] | None] | None
-            ) = tuple(chunk_shape)
-        else:
-            self.chunk_shape = chunk_shape
+        # Validate chunk_shape and canonicalize to a tuple. The tuple form
+        # is what ``ZarrArrayMeta.effective_chunks`` consumes.
+        if chunk_shape is not None:
+            if (
+                not isinstance(chunk_shape, list)
+                or not chunk_shape
+                or any(not isinstance(c, int) or c <= 0 for c in chunk_shape)
+            ):
+                raise ValueError(
+                    f"chunk_shape must be a non-empty list of positive "
+                    f"integers, got {chunk_shape!r}"
+                )
+        self.chunk_shape: tuple[int, ...] | None = (
+            tuple(chunk_shape) if chunk_shape is not None else None
+        )
 
         self._selected_arrays = self._load_metadata(array_paths)
         if not self._selected_arrays:
@@ -574,8 +517,7 @@ class ZarrV2Datasource(Datasource):
         self._array_chunks: dict[str, tuple[int, ...]] = {}
         self._array_grids: dict[str, tuple[int, ...]] = {}
         for name, meta in self._selected_arrays.items():
-            user_prefix = _resolve_chunk_shape_for_array(name, self.chunk_shape)
-            chunks = meta.effective_chunks(user_prefix)
+            chunks = meta.effective_chunks(self.chunk_shape)
             self._array_chunks[name] = chunks
             self._array_grids[name] = meta.grid_shape(chunks)
 

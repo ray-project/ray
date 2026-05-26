@@ -829,7 +829,7 @@ def read_zarr(
     filesystem: Optional[
         Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
     ] = None,
-    chunk_shape: Optional[Union[List[int], Dict[str, Optional[List[int]]]]] = None,
+    chunk_shape: Optional[List[int]] = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
     align_axis_0: Optional[bool] = None,
@@ -968,20 +968,16 @@ def read_zarr(
             paths it's usually fine to omit. If omitted, the datasource
             infers the filesystem from ``path``.
         chunk_shape: Optional override for the chunk geometry along the
-            leading axes. Two forms:
-
-            * ``list[int]`` — applied as a prefix to every selected
-              array, overriding the leading axes and keeping trailing axes
-              at each array's native chunking. ``chunk_shape=[16]`` re-tiles
-              a 4-D array with native chunks ``(1, 224, 224, 3)`` into
-              ``(16, 224, 224, 3)`` and a 1-D array with native chunks
-              ``(50,)`` into ``(16,)``. May not be longer than the smallest
-              selected array's rank.
-            * ``dict[str, list[int] | None]`` — fnmatch glob pattern →
-              prefix. Each array picks the first matching pattern;
-              non-matching arrays fall back to the ``"default"`` key (if
-              present) or to native chunks. ``None`` values mean "use
-              native chunks for arrays matching this pattern."
+            leading axes. Applied as a prefix to every selected array,
+            overriding the leading axes and keeping trailing axes at each
+            array's native chunking. ``chunk_shape=[16]`` re-tiles a 4-D
+            array with native chunks ``(1, 224, 224, 3)`` into
+            ``(16, 224, 224, 3)`` and a 1-D array with native chunks
+            ``(50,)`` into ``(16,)``. May not be longer than the smallest
+            selected array's rank. If ``None`` (the default), every array
+            keeps its native chunks. Users who need different chunk
+            geometries per array should issue separate ``read_zarr`` calls
+            and combine downstream.
         array_paths: Optional list of array paths within the Zarr store to
             read. If unspecified, all arrays discovered in the store are
             included.
