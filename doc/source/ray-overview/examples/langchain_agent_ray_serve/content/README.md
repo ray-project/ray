@@ -123,7 +123,7 @@ mcp = FastMCP("weather", stateless_http=True)
 
 **Additional resources:**
 - [MCP quickstart guide](https://docs.anyscale.com/mcp/mcp-quickstart-guide)
-- [Deploy scalable MCP servers](https://docs.anyscale.com/mcp/scalable-remote-mcp-deployment)
+- [Deploy scalable MCP servers with Ray Serve](https://docs.anyscale.com/mcp/scalable-remote-mcp-deployment)
 
 
 ### Step 3: Create the agent logic
