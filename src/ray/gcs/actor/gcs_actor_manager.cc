@@ -1776,11 +1776,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      // Populate the observability cache from persisted dead actors.
-      // Bump the DEAD counter to preserve the number of cumulative deaths.
+      // Populate the observability cache from persisted actors. Bump the state counter.
       destroyed_actor_observability_data_.emplace(actor_id, actor_table_data);
       actor_state_counter_->Increment(
-          {rpc::ActorTableData::DEAD, actor_table_data.class_name()});
+          {actor_table_data.state(), actor_table_data.class_name()});
       sorted_destroyed_actor_observability_list_.emplace_back(
           actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
     }
