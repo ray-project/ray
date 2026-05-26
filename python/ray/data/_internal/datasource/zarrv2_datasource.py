@@ -656,18 +656,34 @@ class ZarrV2Datasource(Datasource):
 
         Long-form mode (default): one task per per-array chunk batch.
         Per-array batching keeps each block's ``chunk`` column rank-uniform
-        (Arrow's tensor extension requires this). ``parallelism`` is treated
-        as a *per-array* budget.
+        (Arrow's tensor extension requires this). ``parallelism`` is
+        treated as a per-array budget — each array's chunks are split into
+        ``min(parallelism, n_chunks_for_array)`` tasks.
 
-        Aligned mode (``align_axis_0`` set): one task per batch of aligned
-        axis-0 chunks. Each yielded row carries ``t_start``, ``t_stop``, and
-        one column per aligned array.
+        Aligned mode (``align_axis_0=True``): one task per batch of
+        aligned axis-0 chunks. Each yielded row carries ``t_start``,
+        ``t_stop``, and one column per selected array containing that
+        array's slice for the row's axis-0 range.
         """
+        # ``data_context`` is part of the Datasource ABC; this datasource
+        # doesn't read anything off it today (no context-aware behavior).
+        # Threaded through to the helpers so they keep the same signature
+        # in case a future change needs it.
         if self._aligned_array_names is not None:
             return self._get_aligned_read_tasks(
                 parallelism, per_task_row_limit, data_context
             )
+        return self._get_long_form_read_tasks(
+            parallelism, per_task_row_limit, data_context
+        )
 
+    def _get_long_form_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        """Long-form read tasks. See :meth:`get_read_tasks` for semantics."""
         read_tasks: List[ReadTask] = []
         for name, meta in self._selected_arrays.items():
             chunks = self._array_chunks[name]
@@ -691,7 +707,7 @@ class ZarrV2Datasource(Datasource):
                         _create_read_fn(batch, self.root),
                         BlockMetadata(
                             num_rows=len(batch),
-                            size_bytes=self._estimate_batch_mem_size(batch),
+                            size_bytes=self._estimate_long_form_batch_mem_size(batch),
                             input_files=(self.paths[0],),
                             exec_stats=None,
                         ),
@@ -700,8 +716,8 @@ class ZarrV2Datasource(Datasource):
                 )
         return read_tasks
 
-    def _estimate_batch_mem_size(self, batch: list[_ChunkDescriptor]) -> int:
-        """Sum in-memory bytes across all chunks in one batch."""
+    def _estimate_long_form_batch_mem_size(self, batch: list[_ChunkDescriptor]) -> int:
+        """Sum in-memory bytes across all chunks in one long-form batch."""
         return sum(
             math.prod(stop - start for start, stop in desc.chunk_slices)
             * self._selected_arrays[desc.array_name].itemsize
@@ -714,12 +730,7 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """Wide-row task generation for ``align_axis_0`` mode.
-
-        Each row corresponds to one axis-0 chunk; columns are ``t_start``,
-        ``t_stop``, and one per aligned array carrying that array's
-        ``[t_start:t_stop, ...]`` slice.
-        """
+        """Aligned read tasks. See :meth:`get_read_tasks` for semantics."""
         assert self._aligned_array_names is not None
         # All aligned arrays share the same axis-0 chunk size (validated in
         # ``__init__``) and the same shape[0]. Read the geometry off the first.

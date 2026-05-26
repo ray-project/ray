@@ -895,6 +895,8 @@ def read_zarr(
     * Otherwise, if ``allow_full_metadata_scan=True``, the datasource
       recursively scans the store for ``.zarray`` files. This can be slow or
       expensive for large remote stores, so it's disabled by default.
+      Before setting ``allow_full_metadata_scan=True``, consider consolidating
+      metdata with ``zarr.consolidate_metadata``.
     * Otherwise, the datasource raises a :class:`ValueError`.
 
     Each array's ``.zarray`` metadata must include the keys ``"shape"``,
