@@ -1235,7 +1235,7 @@ class TensorArray(
 
     def any(
         self,
-        axis: Optional[int] = None,
+        axis: Optional[Union[int, Tuple[int, ...]]] = None,
         out: Optional[np.ndarray] = None,
         keepdims: bool = False,
     ):
@@ -1259,7 +1259,7 @@ class TensorArray(
 
     def all(
         self,
-        axis: Optional[int] = None,
+        axis: Optional[Union[int, Tuple[int, ...]]] = None,
         out: Optional[np.ndarray] = None,
         keepdims: bool = False,
     ):
