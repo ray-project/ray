@@ -58,7 +58,8 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
         ray.get(signal_actor.wait.remote())
 
     num_cpus = int(ray.available_resources()["CPU"])
-    [f.remote() for _ in range(num_cpus)]  # noqa
+    for _ in range(num_cpus):
+        f.remote()
     wait_for_condition(
         lambda: ray.get(signal_actor.cur_num_waiters.remote()) == num_cpus
     )
