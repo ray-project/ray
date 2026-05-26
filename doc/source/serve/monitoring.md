@@ -755,6 +755,11 @@ These lifecycle **histograms** use `deployment` and `application` labels only—
 
 These metrics provide visibility into autoscaling behavior and help debug scaling issues.
 
+By default, controller-emitted metrics include source identifiers such as `handle`
+and `replica` where applicable. For large deployments, set
+`RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those
+source-level high-cardinality tags while retaining `deployment` and `application`.
+
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
 | `ray_serve_autoscaling_target_replicas` | Gauge | `deployment`, `application` | Target number of replicas the autoscaler is trying to reach. Compare with actual replicas to identify scaling lag. |

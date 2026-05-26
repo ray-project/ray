@@ -36,6 +36,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_LOG_TO_STDERR,
@@ -113,6 +114,32 @@ from ray.serve.schema import (
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS = ("deployment", "application")
+
+
+def _get_autoscaling_metrics_delay_tag_keys(
+    high_cardinality_tag_keys: Tuple[str, ...],
+) -> Tuple[str, ...]:
+    """Return tag keys for controller autoscaling metrics delay gauges."""
+    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+        return _AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS + high_cardinality_tag_keys
+    return _AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS
+
+
+def _get_autoscaling_metrics_delay_tags(
+    deployment_id: DeploymentID,
+    high_cardinality_tags: Dict[str, str],
+) -> Dict[str, str]:
+    """Return tags for controller autoscaling metrics delay gauge updates."""
+    tags = {
+        "deployment": deployment_id.name,
+        "application": deployment_id.app_name,
+    }
+    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+        tags.update(high_cardinality_tags)
+    return tags
+
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -366,11 +393,10 @@ class ServeController:
         # Record the metrics delay for observability
         self.replica_metrics_delay_gauge.set(
             latency_ms,
-            tags={
-                "deployment": replica_metric_report.replica_id.deployment_id.name,
-                "application": replica_metric_report.replica_id.deployment_id.app_name,
-                "replica": replica_metric_report.replica_id.unique_id,
-            },
+            tags=_get_autoscaling_metrics_delay_tags(
+                replica_metric_report.replica_id.deployment_id,
+                {"replica": replica_metric_report.replica_id.unique_id},
+            ),
         )
         # Track in health metrics
         self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
@@ -388,11 +414,10 @@ class ServeController:
         # Record the metrics delay for observability
         self.handle_metrics_delay_gauge.set(
             latency_ms,
-            tags={
-                "deployment": handle_metric_report.deployment_id.name,
-                "application": handle_metric_report.deployment_id.app_name,
-                "handle": handle_metric_report.handle_id,
-            },
+            tags=_get_autoscaling_metrics_delay_tags(
+                handle_metric_report.deployment_id,
+                {"handle": handle_metric_report.handle_id},
+            ),
         )
         # Track in health metrics
         self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
@@ -759,7 +784,7 @@ class ServeController:
                 "Time taken for the replica metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application", "replica"),
+            tag_keys=_get_autoscaling_metrics_delay_tag_keys(("replica",)),
         )
         self.handle_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_handle_metrics_delay_ms",
@@ -767,7 +792,7 @@ class ServeController:
                 "Time taken for the handle metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application", "handle"),
+            tag_keys=_get_autoscaling_metrics_delay_tag_keys(("handle",)),
         )
         self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
@@ -775,7 +800,7 @@ class ServeController:
                 "Time taken for the async inference task queue metrics to be reported "
                 "to the controller. High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application"),
+            tag_keys=_AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS,
         )
 
     def _recover_state_from_checkpoint(self):
