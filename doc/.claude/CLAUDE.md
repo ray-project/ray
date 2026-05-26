@@ -46,6 +46,10 @@ For regression checks, compare a PR preview against `/en/master` — it's the do
 - Additive packages or version bumps with unchanged dep trees: hand-edit the package's entry block plus its via comments. Precedent: #63130.
 - Version bumps that change a package's direct deps (gaining or losing requirements): regenerate via `bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/docs.depsets.yaml`. Hand-edits miss transitive churn — precedent: #63344 caught a stale `# via pydata-sphinx-theme` line under `packaging` after the theme dropped that dep.
 
+## Anonymizing paths in notebook output cells
+
+`/home/ray` is Ray's runtime home directory in containers and clusters, not a personal-path leak — never anonymize it. Anonymize only real user identifiers: personal home prefixes (`/Users/<name>`, `/home/<person>`) become `~`, and experiment or output dirs that encode a person or the deprecated AIR runtime (e.g. `christy-air`) become a neutral equivalent such as `ray_results`. Precedent: #63464.
+
 ## Skills
 
 - `/lint` — run linters on modified files.
