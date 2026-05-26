@@ -1437,9 +1437,7 @@ def _read_persisted_gcs_server_port(cmdline: List[str]) -> Optional[str]:
     When GCS starts with --gcs_server_port=0, its command line keeps the
     requested port 0; the actual bound port is written to a file under the
     session directory once GCS has bound. Delegates to the canonical
-    wait_for_persisted_port helper (also used by node.py) with a short
-    timeout so a `ray stop` loop does not block on a process whose port
-    file may never appear.
+    wait_for_persisted_port helper (also used by node.py).
     """
     session_dir = _extract_flag_value(cmdline, "session-dir")
     node_id = _extract_flag_value(cmdline, "node-id")
@@ -1451,7 +1449,6 @@ def _read_persisted_gcs_server_port(cmdline: List[str]) -> Optional[str]:
             session_dir,
             node_id,
             ray._raylet.GCS_SERVER_PORT_NAME,
-            timeout_ms=200,
         )
     except RuntimeError:
         return None
