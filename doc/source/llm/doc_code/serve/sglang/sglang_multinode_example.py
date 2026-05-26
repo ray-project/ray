@@ -20,13 +20,13 @@ llm_config = LLMConfig(
     # bundle holding that node's full GPU allocation. RayEngine indexes the
     # placement group by node, so every tp/pp rank assigned to a given node
     # reuses the same bundle index. With 2 nodes of 4 GPUs each, that means
-    # 2 bundles of {"GPU": 4}; STRICT_PACK keeps each bundle on a single node.
+    # 2 bundles of {"GPU": 4}; STRICT_SPREAD assigns each bundle to a different node.
     placement_group_config={
         "placement_group_bundles": [
             {"CPU": 1, "GPU": 4},
             {"CPU": 1, "GPU": 4},
         ],
-        "placement_group_strategy": "STRICT_PACK",
+        "placement_group_strategy": "STRICT_SPREAD",
     },
     server_cls=SGLangServer,
     engine_kwargs={

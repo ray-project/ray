@@ -377,7 +377,7 @@ def test_sglang_serve_e2e_pipeline_parallel():
 def test_sglang_custom_placement_group_config():
     """Verify explicit placement_group_config is respected by get_deployment_options.
 
-    Covers the configuration pattern used in serve_sglang_multinode_example.py
+    Covers the configuration pattern used in the multi-node user-guide example
     where users provide custom bundles and strategy for multi-node TP/PP.
     Does not require GPUs — only tests configuration logic.
     """

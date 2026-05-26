@@ -111,7 +111,7 @@ For multi-node deployments, you **must** supply `placement_group_config` explici
 **Run:**
 
 ```bash
-RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
+RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run sglang_multinode_example:app
 ```
 
 ## Limitations
