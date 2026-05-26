@@ -56,7 +56,9 @@ class FakeWorker : public WorkerInterface {
     RAY_CHECK(granted_lease_.has_value());
     return *granted_lease_;
   }
-  absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return absl::InfiniteFuture();
+  }
   std::optional<bool> GetIsGpu() const override { return std::nullopt; }
   std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
   std::string IpAddress() const override { return "127.0.0.1"; }

@@ -433,14 +433,14 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
   return resolved_memory_threshold_bytes;
 }
 
-int64_t MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+StatusSetOr<int64_t, StatusT::NotFound> MemoryMonitorUtils::GetProcessUsedMemoryBytes(
     const ProcessesMemorySnapshot &snapshot, pid_t pid) {
   const ProcessesMemorySnapshot::const_iterator it = snapshot.find(pid);
   if (it == snapshot.end()) {
-    RAY_LOG_EVERY_MS(INFO, 60000) << "Can't find memory usage in process memory snapshot "
-                                     "for PID, reporting zero. PID: "
-                                  << pid;
-    return 0;
+    return StatusT::NotFound(
+        absl::StrFormat("Can't find memory usage in process memory snapshot for PID: %d. "
+                        "The process may have already been killed or died.",
+                        pid));
   }
   return it->second;
 }
@@ -490,11 +490,11 @@ const std::string MemoryMonitorUtils::TopNMemoryDebugString(
   std::vector<std::tuple<pid_t, int64_t>> pid_to_memory_usage =
       MemoryMonitorUtils::GetTopNMemoryUsage(top_n, process_memory_snapshot);
 
-  std::string debug_string = "PID\tMEM(GB)\tCOMMAND, ";
+  std::string debug_string = "PID\tMEM(GB)\tCOMMAND; ";
   if (!pid_to_memory_usage.empty()) {
     debug_string += absl::StrJoin(
         pid_to_memory_usage,
-        ", ",
+        "; ",
         [&proc_dir](std::string *out, const std::tuple<pid_t, int64_t> &entry) {
           auto [pid, memory_used_bytes] = entry;
           std::string memory_usage_gb = absl::StrFormat(

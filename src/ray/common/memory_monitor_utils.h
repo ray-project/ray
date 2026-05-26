@@ -24,6 +24,7 @@
 
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
+#include "ray/common/status_or.h"
 #include "ray/util/compat.h"
 
 namespace ray {
@@ -144,11 +145,12 @@ class MemoryMonitorUtils {
    *
    * @param snapshot The snapshot of per process memory usage to retrieve against
    * @param pid The process ID.
-   * @return The used memory in bytes for the process. Returns 0 if the process is not
-   *         found in the snapshot.
+   * @return The used memory in bytes for the process.
+   *         Returns StatusT::NotFound if the process is not found in the snapshot,
+   *         for example because the process has already been killed or died.
    */
-  static int64_t GetProcessUsedMemoryBytes(const ProcessesMemorySnapshot &snapshot,
-                                           pid_t pid);
+  static StatusSetOr<int64_t, StatusT::NotFound> GetProcessUsedMemoryBytes(
+      const ProcessesMemorySnapshot &snapshot, pid_t pid);
 
  private:
   /**
