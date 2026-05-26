@@ -800,7 +800,7 @@ class TestResourceManager:
         # Reason is non-None and mentions the failing dimension.
         reason = allocator.diagnose_can_submit(o2)
         assert reason is not None
-        assert "incremental_exceeds" in reason
+        assert "incremental_resource_exceeds" in reason
         assert "mem" in reason
 
     def test_diagnose_can_submit_returns_none_when_unblocked(

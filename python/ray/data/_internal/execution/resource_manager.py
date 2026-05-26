@@ -789,7 +789,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         Purely for surfacing in the progress bar; not consulted by scheduling.
         Format is short enough to fit in a status line, e.g.
-        ``"incremental_exceeds: mem 4.0GB>2.0GB"`` or
+        ``"incremental_resource_exceeds: mem 4.0GB>2.0GB"`` or
         ``"plasma_budget 1.0GB < pending_output 2.5GB"``.
         """
         budget = self.get_budget(op)
@@ -823,7 +823,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 f"{_fmt_bytes(budget.object_store_memory)}"
             )
         if parts:
-            return "incremental_exceeds: " + ", ".join(parts)
+            return "incremental_resource_exceeds: " + ", ".join(parts)
 
         pending = op.metrics.obj_store_mem_max_pending_output_per_task or 0
         if budget.object_store_memory < pending:
