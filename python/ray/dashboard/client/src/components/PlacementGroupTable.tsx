@@ -215,10 +215,7 @@ const PlacementGroupTable = ({
                     <LabelSelector bundles={bundles} />
                   </TableCell>
                   <TableCell align="center">
-                    {topology_strategy &&
-                    topology_strategy.length > 0 &&
-                    topology_strategy[0].entries &&
-                    Object.keys(topology_strategy[0].entries).length > 0 ? (
+                    {topology_strategy ? (
                       <Box sx={{ textAlign: "left" }}>
                         <div>
                           <b>strategy:</b>{" "}

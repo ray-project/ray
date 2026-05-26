@@ -565,9 +565,9 @@ class PlacementGroupState(StateSchema):
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
     #: The topology strategy for this placement group. Each level is a
-    #: dict mapping a label key (e.g. "rack_id", "ray.io/gpu-domain") to a
-    #: placement strategy (e.g. "STRICT_PACK"). Empty list if the placement
-    #: group does not use topology-aware scheduling.
+    #: dict mapping a label key (e.g. "ray.io/gpu-domain") to a placement
+    #: strategy (e.g. "STRICT_PACK"). Empty list if the placement group
+    #: does not use topology-aware scheduling.
     #:
     #: NOTE: This field is experimental and may change in the future.
     topology_strategy: Optional[list] = state_column(filterable=False, detail=True)

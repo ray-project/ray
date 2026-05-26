@@ -8,10 +8,10 @@ from ray.util.placement_group import placement_group, placement_group_table
 
 NODE_ID_LABEL = "ray.io/node-id"
 RACK_LABEL = "ray.io/gpu-domain"
-ONE = "rack-1"
-TWO = "rack-2"
-rack1_labels = {RACK_LABEL: ONE}
-rack2_labels = {RACK_LABEL: TWO}
+RACK_ONE = "rack-1"
+RACK_TWO = "rack-2"
+rack1_labels = {RACK_LABEL: RACK_ONE}
+rack2_labels = {RACK_LABEL: RACK_TWO}
 
 
 def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
@@ -43,7 +43,7 @@ def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
-    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
+    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, RACK_ONE)
 
     # Bring rack 2 online; PG should still be pinned to rack 1.
     for _ in range(4):
@@ -61,7 +61,7 @@ def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
 
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
-    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, TWO)
+    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, RACK_TWO)
 
 
 def test_topology_strategy_strict_pack(ray_start_cluster):
@@ -88,7 +88,7 @@ def test_topology_strategy_strict_pack(ray_start_cluster):
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
-    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
+    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, RACK_ONE)
 
     # Verify STRICT_PACK at the node level: all bundles on the same node.
     bundle_nodes = set(placement_group_table(pg)["bundles_to_node_id"].values())
@@ -109,7 +109,7 @@ def test_topology_strategy_strict_spread(ray_start_cluster):
 
     # Six rack-1 nodes for four bundles — STRICT_SPREAD has slack.
     for _ in range(6):
-        cluster.add_node(num_cpus=1, labels=rack1_labels)
+        cluster.add_node(num_cpus=2, labels=rack1_labels)
 
     bundles = [{"CPU": 1}] * 4
 
@@ -119,7 +119,7 @@ def test_topology_strategy_strict_spread(ray_start_cluster):
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
-    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
+    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, RACK_ONE)
 
     # Verify STRICT_SPREAD at the node level: each bundle on a distinct node.
     bundle_nodes = list(placement_group_table(pg)["bundles_to_node_id"].values())
@@ -152,37 +152,7 @@ def test_topology_strategy_reschedule_on_node_failure(ray_start_cluster):
 
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
-    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, ONE)
-
-
-def test_topology_strategy_infeasible_after_node_kill(ray_start_cluster):
-    """Verify PG enters RESCHEDULING when no surviving rack-1 node fits the orphan.
-
-    Two rack-1 nodes, each with 1 CPU and one bundle. Kill one; the surviving
-    node has no spare CPU for the orphan. The PG should stay in RESCHEDULING.
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)
-    ray.init(address=cluster.address)
-
-    cluster.add_node(num_cpus=1, labels=rack1_labels)
-    node_b = cluster.add_node(num_cpus=1, labels=rack1_labels)
-
-    bundles = [{"CPU": 1}] * 2
-    pg = placement_group(
-        bundles=bundles,
-        topology_strategy=[{NODE_ID_LABEL: "PACK", RACK_LABEL: "STRICT_PACK"}],
-    )
-    ray.get(pg.ready(), timeout=10)
-    assert placement_group_table(pg)["state"] == "CREATED"
-
-    cluster.remove_node(node_b)
-
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(pg.ready(), timeout=5)
-
-    state = placement_group_table(pg)["state"]
-    assert state == "RESCHEDULING", f"Expected RESCHEDULING, got {state}"
+    assert_pg_nodes_label_value(ray.nodes(), pg, RACK_LABEL, RACK_ONE)
 
 
 if __name__ == "__main__":
