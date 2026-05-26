@@ -127,7 +127,7 @@ def test_topology_strategy_strict_spread(ray_start_cluster):
 
 
 def test_topology_strategy_reschedule_on_node_failure(ray_start_cluster):
-    """Verify rescheduling stays within the same topology level on partial failure.
+    """Verify rescheduling stays within the same rack level on partial failure.
 
     Provides 6 rack-1 nodes for a 4-bundle PG. Kills 2 nodes holding bundles;
     asserts the PG re-creates with all bundles still on rack-1 rather than
