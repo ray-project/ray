@@ -927,12 +927,14 @@ def setup(app):
     # Fix code-block language tags in _collections markdown files.
     # Notebooks converted to markdown tag Jupyter magic shell commands
     # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
-    # Sphinx highlighting warnings.  Re-tag them as ``bash``.
-    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n(![a-z])")
+    # Sphinx highlighting warnings.  Re-tag them as ``ipython3`` so the
+    # python parts stay highlighted as python and ``!magic`` / ``%magic``
+    # lines render as shell.
+    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n((?:#[^\n]*\n)*)(![a-z])")
 
     def fix_collections_code_blocks(app, docname, source):
         if docname.startswith("_collections/"):
-            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```bash\n\1", source[0])
+            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```ipython3\n\1\2", source[0])
 
     app.connect('source-read', fix_collections_code_blocks)
 
