@@ -1,10 +1,14 @@
+import logging
 import multiprocessing
 import os
 import shutil
 import signal
 import time
+import uuid
+from pathlib import Path
 from unittest.mock import create_autospec
 
+import boto3
 import pytest
 
 import ray
@@ -12,7 +16,7 @@ import ray.cloudpickle as ray_pickle
 from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train import Checkpoint, CheckpointConfig, Result, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.context import LocalTrainContext
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
@@ -33,6 +37,40 @@ def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
+
+
+@pytest.fixture
+def quiet_werkzeug():
+    """Suppress moto's per-request werkzeug access logs for tests that
+    issue many S3 requests against simulate_s3_bucket."""
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    yield
+    logging.getLogger("werkzeug").setLevel(logging.INFO)
+
+
+def write_file(file_path: Path, content: str):
+    os.makedirs(file_path.parent, exist_ok=True)
+    with open(file_path, "w") as f:
+        f.write(content)
+
+
+def upload(upload_fn):
+    def f(ckpt, dir_name):
+        upload_fn()
+        return ckpt
+
+    return f
+
+
+# Same dummy credentials that `simulate_s3_bucket` sets on the driver. Propagate
+# them to Ray workers via `worker_runtime_env` so boto3 in train_fn can sign
+# requests against the moto server.
+AWS_ENV_VARS = {
+    "AWS_ACCESS_KEY_ID": "testing",
+    "AWS_SECRET_ACCESS_KEY": "testing",
+    "AWS_SECURITY_TOKEN": "testing",
+    "AWS_SESSION_TOKEN": "testing",
+}
 
 
 def test_report_mixed_checkpoint_upload_modes(tmp_path):
@@ -1168,6 +1206,197 @@ def test_get_all_reported_checkpoints_empty_reports():
         scaling_config=ScalingConfig(num_workers=2),
     )
     trainer.fit()
+
+
+@pytest.mark.parametrize(
+    "checkpoint_upload_mode",
+    [
+        CheckpointUploadMode.NO_UPLOAD,
+        CheckpointUploadMode.ASYNC,
+        CheckpointUploadMode.SYNC,
+    ],
+)
+def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
+    """Test that out of band checkpoints will raise error rather than progressing."""
+    storage_path = (tmp_path / "storage-path").resolve()
+    out_of_band_path = (tmp_path / "out-of-band-path").resolve()
+    os.makedirs(storage_path, exist_ok=True)
+
+    def train_fn():
+        # in-band: under experiment dir (storage_path/<run-name>), succeeds
+        in_band_ckpt = (
+            storage_path
+            / "test-out-of-band-checkpoints"
+            / "in_band_ckpt"
+            / "result.txt"
+        )
+        if checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+            write_file(in_band_ckpt, "in-band")
+            upload_fn = None
+        else:
+            upload_fn = upload(lambda: write_file(in_band_ckpt, "in-band"))
+
+        ray.train.report(
+            metrics={"in-band": True},
+            checkpoint=Checkpoint.from_directory(in_band_ckpt),
+            checkpoint_upload_mode=checkpoint_upload_mode,
+            checkpoint_upload_fn=upload_fn,
+        )
+
+        # out of band: outside experiment dir, should raise
+        out_of_band_ckpt = out_of_band_path / "out_of_band_ckpt" / "result.txt"
+        if checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+            write_file(out_of_band_ckpt, "out-of-band")
+            upload_fn = None
+        else:
+            upload_fn = upload(lambda: write_file(out_of_band_ckpt, "out-of-band"))
+
+        ray.train.report(
+            metrics={"out-of-band": True},
+            checkpoint=Checkpoint.from_directory(out_of_band_ckpt),
+            checkpoint_upload_mode=checkpoint_upload_mode,
+            checkpoint_upload_fn=upload_fn,
+        )
+
+    with pytest.raises(
+        WorkerGroupError, match="must be saved within the experiment storage path"
+    ) as exc_info:
+        DataParallelTrainer(
+            train_fn,
+            run_config=RunConfig(
+                name="test-out-of-band-checkpoints", storage_path=str(storage_path)
+            ),
+        ).fit()
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+    # The first (in-band) report committed before the second one failed.
+    result = Result.from_path(storage_path / "test-out-of-band-checkpoints")
+    assert len(result.best_checkpoints) == 1
+
+
+@pytest.mark.parametrize(
+    "checkpoint_upload_mode",
+    [
+        CheckpointUploadMode.NO_UPLOAD,
+        CheckpointUploadMode.ASYNC,
+        CheckpointUploadMode.SYNC,
+    ],
+)
+@pytest.mark.parametrize("out_of_band_filesystem", ["s3", "local"])
+def test_out_of_band_checkpoints_s3(
+    checkpoint_upload_mode,
+    out_of_band_filesystem,
+    tmp_path,
+    quiet_werkzeug,
+    region="us-west-2",
+    port=5002,
+):
+    """Same as test_out_of_band_checkpoints_local but with storage on s3."""
+    run_name = "test-out-of-band-checkpoints-s3"
+    out_of_band_local_path = (tmp_path / "out-of-band-path").resolve()
+
+    with simulate_s3_bucket(port=port, region=region) as in_band_s3_uri:
+        in_band_uri = URI(in_band_s3_uri)
+        in_band_bucket = in_band_uri.name
+        # Unique per test: moto retains bucket state across ThreadedMotoServer
+        # start/stop, so a fixed name collides on the next parametrize run.
+        oob_bucket = f"oob-{uuid.uuid4().hex}"
+        # Same moto server, different bucket — same filesystem instance, but the
+        # path is not under the in-band experiment dir.
+        oob_uri = URI(
+            f"s3://{oob_bucket}?region={region}"
+            f"&endpoint_override=http%3A//localhost%3A{port}"
+        )
+
+        s3 = boto3.client(
+            "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
+        )
+        s3.create_bucket(
+            Bucket=in_band_bucket,
+            CreateBucketConfiguration={"LocationConstraint": region},
+        )
+        if out_of_band_filesystem == "s3":
+            s3.create_bucket(
+                Bucket=oob_bucket,
+                CreateBucketConfiguration={"LocationConstraint": region},
+            )
+
+        in_band_ckpt = str(in_band_uri / run_name / "in_band_ckpt")
+        in_band_key = f"{run_name}/in_band_ckpt/result.txt"
+
+        if out_of_band_filesystem == "s3":
+            out_of_band_ckpt = str(oob_uri / "out_of_band_ckpt")
+            error_msg = "must be saved within the experiment storage path"
+        else:
+            out_of_band_ckpt = str(out_of_band_local_path / "out_of_band_ckpt")
+            error_msg = "must be saved to the same filesystem"
+
+        def train_fn():
+            s3 = boto3.client(
+                "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
+            )
+
+            # in-band: under experiment dir on s3
+            if checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+                s3.put_object(Bucket=in_band_bucket, Key=in_band_key, Body="in-band")
+                upload_fn = None
+            else:
+                upload_fn = upload(
+                    lambda: s3.put_object(
+                        Bucket=in_band_bucket, Key=in_band_key, Body="in-band"
+                    )
+                )
+            ray.train.report(
+                metrics={"in-band": True},
+                checkpoint=Checkpoint(in_band_ckpt),
+                checkpoint_upload_mode=checkpoint_upload_mode,
+                checkpoint_upload_fn=upload_fn,
+                delete_local_checkpoint_after_upload=False,
+            )
+
+            # out of band: wrong location or wrong filesystem
+            def write_out_of_band():
+                if out_of_band_filesystem == "s3":
+                    s3.put_object(
+                        Bucket=oob_bucket,
+                        Key="out_of_band_ckpt/result.txt",
+                        Body="out-of-band",
+                    )
+                else:
+                    write_file(
+                        out_of_band_local_path / "out_of_band_ckpt" / "result.txt",
+                        "out-of-band",
+                    )
+
+            if checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+                write_out_of_band()
+                upload_fn = None
+            else:
+                upload_fn = upload(write_out_of_band)
+
+            ray.train.report(
+                metrics={"out-of-band": True},
+                checkpoint=Checkpoint(out_of_band_ckpt),
+                checkpoint_upload_mode=checkpoint_upload_mode,
+                checkpoint_upload_fn=upload_fn,
+                delete_local_checkpoint_after_upload=False,
+            )
+
+        trainer = DataParallelTrainer(
+            train_fn,
+            run_config=RunConfig(
+                name=run_name,
+                storage_path=in_band_s3_uri,
+                worker_runtime_env={"env_vars": AWS_ENV_VARS},
+            ),
+        )
+        with pytest.raises(WorkerGroupError, match=error_msg) as exc_info:
+            trainer.fit()
+        assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+        # The first (in-band) report committed before the second one failed.
+        result = Result.from_path(str(in_band_uri / run_name))
+        assert len(result.best_checkpoints) == 1
 
 
 if __name__ == "__main__":

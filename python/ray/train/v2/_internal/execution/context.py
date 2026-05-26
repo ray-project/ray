@@ -463,9 +463,17 @@ class TrainContext:
                     checkpoint_upload_fn,
                     validation,
                 )
+                if checkpoint is not None:
+                    # check that the checkpoint created if using checkpoint-upload-fn is in band
+                    check_checkpoint_in_band(
+                        self.storage_context, training_report.checkpoint
+                    )
                 self._wait_then_report(training_report, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+                if checkpoint is not None:
+                    # check that the checkpoint created is in band
+                    check_checkpoint_in_band(self.storage_context, checkpoint)
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
@@ -490,6 +498,11 @@ class TrainContext:
                             checkpoint_upload_fn,
                             validation,
                         )
+                        if training_report.checkpoint is not None:
+                            # check that the checkpoint created if using checkpoint-upload-fn is in band
+                            check_checkpoint_in_band(
+                                self.storage_context, training_report.checkpoint
+                            )
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
                         # TODO: env var to disable eager raising
@@ -543,3 +556,24 @@ def set_train_context(context) -> None:
     global _train_context
     with _context_lock:
         _train_context = context
+
+
+def check_checkpoint_in_band(
+    storage_context: StorageContext, checkpoint: "Checkpoint"
+) -> None:
+    """Check that a checkpoint is in a band for this worker.
+
+    Args:
+        storage_context: The experiment storage context.
+        checkpoint: The checkpoint to check.
+    """
+    if storage_context.storage_filesystem != checkpoint.filesystem:
+        raise ValueError(
+            f"The saved checkpoint ({checkpoint}) must be saved to the same filesystem as the experiment storage ({storage_context.storage_filesystem})."
+        )
+    if not Path(checkpoint.path).is_relative_to(
+        Path(storage_context.experiment_fs_path)
+    ):
+        raise ValueError(
+            f"The saved checkpoint ({checkpoint}) must be saved within the experiment storage path ({storage_context.experiment_fs_path})."
+        )
