@@ -30,13 +30,52 @@
 namespace ray {
 namespace core {
 
+namespace {
+// Nesting depth and accumulator for DeferOutOfScopeCallbacksGuard (below).
+thread_local int g_defer_depth = 0;
+thread_local std::vector<std::pair<ObjectID, std::function<void(const ObjectID &)>>>
+    g_deferred_out_of_scope_callbacks;
+}  // namespace
+
+// Collects on_object_out_of_scope_or_freed callbacks while active; fires them
+// when the outermost guard is destroyed (i.e. after mutex_ is released).
+class DeferOutOfScopeCallbacksGuard {
+ public:
+  DeferOutOfScopeCallbacksGuard() { g_defer_depth++; }
+  ~DeferOutOfScopeCallbacksGuard() {
+    if (--g_defer_depth == 0 && !g_deferred_out_of_scope_callbacks.empty()) {
+      // Move to a local first: a callback may itself create a nested guard.
+      auto callbacks = std::move(g_deferred_out_of_scope_callbacks);
+      for (auto &[id, cb] : callbacks) {
+        cb(id);
+      }
+    }
+  }
+};
+
+// Drop-in replacement for absl::MutexLock that fires out-of-scope callbacks
+// AFTER releasing mutex_, preventing a GIL ↔ mutex_ deadlock where a Python
+// callback needs the GIL while mutex_ is held.
+// Member destruction order (reverse of declaration) ensures lock_ is destroyed
+// first (releases mutex_) and guard_ last (fires the deferred callbacks).
+class ABSL_SCOPED_LOCKABLE DeferringMutexLock {
+ public:
+  explicit DeferringMutexLock(absl::Mutex *mu) ABSL_EXCLUSIVE_LOCK_FUNCTION(mu)
+      : guard_(), lock_(mu) {}
+  ~DeferringMutexLock() ABSL_UNLOCK_FUNCTION() {}
+
+ private:
+  DeferOutOfScopeCallbacksGuard guard_;  // destroyed LAST -> fires callbacks
+  absl::MutexLock lock_;                 // destroyed FIRST -> releases mutex_
+};
+
 size_t ReferenceCounter::Size() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return object_id_refs_.size();
 }
 
 bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     return it->second.owned_by_us_;
@@ -45,7 +84,7 @@ bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
 }
 
 void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {
     shutdown();
   } else {
@@ -115,7 +154,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
                                          const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return AddBorrowedObjectInternal(object_id, outer_id, owner_address);
 }
 
@@ -156,7 +195,7 @@ void ReferenceCounter::AddObjectRefStats(
     const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> &pinned_objects,
     rpc::CoreWorkerStats *stats,
     const int64_t limit) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto total = object_id_refs_.size();
   auto count = 0;
 
@@ -223,7 +262,7 @@ void ReferenceCounter::AddOwnedObject(
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
     const std::optional<std::string> &tensor_transport) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
                                    owner_address,
@@ -238,7 +277,7 @@ void ReferenceCounter::AddOwnedObject(
 
 void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                         const ObjectID &generator_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto outer_it = object_id_refs_.find(generator_id);
   if (outer_it == object_id_refs_.end()) {
     // Outer object already went out of scope. Either:
@@ -268,7 +307,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
 
 void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
                                                         const ObjectID &generator_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   // NOTE: The upper layer (the layer that manages the object ref stream)
   // should make sure the generator ref is not GC'ed until the
   // stream is deleted.
@@ -303,7 +342,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
                                            std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   for (const auto &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
@@ -321,7 +360,7 @@ void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_i
 
 bool ReferenceCounter::CheckGeneratorRefsLineageOutOfScope(
     const ObjectID &generator_id, int64_t num_objects_generated) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   if (object_id_refs_.contains(generator_id)) {
     return false;
   }
@@ -399,7 +438,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
 }
 
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     // Decrement counter with old size
@@ -416,7 +455,7 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
@@ -444,7 +483,7 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 }
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::vector<ObjectID> refs_to_remove;
   for (auto &ref : object_id_refs_) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
@@ -461,7 +500,7 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   RemoveLocalReferenceInternal(object_id, deleted);
 }
 
@@ -495,7 +534,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove,
     std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, true);
   }
@@ -524,7 +563,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
@@ -543,7 +582,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     const rpc::Address &worker_addr,
     const ReferenceTableProto &borrowed_refs,
     std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, false);
   }
@@ -628,13 +667,13 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 }
 
 bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
 StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
     const std::vector<ObjectID> &object_ids) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::ostringstream objects_missing_owners;
   bool missing_owner = false;
   for (const auto &object_id : object_ids) {
@@ -652,7 +691,7 @@ StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
 
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return GetOwnerInternal(object_id, owner_address);
 }
 
@@ -673,7 +712,7 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
 
 std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
     const std::vector<ObjectID> &object_ids) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::vector<rpc::Address> owner_addresses;
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
@@ -697,12 +736,12 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
 }
 
 bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return freed_objects_.contains(object_id);
 }
 
 bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   if (!object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -710,7 +749,7 @@ bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
 }
 
 void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
@@ -817,7 +856,7 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
 }
 
 int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   int64_t lineage_bytes_evicted = 0;
   while (!reconstructable_owned_objects_.empty() &&
          lineage_bytes_evicted < min_bytes_to_evict) {
@@ -836,8 +875,15 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
-  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-    callback(it->first);
+  if (g_defer_depth > 0) {
+    // Deferred mode: accumulate and fire after mutex_ is released.
+    for (auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+      g_deferred_out_of_scope_callbacks.push_back({it->first, std::move(callback)});
+    }
+  } else {
+    for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+      callback(it->first);
+    }
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
@@ -856,7 +902,7 @@ void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
 
 bool ReferenceCounter::AddObjectRefDeletedCallback(
     const ObjectID &object_id, std::function<void(const ObjectID &)> callback) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -867,7 +913,7 @@ bool ReferenceCounter::AddObjectRefDeletedCallback(
 
 bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -887,7 +933,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
 }
 
 void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_node_id_.value_or(NodeID::Nil()) == node_id ||
@@ -904,7 +950,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
 }
 
 std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::vector<ObjectID> objects_to_recover = std::move(objects_to_recover_);
   objects_to_recover_.clear();
   return objects_to_recover;
@@ -912,7 +958,7 @@ std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
 
 void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
                                                   const NodeID &node_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (freed_objects_.contains(object_id)) {
@@ -949,7 +995,7 @@ bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
                                                      bool *owned_by_us,
                                                      NodeID *pinned_at,
                                                      bool *spilled) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us_) {
@@ -963,22 +1009,22 @@ bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
 }
 
 bool ReferenceCounter::HasReference(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
 size_t ReferenceCounter::NumObjectIDsInScope() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return object_id_refs_.size();
 }
 
 size_t ReferenceCounter::NumObjectsOwnedByUs() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return num_objects_owned_by_us_;
 }
 
 size_t ReferenceCounter::NumActorsOwnedByUs() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   return num_actors_owned_by_us_;
 }
 
@@ -1000,7 +1046,7 @@ void ReferenceCounter::RecordMetrics() {
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::unordered_set<ObjectID> in_scope_object_ids;
   in_scope_object_ids.reserve(object_id_refs_.size());
   for (const auto &[id, ref] : object_id_refs_) {
@@ -1011,7 +1057,7 @@ std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
 ReferenceCounter::GetAllReferenceCounts() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> all_ref_counts;
   all_ref_counts.reserve(object_id_refs_.size());
   for (const auto &[id, ref] : object_id_refs_) {
@@ -1025,7 +1071,7 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
     ReferenceTableProto *proto,
     std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   // Reuse the `encountered_ids` set to deduplicate object IDs across loop iterations.
   absl::flat_hash_set<ObjectID> encountered_ids;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -1216,7 +1262,7 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs,
     const ObjectID &object_id,
     const rpc::Address &borrower_addr) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
   // Erase the previous borrower.
@@ -1296,7 +1342,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
                                           const std::vector<ObjectID> &inner_ids,
                                           const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
 }
 
@@ -1359,7 +1405,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::PublishRefRemoved(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   PublishRefRemovedInternal(object_id);
 }
 
@@ -1391,7 +1437,7 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
 void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
                                            const ObjectID &contained_in_id,
                                            const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   RAY_LOG(DEBUG).WithField(object_id)
       << "Received WaitForRefRemoved object contained in " << contained_in_id;
 
@@ -1442,7 +1488,7 @@ void ReferenceCounter::SetReleaseLineageCallback(
 
 bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
                                          const NodeID &node_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG).WithField(object_id)
@@ -1468,7 +1514,7 @@ void ReferenceCounter::AddObjectLocationInternal(ReferenceTable::iterator it,
 
 bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                                             const NodeID &node_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
       << "Removing location for object";
   auto it = object_id_refs_.find(object_id);
@@ -1506,7 +1552,7 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
 
 std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG).WithField(object_id)
@@ -1520,7 +1566,7 @@ std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
 bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
                                            const std::string &spilled_url,
                                            const NodeID &spilled_node_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING).WithField(object_id) << "Spilled object already out of scope";
@@ -1566,7 +1612,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
 
 std::optional<LocalityData> ReferenceCounter::GetLocalityData(
     const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1608,7 +1654,7 @@ std::optional<LocalityData> ReferenceCounter::GetLocalityData(
 bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
                                           const absl::flat_hash_set<NodeID> &locations,
                                           uint64_t object_size) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG).WithField(object_id) << "Tried to report locality data for an object "
@@ -1629,7 +1675,7 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
 
 void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
                                           const rpc::Address &borrower_address) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end());
 
@@ -1652,7 +1698,7 @@ LineageReconstructionEligibility ReferenceCounter::GetLineageReconstructionEligi
   if (!lineage_pinning_enabled_) {
     return LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED;
   }
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND;
@@ -1662,12 +1708,12 @@ LineageReconstructionEligibility ReferenceCounter::GetLineageReconstructionEligi
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
                                                    bool pending_creation) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   UpdateObjectPendingCreationInternal(object_id, pending_creation);
 }
 
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -1700,7 +1746,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
 void ReferenceCounter::FillObjectInformation(
     const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
   RAY_CHECK(object_info != nullptr);
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING).WithField(object_id)
@@ -1729,7 +1775,7 @@ void ReferenceCounter::FillObjectInformationInternal(
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING).WithField(object_id)
@@ -1754,7 +1800,7 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
 }
 
 std::string ReferenceCounter::DebugString() const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   std::stringstream ss;
   ss << "ReferenceTable{size: " << object_id_refs_.size();
   if (!object_id_refs_.empty()) {
@@ -1827,7 +1873,7 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
 
 std::optional<std::string> ReferenceCounter::GetTensorTransport(
     const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
+  DeferringMutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return std::nullopt;
