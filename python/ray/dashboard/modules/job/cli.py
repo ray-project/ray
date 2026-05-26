@@ -432,8 +432,7 @@ def stop(
 
     Args:
         address: Address of the Ray cluster to connect to.
-        no_wait: If True, return immediately instead of waiting for the job to
-            reach a terminal state.
+        no_wait: If True, return immediately instead of waiting for the job to reach a terminal state.
         job_id: The submission ID of the job to stop.
         headers: JSON string of headers to attach to requests.
         verify: Path to a CA bundle, or boolean toggling TLS verification.
@@ -544,8 +543,7 @@ def logs(
     Args:
         address: Address of the Ray cluster to connect to.
         job_id: The submission ID of the job whose logs to fetch.
-        follow: If True, stream the logs (``tail -f`` style) instead of
-            printing them once.
+        follow: If True, stream the logs (``tail -f`` style) instead of printing them once.
         headers: JSON string of headers to attach to requests.
         verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
