@@ -15,6 +15,7 @@ See :class:`ZarrV2Datasource` for the row schemas and
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import math
@@ -37,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow
-    import zarr
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
@@ -386,8 +386,6 @@ def _resolve_chunk_shape_for_array(
     if chunk_shape is None or isinstance(chunk_shape, tuple):
         return chunk_shape  # type: ignore[return-value]
 
-    import fnmatch
-
     for pattern, prefix in chunk_shape.items():
         if pattern == "default":
             continue
@@ -595,6 +593,11 @@ class ZarrV2Datasource(Datasource):
                     f"per-array chunk_shape dict that resolves all aligned "
                     f"arrays to the same axis-0 prefix) to re-tile them."
                 )
+
+        # Lazy zarr import: ``zarr`` is a hard dep of this datasource (gated
+        # by ``_check_import`` above) but ``import ray.data`` shouldn't drag
+        # it in for users who never call ``read_zarr``.
+        import zarr
 
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
