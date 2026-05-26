@@ -1152,7 +1152,11 @@ class Worker:
         # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
-            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            matched_ids = set()
+            for i in assigned_ids:
+                if str(i) in original_ids:
+                    matched_ids.add(str(i))
+            assigned_ids = matched_ids
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
