@@ -106,7 +106,9 @@ def _normalize_filter_keys(
     returning an empty result that later becomes "No resource in the cluster".
     """
     schema = resource_to_schema(resource)
-    valid_columns = schema.list_columns(detail=True) or schema.list_columns(detail=False)
+    valid_columns = schema.list_columns(detail=True) or schema.list_columns(
+        detail=False
+    )
     valid_column_by_lowercase = {column.lower(): column for column in valid_columns}
 
     normalized_filters = []

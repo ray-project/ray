@@ -1836,5 +1836,6 @@ def test_normalize_filter_keys_rejects_invalid_keys():
     with pytest.raises(click.BadParameter, match="Invalid filter key"):
         _normalize_filter_keys(StateResource.TASKS, filters)
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
