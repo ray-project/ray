@@ -374,7 +374,7 @@ For detailed information on deploying and configuring LLM services, see the [Any
 
 Ray Serve only supports stateless HTTP mode in MCP. Set `stateless_http=True` to prevent "session not found" errors when running multiple replicas.
 
-For more information, see the [Anyscale MCP documentation](https://docs.anyscale.com/mcp) and [MCP Ray Serve template](https://console.anyscale.com/template-preview/mcp-ray-serve).
+For more information, see the [Anyscale MCP documentation](https://docs.anyscale.com/mcp) and [Deploy scalable MCP servers with Ray Serve](https://docs.anyscale.com/mcp/scalable-remote-mcp-deployment).
 
 #### 5.2.1 Weather MCP server
 
@@ -722,4 +722,4 @@ The system uses Ray Serve's built-in autoscaling to handle variable load. See th
 - [Anyscale LLM Serving Documentation](https://docs.anyscale.com/llm/serving) - Detailed guide for deploying and configuring LLM services.
 - [Deploy LLM Template](https://console.anyscale.com/template-preview/deployment-serve-llm) - Template for deploying LLM services on Anyscale.
 - [Anyscale MCP Documentation](https://docs.anyscale.com/mcp) - Guide for deploying and configuring MCP servers with Ray Serve.
-- [MCP Ray Serve Template](https://console.anyscale.com/template-preview/mcp-ray-serve) - Template for deploying MCP servers on Anyscale.
+- [Deploy scalable MCP servers with Ray Serve](https://docs.anyscale.com/mcp/scalable-remote-mcp-deployment) - Guide for deploying MCP servers on Anyscale.
