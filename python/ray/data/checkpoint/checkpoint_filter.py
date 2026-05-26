@@ -106,9 +106,7 @@ def _clean_pending_checkpoints_task(
 
         # 3. List all data files (recursively for partitions)
         data_files = data_file_filesystem.get_file_info(
-            FileSelector(
-                data_file_dir_unwrapped, recursive=True, allow_not_found=True
-            )
+            FileSelector(data_file_dir_unwrapped, recursive=True, allow_not_found=True)
         )
 
         # 4. Delete data files matching a pending checkpoint prefix
