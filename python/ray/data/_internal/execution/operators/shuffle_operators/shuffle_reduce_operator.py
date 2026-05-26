@@ -194,6 +194,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             operator_name=self.name,
         )
 
+        assert partition_id not in self._shuffle_reduce_tasks, (
+            f"partition_id {partition_id} already has an in-flight reducer "
+            f"task; ShuffleMapOp must emit at most one bundle per partition"
+        )
         self._shuffle_reduce_tasks[partition_id] = data_task
         self._num_reduce_tasks_submitted += 1
         self._reduce_metrics.on_task_submitted(
@@ -254,12 +258,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         task_exec_driver_stats: Optional[TaskExecDriverStats],
     ) -> None:
         """Callback when a reduce task finishes (with or without exception)."""
+        input_bundle.destroy_if_owned()
         if partition_id not in self._shuffle_reduce_tasks:
             return
         self._shuffle_reduce_tasks.pop(partition_id)
-        # Release the upstream bundle's shard refs now that this reducer
-        # has consumed them.
-        input_bundle.destroy_if_owned()
         self._reduce_metrics.on_task_finished(
             task_index=partition_id,
             exception=exc,
