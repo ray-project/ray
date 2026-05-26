@@ -42,8 +42,7 @@ def test_handle_backpressure(serve_instance):
     # ahead and get queued themselves (blocking forever) instead of being
     # rejected with backpressure.
     wait_for_condition(
-        lambda: handle._router._asyncio_router._metrics_manager.num_queued_requests
-        == 1
+        lambda: handle._router._asyncio_router._metrics_manager.num_queued_requests == 1
     )
 
     for _ in range(10):
