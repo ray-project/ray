@@ -958,7 +958,11 @@ class _ScriptedRoot:
 
 
 def test_read_chunk_retries_then_succeeds():
-    """Retryable network errors retried with backoff, eventual read succeeds."""
+    """Retryable network errors retried with backoff, eventual read succeeds.
+
+    Uses default ``match`` patterns (``DataContext.retried_io_errors`` plus
+    zarr-specific entries like ``"Connection reset"`` and ``"Read timeout"``).
+    """
     expected = np.array([1, 2, 3], dtype="<i4")
     arr = _ScriptedArray(
         ConnectionError("Connection reset by peer"),
@@ -968,13 +972,13 @@ def test_read_chunk_retries_then_succeeds():
     root = _ScriptedRoot(x=arr)
 
     out = zarrv2_datasource._read_chunk(
-        root, "x", ((0, 3),), max_retries=5, base_delay=0
+        root, "x", ((0, 3),), max_attempts=5, max_backoff_s=0
     )
     np.testing.assert_array_equal(out, expected)
 
 
 def test_read_chunk_exhausts_retries():
-    """Retryable error every attempt → ``RuntimeError`` chained from last error."""
+    """Retryable error every attempt → last error re-raised after ``max_attempts``."""
     arr = _ScriptedArray(
         ConnectionError("Connection reset"),
         ConnectionError("Connection reset"),
@@ -982,13 +986,17 @@ def test_read_chunk_exhausts_retries():
     )
     root = _ScriptedRoot(x=arr)
 
-    with pytest.raises(RuntimeError, match=r"after 3 attempts") as exc_info:
-        zarrv2_datasource._read_chunk(root, "x", ((0, 3),), max_retries=3, base_delay=0)
-    assert isinstance(exc_info.value.__cause__, ConnectionError)
+    # call_with_retry re-raises the last exception itself (with ``from None``)
+    # rather than wrapping in a RuntimeError. Match against the original
+    # exception type to pin that behaviour.
+    with pytest.raises(ConnectionError, match="Connection reset"):
+        zarrv2_datasource._read_chunk(
+            root, "x", ((0, 3),), max_attempts=3, max_backoff_s=0
+        )
 
 
 def test_read_chunk_non_retryable_immediately_raises():
-    """A non-retry-keyword error is raised on the first attempt, not retried."""
+    """A non-matching error is raised on the first attempt, not retried."""
     arr = _ScriptedArray(
         ValueError("array is corrupt"),
         # A second response that would succeed if retried — should be unreached.
@@ -997,7 +1005,9 @@ def test_read_chunk_non_retryable_immediately_raises():
     root = _ScriptedRoot(x=arr)
 
     with pytest.raises(ValueError, match="corrupt"):
-        zarrv2_datasource._read_chunk(root, "x", ((0, 3),), max_retries=5, base_delay=0)
+        zarrv2_datasource._read_chunk(
+            root, "x", ((0, 3),), max_attempts=5, max_backoff_s=0
+        )
 
 
 # ---------------------------------------------------------------------------

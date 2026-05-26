@@ -18,8 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING, Any, List, Optional
@@ -28,14 +27,17 @@ import numpy as np
 import pandas as pd
 from fsspec.spec import AbstractFileSystem
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pyarrow
+    import zarr
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
@@ -45,6 +47,20 @@ if TYPE_CHECKING:
 
 
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
+
+# Zarr-specific transient-error patterns appended to the user's
+# ``DataContext.retried_io_errors`` when reading chunks. The defaults in
+# ``DataContext`` cover AWS-flavored object-store errors; these cover the
+# kind of network-layer messages that bubble up through fsspec/numcodecs
+# when reading chunked array data over HTTPS/S3/GCS.
+_ZARR_TRANSIENT_ERROR_PATTERNS = (
+    "Connection reset",
+    "Read timeout",
+    "Connection refused",
+    "network",
+    "socket",
+    "HTTP error",
+)
 
 
 @dataclass(frozen=True)
@@ -231,54 +247,41 @@ def _read_chunk(
     root: ZarrRoot,
     array_name: str,
     chunk_slices: tuple[tuple[int, int], ...],
-    max_retries: int = 5,
-    base_delay: float = 1.0,
+    *,
+    match: Optional[Sequence[str]] = None,
+    max_attempts: int = 10,
+    max_backoff_s: int = 32,
 ) -> np.ndarray:
-    """Read ``array[chunk_slices]`` from a Zarr root with network-retry.
+    """Read ``array[chunk_slices]`` from a Zarr root with transient-error retry.
 
     ``chunk_slices`` is an N-tuple of ``(start, stop)`` pairs, one per axis.
     For a 0-D (scalar) array it is the empty tuple ``()``, which reads the
     single element.
+
+    Retries are delegated to :func:`ray._common.retry.call_with_retry`,
+    matching the pattern used by other Ray Data datasources (lance,
+    iceberg). ``match`` defaults to ``DataContext.retried_io_errors``
+    (covers the AWS-flavored object-store transient errors) plus a small
+    set of zarr-specific network patterns. Pass an explicit ``match``
+    sequence to override.
     """
-    last_error: Optional[BaseException] = None
-    retry_keywords = (
-        "connection reset",
-        "timeout",
-        "connection refused",
-        "network",
-        "socket",
-        "http error",
-    )
     indexer = tuple(slice(s, e) for s, e in chunk_slices)
-    for attempt in range(max_retries):
-        try:
-            # Resolve the array inside the retry loop: on remote stores
-            # ``root[array_name]`` reads the ``.zarray`` metadata file and
-            # can fail transiently the same way the data read can.
-            arr = root if array_name == "" else root[array_name]
-            return arr[indexer]
-        except Exception as e:
-            last_error = e
-            error_msg = str(e).lower()
-            if any(kw in error_msg for kw in retry_keywords):
-                delay = base_delay * (2**attempt)
-                logger.warning(
-                    "Network error reading array=%s slices=%s, "
-                    "attempt %s/%s, retrying in %.1fs: %s",
-                    array_name,
-                    chunk_slices,
-                    attempt + 1,
-                    max_retries,
-                    delay,
-                    e,
-                )
-                time.sleep(delay)
-            else:
-                raise
-    raise RuntimeError(
-        f"Failed to read array={array_name!r} slices={chunk_slices} "
-        f"after {max_retries} attempts"
-    ) from last_error
+
+    def _read() -> np.ndarray:
+        arr = root if array_name == "" else root[array_name]
+        return arr[indexer]
+
+    if match is None:
+        match = list(DataContext.get_current().retried_io_errors) + list(
+            _ZARR_TRANSIENT_ERROR_PATTERNS
+        )
+    return call_with_retry(
+        _read,
+        description=f"read zarr chunk array={array_name!r} slices={chunk_slices}",
+        match=match,
+        max_attempts=max_attempts,
+        max_backoff_s=max_backoff_s,
+    )
 
 
 @dataclass(frozen=True)
@@ -592,9 +595,6 @@ class ZarrV2Datasource(Datasource):
                     f"per-array chunk_shape dict that resolves all aligned "
                     f"arrays to the same axis-0 prefix) to re-tile them."
                 )
-
-        # Lazy zarr import: only needed once we read.
-        import zarr
 
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
