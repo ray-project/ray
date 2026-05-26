@@ -3323,7 +3323,8 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
 
   return absl::StrFormat(
       "Refer to the documentation on how to address the out of memory issue: "
-      "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
+      "https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/"
+      "debug-memory.html. "
       "Consider provisioning more memory on this node or reducing task "
       "parallelism by requesting more CPUs per task. %s"
       "To adjust the kill "
