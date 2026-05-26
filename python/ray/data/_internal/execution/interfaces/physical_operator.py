@@ -280,9 +280,10 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
-            self._block_ref_counter.on_block_produced(
-                self._pending_block_ref, meta.size_bytes or 0, self._producer_id
-            )
+            if self._block_ref_counter is not None:
+                self._block_ref_counter.on_block_produced(
+                    self._pending_block_ref, meta.size_bytes or 0, self._producer_id
+                )
             self._output_ready_callback(
                 RefBundle(
                     [(self._pending_block_ref, meta)],

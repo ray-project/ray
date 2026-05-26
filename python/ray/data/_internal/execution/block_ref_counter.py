@@ -55,7 +55,7 @@ class BlockRefCounter:
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
 
-        core_worker = ray._private.worker.global_worker.core_worker
+        core_worker = ray._private.worker.global_worker.core_worker  # type: ignore[attr-defined]
         registered = core_worker.add_object_out_of_scope_callback(
             block_ref, _on_out_of_scope
         )
