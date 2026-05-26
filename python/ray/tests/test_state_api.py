@@ -1820,7 +1820,7 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     all_job_info = client.get_all_job_info()
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
-    
+
 
 def test_normalize_filter_keys_accepts_case_insensitive_keys():
     filters = [("STATE", "=", "RUNNING")]
