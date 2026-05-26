@@ -20,6 +20,8 @@ cover the following:
 - Utility mixins for request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
+- Experimental: Use the round-robin request router
+- Experimental: Use the consistent-hash request router for session stickiness
 - Experimental: Define a centralized capacity queue request router
 
 
@@ -157,6 +159,90 @@ You can customize the emission of these statistics by overriding `record_routing
 in the definition of the deployment class. The custom request router can then get the
 updated routing stats by looking up the `routing_stats` attribute of the running
 replicas and use it in the routing policy.
+
+
+(round-robin-request-router)=
+## Experimental: Use the round-robin request router
+
+`RoundRobinRouter` cycles through replicas in round-robin fashion, starting
+at an arbitrary replica so routers spun up together don't synchronize on the
+same first replica. If the chosen replica is at capacity, the router falls back
+to the next replica in order and wraps around the candidate list. Each
+router instance keeps its own cursor, so with multiple routers (for example,
+one per HTTP proxy) the fan-out is round-robin per router and approximately
+uniform across replicas in aggregate. The router mixes in
+[`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued
+requests are routed in arrival order.
+
+### When to use
+Use the round-robin router when you want a predictable, even distribution
+across replicas and don't need queue-length or locality-aware decisions. It
+fits stateless workloads with roughly uniform per-request latency. Unlike
+the default power-of-two-chocies router, the round-robin routeer doesn't react
+to queue depth and can pile up requests behind a slow replica before falling back.
+
+### Example
+Reference the router by import path through
+[`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst):
+
+```{literalinclude} ../doc_code/custom_request_router_app.py
+:start-after: __begin_deploy_app_with_round_robin_router__
+:end-before: __end_deploy_app_with_round_robin_router__
+:language: python
+```
+
+
+(consistent-hash-request-router)=
+## Experimental: Use the consistent-hash request router for session stickiness
+
+`ConsistentHashRouter` pins each session to a specific replica using a
+consistent-hash ring with virtual nodes. The routing key is the session ID
+read from the HTTP header named by `RAY_SERVE_SESSION_ID_HEADER_KEY` (default
+`x-session-id`), so the same session ID consistently maps to the same
+replica. Requests without that header fall back to a per-request internal ID
+and spread uniformly across replicas. If the chosen replica rejects (for
+example, due to backpressure from number of ongoing request), the router
+walks up to `num_fallback_replicas` clockwise successors on the ring. If
+those are also at capacity, the router sleeps with exponential backoff and
+retries the same primary and fallbacks until one accepts. When the replica
+set changes, the ring is rebuilt and only keys owned by added or removed
+replicas are reshuffled.
+
+Two parameters are configurable through
+[`request_router_kwargs`](../api/doc/ray.serve.config.RequestRouterConfig.rst):
+
+* `num_virtual_nodes` (default `100`): vnodes per replica on the ring.
+  Higher values spread sessions more evenly across replicas.
+* `num_fallback_replicas` (default `2`): clockwise successors tried after
+  the primary rejects. Set to `0` for strict affinity with no fallback.
+
+### When to use
+Use the consistent-hash router when requests carry session-scoped state
+worth keeping warm on a single replica, for example in-memory caches keyed
+by user or KV-cache reuse for LLM chat sessions. Skip it for stateless
+workloads, since affinity sacrifices queue-aware balancing and a hot session
+can saturate its assigned replica while others are idle. The router does not
+combine with queue-depth, locality, or multiplexed-model signals, since
+mixing them in would break determinism and therefore break affinity.
+
+### Example
+Configure the router via
+[`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst)
+and pass tuning parameters through `request_router_kwargs`:
+
+```{literalinclude} ../doc_code/custom_request_router_app.py
+:start-after: __begin_deploy_app_with_consistent_hash_router__
+:end-before: __end_deploy_app_with_consistent_hash_router__
+:language: python
+```
+
+If your clients send the session identifier under a different header (for
+example, `x-correlation-id`), point Ray Serve at it before the cluster
+starts:
+
+```bash
+export RAY_SERVE_SESSION_ID_HEADER_KEY=x-correlation-id
+```
 
 
 (capacity-queue-request-router)=
