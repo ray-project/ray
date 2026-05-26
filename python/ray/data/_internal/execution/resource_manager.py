@@ -783,6 +783,57 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             >= (op.metrics.obj_store_mem_max_pending_output_per_task or 0)
         )
 
+    def diagnose_can_submit(self, op: PhysicalOperator) -> Optional[str]:
+        """Return a short string explaining why ``can_submit_new_task`` would
+        return False for ``op``, or ``None`` if it would return True.
+
+        Purely for surfacing in the progress bar; not consulted by scheduling.
+        Format is short enough to fit in a status line, e.g.
+        ``"incremental_exceeds: mem 4.0GB>2.0GB"`` or
+        ``"plasma_budget 1.0GB < pending_output 2.5GB"``.
+        """
+        budget = self.get_budget(op)
+        if budget is None:
+            return None
+
+        incremental = op.incremental_resource_usage()
+
+        def _fmt_bytes(b: float) -> str:
+            if b >= 1024**3:
+                return f"{b / 1024**3:.1f}GB"
+            if b >= 1024**2:
+                return f"{b / 1024**2:.0f}MB"
+            return f"{int(b)}B"
+
+        parts = []
+        if incremental.cpu and incremental.cpu > budget.cpu:
+            parts.append(f"cpu {incremental.cpu:g}>{budget.cpu:g}")
+        if incremental.gpu and incremental.gpu > budget.gpu:
+            parts.append(f"gpu {incremental.gpu:g}>{budget.gpu:g}")
+        if incremental.memory and incremental.memory > budget.memory:
+            parts.append(
+                f"mem {_fmt_bytes(incremental.memory)}>{_fmt_bytes(budget.memory)}"
+            )
+        if (
+            incremental.object_store_memory
+            and incremental.object_store_memory > budget.object_store_memory
+        ):
+            parts.append(
+                f"plasma_incr {_fmt_bytes(incremental.object_store_memory)}>"
+                f"{_fmt_bytes(budget.object_store_memory)}"
+            )
+        if parts:
+            return "incremental_exceeds: " + ", ".join(parts)
+
+        pending = op.metrics.obj_store_mem_max_pending_output_per_task or 0
+        if budget.object_store_memory < pending:
+            return (
+                f"plasma_budget {_fmt_bytes(budget.object_store_memory)} < "
+                f"pending_output {_fmt_bytes(pending)}"
+            )
+
+        return None
+
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)
 

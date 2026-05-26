@@ -409,6 +409,7 @@ class PhysicalOperator(Operator):
         self._shutdown = False
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
+        self._task_submission_backpressure_reason: Optional[str] = None
         self._in_task_output_backpressure = False
         self._task_output_backpressure_policy: Optional[str] = None
         self._estimated_num_output_bundles = None
@@ -910,7 +911,10 @@ class PhysicalOperator(Operator):
         return ExecutionResources()
 
     def notify_in_task_submission_backpressure(
-        self, in_backpressure: bool, policy_name: Optional[str] = None
+        self,
+        in_backpressure: bool,
+        policy_name: Optional[str] = None,
+        reason: Optional[str] = None,
     ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
@@ -918,12 +922,16 @@ class PhysicalOperator(Operator):
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
             policy_name: Name of the backpressure policy that triggered.
+            reason: Optional short string explaining WHY the policy is blocking
+                this op (e.g. ``"plasma_budget 7GB < pending_output 10GB"``).
+                Surfaced in the progress bar.
         """
         # only update on change to in_backpressure
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
         self._task_submission_backpressure_policy = policy_name
+        self._task_submission_backpressure_reason = reason
 
     def notify_in_task_output_backpressure(
         self, in_backpressure: bool, policy_name: Optional[str] = None

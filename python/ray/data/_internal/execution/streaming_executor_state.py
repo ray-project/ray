@@ -787,9 +787,11 @@ def get_eligible_operators(
         # Operator is considered being in task-submission back-pressure if any
         # back-pressure policy is violated. Track the first triggered policy.
         triggered_policy = None
+        triggered_reason: Optional[str] = None
         for p in backpressure_policies:
             if not p.can_add_input(op):
                 triggered_policy = p.name
+                triggered_reason = p.get_block_reason(op)
                 break
         in_backpressure = triggered_policy is not None
 
@@ -817,7 +819,9 @@ def get_eligible_operators(
         )
 
         # Signal whether op in backpressure for stats collections
-        op.notify_in_task_submission_backpressure(in_backpressure, triggered_policy)
+        op.notify_in_task_submission_backpressure(
+            in_backpressure, triggered_policy, triggered_reason
+        )
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
     # limits in case when topology is entirely idle (no active tasks running)
@@ -1039,7 +1043,9 @@ def format_op_state_summary(
         if op_state.op._in_task_submission_backpressure:
             # The op is backpressured from submitting new tasks.
             policy = op_state.op._task_submission_backpressure_policy or ""
-            backpressure_types.append(f"tasks({policy})")
+            reason = op_state.op._task_submission_backpressure_reason
+            label = f"{policy}: {reason}" if reason else policy
+            backpressure_types.append(f"tasks({label})")
         if op_state.op._in_task_output_backpressure:
             # The op is backpressured from producing new outputs.
             policy = op_state.op._task_output_backpressure_policy or ""

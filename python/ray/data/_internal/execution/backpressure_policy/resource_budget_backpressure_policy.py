@@ -24,6 +24,12 @@ class ResourceBudgetBackpressurePolicy(BackpressurePolicy):
 
         return True
 
+    def get_block_reason(self, op: "PhysicalOperator") -> Optional[str]:
+        allocator = self._resource_manager._op_resource_allocator
+        if allocator is None or not hasattr(allocator, "diagnose_can_submit"):
+            return None
+        return allocator.diagnose_can_submit(op)
+
     def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
         """Determine maximum bytes to read based on the resource budgets.
 

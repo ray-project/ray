@@ -470,6 +470,86 @@ def test_emits_deprecation_warning_when_dynamic_backpressure_enabled(
         ConcurrencyCapBackpressurePolicy(ctx, topology, MagicMock())
 
 
+# ---------------------------------------------------------------------------
+# BackpressurePolicy.get_block_reason
+# ---------------------------------------------------------------------------
+
+
+def test_base_policy_get_block_reason_returns_none():
+    """The base class' ``get_block_reason`` returns ``None`` by default —
+    policies that want to expose a reason must explicitly override."""
+    from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
+        BackpressurePolicy,
+    )
+
+    policy = BackpressurePolicy(
+        data_context=DataContext.get_current(),
+        topology={},
+        resource_manager=MagicMock(),
+    )
+    assert policy.get_block_reason(MagicMock()) is None
+
+
+def test_resource_budget_policy_get_block_reason_delegates_to_allocator():
+    """``ResourceBudgetBackpressurePolicy.get_block_reason`` delegates to
+    the allocator's ``diagnose_can_submit``; ``None`` allocator → ``None``."""
+    from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (  # noqa: E501
+        ResourceBudgetBackpressurePolicy,
+    )
+
+    ctx = DataContext.get_current()
+    op = MagicMock()
+    rm = MagicMock()
+
+    # Case 1: no allocator → reason is None.
+    rm._op_resource_allocator = None
+    policy = ResourceBudgetBackpressurePolicy(
+        ctx, topology={op: MagicMock()}, resource_manager=rm
+    )
+    assert policy.get_block_reason(op) is None
+
+    # Case 2: allocator returns a reason string.
+    allocator = MagicMock()
+    allocator.diagnose_can_submit.return_value = (
+        "plasma_budget 0B < pending_output 168B"
+    )
+    rm._op_resource_allocator = allocator
+    policy = ResourceBudgetBackpressurePolicy(
+        ctx, topology={op: MagicMock()}, resource_manager=rm
+    )
+    assert policy.get_block_reason(op) == "plasma_budget 0B < pending_output 168B"
+    allocator.diagnose_can_submit.assert_called_once_with(op)
+
+
+def test_notify_in_task_submission_backpressure_stores_reason():
+    """``PhysicalOperator.notify_in_task_submission_backpressure`` stores
+    the reason on the op so the progress bar can read it back."""
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+
+    ctx = DataContext.get_current()
+    op = InputDataBuffer(ctx, input_data=[MagicMock()])
+
+    op.notify_in_task_submission_backpressure(
+        in_backpressure=True,
+        policy_name="ResourceBudget",
+        reason="plasma_budget 0B < pending_output 168B",
+    )
+    assert op._in_task_submission_backpressure is True
+    assert op._task_submission_backpressure_policy == "ResourceBudget"
+    assert (
+        op._task_submission_backpressure_reason
+        == "plasma_budget 0B < pending_output 168B"
+    )
+
+    # Calling without a reason clears it.
+    op.notify_in_task_submission_backpressure(in_backpressure=False, policy_name=None)
+    assert op._in_task_submission_backpressure is False
+    assert op._task_submission_backpressure_policy is None
+    assert op._task_submission_backpressure_reason is None
+
+
 if __name__ == "__main__":
     import sys
 

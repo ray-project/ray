@@ -765,6 +765,76 @@ class TestResourceManager:
             not can_submit
         ), "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
 
+    def test_diagnose_can_submit_reports_reason(self, restore_data_context):
+        """``diagnose_can_submit`` returns a short reason string when
+        ``can_submit_new_task`` would refuse.  Used to enrich the
+        backpressure status string in the progress bar."""
+        # Same setup as test_memory_limit_blocks_task_submission: 1000 bytes
+        # cluster memory, op asks 2000 bytes per task.
+        cluster_resources = ExecutionResources(cpu=1, gpu=0, memory=1000)
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(
+            o1,
+            ray_remote_args={"num_cpus": 1, "memory": 2000},
+            name="HighMemoryTask",
+        )
+
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topology=topo,
+            options=ExecutionOptions(),
+            get_total_resources=lambda: cluster_resources,
+            data_context=DataContext.get_current(),
+        )
+        resource_manager.update_usages()
+
+        allocator = create_resource_allocator(
+            resource_manager, DataContext.get_current()
+        )
+        assert allocator is not None
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+
+        # Sanity: can_submit returns False (precondition for diagnose to fire).
+        assert not allocator.can_submit_new_task(o2)
+
+        # Reason is non-None and mentions the failing dimension.
+        reason = allocator.diagnose_can_submit(o2)
+        assert reason is not None
+        assert "incremental_exceeds" in reason
+        assert "mem" in reason
+
+    def test_diagnose_can_submit_returns_none_when_unblocked(
+        self, restore_data_context
+    ):
+        """When the op CAN submit a task, ``diagnose_can_submit`` returns
+        ``None`` — callers use this as the "no blocking reason" signal."""
+        # Plenty of cluster resources; op's per-task ask is tiny.
+        cluster_resources = ExecutionResources(cpu=8, gpu=0, memory=1024 * 1024 * 1024)
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(
+            o1,
+            ray_remote_args={"num_cpus": 1, "memory": 1024},
+            name="SmallTask",
+        )
+
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topology=topo,
+            options=ExecutionOptions(),
+            get_total_resources=lambda: cluster_resources,
+            data_context=DataContext.get_current(),
+        )
+        resource_manager.update_usages()
+
+        allocator = create_resource_allocator(
+            resource_manager, DataContext.get_current()
+        )
+        assert allocator is not None
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+
+        assert allocator.can_submit_new_task(o2)
+        assert allocator.diagnose_can_submit(o2) is None
+
 
 class TestOutputBackpressureGuard:
     """Tests for OutputBackpressureGuard.should_unblock."""
