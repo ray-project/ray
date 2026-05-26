@@ -53,13 +53,19 @@ class RoundRobinPartitioner(FilePartitioner):
         in_memory_size_estimates = (
             self._in_memory_size_estimator.estimate_in_memory_sizes(input_manifest)
         )
-        for (file_path, file_size, in_memory_size_estimate,) in zip(
+        for (
+            file_path,
+            file_size,
+            file_chunk_metadata,
+            in_memory_size_estimate,
+        ) in zip(
             input_manifest.paths,
             input_manifest.file_sizes,
+            input_manifest.file_chunk_metadatas,
             in_memory_size_estimates,
         ):
             self._partitioner.add_item(
-                (file_path, file_size),
+                (file_path, file_size, file_chunk_metadata),
                 in_memory_size_estimate,
             )
 
@@ -68,8 +74,12 @@ class RoundRobinPartitioner(FilePartitioner):
 
     def next_partition(self) -> FileManifest:
         partition = self._partitioner.next_partition()
-        paths, file_sizes = zip(*partition)
-        return FileManifest.construct_manifest(list(paths), list(file_sizes))
+        paths, file_sizes, file_chunk_metadatas = zip(*partition)
+        return FileManifest.construct_manifest(
+            list(paths),
+            list(file_sizes),
+            list(file_chunk_metadatas),
+        )
 
     def finalize(self):
         self._partitioner.finalize()
