@@ -390,10 +390,13 @@ class BasicVariantGenerator(SearchAlgorithm):
             return False
         state = self.__dict__.copy()
         del state["_trial_generator"]
+        del state["_trial_iter"]
         return state
 
     def set_state(self, state):
         self.__dict__.update(state)
+        self._trial_iter = None
+        self._trial_generator = []
         for iterator in self._iterators:
             self._trial_generator = itertools.chain(self._trial_generator, iterator)
 
