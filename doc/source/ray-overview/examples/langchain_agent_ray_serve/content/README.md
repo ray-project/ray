@@ -124,7 +124,6 @@ mcp = FastMCP("weather", stateless_http=True)
 **Additional resources:**
 - [MCP quickstart guide](https://docs.anyscale.com/mcp/mcp-quickstart-guide)
 - [Deploy scalable MCP servers](https://docs.anyscale.com/mcp/scalable-remote-mcp-deployment)
-- [Anyscale MCP Deployment Template](https://console.anyscale.com/template-preview/mcp-ray-serve)
 
 
 ### Step 3: Create the agent logic
@@ -513,7 +512,7 @@ You've successfully built, deployed, and tested a multi-tool agent using Ray Ser
 ### Extend your agent
 
 **Add more tools**  
-Extend the MCP service with additional capabilities such as database queries, API integrations, or custom business logic. The MCP protocol allows your agent to discover new tools dynamically without code changes. For implementation examples, see the [Anyscale MCP Deployment Template](https://console.anyscale.com/template-preview/mcp-ray-serve).
+Extend the MCP service with additional capabilities such as database queries, API integrations, or custom business logic. The MCP protocol allows your agent to discover new tools dynamically without code changes. For implementation examples, see [Deploy scalable MCP servers with Ray Serve](https://docs.anyscale.com/mcp/scalable-remote-mcp-deployment).
 
 **Swap or upgrade LLMs**  
 Replace the Qwen model with other tool-calling models such as GPT-4, Claude, or Llama variants. Since the LLM runs as a separate service, you can A/B test different models or perform zero-downtime upgrades. For deployment patterns, see the [Anyscale LLM Serving Template](https://console.anyscale.com/template-preview/deployment-serve-llm).
@@ -554,7 +553,6 @@ Anyscale services provide enterprise-grade features for running agents in produc
 
 
 For comprehensive guidance on production deployments, see the [Anyscale Services documentation](https://docs.anyscale.com/services) and [Ray Serve on the Anyscale Runtime](https://docs.anyscale.com/runtime/serve).
-
 
 
 
