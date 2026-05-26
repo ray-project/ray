@@ -136,6 +136,7 @@ _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.j
 # indefinitely so the per-template error handler in `_fetch_and_extract_zip`
 # can log a warning and continue with the remaining templates.
 _TEMPLATE_CHANNEL_TIMEOUT_S = 30
+_TEMPLATE_DOWNLOAD_TIMEOUT_S = 90
 
 _TEMPLATE_COLLECTIONS = {
     "asynchronous_inference": {
@@ -247,15 +248,31 @@ def _fetch_and_extract_zip(config):
 
     name = config["name"]
     target = pathlib.Path(config["target"])
-    if target.is_dir():
-        shutil.rmtree(target)
-    target.mkdir(parents=True, exist_ok=True)
-    logger.info("sphinx-collections: downloading %s -> %s", url, target)
-    with urlopen(url, timeout=30) as resp:
-        zip_bytes = io.BytesIO(resp.read())
-    with zipfile.ZipFile(zip_bytes) as zf:
-        zf.extractall(target)
-    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
+    try:
+        url = _resolve_template_url(name)
+        if target.is_dir():
+            shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        logger.info("sphinx-collections: downloading %s -> %s", url, target)
+        with urlopen(url, timeout=_TEMPLATE_DOWNLOAD_TIMEOUT_S) as resp:
+            zip_bytes = io.BytesIO(resp.read())
+        with zipfile.ZipFile(zip_bytes) as zf:
+            zf.extractall(target)
+        logger.info(
+            "sphinx-collections: extracted %d files to %s",
+            len(zf.namelist()),
+            target,
+        )
+    except Exception as exc:
+        logger.warning(
+            "sphinx-collections: skipping template %r — fetch/extract failed: %s",
+            name,
+            exc,
+        )
+        # Leave any partial state out of the build tree so downstream sphinx
+        # passes don't trip over a half-extracted archive.
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
 
 
 collections = {
