@@ -136,7 +136,6 @@ _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.j
 # indefinitely so the per-template error handler in `_fetch_and_extract_zip`
 # can log a warning and continue with the remaining templates.
 _TEMPLATE_CHANNEL_TIMEOUT_S = 30
-_TEMPLATE_DOWNLOAD_TIMEOUT_S = 90
 
 _TEMPLATE_COLLECTIONS = {
     "asynchronous_inference": {
@@ -224,11 +223,7 @@ def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
-<<<<<<< HEAD
     with urlopen(api_url, timeout=_TEMPLATE_CHANNEL_TIMEOUT_S) as resp:
-=======
-    with urlopen(api_url, timeout=30) as resp:
->>>>>>> 11d9be4701a56c3a2a1d50ecc12ebef6cf99d547
         data = json.loads(resp.read())
     url = data["url"]
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
