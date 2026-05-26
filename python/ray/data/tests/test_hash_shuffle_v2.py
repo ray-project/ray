@@ -1,16 +1,3 @@
-"""Unit + e2e tests for the V2 actorless hash shuffle.
-
-V2 is a two-op physical DAG:
-* :class:`ShuffleMapOp` — hash-partitions input blocks into G ZSTD-compressed
-  IPC groups, emits one RefBundle per map task containing G blocks.
-* :class:`ShuffleReduceOp` — groups bundles by block position, launches one
-  reducer task per group with concurrency capped at one per worker node.
-
-Focused on regressions and non-obvious behaviour; pyarrow-internal behaviour
-(concat, sort, hash_partition) and trivial Python (deque FIFO) are exercised
-by the e2e block below.
-"""
-
 from typing import List, Optional
 from unittest.mock import MagicMock
 
@@ -33,6 +20,8 @@ from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks imp
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
+    extract_partition_id,
+    make_partition_sentinel,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
@@ -72,6 +61,15 @@ def _make_bundle(num_blocks: int = 1, size_bytes: int = 100) -> RefBundle:
     )
     blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
     return RefBundle(blocks, schema=None, owns_blocks=False)
+
+
+def _make_shard_bundle(ref: ray.ObjectRef, num_rows: int, size_bytes: int) -> RefBundle:
+    """Build a single-block bundle representing one mapper's shard for one
+    partition — what ShuffleMapOp pushes into a partition staging queue."""
+    meta = BlockMetadata(
+        num_rows=num_rows, size_bytes=size_bytes, exec_stats=None, input_files=None
+    )
+    return RefBundle([(ref, meta)], schema=None, owns_blocks=False)
 
 
 def _make_table(num_rows: int, *, offset: int = 0) -> pa.Table:
@@ -207,23 +205,30 @@ def test_contract_flags(
 
 
 # ===========================================================================
-# ShuffleReduceOp: concurrency limit
+# Partition-id sentinel encoded into BlockMetadata.input_files
 # ===========================================================================
 
 
-@pytest.mark.parametrize(
-    "num_nodes,override,expected_limit",
-    [
-        (32, None, 32),
-        (32, 12, 12),
-    ],
-)
-def test_reduce_concurrency_limit(num_nodes, override, expected_limit):
-    op = _make_reduce_op()
-    op._num_nodes = num_nodes
-    if override is not None:
-        op._data_context.set_config("map_reduce_max_concurrent_reducers", override)
-    assert op._get_reduce_concurrency_limit() == expected_limit
+@pytest.mark.parametrize("pid", [0, 1, 7, 199])
+def test_partition_sentinel_roundtrip(pid):
+    """`make_partition_sentinel` and `extract_partition_id` are inverses."""
+    files = make_partition_sentinel(pid)
+    meta = BlockMetadata(
+        num_rows=10, size_bytes=100, exec_stats=None, input_files=files
+    )
+    bundle = RefBundle(
+        [(ray.ObjectRef(b"\x00" * 28), meta)], schema=None, owns_blocks=False
+    )
+    assert extract_partition_id(bundle) == pid
+
+
+def test_extract_partition_id_raises_when_missing():
+    meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
+    bundle = RefBundle(
+        [(ray.ObjectRef(b"\x00" * 28), meta)], schema=None, owns_blocks=False
+    )
+    with pytest.raises(ValueError, match="missing a partition_id sentinel"):
+        extract_partition_id(bundle)
 
 
 # ===========================================================================
@@ -235,10 +240,7 @@ def test_reduce_concurrency_limit(num_nodes, override, expected_limit):
     "threshold,bundles,finalize,expected_submitted_block_counts",
     [
         # Pre-map merge disabled: each input bundle becomes one task,
-        # regardless of how many blocks it carries.  (Earlier code looped
-        # per-block and shared the same bundle reference across N tasks,
-        # which caused double-free + N× inflated input metrics — see
-        # shuffle_map_operator._add_input_inner.)
+        # regardless of how many blocks it carries.
         (0, [(3, 10)], False, [3]),
         (0, [(2, 10), (1, 10), (4, 10)], False, [2, 1, 4]),
         (1000, [(1, 200), (1, 300), (1, 600)], False, [3]),
@@ -289,77 +291,240 @@ def test_map_op_short_circuits_empty_bundles(monkeypatch, threshold):
 
 
 # ===========================================================================
-# ShuffleReduceOp: bundle routing by block position
+# ShuffleMapOp: per-partition staging queues exposed via mixin
 # ===========================================================================
 
 
-def test_reduce_op_groups_bundles_by_block_position():
-    """ShuffleReduceOp gathers bundle.blocks[pid] into _partition_buffers[pid]."""
-    op = _make_reduce_op(num_partitions=4)
-    refs_a = [ray.ObjectRef(bytes([i]) * 28) for i in range(4)]
-    refs_b = [ray.ObjectRef(bytes([i + 100]) * 28) for i in range(4)]
-    metas = [
-        BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-        for _ in range(4)
-    ]
-
-    bundle_a = RefBundle(list(zip(refs_a, metas)), schema=None, owns_blocks=False)
-    bundle_b = RefBundle(list(zip(refs_b, metas)), schema=None, owns_blocks=False)
-
-    op._add_input_inner(bundle_a, input_index=0)
-    op._add_input_inner(bundle_b, input_index=0)
-
-    for pid in range(4):
-        assert op._partition_buffers[pid] == [refs_a[pid], refs_b[pid]]
-
-
-def test_reduce_op_rejects_bundle_with_wrong_block_count():
-    """Bundles must have exactly num_partitions blocks (one per partition)."""
-    op = _make_reduce_op(num_partitions=4)
-    bundle = _make_bundle(num_blocks=3)  # wrong: should be 4
-    with pytest.raises(ValueError, match="expected 4 blocks"):
-        op._add_input_inner(bundle, input_index=0)
-
-
-def test_reduce_op_skips_empty_partitions(monkeypatch):
-    """Partitions where every mapper produced zero rows should be skipped
-    without scheduling a no-op reduce task.  ShuffleMapOp emits one ref per
-    partition per bundle (with ``None`` for empty slots), so the skip must
-    be driven by the upstream byte snapshot, not by ``_partition_buffers``
-    emptiness.
-    """
+def test_map_op_exposes_staging_queues_via_mixin():
+    """`_output_queues` must include every per-partition staging queue
+    plus the final emit queue, so the pre-barrier shard bytes show up
+    in the `Queued blocks (X)` column of the progress bar."""
     num_partitions = 4
-    op = _make_reduce_op(num_partitions=num_partitions)
+    op = _make_map_op(num_partitions=num_partitions)
+    qs = op._output_queues
+    # N staging + 1 final emit queue.
+    assert len(qs) == num_partitions + 1
+    assert all(not q.has_next() for q in qs)
 
-    # Populate buffers as ShuffleMapOp would (one ref per partition, even
-    # for empty partitions).
-    refs = [ray.ObjectRef(bytes([i]) * 28) for i in range(num_partitions)]
-    metas = [
-        BlockMetadata(num_rows=0, size_bytes=0, exec_stats=None, input_files=None)
-        for _ in range(num_partitions)
-    ]
-    op._add_input_inner(
-        RefBundle(list(zip(refs, metas)), schema=None, owns_blocks=False),
-        input_index=0,
+
+def test_map_op_staging_queue_bytes_visible_to_mixin():
+    """A shard pushed into a staging queue must immediately appear in
+    `internal_output_queue_num_bytes` so the bytes are reflected in the
+    `Queued blocks (X)` progress column."""
+    op = _make_map_op(num_partitions=4)
+    assert op.internal_output_queue_num_bytes() == 0
+    op._partition_staging[1].add(
+        _make_shard_bundle(ray.ObjectRef(b"\x00" * 28), num_rows=5, size_bytes=500)
+    )
+    assert op.internal_output_queue_num_bytes() == 500
+
+
+def test_map_op_emits_partition_bundles_after_barrier():
+    """Once all map tasks are done AND all_inputs_done has fired,
+    ShuffleMapOp drains each non-empty staging queue into one merged
+    bundle (per partition) carrying the partition_id sentinel on the
+    first block.  Empty partitions are skipped."""
+    num_partitions = 4
+    op = _make_map_op(num_partitions=num_partitions, pre_map_merge_threshold=0)
+
+    # Simulate map-task completion: shards land in staging queues.
+    ref_a = ray.ObjectRef(b"\x01" * 28)
+    ref_b = ray.ObjectRef(b"\x02" * 28)
+    op._partition_staging[0].add(_make_shard_bundle(ref_a, num_rows=5, size_bytes=50))
+    op._partition_staging[2].add(_make_shard_bundle(ref_a, num_rows=3, size_bytes=30))
+    op._partition_staging[2].add(_make_shard_bundle(ref_b, num_rows=4, size_bytes=40))
+    op._partition_bytes[0] = 50
+    op._partition_bytes[2] = 70
+    # Partitions 1 and 3 → no shards, should be skipped.
+
+    op._inputs_complete = True
+    op._maybe_emit_partition_bundles()
+
+    assert op._partition_bundles_emitted is True
+    bundles: List[RefBundle] = []
+    while op._output_queue.has_next():
+        bundles.append(op._output_queue.get_next())
+    assert len(bundles) == 2  # two non-empty partitions
+    assert extract_partition_id(bundles[0]) == 0
+    assert extract_partition_id(bundles[1]) == 2
+    assert len(bundles[1].block_refs) == 2  # partition 2 received from 2 mappers
+    # Staging drained after emit.
+    assert all(not q.has_next() for q in op._partition_staging.values())
+
+
+def test_map_op_emit_is_idempotent():
+    """Calling _maybe_emit_partition_bundles twice doesn't re-emit."""
+    op = _make_map_op(num_partitions=4)
+    op._inputs_complete = True
+    op._partition_staging[1].add(
+        _make_shard_bundle(ray.ObjectRef(b"\x00" * 28), num_rows=10, size_bytes=100)
+    )
+    op._partition_bytes[1] = 100
+
+    op._maybe_emit_partition_bundles()
+    op._maybe_emit_partition_bundles()
+    bundles: List[RefBundle] = []
+    while op._output_queue.has_next():
+        bundles.append(op._output_queue.get_next())
+    assert len(bundles) == 1
+
+
+def test_map_op_waits_for_barrier_before_emitting():
+    """Don't emit while map tasks are still pending OR before
+    all_inputs_done has fired."""
+    op = _make_map_op(num_partitions=4)
+    op._partition_staging[0].add(
+        _make_shard_bundle(ray.ObjectRef(b"\x00" * 28), num_rows=10, size_bytes=100)
+    )
+    op._partition_bytes[0] = 100
+    # Tasks still pending → no emit.
+    op._shuffle_map_tasks[0] = MagicMock()
+    op._inputs_complete = True
+    op._maybe_emit_partition_bundles()
+    assert not op._output_queue.has_next()
+    # No tasks but inputs not complete → no emit.
+    op._shuffle_map_tasks.clear()
+    op._inputs_complete = False
+    op._maybe_emit_partition_bundles()
+    assert not op._output_queue.has_next()
+    # Both conditions met → emit.
+    op._inputs_complete = True
+    op._maybe_emit_partition_bundles()
+    assert op._output_queue.has_next()
+
+
+# ===========================================================================
+# ShuffleReduceOp: 1-input-bundle → 1-reducer-task contract
+# ===========================================================================
+
+
+def _make_partition_bundle(
+    pid: int, num_shards: int, size_bytes_per_shard: int = 100
+) -> RefBundle:
+    """Build a fake post-transpose bundle representing one partition.
+
+    Mirrors what `ShuffleMapOp._maybe_emit_partition_bundles` produces:
+    `num_shards` shard refs for one partition, with the partition_id
+    sentinel stamped onto the FIRST block's `BlockMetadata.input_files`.
+    """
+    blocks = []
+    for i in range(num_shards):
+        meta = BlockMetadata(
+            num_rows=10,
+            size_bytes=size_bytes_per_shard,
+            exec_stats=None,
+            input_files=make_partition_sentinel(pid) if i == 0 else None,
+        )
+        blocks.append((ray.ObjectRef(bytes([(pid * 31 + i) % 256]) * 28), meta))
+    return RefBundle(blocks, schema=None, owns_blocks=False)
+
+
+def test_reduce_op_submits_one_task_per_partition_bundle(monkeypatch):
+    """Every non-empty input bundle becomes exactly one reducer task,
+    sized by the per-bundle byte total (memory = 2 × bundle size)."""
+    op = _make_reduce_op(num_partitions=4)
+
+    submitted: List[int] = []
+    submitted_options: List[dict] = []
+
+    def _capture_options(**kw):
+        submitted_options.append(kw)
+        return MagicMock(remote=lambda *a, **kwa: submitted.append(kwa["partition_id"]))
+
+    monkeypatch.setattr(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_reduce_operator._shuffle_reduce_task.options",
+        _capture_options,
+    )
+    monkeypatch.setattr(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_reduce_operator.DataOpTask",
+        MagicMock(),
     )
 
-    # Mark inputs complete and snapshot an "all empty" byte map.
-    op._inputs_complete = True
-    op._partition_bytes = {}  # all 4 partitions empty
-    op._reduce_phase_initialized = True
-    op._num_nodes = 1
+    for pid in (0, 1, 2, 3):
+        op._add_input_inner(
+            _make_partition_bundle(pid, num_shards=3, size_bytes_per_shard=100),
+            input_index=0,
+        )
 
-    # If the skip is working we should never reach _compute_reduce_resources.
-    def _should_not_run(_partition_id):  # pragma: no cover
-        raise AssertionError("empty partition should have been skipped")
+    assert sorted(submitted) == [0, 1, 2, 3]
+    assert op._num_reduce_tasks_submitted == 4
+    # Each bundle is 3 shards × 100 bytes = 300 bytes;
+    # memory ask = 2 × 300 = 600 bytes (per-task peak USS headroom;
+    # relies on @ray.remote(max_calls=1) keeping the worker heap clean
+    # between tasks); CPUs = 1.0.
+    for opt in submitted_options:
+        assert opt["num_cpus"] == 1.0
+        assert opt["memory"] == 600
+        assert opt["scheduling_strategy"] == "SPREAD"
 
-    monkeypatch.setattr(op, "_compute_reduce_resources", _should_not_run)
 
-    op._try_reduce()
+def test_reduce_op_short_circuits_empty_input_bundle(monkeypatch):
+    """Defensive: ShuffleMapOp skips empty partitions, but a future
+    regression that sent us an empty bundle must not submit a no-op task."""
+    op = _make_reduce_op(num_partitions=4)
+    submitted: List[int] = []
+    monkeypatch.setattr(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_reduce_operator._shuffle_reduce_task.options",
+        lambda **kw: MagicMock(
+            remote=lambda *a, **kwa: submitted.append(kwa.get("partition_id"))
+        ),
+    )
+    empty_bundle = RefBundle([], schema=None, owns_blocks=False)
+    op._add_input_inner(empty_bundle, input_index=0)
+    assert submitted == []
+    assert op._num_reduce_tasks_submitted == 0
 
-    # All partitions should be drained from the pending set and buffers.
-    assert op._pending_partition_ids == set()
-    assert op._partition_buffers == {}
+
+# ===========================================================================
+# ShuffleReduceOp: framework resource declarations
+# ===========================================================================
+
+
+def test_reduce_op_declares_per_task_memory_from_upstream(monkeypatch):
+    """Once upstream's per-partition byte snapshot is populated,
+    `incremental_resource_usage` declares `memory = 2 × avg` — the
+    decompressed accumulator plus a margin for plasma + per-node
+    baseline.  Relies on @ray.remote(max_calls=1) on
+    _shuffle_reduce_task to keep the worker heap baseline clean."""
+    op = _make_reduce_op(num_partitions=4)
+    monkeypatch.setattr(
+        op.input_dependencies[0],
+        "get_partition_bytes",
+        lambda: {0: 1024**3, 1: 1024**3, 2: 1024**3, 3: 1024**3},  # 1 GB each
+    )
+    inc = op.incremental_resource_usage()
+    assert inc.cpu == 1.0
+    assert inc.memory == 2 * 1024**3
+
+
+def test_reduce_op_inc_resources_empty_until_upstream_reports(monkeypatch):
+    """Before any partition bytes are visible, memory ask is 0 — we
+    don't have anything to size against yet."""
+    op = _make_reduce_op(num_partitions=4)
+    monkeypatch.setattr(
+        op.input_dependencies[0],
+        "get_partition_bytes",
+        lambda: {},
+    )
+    inc = op.incremental_resource_usage()
+    assert inc.cpu == 1.0
+    assert inc.memory == 0
+
+
+def test_reduce_op_does_not_declare_per_task_plasma():
+    """Regression: declaring `object_store_memory` per task deadlocks
+    the scheduler under upstream plasma pressure, because the
+    framework's budget arithmetic treats plasma as additive — it can't
+    see that running a reducer FREES input plasma.  We intentionally
+    return zero for object_store_memory; plasma usage is tracked via
+    `_metrics.on_output_queued` instead.
+    """
+    op = _make_reduce_op(num_partitions=4)
+    inc = op.incremental_resource_usage()
+    assert inc.object_store_memory == 0
 
 
 # ===========================================================================

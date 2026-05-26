@@ -192,7 +192,7 @@ def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
     return pa.Table.from_batches(batches, schema=schema)
 
 
-@ray.remote
+@ray.remote(max_calls=1)
 def _shuffle_reduce_task(
     shard_refs: List[ObjectRef],
     partition_id: int,

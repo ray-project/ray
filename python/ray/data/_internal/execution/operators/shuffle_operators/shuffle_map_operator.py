@@ -1,11 +1,16 @@
+import dataclasses
 import functools
 import logging
 import typing
-from collections import defaultdict, deque
+from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 import ray
 from ray import ObjectRef
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -15,6 +20,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     estimate_total_num_of_blocks,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (
     PartitionFn,
@@ -32,16 +40,66 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
+# Sentinel prefix used to carry partition_id on a block's
+# BlockMetadata.input_files.  The downstream ShuffleReduceOp parses this
+# out of each input bundle to recover which partition it represents.
+_PARTITION_ID_SENTINEL = "__partition__"
+
+
+def make_partition_sentinel(partition_id: int) -> List[str]:
+    """Build the `BlockMetadata.input_files` list used to mark a block
+    with its partition_id.  Kept as a module-level helper so the reduce op
+    can use the same encoding without depending on map-op internals."""
+    return [f"{_PARTITION_ID_SENTINEL}{partition_id}"]
+
+
+def extract_partition_id(bundle: RefBundle) -> int:
+    """Recover the partition_id stamped onto an upstream bundle by
+    `make_partition_sentinel`.  Raises if no sentinel is found."""
+    for _, meta in bundle.blocks:
+        files = meta.input_files
+        if not files:
+            continue
+        for f in files:
+            if f.startswith(_PARTITION_ID_SENTINEL):
+                return int(f[len(_PARTITION_ID_SENTINEL) :])
+    raise ValueError(
+        "ShuffleMapOp bundle is missing a partition_id sentinel in "
+        "BlockMetadata.input_files; this should never happen in the planner-"
+        "wired ShuffleMapOp → ShuffleReduceOp pipeline."
+    )
+
+
+class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
     """Map phase of a shuffle.
+
+    Each map task partitions its inputs into `num_partitions` shards.  As
+    map tasks complete, each shard is pushed into a per-partition staging
+    `FIFOBundleQueue`.  When upstream signals `all_inputs_done`
+    and no map tasks remain, the operator drains each staging queue, merges
+    its shards into a single `RefBundle` (one block per mapper), and
+    pushes those N bundles into `_output_queue`.  Empty partitions are
+    skipped — the reducer never sees them.
+
+    The staging queues are exposed via `InternalQueueOperatorMixin`'s
+    `_output_queues` so the pre-barrier shards show up in the
+    `Queued blocks (X)` column of the progress bar — without that, the
+    bytes vanish from the user-visible queue summary between
+    `_handle_map_done` and `_maybe_emit_partition_bundles`.
+
+    This 1-bundle-per-partition output contract lets the downstream
+    `ShuffleReduceOp` behave as a regular MapOperator-style consumer
+    (1 input bundle → 1 reducer task) and benefit from the framework's
+    standard backpressure / per-op resource budgeting.
 
     Args:
         input_op: Upstream physical operator.
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.  Each map task
-            returns ``num_partitions + 1`` objects: the metadata bundle plus
-            one ZSTD-compressed Arrow IPC stream per partition (or ``None``
-            for partitions that received no rows from this mapper).
+            returns `num_partitions + 1` objects: the metadata bundle
+            plus one ZSTD-compressed Arrow IPC stream per partition (or
+            `None` for partitions that received no rows from this
+            mapper).
         partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
         pre_map_merge_threshold: Byte threshold per node at which buffered
             blocks are merged into a single map task.  Set to 0 to disable.
@@ -92,14 +150,25 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         self._shuffle_map_tasks: Dict[int, MetadataOpTask] = {}
         self._map_resource_usage = ExecutionResources.zero()
 
-        # -- Per-partition stats (driver bookkeeping) ------------------------
-        # Exposed to downstream ShuffleReduceOp via get_partition_bytes() so
-        # it can size reducer memory hints.
+        # -- Per-partition staging queues ------------------------------------
+        # Each completed map task pushes one single-block bundle per
+        # non-empty partition into the corresponding queue.  At barrier
+        # release we drain → merge → push to `_output_queue`.  Exposed
+        # via `_output_queues` for the `Queued blocks (X)` progress
+        # column.
+        self._partition_staging: Dict[int, FIFOBundleQueue] = {
+            pid: FIFOBundleQueue() for pid in range(num_partitions)
+        }
+
+        # -- Per-partition byte totals (driver bookkeeping) ------------------
+        # Mirrors what's currently in `_partition_staging` but lives
+        # past the barrier drain so downstream ShuffleReduceOp can size
+        # its reducer memory hint per-partition.
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
-        # -- Output queue (one bundle per completed map task, containing one
-        #    block per partition ordered by partition_id) --------------------
-        self._output_queue: deque = deque()
+        # -- Output queue (post-barrier merged partition-bundles) ------------
+        self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
+        self._partition_bundles_emitted: bool = False
 
         # -- Stats -----------------------------------------------------------
         self._total_input_rows: int = 0
@@ -111,11 +180,31 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         self._map_metrics = OpRuntimeMetrics(self)
 
     # -----------------------------------------------------------------------
-    # Input handling
+    # InternalQueueOperatorMixin
     # -----------------------------------------------------------------------
 
-    def can_add_input(self) -> bool:
-        return True
+    @property
+    def _input_queues(self) -> List[BaseBundleQueue]:
+        # The pre-map merge buffer holds raw ObjectRef + sizes (not
+        # RefBundles) so it can't easily be exposed as a BaseBundleQueue.
+        # In practice it only holds up to ~1 GB per node before flushing
+        # into a map task, which is small relative to the total shuffle
+        # working set, so leaving it unaccounted here is an acceptable
+        # trade-off.  The framework picks up the upstream bundles via the
+        # standard input queue path.
+        return []
+
+    @property
+    def _output_queues(self) -> List[BaseBundleQueue]:
+        # Pre-barrier staging + post-barrier final emit queue.  Surfaced
+        # to `OpState.total_enqueued_output_blocks_bytes` so the
+        # `Queued blocks (X)` progress column reflects what we've
+        # produced but not yet handed downstream.
+        return list(self._partition_staging.values()) + [self._output_queue]
+
+    # -----------------------------------------------------------------------
+    # Input handling
+    # -----------------------------------------------------------------------
 
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         assert input_index == 0
@@ -158,14 +247,16 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         super().all_inputs_done()
         for node_id in list(self._merge_buffer_refs_by_node.keys()):
             self._flush_merge_buffer(node_id)
+        # All input done; if all map tasks happened to finish before this
+        # fired (e.g. very small inputs), the barrier hasn't been released
+        # yet — emit now.
+        self._maybe_emit_partition_bundles()
 
     def _flush_merge_buffer(self, node_id: str) -> None:
         block_refs = self._merge_buffer_refs_by_node.pop(node_id, [])
         bundles = self._merge_buffer_bundles_by_node.pop(node_id, [])
         estimated_bytes = self._merge_buffer_bytes_by_node.pop(node_id, 0)
         if not block_refs:
-            # Nothing to map.  Release any owned bundles that were buffered
-            # for this node so we don't leak refs.
             for bundle in bundles:
                 bundle.destroy_if_owned()
             return
@@ -186,10 +277,6 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        # Split into two dicts: ``resources`` is the numeric resource ask
-        # used for both Ray Core scheduling and our own ExecutionResources
-        # accounting; ``ray_options`` is the full @ray.remote.options(...)
-        # bag adding scheduling_strategy / runtime_env / num_returns.
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * 2
@@ -226,17 +313,20 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             task.get_requested_resource_bundle()
         )
 
+        # `block_refs` is non-empty (callers guarantee it; empty input
+        # bundles short-circuit in `_add_input_inner`, and
+        # `_flush_merge_buffer` returns early for empty buffers), so
+        # `input_bundles` here also has at least one block.
         all_blocks_meta = [
             (ref, meta)
             for bundle in input_bundles
             for ref, meta in zip(bundle.block_refs, bundle.metadata)
         ]
-        if all_blocks_meta:
-            self._map_metrics.on_task_submitted(
-                cur_task_idx,
-                RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
-                task_id=task.get_task_id(),
-            )
+        self._map_metrics.on_task_submitted(
+            cur_task_idx,
+            RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
+            task_id=task.get_task_id(),
+        )
 
         if self._map_bar is not None:
             _, _, num_rows = estimate_total_num_of_blocks(
@@ -258,11 +348,25 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
             task.get_requested_resource_bundle()
         )
 
-        # ``task_done_callback`` fires only after the ObjectRef is ready, so
-        # this ``ray.get`` is just local deserialization.
+        # `task_done_callback` fires only after the metadata ref is ready,
+        # so this is just local deserialization.
         input_meta, shard_sizes = ray.get(task.get_waitable())
 
-        for pid, (_rows, nbytes) in shard_sizes.items():
+        # Push each non-empty shard into its partition's staging queue.
+        # Mappers that produced no rows for a given partition are absent
+        # from `shard_sizes` and their ref in `partition_refs` is None.
+        for pid, (rows, nbytes) in shard_sizes.items():
+            ref = partition_refs[pid]
+            if ref is None:
+                continue
+            shard_meta = BlockMetadata(
+                num_rows=rows,
+                size_bytes=nbytes,
+                exec_stats=None,
+                input_files=None,
+            )
+            shard_bundle = RefBundle([(ref, shard_meta)], schema=None, owns_blocks=True)
+            self._partition_staging[pid].add(shard_bundle)
             self._partition_bytes[pid] += nbytes
 
         for bundle in input_bundles:
@@ -272,35 +376,6 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         self._total_input_bytes += input_meta.size_bytes or 0
         self._map_blocks_stats.append(input_meta.to_stats())
 
-        # Build the output bundle: one block per partition, ordered by
-        # partition_id.  Block i corresponds to partition_id i; the
-        # downstream ShuffleReduceOp gathers by block position.
-        blocks_with_meta = []
-        for pid in range(self._num_partitions):
-            rows, nbytes = shard_sizes.get(pid, (0, 0))
-            blocks_with_meta.append(
-                (
-                    partition_refs[pid],
-                    BlockMetadata(
-                        num_rows=rows,
-                        size_bytes=nbytes,
-                        exec_stats=None,
-                        input_files=None,
-                    ),
-                )
-            )
-        output_bundle = RefBundle(blocks_with_meta, schema=None, owns_blocks=True)
-        self._output_queue.append(output_bundle)
-
-        # NOTE: we don't call on_task_output_generated here.  That metric
-        # path asserts exec_stats.block_ser_time_s is not None on every
-        # output block, and shuffle has no per-output-block timing (one map
-        # task produces N partitions together).  The metrics it populates
-        # (num_task_outputs_generated, block-size histograms, etc.) are
-        # observability only — execution correctness and resource accounting
-        # don't depend on them.  Plasma usage for these outputs is tracked
-        # via the downstream op's input-queue instead.
-        self._map_metrics.on_output_queued(output_bundle)
         self._map_metrics.on_task_finished(
             task_idx,
             None,
@@ -311,15 +386,63 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         if self._map_bar is not None:
             self._map_bar.update(increment=input_meta.num_rows or 0)
 
+        # Barrier: emit partition-bundles once all map tasks are done AND
+        # upstream has signalled no more inputs are coming.
+        self._maybe_emit_partition_bundles()
+
+    def _maybe_emit_partition_bundles(self) -> None:
+        """Drain each non-empty staging queue into one output bundle.
+
+        Fires exactly once, when (a) no map tasks are pending, (b) no
+        merge buffers are waiting to be flushed, and (c) upstream has
+        signalled `all_inputs_done`.  Empty partitions are skipped —
+        the reducer never sees them, so it never schedules a no-op task.
+        """
+        if self._partition_bundles_emitted:
+            return
+        if self._shuffle_map_tasks or self._merge_buffer_refs_by_node:
+            return
+        if not self._inputs_complete:
+            return
+
+        self._partition_bundles_emitted = True
+
+        for pid in range(self._num_partitions):
+            staging = self._partition_staging[pid]
+            if not staging.has_next():
+                continue
+            shards: List[RefBundle] = []
+            while staging.has_next():
+                shards.append(staging.get_next())
+
+            merged = RefBundle.merge_ref_bundles(shards)
+            # Stamp the partition_id sentinel onto the merged bundle's
+            # first block so the downstream reducer can recover the
+            # partition this bundle represents.
+            stamped_blocks = []
+            for i, (ref, meta) in enumerate(merged.blocks):
+                if i == 0:
+                    meta = dataclasses.replace(
+                        meta, input_files=make_partition_sentinel(pid)
+                    )
+                stamped_blocks.append((ref, meta))
+            stamped = RefBundle(
+                stamped_blocks,
+                schema=merged.schema,
+                owns_blocks=merged.owns_blocks,
+            )
+            self._output_queue.add(stamped)
+            self._map_metrics.on_output_queued(stamped)
+
     # -----------------------------------------------------------------------
     # Output handling
     # -----------------------------------------------------------------------
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        bundle: RefBundle = self._output_queue.popleft()
+        bundle: RefBundle = self._output_queue.get_next()
         self._map_metrics.on_output_dequeued(bundle)
         self._map_metrics.on_output_taken(bundle)
         return bundle
@@ -341,7 +464,12 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         return list(self._shuffle_map_tasks.values())
 
     def has_execution_finished(self) -> bool:
-        if self._shuffle_map_tasks or self._merge_buffer_refs_by_node:
+        if (
+            self._shuffle_map_tasks
+            or self._merge_buffer_refs_by_node
+            or not self._partition_bundles_emitted
+            or self._output_queue.has_next()
+        ):
             return False
         return super().has_execution_finished()
 
@@ -349,6 +477,8 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         return (
             not self._shuffle_map_tasks
             and not self._merge_buffer_refs_by_node
+            and self._partition_bundles_emitted
+            and not self._output_queue.has_next()
             and super().has_completed()
         )
 
@@ -362,6 +492,9 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
         self._merge_buffer_refs_by_node.clear()
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
+        for queue in self._partition_staging.values():
+            queue.clear()
+        self._output_queue.clear()
 
     # -----------------------------------------------------------------------
     # Stats / metrics
@@ -378,21 +511,28 @@ class ShuffleMapOp(PhysicalOperator, SubProgressBarMixin):
     # -----------------------------------------------------------------------
 
     def num_output_rows_total(self) -> Optional[int]:
+        # Shuffle preserves row count: total output rows = total input rows.
+        # Returns None until at least one map task has finished so we have
+        # a meaningful count to report.
         return self._total_input_rows if self._total_input_rows > 0 else None
 
     def current_logical_usage(self) -> ExecutionResources:
-        # NOTE: object_store_memory is intentionally excluded.
-        # ResourceManager.update_usages asserts
-        # current_logical_usage().object_store_memory == 0 and then
-        # overwrites it with its own estimate from the op's input/output
-        # queue sizes — anything we put here would be discarded.
         return ExecutionResources(
             cpu=self._map_resource_usage.cpu,
             memory=self._map_resource_usage.memory,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(cpu=self._shuffle_map_task_num_cpus)
+        # Memory ask should match what `_submit_shuffle_map_task` declares
+        # to Ray Core (`estimated_bytes * 2`).  We don't know the next
+        # input's size up front, so use the running average across
+        # already-submitted tasks; 0 until the first task is submitted.
+        avg_input = self._map_metrics.average_bytes_inputs_per_task
+        memory = int(avg_input * 2) if avg_input else 0
+        return ExecutionResources(
+            cpu=self._shuffle_map_task_num_cpus,
+            memory=memory,
+        )
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()
