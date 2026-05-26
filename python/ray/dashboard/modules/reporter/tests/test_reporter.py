@@ -136,6 +136,8 @@ STATS_TEMPLATE = {
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
     "cmdline": ["fake raylet cmdline"],
+    "host_mem": (10737418240, 17179869184),
+    "cgroup_mem": None,
 }
 
 
@@ -229,7 +231,8 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_used" in metric_names,
             "ray_node_mem_available" in metric_names,
             "ray_node_mem_total" in metric_names,
-            "ray_node_mem_total" in metric_names,
+            "ray_node_mem_used_host" in metric_names,
+            "ray_node_mem_total_host" in metric_names,
             "ray_component_rss_mb" in metric_names,
             "ray_component_uss_mb" in metric_names,
             "ray_component_num_fds" in metric_names,
@@ -337,7 +340,7 @@ def test_report_stats(tmp_path):
             assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 41
+    assert len(records) == 43
     # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
@@ -345,10 +348,31 @@ def test_report_stats(tmp_path):
             assert record.tags["RayNodeType"] == "head"
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
+    # Verify host memory metrics are reported
+    host_mem_used = [r for r in records if r.gauge.name == "node_mem_used_host"]
+    host_mem_total = [r for r in records if r.gauge.name == "node_mem_total_host"]
+    assert len(host_mem_used) == 1
+    assert host_mem_used[0].value == stats["host_mem"][0]
+    assert len(host_mem_total) == 1
+    assert host_mem_total[0].value == stats["host_mem"][1]
+    # Verify no cgroup records when cgroup_mem is None
+    assert not any(r.gauge.name == "node_cgroup_mem_used" for r in records)
+    assert not any(r.gauge.name == "node_cgroup_mem_total" for r in records)
+
+    # Test cgroup memory metrics when cgroup_mem is populated
+    stats["cgroup_mem"] = (5368709120, 10737418240)
+    records = agent._to_records(stats, cluster_stats)
+    cgroup_used = [r for r in records if r.gauge.name == "node_cgroup_mem_used"]
+    cgroup_total = [r for r in records if r.gauge.name == "node_cgroup_mem_total"]
+    assert len(cgroup_used) == 1
+    assert cgroup_used[0].value == 5368709120
+    assert len(cgroup_total) == 1
+    assert cgroup_total[0].value == 10737418240
+
     # Test stats without raylets
     stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 37
+    assert len(records) == 41
     # Test stats with gpus
     stats["gpus"] = [
         {
@@ -375,11 +399,11 @@ def test_report_stats(tmp_path):
         }
     ]
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 46
+    assert len(records) == 50
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 44
+    assert len(records) == 48
 
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None

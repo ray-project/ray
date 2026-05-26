@@ -1685,6 +1685,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_eval_workers_all_unhealthy",
+    size = "medium",
+    srcs = ["algorithms/tests/test_eval_workers_all_unhealthy.py"],
+    tags = [
+        "algorithms",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Specific Algorithms
 
 # APPO
@@ -1704,6 +1716,17 @@ py_test(
     name = "test_appo_learner",
     size = "medium",
     srcs = ["algorithms/appo/tests/test_appo_learner.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_appo_multi_agent_data_balance",
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_multi_agent_data_balance.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -1915,6 +1938,17 @@ py_test(
     name = "algorithms/tests/test_get_main_process_bundle",
     size = "small",
     srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "algorithms/tests/test_custom_resources_per_learner",
+    size = "small",
+    srcs = ["algorithms/tests/test_custom_resources_per_learner.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -4720,6 +4754,21 @@ py_test(
         "--stop-iters=3",
     ],
     main = "examples/metrics/custom_metrics_in_env_runners.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/metrics/clearing_ema",
+    size = "medium",
+    srcs = ["examples/metrics/clearing_ema.py"],
+    args = [
+        "--stop-iters=3",
+    ],
+    main = "examples/metrics/clearing_ema.py",
     tags = [
         "examples",
         "exclusive",

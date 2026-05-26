@@ -1,7 +1,7 @@
 """Test DP deployment fault tolerance when a vLLM GPU worker process is killed.
 
-Finds a RayWorkerWrapper actor (the GPU worker process spun up by vLLM's
-ray distributed backend) and kills it to simulate a DP replica failure:
+Finds a RayWorkerProc actor (the GPU worker process spun up by vLLM's Ray V2
+distributed backend) and kills it to simulate a DP replica failure:
 
     worker killed → compiled DAG error → EngineCore fatal error
     → engine_dead flag set → check_health() raises
@@ -52,23 +52,22 @@ def get_num_running_replicas(deployment_name: str) -> int:
 
 
 def find_vllm_worker_actors():
-    """Find all alive RayWorkerWrapper actors created by vLLM's ray distributed executor backend."""
-    actors = list_actors(
+    """Find all alive RayWorkerProc actors created by vLLM's Ray V2 executor backend."""
+    return list_actors(
         filters=[
-            ("class_name", "=", "RayWorkerWrapper"),
+            ("class_name", "=", "RayWorkerProc"),
             ("state", "=", "ALIVE"),
         ]
     )
-    return actors
 
 
 def kill_one_vllm_worker():
-    """Kill one RayWorkerWrapper actor by sending SIGKILL to its process.
+    """Kill one RayWorkerProc actor by sending SIGKILL to its process.
 
     Returns the node_id of the killed worker so we can verify which gang gets torn down.
     """
     actors = find_vllm_worker_actors()
-    assert len(actors) > 0, "No alive RayWorkerWrapper actors found"
+    assert len(actors) > 0, "No alive RayWorkerProc actors found"
 
     target = actors[0]
     target_pid = target.pid
@@ -119,8 +118,6 @@ def test_llm_serve_dp_engine_fault():
         runtime_env={
             "env_vars": {
                 "VLLM_DISABLE_COMPILE_CACHE": "1",
-                # Shorter compiled graph timeout so the dead worker is detected quickly.
-                "RAY_CGRAPH_get_timeout": "30",
             },
         },
     )
@@ -131,7 +128,7 @@ def test_llm_serve_dp_engine_fault():
     # Step 1: Verify steady state — all replicas running.
     assert get_num_running_replicas(deployment_name) == expected_serve_replicas
 
-    # Verify RayWorkerWrapper actors exist.
+    # Verify RayWorkerProc actors exist.
     workers_before = find_vllm_worker_actors()
     assert len(workers_before) > 0
 
@@ -177,7 +174,7 @@ def test_llm_serve_dp_engine_fault():
         sender.send.remote(ignore_errors=True)
         time.sleep(0.5)
 
-    # Kill one RayWorkerWrapper GPU worker process.
+    # Kill one RayWorkerProc GPU worker process.
     killed_node_id, kill_msg = kill_one_vllm_worker()
     print(f"Killed vLLM worker on node {killed_node_id}: {kill_msg}")
 
