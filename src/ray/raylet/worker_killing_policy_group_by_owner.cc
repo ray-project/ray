@@ -79,8 +79,14 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   int64_t max_idle_worker_used_memory = 0;
   for (const std::shared_ptr<WorkerInterface> &worker : workers) {
     if (worker->GetGrantedLeaseId().IsNil()) {
-      int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
-          process_memory_snapshot, worker->GetProcess().GetId());
+      StatusSetOr<int64_t, StatusT::NotFound> used_memory_or =
+          MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                        worker->GetProcess().GetId());
+      if (!used_memory_or.has_value()) {
+        RAY_LOG_EVERY_MS(WARNING, 60000) << used_memory_or.message();
+        continue;
+      }
+      int64_t used_memory = used_memory_or.value();
       if (used_memory > idle_worker_killing_memory_threshold_bytes_ &&
           used_memory > max_idle_worker_used_memory) {
         max_idle_worker_used_memory = used_memory;
@@ -194,16 +200,26 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
       if (worker_index > 0) {
         result << ", ";
       }
-      int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
-          process_memory_snapshot, worker->GetProcess().GetId());
+      StatusSetOr<int64_t, StatusT::NotFound> used_memory_or =
+          MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                        worker->GetProcess().GetId());
+      std::string used_memory_gb = "Not Found";
+      if (used_memory_or.has_value()) {
+        int64_t used_memory = used_memory_or.value();
+        used_memory_gb =
+            absl::StrFormat("%.2f", static_cast<float>(used_memory) / 1024 / 1024 / 1024);
+      } else {
+        RAY_LOG_EVERY_MS(WARNING, 60000) << used_memory_or.message();
+      }
       const LeaseSpecification &lease_spec =
           worker->GetGrantedLease().GetLeaseSpecification();
       result << absl::StrFormat(
-          "Lease granted time %s worker id %s memory used %d lease_id %s "
+          "Lease granted time %s worker id %s memory used %s lease_id %s "
           "task_name %s",
-          absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone()),
+          absl::FormatTime(worker->GetLastGrantedLeaseTime().value(),
+                           absl::UTCTimeZone()),
           worker->WorkerId().Hex(),
-          used_memory,
+          used_memory_gb,
           lease_spec.LeaseId().Hex(),
           lease_spec.GetTaskName());
 
@@ -226,13 +242,13 @@ const TaskID &Group::OwnerId() const { return owner_id_; }
 
 const bool Group::IsRetriable() const { return retriable_; }
 
-const absl::Time Group::GetGrantedLeaseTime() const {
-  return earliest_granted_lease_time_;
-}
+absl::Time Group::GetGrantedLeaseTime() const { return earliest_granted_lease_time_; }
 
 void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
-  if (worker->GetGrantedLeaseTime() < earliest_granted_lease_time_) {
-    earliest_granted_lease_time_ = worker->GetGrantedLeaseTime();
+  RAY_CHECK(worker->GetLastGrantedLeaseTime().has_value());
+  const absl::Time granted_lease_time = worker->GetLastGrantedLeaseTime().value();
+  if (granted_lease_time < earliest_granted_lease_time_) {
+    earliest_granted_lease_time_ = granted_lease_time;
   }
   bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
   RAY_CHECK_EQ(retriable_, retriable);
@@ -247,7 +263,8 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
+              return left->GetLastGrantedLeaseTime().value() >
+                     right->GetLastGrantedLeaseTime().value();
             });
 
   return sorted.front();

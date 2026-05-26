@@ -420,7 +420,15 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
     ASSERT_TRUE(worker_client_->Reply());
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   }
+
+  // drain every handler posted on the io_context when actor is destroyed to assert final
+  // state
+  drain_io_context();
+
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 20);
+
+  // The observability cache must hold exactly the configured maximum.
+  ASSERT_EQ(gcs_actor_manager_->destroyed_actor_observability_data_.size(), 10u);
 }
 
 TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {

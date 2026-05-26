@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -16,6 +16,10 @@ from ray.data._internal.datasource.parquet_datasource import (
     AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
     _check_for_pickle_object_columns,
 )
+from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
+    _fragments_from_chunk_metadata,
+)
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -256,6 +260,50 @@ class ParquetFileReader(FileReader):
             return
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+
+    @override
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[Tuple[pds.Fragment, int]]:
+        """Fan file fragments into chunk-level sub-fragments per manifest row.
+
+        For each manifest row, looks up the file's fragment by path and:
+
+        - If ``chunk_metadata`` is ``None`` (whole-file case), the file
+          fragment is yielded as-is with a row offset of 0. This matches
+          ``ParquetFileChunker``'s behavior for files at or below
+          ``target_chunk_size`` and the default ``WholeFileChunker`` for
+          non-chunking callers.
+        - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
+          we slice the fragment via
+          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
+          which returns one sub-fragment per row group in the chunk's
+          row-group range, paired with the cumulative pre-filter row
+          offset of that row group within the file. The downstream
+          ``_compute_row_hashes`` call uses this offset so row hashes
+          remain unique across sub-fragments that share ``fragment.path``.
+
+        Paths are deduped by :meth:`FileReader.read` before the dataset is
+        built, so the dataset has exactly one fragment per file. The
+        per-row chunk metadata drives the fan-out here, not the dataset
+        itself — multiple manifest rows can share a single path with
+        different chunk indices.
+        """
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        fragments: List[Tuple[pds.Fragment, int]] = []
+        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+            fragment = path_to_fragment[path]
+            if chunk_metadata is None:
+                fragments.append((fragment, 0))
+            else:
+                fragments.extend(
+                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                )
+        return fragments
 
     @override
     def _iter_fragment_tables(
