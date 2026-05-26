@@ -93,6 +93,41 @@ def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]
     return (key, predicate, value)
 
 
+def _normalize_filter_keys(
+    resource: StateResource,
+    filters: List[Tuple[str, PredicateType, SupportedFilterType]],
+) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
+    """Normalize filter keys to match the resource schema.
+
+    Filter values are already documented as case-insensitive, but filter keys
+    may be entered with different casing by users, e.g. STATE=RUNNING instead
+    of state=RUNNING. Normalize keys when they match a valid schema column
+    case-insensitively. If the key is invalid, raise a clear error instead of
+    returning an empty result that later becomes "No resource in the cluster".
+    """
+    schema = resource_to_schema(resource)
+    valid_columns = schema.list_columns(detail=True)
+    valid_column_by_lowercase = {column.lower(): column for column in valid_columns}
+
+    normalized_filters = []
+    for key, predicate, value in filters:
+        if key in valid_columns:
+            normalized_filters.append((key, predicate, value))
+            continue
+
+        normalized_key = valid_column_by_lowercase.get(key.lower())
+        if normalized_key is not None:
+            normalized_filters.append((normalized_key, predicate, value))
+            continue
+
+        raise click.BadParameter(
+            f"Invalid filter key {key!r} for resource {resource.value!r}. "
+            f"Available filter keys are: {', '.join(valid_columns)}"
+        )
+
+    return normalized_filters
+
+
 def _get_available_formats() -> List[str]:
     """Return the available formats in a list of string"""
     return [format_enum.value for format_enum in AvailableFormat]
@@ -568,6 +603,7 @@ def ray_list(
     client = StateApiClient(address=address)
 
     filter = [_parse_filter(f) for f in filter]
+    filter = _normalize_filter_keys(resource, filter)
 
     options = ListApiOptions(
         limit=limit,
