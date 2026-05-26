@@ -451,9 +451,7 @@ def test_classification_model(gpu_type):
         processor_config,
         preprocess=lambda row: dict(
             prompt="This is a great educational content.",
-            pooling_params=dict(
-                truncate_prompt_tokens=-1,
-            ),
+            tokenization_kwargs={"truncation": True, "max_length": 512},
         ),
         postprocess=lambda row: {
             "probs": float(row["embeddings"][0])

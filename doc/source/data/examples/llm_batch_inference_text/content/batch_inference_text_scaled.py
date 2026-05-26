@@ -2,7 +2,7 @@ from typing import Any
 
 from pprint import pprint
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 
 DATASET_LIMIT = 1_000_000
 
@@ -78,7 +78,7 @@ def postprocess(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 # Build the LLM processor with the configuration and functions.
-processor_large = build_llm_processor(
+processor_large = build_processor(
     processor_config_large,
     preprocess=preprocess,
     postprocess=postprocess,

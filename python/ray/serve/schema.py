@@ -1,4 +1,5 @@
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
@@ -1575,6 +1576,136 @@ class TargetGroup(BaseModel):
     )
 
 
+@PublicAPI(stability="alpha")
+class DurationStats(BaseModel):
+    """Statistics for a collection of duration/latency measurements."""
+
+    mean: float = Field(default=0.0, description="Mean value over the rolling window.")
+    std: float = Field(
+        default=0.0, description="Standard deviation over the rolling window."
+    )
+    min: float = Field(
+        default=0.0, description="Minimum value over the rolling window."
+    )
+    max: float = Field(
+        default=0.0, description="Maximum value over the rolling window."
+    )
+
+    @classmethod
+    def from_values(cls, values: List[float]) -> "DurationStats":
+        """Compute statistics from a list of values."""
+        if not values:
+            return cls()
+
+        n = len(values)
+        mean = sum(values) / n
+        min_val = min(values)
+        max_val = max(values)
+
+        # Compute standard deviation
+        if n > 1:
+            variance = sum((x - mean) ** 2 for x in values) / n
+            std = math.sqrt(variance)
+        else:
+            std = 0.0
+
+        return cls(mean=mean, std=std, min=min_val, max=max_val)
+
+
+@PublicAPI(stability="alpha")
+class ControllerHealthMetrics(BaseModel):
+    """Health metrics for the Ray Serve controller.
+
+    These metrics help diagnose controller performance issues, especially
+    as cluster size increases.
+    """
+
+    # Timestamps
+    timestamp: float = Field(
+        default=0.0, description="When these metrics were collected (epoch seconds)."
+    )
+    controller_start_time: float = Field(
+        default=0.0, description="When the controller started (epoch seconds)."
+    )
+    uptime_s: float = Field(default=0.0, description="Controller uptime in seconds.")
+    last_control_loop_time: float = Field(
+        default=0.0,
+        description="Time of the last control loop execution (epoch seconds).",
+    )
+
+    # Control loop metrics
+    num_control_loops: int = Field(
+        default=0, description="Total number of control loops executed."
+    )
+    loop_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Control loop duration statistics over a rolling window.",
+    )
+    loops_per_second: float = Field(
+        default=0.0, description="Control loop iterations per second."
+    )
+
+    # Sleep/scheduling metrics
+    last_sleep_duration_s: float = Field(
+        default=0.0, description="Actual sleep duration of the last iteration."
+    )
+    expected_sleep_duration_s: float = Field(
+        default=0.0,
+        description="Expected sleep duration (CONTROL_LOOP_INTERVAL_S).",
+    )
+    event_loop_delay_s: float = Field(
+        default=0.0,
+        description=(
+            "Difference between actual and expected sleep duration. "
+            "Positive values indicate an overloaded event loop."
+        ),
+    )
+
+    # Event loop health
+    num_asyncio_tasks: int = Field(
+        default=0, description="Number of pending asyncio tasks."
+    )
+
+    # Component update durations (rolling window stats)
+    deployment_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Deployment state update duration statistics over a rolling window.",
+    )
+    application_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Application state update duration statistics over a rolling window.",
+    )
+    proxy_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Proxy state update duration statistics over a rolling window.",
+    )
+    node_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Node update duration statistics over a rolling window.",
+    )
+
+    # Autoscaling metrics latency tracking (rolling window stats)
+    handle_metrics_delay_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Delay between when handle metrics are generated and when they "
+            "reach the controller (rolling window, milliseconds)."
+        ),
+    )
+    replica_metrics_delay_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Delay between when replica metrics are generated and when they "
+            "reach the controller (rolling window, milliseconds)."
+        ),
+    )
+
+    # Memory usage
+    process_memory_mb: float = Field(
+        default=0.0, description="Controller process memory usage in MB."
+    )
+
+
 @PublicAPI(stability="stable")
 class ServeInstanceDetails(BaseModel):
     """
@@ -1628,6 +1759,11 @@ class ServeInstanceDetails(BaseModel):
             "List of target groups, each containing target info for a given route and "
             "protocol."
         ),
+    )
+
+    controller_health_metrics: ControllerHealthMetrics = Field(
+        default_factory=ControllerHealthMetrics,
+        description="Health metrics for the Ray Serve controller.",
     )
 
     @staticmethod
