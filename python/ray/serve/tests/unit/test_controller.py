@@ -40,7 +40,8 @@ def test_autoscaling_metrics_delay_tags_include_high_cardinality_by_default(
     )
     assert _get_autoscaling_metrics_delay_tags(
         DeploymentID(name="deployment", app_name="application"),
-        {"handle": "handle-id"},
+        "handle",
+        "handle-id",
     ) == {
         "deployment": "deployment",
         "application": "application",
@@ -65,7 +66,8 @@ def test_autoscaling_metrics_delay_tags_exclude_high_cardinality(
     )
     assert _get_autoscaling_metrics_delay_tags(
         DeploymentID(name="deployment", app_name="application"),
-        {"replica": "replica-id"},
+        "replica",
+        "replica-id",
     ) == {
         "deployment": "deployment",
         "application": "application",

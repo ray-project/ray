@@ -129,7 +129,8 @@ def _get_autoscaling_metrics_delay_tag_keys(
 
 def _get_autoscaling_metrics_delay_tags(
     deployment_id: DeploymentID,
-    high_cardinality_tags: Dict[str, str],
+    high_cardinality_tag_key: str,
+    high_cardinality_tag_value: str,
 ) -> Dict[str, str]:
     """Return tags for controller autoscaling metrics delay gauge updates."""
     tags = {
@@ -137,7 +138,7 @@ def _get_autoscaling_metrics_delay_tags(
         "application": deployment_id.app_name,
     }
     if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-        tags.update(high_cardinality_tags)
+        tags[high_cardinality_tag_key] = high_cardinality_tag_value
     return tags
 
 
@@ -395,7 +396,8 @@ class ServeController:
             latency_ms,
             tags=_get_autoscaling_metrics_delay_tags(
                 replica_metric_report.replica_id.deployment_id,
-                {"replica": replica_metric_report.replica_id.unique_id},
+                "replica",
+                replica_metric_report.replica_id.unique_id,
             ),
         )
         # Track in health metrics
@@ -416,7 +418,8 @@ class ServeController:
             latency_ms,
             tags=_get_autoscaling_metrics_delay_tags(
                 handle_metric_report.deployment_id,
-                {"handle": handle_metric_report.handle_id},
+                "handle",
+                handle_metric_report.handle_id,
             ),
         )
         # Track in health metrics
