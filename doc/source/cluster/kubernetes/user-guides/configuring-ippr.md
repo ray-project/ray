@@ -72,7 +72,7 @@ In addition to the schema above, the Ray Autoscaler validates the following requ
 
 1. **No CPU/memory in `rayStartParams`.** The corresponding worker group must not set `num-cpus` or `memory` in `rayStartParams`. Hard-coding logical resources there would cause Ray's view of the node's capacity to drift from the Pod's physical resources after a resize.
 2. **CPU and memory requests are required.** The Ray container in the worker group must specify both `cpu` and `memory` under `resources.requests`.
-3. **`resizePolicy` must use `restartPolicy: NotRequired`.** That's the Kubernetes default, so leaving `resizePolicy` unset is fine. Setting it to `RestartContainer` is rejected because IPPR resizes the container in place.
+3. **`resizePolicy` must use `restartPolicy: NotRequired`.** That's the Kubernetes default, so leaving `resizePolicy` unset is fine. Setting it to `RestartContainer`, which causes the container to be restarted, is not yet supported by Ray.
 
 ## Example
 
