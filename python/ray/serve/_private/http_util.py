@@ -813,18 +813,28 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
     )
 
 
-def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
-    """Return the SERVE_SESSION_ID header value, or '' if absent.
+def _matches_session_id_header(header_key: str) -> bool:
+    """True if ``header_key`` refers to the configured session-id header.
 
-    Accepts both the underscored constant form (``x_session_id``) and the
-    canonical hyphenated form (``x-session-id``) because intermediate proxies
-    (HAProxy, nginx, AWS API Gateway) canonicalize underscored header names
-    to the hyphenated form. ASGI lowercases header names per spec, so
-    case-folding is not needed here.
+    Compares case-insensitively and treats ``-`` and ``_`` as equivalent
+    so intermediate proxies that rewrite the separator (nginx, AWS API
+    Gateway, ...) don't silently drop session affinity. The header name
+    itself is whatever ``SERVE_SESSION_ID`` resolves to (set via the env
+    var ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
     """
-    for form in (SERVE_SESSION_ID, SERVE_SESSION_ID.replace("_", "-")):
-        value = headers.get(form.encode("utf-8"))
-        if value is not None:
+    return header_key.lower().replace("-", "_") == SERVE_SESSION_ID.lower().replace(
+        "-", "_"
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the configured session-id header value, or '' if absent.
+
+    Header name is whatever ``SERVE_SESSION_ID`` resolves to (set via
+    ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    for key, value in headers.items():
+        if _matches_session_id_header(key.decode("utf-8")):
             return value.decode("utf-8")
     return ""
 

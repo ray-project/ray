@@ -16,6 +16,9 @@ from typing import (
 import pyarrow as pa
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    reorder_columns_by_schema,
+)
 from ray.data._internal.datasource.lance_utils import (
     create_storage_options_provider,
     get_or_create_namespace,
@@ -121,6 +124,9 @@ def _write_fragment(
     def record_batch_converter(block_stream):
         for block in block_stream:
             tbl = BlockAccessor.for_block(block).to_arrow()
+            # `RecordBatchReader.from_batches(schema, ...)` is positional.
+            if schema is not None:
+                tbl = reorder_columns_by_schema(tbl, schema)
             yield from tbl.to_batches()
 
     max_bytes_per_file = (

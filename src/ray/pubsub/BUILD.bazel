@@ -15,7 +15,8 @@ ray_cc_library(
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
-        "//src/ray/asio:periodical_runner",
+        "//src/ray/asio:periodical_runner_interface",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/rpc:rpc_callback_types",

@@ -42,7 +42,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
-    SERVE_SESSION_ID,
 )
 from ray.serve._private.default_impl import get_proxy_handle
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
@@ -53,6 +52,7 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    _matches_session_id_header,
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
@@ -1245,7 +1245,7 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
-            elif normalized_key == SERVE_SESSION_ID:
+            elif _matches_session_id_header(key.decode()):
                 session_id = value.decode()
                 handle = handle.options(session_id=session_id)
                 request_context_info["session_id"] = session_id
