@@ -236,6 +236,70 @@ def _is_filesystem_compatible_with_scheme(
     return fs_type in expected_types
 
 
+_AZURE_BLOB_HTTPS_SUFFIXES = (".blob.core.windows.net", ".dfs.core.windows.net")
+
+
+def _rewrite_azure_blob_https_url(path: str) -> Tuple[str, Optional[str]]:
+    """Rewrite Azure Blob/DFS HTTPS URLs to ``abfs://<container>/<blob>`` form.
+
+    PyArrow's scheme auto-detection only recognises ``abfs://`` / ``abfss://`` for
+    Azure; an ``https://<account>.blob.core.windows.net/<container>/<blob>`` URL
+    falls through to the fsspec HTTP filesystem and fetches anonymously, which
+    fails for private blobs.
+
+    We deliberately avoid emitting the Hadoop-style
+    ``abfs://<container>@<account>.dfs.core.windows.net/<path>`` form. PyArrow's
+    C++ ``AzureOptions::FromUri`` parses it correctly when the resolver builds a
+    filesystem from the URI alone — but ``_resolve_filesystem_and_path`` *skips*
+    that parser whenever a filesystem is already supplied (the common case for
+    ``download(..., filesystem=AzureFileSystem(...))``). In that branch PyArrow
+    strips the scheme and treats the authority as part of the path, so requests
+    land on ``https://<fs.account>.blob.core.windows.net/<cont>@<acct>.dfs.core.windows.net/<blob>``
+    and 404. The bare ``abfs://<container>/<blob>`` form sidesteps this entirely
+    because there is no authority to misinterpret.
+
+    Returns ``(rewritten_path, account_name)``. ``account_name`` is the host
+    prefix extracted from the original URL so the caller can construct an
+    ``AzureFileSystem(account_name=...)`` when the user did not pass an explicit
+    filesystem. ``account_name`` is ``None`` when the path was not rewritten.
+
+    URLs carrying a query string (e.g. a SAS token) are returned unchanged: the
+    SAS already carries auth, and the fsspec HTTP path will fetch them with the
+    signature intact.
+    """
+    if not path.startswith("https://"):
+        return path, None
+
+    parsed = urlparse(path, allow_fragments=False)
+    if parsed.query:
+        return path, None
+
+    # `parsed.hostname` strips explicit port and userinfo (and lower-cases the
+    # host per RFC 3986), so the suffix check works for URLs that include
+    # `:443` or `user:pass@`.
+    host = parsed.hostname
+    if not host:
+        return path, None
+    suffix = next(
+        (s for s in _AZURE_BLOB_HTTPS_SUFFIXES if host.endswith(s)),
+        None,
+    )
+    if suffix is None or len(host) == len(suffix):
+        return path, None
+
+    account = host[: -len(suffix)]
+    object_path = parsed.path.lstrip("/")
+    if "/" not in object_path:
+        # No <container>/<blob> split available — leave it alone.
+        return path, None
+
+    container, blob_path = object_path.split("/", 1)
+    if not container or not blob_path:
+        return path, None
+
+    return f"abfs://{container}/{blob_path}", account
+
+
 def _resolve_single_path_with_fallback(
     path: str,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -259,15 +323,38 @@ def _resolve_single_path_with_fallback(
         ImportError: If required dependencies are missing.
     """
     import pyarrow as pa
+    import pyarrow.fs
     from pyarrow.fs import _resolve_filesystem_and_path
 
     path = _resolve_custom_scheme(path)
+
+    # Only rewrite Azure Blob HTTPS URLs when this PyArrow build actually has
+    # AzureFileSystem support. Otherwise the abfs:// form we would produce
+    # cannot be resolved by PyArrow, and we would block the original https://
+    # URL from falling through to the fsspec HTTP filesystem below.
+    azure_fs_cls = getattr(pyarrow.fs, "AzureFileSystem", None)
+    if azure_fs_cls is not None:
+        path, azure_account = _rewrite_azure_blob_https_url(path)
+    else:
+        azure_account = None
 
     # Validate/wrap filesystem if needed
     try:
         filesystem = _validate_and_wrap_filesystem(filesystem)
     except TypeError as e:
         raise ValueError(f"Invalid filesystem provided: {e}") from e
+
+    # If we rewrote an Azure HTTPS URL and the caller did not supply a
+    # filesystem, build one with the account name we extracted. AzureFileSystem
+    # still resolves credentials (account_key, SAS, default credential chain)
+    # from the environment; supplying a filesystem explicitly to download() with
+    # custom credentials remains the override path for non-default auth.
+    # _resolve_paths_and_filesystem caches the filesystem returned by the first
+    # path and reuses it, so the auto-injected AzureFileSystem is shared across
+    # the rest of the column — multi-account columns are not supported on the
+    # PyArrow path; use obstore for that case.
+    if azure_account is not None and filesystem is None:
+        filesystem = azure_fs_cls(account_name=azure_account)
 
     # Parse scheme to validate filesystem compatibility
     parsed = urlparse(path, allow_fragments=False)

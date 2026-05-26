@@ -12,6 +12,8 @@ from ray.data.datasource.path_util import (
     _is_filesystem_compatible_with_scheme,
     _is_local_windows_path,
     _resolve_paths_and_filesystem,
+    _resolve_single_path_with_fallback,
+    _rewrite_azure_blob_https_url,
 )
 
 
@@ -50,6 +52,88 @@ def test_resolve_http_paths(filesystem):
     assert isinstance(resolve_filesystem, pyarrow.fs.PyFileSystem)
     assert isinstance(resolve_filesystem.handler, pyarrow.fs.FSSpecHandler)
     assert isinstance(resolve_filesystem.handler.fs, HTTPFileSystem)
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        # Blob endpoint: rewritten to PyArrow-compatible bare-container form.
+        (
+            "https://acct.blob.core.windows.net/cont/dir/file.jpg",
+            ("abfs://cont/dir/file.jpg", "acct"),
+        ),
+        # DFS / Gen2 endpoint: same target form, account still extracted.
+        (
+            "https://acct.dfs.core.windows.net/cont/dir/file.jpg",
+            ("abfs://cont/dir/file.jpg", "acct"),
+        ),
+        # Mixed-case host is still recognised; account is lower-cased.
+        (
+            "https://Acct.Blob.Core.Windows.Net/cont/file.bin",
+            ("abfs://cont/file.bin", "acct"),
+        ),
+        # Explicit :443 port — host suffix match still works via parsed.hostname.
+        (
+            "https://acct.blob.core.windows.net:443/cont/dir/file.jpg",
+            ("abfs://cont/dir/file.jpg", "acct"),
+        ),
+        # Userinfo prefix (`user:pass@host`) — also stripped by parsed.hostname.
+        (
+            "https://user:pass@acct.blob.core.windows.net/cont/file.bin",
+            ("abfs://cont/file.bin", "acct"),
+        ),
+        # SAS token present — leave URL untouched so HTTP path serves it.
+        (
+            "https://acct.blob.core.windows.net/cont/file?sv=2024&sig=abc",
+            ("https://acct.blob.core.windows.net/cont/file?sv=2024&sig=abc", None),
+        ),
+        # Non-Azure HTTPS host — passthrough.
+        ("https://example.com/cont/file", ("https://example.com/cont/file", None)),
+        # Container with no blob path — not enough to rewrite.
+        (
+            "https://acct.blob.core.windows.net/cont",
+            ("https://acct.blob.core.windows.net/cont", None),
+        ),
+        # Bare account URL with no container.
+        (
+            "https://acct.blob.core.windows.net/",
+            ("https://acct.blob.core.windows.net/", None),
+        ),
+        # Already-abfs URI is unchanged.
+        (
+            "abfs://cont/dir/file",
+            ("abfs://cont/dir/file", None),
+        ),
+        # Non-HTTPS scheme is unchanged.
+        ("s3://bucket/key", ("s3://bucket/key", None)),
+    ],
+)
+def test_rewrite_azure_blob_https_url(path, expected):
+    assert _rewrite_azure_blob_https_url(path) == expected
+
+
+def test_resolve_single_path_without_azure_filesystem_keeps_https_passthrough():
+    """When PyArrow has no AzureFileSystem (older builds), an Azure Blob HTTPS
+    URL must NOT be rewritten to abfs:// — otherwise the resolver would have
+    no filesystem to construct, the HTTP fallback below cannot match the new
+    scheme, and resolution fails outright. The URL should pass through to the
+    fsspec HTTP filesystem unchanged.
+    """
+    import pyarrow.fs
+
+    url = "https://acct.blob.core.windows.net/cont/dir/file.bin"
+
+    # The production code reads pyarrow.fs.AzureFileSystem via
+    # ``getattr(pyarrow.fs, "AzureFileSystem", None)`` and treats ``None`` as
+    # "not available", so patching the attribute to None simulates the
+    # missing-Azure-support build without needing to delete it.
+    with mock.patch.object(pyarrow.fs, "AzureFileSystem", None):
+        fs, resolved = _resolve_single_path_with_fallback(url)
+
+    assert resolved == url
+    assert isinstance(fs, pyarrow.fs.PyFileSystem)
+    assert isinstance(fs.handler, pyarrow.fs.FSSpecHandler)
+    assert isinstance(fs.handler.fs, HTTPFileSystem)
 
 
 @pytest.mark.parametrize(
