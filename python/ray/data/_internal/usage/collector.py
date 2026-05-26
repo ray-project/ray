@@ -15,7 +15,11 @@ from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
-from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import (
+    TagKey,
+    record_extra_usage_tag,
+    usage_stats_enabled,
+)
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import AbstractUDFMap
@@ -101,9 +105,12 @@ def record_workload(
     This consists of the DAG, env, and configs for each operator.
     Flushes eagerly so that attempted executions are captured even if
     the execution fails.
-    Set ``RAY_DATA_USAGE_DISABLED=1`` to disable all collection.
+
+    Short-circuits when the user has opted out of Ray usage stats (via
+    ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
+    ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
-    if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+    if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
         return
     try:
         entry = _Entry(
@@ -130,9 +137,11 @@ def record_execution_result(
 ) -> None:
     """Fill in performance for a previously recorded execution and flush.
 
-    Set ``RAY_DATA_USAGE_DISABLED=1`` to short-circuit all collection.
+    Short-circuits when the user has opted out of Ray usage stats (via
+    ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
+    ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
-    if os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+    if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
         return
     try:
         spilled_now = _cluster_spilled_bytes()
