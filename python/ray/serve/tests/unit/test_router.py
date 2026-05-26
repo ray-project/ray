@@ -2501,11 +2501,11 @@ class TestSingletonThreadRouter:
         wrap_future returning on the outer loop must still call __aexit__.
 
         The race: the inner CM's __aenter__ runs on the router loop and
-        reserves a slot. The bridge's concurrent.futures.Future is set, but
-        the outer task is cancelled before observing the result. If the
-        bridge doesn't protect this gap, ``context_manager`` is unbound
-        when the bridge returns, __aexit__ never runs, and the slot is
-        leaked.
+        reserves a slot. If the outer task is cancelled before the bridge
+        observes the result, an unshielded bridge lets the cancellation
+        propagate through wrap_future and cancel the underlying
+        concurrent.futures.Future. The bridge then never sees the entered
+        CM, skips __aexit__, and leaks the slot.
         """
         fake_router, _ = setup_router
         thread_router = setup_singleton_thread_router
@@ -2530,19 +2530,22 @@ class TestSingletonThreadRouter:
         @asynccontextmanager
         async def fake_choose_replica(*args, **kwargs):
             # Wait so the outer task enters `await wrap_future(...)` before
-            # we finish entry; otherwise the router loop races past and the
-            # cancellation window never opens.
+            # we drive the cancellation.
             await asyncio.sleep(0.05)
 
-            def cancel_outer():
-                if outer_task_holder:
-                    outer_task_holder[0].cancel()
+            # Pin the cancel ordering: cancel_outer's done callbacks
+            # land via call_soon; the follow-up call_soon set runs after
+            # them (FIFO), so when the router task unblocks the outer
+            # task has already observed CancelledError. The slot has
+            # been reserved here and __aexit__ has not run yet.
+            cancel_propagated = threading.Event()
 
-            # Queue cancel_outer on the outer loop *before* we return.
-            # Returning fires the bridge's future, which then queues
-            # set_result on the outer loop -- behind cancel_outer (FIFO).
-            # So the outer task is cancelled before it sees the result.
-            outer_loop.call_soon_threadsafe(cancel_outer)
+            def cancel_and_chain_marker():
+                outer_task_holder[0].cancel()
+                outer_loop.call_soon(cancel_propagated.set)
+
+            outer_loop.call_soon_threadsafe(cancel_and_chain_marker)
+            cancel_propagated.wait()
             try:
                 yield fake_selection
             finally:

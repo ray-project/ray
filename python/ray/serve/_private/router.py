@@ -1765,16 +1765,28 @@ class SingletonThreadRouter(Router):
             return await cm.__aexit__(exc_type, exc_val, exc_tb)
 
         future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
+        wrapped = asyncio.wrap_future(future)
+        # Shield ``wrapped`` so an outer cancel cannot propagate through
+        # wrap_future and cancel the underlying concurrent.futures.Future.
+        # Without this, the future can be cancelled in the window between
+        # __aenter__ reserving the slot on the router loop and wrap_future's
+        # result being delivered on the outer loop -- the bridge would never
+        # observe the entered CM, skip __aexit__, and leak the slot.
         try:
-            selection, context_manager = await asyncio.wrap_future(future)
+            selection, context_manager = await asyncio.shield(wrapped)
         except BaseException:
-            # Cancelled after __aenter__ reserved the slot but before we
-            # observed the result: exit the entered CM to release the slot.
-            if future.done() and not future.cancelled() and future.exception() is None:
-                entered_cm = future.result()[1]
-                exc_info = sys.exc_info()
+            # Outer was cancelled; ``wrapped`` is shielded so it still runs
+            # to completion. Drain further cancels until it settles, then
+            # release the slot if __aenter__ actually succeeded.
+            while not wrapped.done():
+                try:
+                    await asyncio.shield(wrapped)
+                except asyncio.CancelledError:
+                    pass
+            if not wrapped.cancelled() and wrapped.exception() is None:
+                entered_cm = wrapped.result()[1]
                 cleanup = asyncio.run_coroutine_threadsafe(
-                    exit_context(entered_cm, *exc_info), self._asyncio_loop
+                    exit_context(entered_cm, *sys.exc_info()), self._asyncio_loop
                 )
                 await asyncio.shield(asyncio.wrap_future(cleanup))
             raise
