@@ -1668,7 +1668,11 @@ class Dataset:
                 # expr is an Expr object (predicate expression)
                 predicate_expr = expr
 
-            filter_compute = TaskPoolStrategy(size=concurrency)
+            filter_compute = get_compute_strategy(
+                fn=None,
+                compute=compute,
+                concurrency=concurrency,
+            )
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
