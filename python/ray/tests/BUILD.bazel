@@ -334,7 +334,6 @@ py_test_module_list(
         "test_nested_task.py",
         "test_node_labels.py",
         "test_node_manager.py",
-        "test_object_assign_owner.py",
         "test_object_store_metrics.py",
         "test_placement_group_2.py",
         "test_placement_group_4.py",
