@@ -193,6 +193,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int64_t GeneratorBackpressureNumObjects() const;
 
+  bool HasActorGeneratorBackpressure() const;
+
   /// Per-stream upper bound used on the task owner to defer
   /// ReportGeneratorItemReturns callbacks (TaskManager tracks counts per generator
   /// only, not actor-wide).

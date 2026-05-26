@@ -792,8 +792,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] actor_metadata Actor-task bookkeeping for the actor-wide
   /// streaming-generator cap (`_actor_generator_backpressure_num_objects`).
   /// nullptr when the actor option is disabled or this is not an actor
-  /// task. When non-null, its OnReport is called from the RPC reply
-  /// alongside `waiter->HandleObjectReported`.
+  /// task. When non-null, consumed progress is delivered separately from
+  /// report visibility.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
       const ObjectID &generator_id,
@@ -803,12 +803,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
       const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata);
 
+  void MarkActorGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
+  bool TeardownActorGeneratorBackpressureTask(const ObjectID &generator_id);
+
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
   /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
   void HandleReportGeneratorItemReturns(rpc::ReportGeneratorItemReturnsRequest request,
                                         rpc::ReportGeneratorItemReturnsReply *reply,
                                         rpc::SendReplyCallback send_reply_callback);
+
+  void HandleUpdateGeneratorBackpressureConsumed(
+      rpc::UpdateGeneratorBackpressureConsumedRequest request,
+      rpc::UpdateGeneratorBackpressureConsumedReply *reply,
+      rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to task submission.
@@ -1875,6 +1883,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// -1, meaning disabled). Constructed lazily when the actor creation
   /// task spec is executed.
   std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_generator_waiter_;
+
+  struct ActorGeneratorBackpressureState {
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+    bool task_finished = false;
+  };
+
+  absl::flat_hash_map<ObjectID, ActorGeneratorBackpressureState>
+      actor_generator_backpressure_states_ ABSL_GUARDED_BY(mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

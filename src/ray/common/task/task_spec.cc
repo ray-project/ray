@@ -250,28 +250,23 @@ int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
   return result;
 }
 
+bool TaskSpecification::HasActorGeneratorBackpressure() const {
+  if (!IsActorTask()) {
+    return false;
+  }
+  const auto &ats = message_->actor_task_spec();
+  return ats.has_actor_generator_backpressure_num_objects() &&
+         ats.actor_generator_backpressure_num_objects() > 0;
+}
+
 int64_t TaskSpecification::EffectiveStreamingGeneratorOwnerBackpressureThreshold() const {
   int64_t per_task = message_->generator_backpressure_num_objects();
   RAY_CHECK_NE(per_task, 0);
 
-  int64_t actor_bp = -1;
-  if (IsActorTask()) {
-    const auto &ats = message_->actor_task_spec();
-    if (ats.has_actor_generator_backpressure_num_objects()) {
-      const int64_t a = ats.actor_generator_backpressure_num_objects();
-      if (a > 0) {
-        actor_bp = a;
-      }
-    }
-  }
-
-  // Actor-wide cap: owner deferral must be tight so TryReadObjectRefStream can flush
-  // pending report replies with updated total_consumed while
-  // ActorWideGeneratorBackpressureWaiter still uses actor_bp on the executor. A large
-  // owner threshold (e.g. actor_bp) per stream never defers when concurrent streams split
-  // the budget (each stream's unconsumed stays below actor_bp), leaving empty callback
-  // queues and deadlocking OnReport bookkeeping.
-  if (actor_bp != -1) {
+  // Actor-wide cap uses separate owner->executor consumed-progress updates.
+  // Keep owner-side per-stream threshold tight so every read can publish progress
+  // even when concurrent streams split the actor-wide budget.
+  if (HasActorGeneratorBackpressure()) {
     return 1;
   }
 

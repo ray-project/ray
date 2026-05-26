@@ -3212,6 +3212,12 @@ Status CoreWorker::ReportGeneratorItemReturns(
                  << ", id: " << return_id;
 
   waiter->IncrementObjectGenerated();
+  if (actor_metadata) {
+    absl::MutexLock lock(&mutex_);
+    auto &state = actor_generator_backpressure_states_[generator_id];
+    state.waiter = waiter;
+    state.actor_metadata = actor_metadata;
+  }
 
   client->ReportGeneratorItemReturns(
       std::move(request),
@@ -3234,10 +3240,14 @@ Status CoreWorker::ReportGeneratorItemReturns(
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
         }
-        waiter->HandleObjectReported(num_objects_consumed);
-        // Mirror the report onto the actor-wide waiter (delta-based).
         if (actor_metadata) {
-          actor_metadata->OnReport(num_objects_consumed);
+          waiter->OnObjectReportAccepted();
+          if (!status.ok()) {
+            waiter->OnObjectConsumed(num_objects_consumed);
+            actor_metadata->Teardown();
+          }
+        } else {
+          waiter->HandleObjectReported(num_objects_consumed);
         }
       });
 
@@ -3246,18 +3256,62 @@ Status CoreWorker::ReportGeneratorItemReturns(
   return waiter->WaitUntilObjectConsumed();
 }
 
+void CoreWorker::MarkActorGeneratorBackpressureTaskFinished(
+    const ObjectID &generator_id) {
+  std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = actor_generator_backpressure_states_.find(generator_id);
+    if (it == actor_generator_backpressure_states_.end()) {
+      return;
+    }
+    it->second.task_finished = true;
+    waiter = it->second.waiter;
+  }
+
+  if (waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated()) {
+    absl::MutexLock lock(&mutex_);
+    auto it = actor_generator_backpressure_states_.find(generator_id);
+    if (it != actor_generator_backpressure_states_.end() && it->second.task_finished &&
+        it->second.waiter->TotalObjectConsumed() >=
+            it->second.waiter->TotalObjectGenerated()) {
+      actor_generator_backpressure_states_.erase(it);
+    }
+  }
+}
+
+bool CoreWorker::TeardownActorGeneratorBackpressureTask(const ObjectID &generator_id) {
+  std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = actor_generator_backpressure_states_.find(generator_id);
+    if (it == actor_generator_backpressure_states_.end()) {
+      return false;
+    }
+    actor_metadata = it->second.actor_metadata;
+    actor_generator_backpressure_states_.erase(it);
+  }
+  if (actor_metadata) {
+    actor_metadata->Teardown();
+  }
+  return true;
+}
+
 void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto generator_id = ObjectID::FromBinary(request.generator_id());
-  auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
+  const auto generator_id = ObjectID::FromBinary(request.generator_id());
+  const auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
+  const auto worker_addr = request.worker_addr();
+  const auto reply_generator_id = generator_id;
+  const auto consumption_generator_id = generator_id;
   task_manager_->HandleReportGeneratorItemReturns(
       request,
       /*execution_signal_callback=*/
       [reply,
-       worker_id = std::move(worker_id),
-       generator_id = std::move(generator_id),
+       worker_id,
+       generator_id = reply_generator_id,
        send_reply_callback = std::move(send_reply_callback)](
           const Status &status, int64_t total_num_object_consumed) {
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
@@ -3270,7 +3324,67 @@ void CoreWorker::HandleReportGeneratorItemReturns(
 
         reply->set_total_num_object_consumed(total_num_object_consumed);
         send_reply_callback(status, nullptr, nullptr);
+      },
+      /*consumption_update_callback=*/
+      [this, worker_addr, generator_id = consumption_generator_id](
+          const Status &status, int64_t total_num_object_consumed) {
+        rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
+        update_request.set_generator_id(generator_id.Binary());
+        update_request.set_total_num_object_consumed(status.ok()
+                                                         ? total_num_object_consumed
+                                                         : -1);
+        auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
+        client->UpdateGeneratorBackpressureConsumed(
+            std::move(update_request),
+            [generator_id](
+                const Status &update_status,
+                const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+              if (!update_status.ok()) {
+                RAY_LOG(DEBUG).WithField(generator_id)
+                    << "Failed to update generator consumed progress: "
+                    << update_status;
+              }
+            });
       });
+}
+
+void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
+    rpc::UpdateGeneratorBackpressureConsumedRequest request,
+    rpc::UpdateGeneratorBackpressureConsumedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto generator_id = ObjectID::FromBinary(request.generator_id());
+  std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+  std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = actor_generator_backpressure_states_.find(generator_id);
+    if (it != actor_generator_backpressure_states_.end()) {
+      waiter = it->second.waiter;
+      actor_metadata = it->second.actor_metadata;
+    }
+  }
+
+  const bool teardown = request.total_num_object_consumed() < 0;
+  if (waiter && actor_metadata) {
+    const auto total_num_object_consumed =
+        teardown ? waiter->TotalObjectGenerated() : request.total_num_object_consumed();
+    waiter->OnObjectConsumed(total_num_object_consumed);
+    if (teardown) {
+      actor_metadata->Teardown();
+    } else {
+      actor_metadata->OnConsumed(total_num_object_consumed);
+    }
+
+    absl::MutexLock lock(&mutex_);
+    auto it = actor_generator_backpressure_states_.find(generator_id);
+    if (it != actor_generator_backpressure_states_.end() &&
+        (teardown || (it->second.task_finished &&
+                      it->second.waiter->TotalObjectConsumed() >=
+                          it->second.waiter->TotalObjectGenerated()))) {
+      actor_generator_backpressure_states_.erase(it);
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,

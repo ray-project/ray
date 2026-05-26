@@ -458,6 +458,13 @@ message ReportGeneratorItemReturnsReply {
   int64 total_num_object_consumed = 1;
 }
 
+message UpdateGeneratorBackpressureConsumedRequest {
+  bytes generator_id = 1;
+  int64 total_num_object_consumed = 2;
+}
+
+message UpdateGeneratorBackpressureConsumedReply {}
+
 message RegisterMutableObjectReaderRequest {
   // The object ID of the mutable object on the remote node (where the object is written).
   bytes writer_object_id = 1;
@@ -511,6 +518,12 @@ service CoreWorkerService {
   // Failure: Handles failures, TODO: Failure behavior needs more tests.
   rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
       returns (ReportGeneratorItemReturnsReply);
+
+  // The owner notifies an actor executor that a streaming-generator item was consumed.
+  // This is used for actor-wide generator backpressure, where report visibility and
+  // consumed-progress acknowledgements are separate.
+  rpc UpdateGeneratorBackpressureConsumed(UpdateGeneratorBackpressureConsumedRequest)
+      returns (UpdateGeneratorBackpressureConsumedReply);
 
   // The pubsub command batch request used by the subscriber.
   // Subscribe / unsubscribe commands to the publisher worker.

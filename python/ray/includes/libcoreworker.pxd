@@ -112,6 +112,7 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
         CActorTaskBackpressureMetadata(
                 shared_ptr[CActorWideGeneratorBackpressureWaiter] actor_waiter)
         CRayStatus ReserveSlot()
+        void ReleaseSlot()
         void OnReport(int64_t total)
         void Teardown()
 
@@ -334,6 +335,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             uint64_t attempt_number,
             shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
             shared_ptr[CActorTaskBackpressureMetadata] actor_metadata)
+        void MarkActorGeneratorBackpressureTaskFinished(
+            const CObjectID &generator_id)
+        c_bool TeardownActorGeneratorBackpressureTask(
+            const CObjectID &generator_id)
         shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 
         # Param output contains the usage string if successful.

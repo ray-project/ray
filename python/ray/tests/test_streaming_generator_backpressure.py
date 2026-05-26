@@ -449,6 +449,49 @@ def test_actor_generator_backpressure_single_task(shutdown_only):
     _drain_all([g2])
 
 
+def test_actor_generator_backpressure_task_completes_before_consumed(shutdown_only):
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(max_concurrency=1, _actor_generator_backpressure_num_objects=4)
+    class A:
+        def gen(self, rep, tag):
+            for i in range(2):
+                ray.get(rep.report.remote(tag, i))
+                yield i
+
+        def ping(self):
+            return "ok"
+
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    assert ray.get(a.ping.remote(), timeout=2) == "ok"
+
+    g2 = a.gen.remote(reporter, "2")
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    g3 = a.gen.remote(reporter, "3")
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("3")) == 0
+
+    assert ray.get(next(g1)) == 0
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("3")) == 1,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1, g2, g3])
+
+
 def test_actor_generator_backpressure_mt_actor(shutdown_only):
     """Two concurrent sync generator tasks; actor-wide cap 6; reclaim on drain."""
     ray.init(num_cpus=4)

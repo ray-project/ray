@@ -327,7 +327,9 @@ class TaskManager : public TaskManagerInterface {
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
-      const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
+      const ExecutionSignalCallback &execution_signal_callback,
+      const ExecutionSignalCallback &consumption_update_callback = nullptr)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -767,6 +769,11 @@ class TaskManager : public TaskManagerInterface {
   /// This data structure maintains the mapping of ObjectRefStreamID -> signal_callbacks
   absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
       ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
+
+  /// For actor-wide generator backpressure, report visibility is acknowledged
+  /// immediately and consumed progress is pushed separately to the executor.
+  absl::flat_hash_map<ObjectID, ExecutionSignalCallback>
+      ref_stream_consumption_update_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these

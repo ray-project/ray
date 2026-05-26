@@ -69,6 +69,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       ReportGeneratorItemReturnsRequest &&request,
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) = 0;
 
+  virtual void UpdateGeneratorBackpressureConsumed(
+      UpdateGeneratorBackpressureConsumedRequest &&request,
+      const ClientCallback<UpdateGeneratorBackpressureConsumedReply> &callback) = 0;
+
   // Lifecycle / control RPCs
   virtual void KillActor(const KillActorRequest &request,
                          const ClientCallback<KillActorReply> &callback) = 0;

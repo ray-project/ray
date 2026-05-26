@@ -73,8 +73,7 @@ void TaskGeneratorBackpressureWaiter::IncrementObjectGenerated() {
   num_object_reports_in_flight_++;
 }
 
-void TaskGeneratorBackpressureWaiter::HandleObjectReported(
-    int64_t total_objects_consumed) {
+void TaskGeneratorBackpressureWaiter::OnObjectReportAccepted() {
   absl::MutexLock lock(&mutex_);
   num_object_reports_in_flight_--;
   if (num_object_reports_in_flight_ < 0) {
@@ -86,12 +85,21 @@ void TaskGeneratorBackpressureWaiter::HandleObjectReported(
   if (num_object_reports_in_flight_ <= 0) {
     all_objects_reported_cond_var_.SignalAll();
   }
+}
 
+void TaskGeneratorBackpressureWaiter::OnObjectConsumed(int64_t total_objects_consumed) {
+  absl::MutexLock lock(&mutex_);
   total_objects_consumed_ = std::max(total_objects_consumed_, total_objects_consumed);
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed < backpressure_threshold_) {
     backpressure_cond_var_.SignalAll();
   }
+}
+
+void TaskGeneratorBackpressureWaiter::HandleObjectReported(
+    int64_t total_objects_consumed) {
+  OnObjectReportAccepted();
+  OnObjectConsumed(total_objects_consumed);
 }
 
 int64_t TaskGeneratorBackpressureWaiter::TotalObjectConsumed() const {
@@ -114,19 +122,36 @@ ActorWideGeneratorBackpressureWaiter::ActorWideGeneratorBackpressureWaiter(
 Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
     ActorTaskBackpressureMetadata &metadata) {
   absl::MutexLock lock(&mutex_);
-  while (total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
+  while (metadata.task_alive &&
+         total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
     backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
     auto status = check_signals_();
     if (!status.ok()) {
       return status;
     }
   }
+  if (!metadata.task_alive) {
+    return Status::OK();
+  }
   total_objects_generated_ += 1;
   metadata.per_task_generated += 1;
   return Status::OK();
 }
 
-void ActorWideGeneratorBackpressureWaiter::OnReportForTask(
+void ActorWideGeneratorBackpressureWaiter::ReleaseActorWideSlot(
+    ActorTaskBackpressureMetadata &metadata) {
+  absl::MutexLock lock(&mutex_);
+  if (!metadata.task_alive || metadata.per_task_generated <= metadata.per_task_consumed) {
+    return;
+  }
+  metadata.per_task_generated -= 1;
+  total_objects_generated_ -= 1;
+  if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
+    backpressure_cond_var_.SignalAll();
+  }
+}
+
+void ActorWideGeneratorBackpressureWaiter::OnConsumedForTask(
     ActorTaskBackpressureMetadata &metadata, int64_t total) {
   absl::MutexLock lock(&mutex_);
   if (!metadata.task_alive) {
@@ -176,8 +201,12 @@ Status ActorTaskBackpressureMetadata::ReserveSlot() {
   return actor_waiter->ReserveActorWideSlot(*this);
 }
 
-void ActorTaskBackpressureMetadata::OnReport(int64_t total) {
-  actor_waiter->OnReportForTask(*this, total);
+void ActorTaskBackpressureMetadata::ReleaseSlot() {
+  actor_waiter->ReleaseActorWideSlot(*this);
+}
+
+void ActorTaskBackpressureMetadata::OnConsumed(int64_t total) {
+  actor_waiter->OnConsumedForTask(*this, total);
 }
 
 void ActorTaskBackpressureMetadata::Teardown() { actor_waiter->TeardownTask(*this); }

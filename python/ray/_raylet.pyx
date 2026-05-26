@@ -1106,13 +1106,20 @@ cdef class StreamingGeneratorExecutionContext:
         # option `_actor_generator_backpressure_num_objects` is disabled
         # (or this is a non-actor task).
         shared_ptr[CActorTaskBackpressureMetadata] actor_backpressure_metadata
+        c_bool actor_backpressure_state_detached
 
     def __dealloc__(self):
-        # On any task exit (success, exception, ray.cancel, worker death),
-        # release the task's outstanding contribution to the actor-wide
-        # generator cap so subsequent tasks see the full budget.
-        if self.actor_backpressure_metadata.get() != NULL:
-            self.actor_backpressure_metadata.get().Teardown()
+        cdef c_bool state_found
+        if (
+            self.actor_backpressure_metadata.get() != NULL
+            and not self.actor_backpressure_state_detached
+        ):
+            state_found = (
+                CCoreWorkerProcess.GetCoreWorker()
+                .TeardownActorGeneratorBackpressureTask(self.generator_id)
+            )
+            if not state_found:
+                self.actor_backpressure_metadata.get().Teardown()
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1166,6 +1173,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
+        self.actor_backpressure_state_detached = False
 
         self.waiter = make_shared[CTaskGeneratorBackpressureWaiter](
             generator_backpressure_num_objects,
@@ -1330,6 +1338,12 @@ def _reserve_actor_generator_slot(
     check_status(status)
 
 
+def _release_actor_generator_slot(
+        StreamingGeneratorExecutionContext context):
+    with nogil:
+        context.actor_backpressure_metadata.get().ReleaseSlot()
+
+
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
@@ -1348,6 +1362,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     cdef:
         int64_t gen_index = 0
         CRayStatus return_status
+        c_bool completed_normally = False
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1375,6 +1390,9 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
                 gen_index += 1
 
             except StopIteration:
+                if context.actor_backpressure_metadata.get() != NULL:
+                    _release_actor_generator_slot(context)
+                completed_normally = True
                 break
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
@@ -1387,6 +1405,10 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     with nogil:
         return_status = context.waiter.get().WaitAllObjectsReported()
     check_status(return_status)
+    if completed_normally and context.actor_backpressure_metadata.get() != NULL:
+        CCoreWorkerProcess.GetCoreWorker().MarkActorGeneratorBackpressureTaskFinished(
+            context.generator_id)
+        context.actor_backpressure_state_detached = True
 
 
 async def execute_streaming_generator_async(
@@ -1414,6 +1436,7 @@ async def execute_streaming_generator_async(
     cdef:
         int64_t cur_generator_index = 0
         CRayStatus return_status
+        c_bool completed_normally = False
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1468,6 +1491,13 @@ async def execute_streaming_generator_async(
                 cur_generator_index += 1
 
             except StopAsyncIteration:
+                if context.actor_backpressure_metadata.get() != NULL:
+                    await loop.run_in_executor(
+                        executor,
+                        _release_actor_generator_slot,
+                        context,
+                    )
+                completed_normally = True
                 break
 
     except Exception as e:
@@ -1502,6 +1532,10 @@ async def execute_streaming_generator_async(
     with nogil:
         return_status = context.waiter.get().WaitAllObjectsReported()
     check_status(return_status)
+    if completed_normally and context.actor_backpressure_metadata.get() != NULL:
+        CCoreWorkerProcess.GetCoreWorker().MarkActorGeneratorBackpressureTaskFinished(
+            context.generator_id)
+        context.actor_backpressure_state_detached = True
 
 
 cdef create_generator_return_obj(

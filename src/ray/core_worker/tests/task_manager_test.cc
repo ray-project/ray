@@ -2889,10 +2889,9 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
-TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
-  // Actor-wide backpressure forces
-  // EffectiveStreamingGeneratorOwnerBackpressureThreshold() to 1 on the owner while the
-  // executor still uses the configured caps separately.
+TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumption) {
+  // Actor-wide backpressure acknowledges report visibility immediately while consumed
+  // progress is delivered through the separate consumption callback.
   auto spec = CreateActorStreamingGeneratorTaskHelper(
       /*generator_backpressure_num_objects=*/5,
       /*actor_generator_backpressure_num_objects=*/3);
@@ -2904,10 +2903,19 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
 
   auto data = GenerateRandomBuffer();
   int ack_count = 0;
+  int consumption_count = 0;
+  int64_t last_consumed = -1;
   auto bump_ack = [&ack_count](Status callback_status, int64_t /*num_objects_consumed*/) {
     ASSERT_TRUE(callback_status.ok());
     ack_count++;
   };
+  auto bump_consumption =
+      [&consumption_count, &last_consumed](Status callback_status,
+                                           int64_t num_objects_consumed) {
+        ASSERT_TRUE(callback_status.ok());
+        consumption_count++;
+        last_consumed = num_objects_consumed;
+      };
 
   auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
   auto req = GetIntermediateTaskReturn(
@@ -2917,8 +2925,9 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
       dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
-  ASSERT_EQ(ack_count, 0);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req, bump_ack, bump_consumption));
+  ASSERT_EQ(ack_count, 1);
+  ASSERT_EQ(consumption_count, 0);
 
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
@@ -2929,8 +2938,9 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
       dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
-  ASSERT_EQ(ack_count, 0);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req, bump_ack, bump_consumption));
+  ASSERT_EQ(ack_count, 2);
+  ASSERT_EQ(consumption_count, 0);
 
   ASSERT_TRUE(
       manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED));
@@ -2943,7 +2953,10 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
       dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
+  ASSERT_FALSE(
+      manager_.HandleReportGeneratorItemReturns(req, bump_ack, bump_consumption));
+  ASSERT_EQ(ack_count, 3);
+  ASSERT_EQ(consumption_count, 0);
 
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
@@ -2954,18 +2967,23 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstructionActorWideCap) {
       dynamic_return_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
-  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req, bump_ack));
-
-  int tries = 0;
-  while (ack_count < 4 && tries < 16) {
-    ObjectID obj_id;
-    ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
-    tries++;
-    if (!obj_id.IsNil()) {
-      reference_counter_->RemoveLocalReference(obj_id, nullptr);
-    }
-  }
+  ASSERT_FALSE(
+      manager_.HandleReportGeneratorItemReturns(req, bump_ack, bump_consumption));
   ASSERT_EQ(ack_count, 4);
+  ASSERT_EQ(consumption_count, 0);
+
+  ObjectID obj_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_FALSE(obj_id.IsNil());
+  reference_counter_->RemoveLocalReference(obj_id, nullptr);
+  ASSERT_EQ(consumption_count, 1);
+  ASSERT_EQ(last_consumed, 1);
+
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_FALSE(obj_id.IsNil());
+  reference_counter_->RemoveLocalReference(obj_id, nullptr);
+  ASSERT_EQ(consumption_count, 2);
+  ASSERT_EQ(last_consumed, 2);
 
   CompletePendingStreamingTask(
       spec, caller_address, /*num_streaming_generator_returns=*/2);

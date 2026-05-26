@@ -30,7 +30,8 @@ class ActorWideGeneratorBackpressureWaiter;
 /// unconsumed-object budget.
 ///
 /// Fields are guarded by the owning waiter's mutex_. Mutations go only through
-/// ReserveActorWideSlot, OnReportForTask, and TeardownTask on that waiter.
+/// ReserveActorWideSlot, ReleaseActorWideSlot, OnConsumedForTask, and TeardownTask
+/// on that waiter.
 struct ActorTaskBackpressureMetadata {
   std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_waiter;
   int64_t per_task_generated = 0;
@@ -43,7 +44,9 @@ struct ActorTaskBackpressureMetadata {
 
   // Thin forwarders for Cython and RPC callbacks.
   Status ReserveSlot();
-  void OnReport(int64_t total);
+  void ReleaseSlot();
+  void OnConsumed(int64_t total);
+  void OnReport(int64_t total) { OnConsumed(total); }
   void Teardown();
 };
 
@@ -60,6 +63,8 @@ class TaskGeneratorBackpressureWaiter {
   Status WaitAllObjectsReported();
 
   void IncrementObjectGenerated();
+  void OnObjectReportAccepted();
+  void OnObjectConsumed(int64_t total_objects_consumed);
   void HandleObjectReported(int64_t total_objects_consumed);
 
   int64_t TotalObjectConsumed() const;
@@ -86,7 +91,11 @@ class ActorWideGeneratorBackpressureWaiter {
                                        std::function<Status()> check_signals);
 
   Status ReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata);
-  void OnReportForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);
+  void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata);
+  void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);
+  void OnReportForTask(ActorTaskBackpressureMetadata &metadata, int64_t total) {
+    OnConsumedForTask(metadata, total);
+  }
   void TeardownTask(ActorTaskBackpressureMetadata &metadata);
 
   int64_t TotalObjectConsumed() const;

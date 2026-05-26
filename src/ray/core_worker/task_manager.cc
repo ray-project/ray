@@ -647,7 +647,9 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
 
   Status read_status;
   std::vector<ExecutionSignalCallback> callbacks_to_run;
+  ExecutionSignalCallback consumption_update_callback;
   int64_t signal_total_consumed = 0;
+  int64_t consumption_total_consumed = 0;
 
   {
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
@@ -661,10 +663,16 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
 
     /// If you could read the next item, signal the executor to resume
     /// if necessary.
-    if (read_status.ok()) {
+    if (read_status.ok() && !object_id_out->IsNil()) {
       auto total_generated = stream_it->second.TotalNumObjectWritten();
       auto total_consumed = stream_it->second.TotalNumObjectConsumed();
       auto total_unconsumed = total_generated - total_consumed;
+      auto consumption_it =
+          ref_stream_consumption_update_callbacks_.find(generator_id);
+      if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+        consumption_update_callback = consumption_it->second;
+        consumption_total_consumed = total_consumed;
+      }
       // Threshold is per-stream only (see TaskSpecification::
       // EffectiveStreamingGeneratorOwnerBackpressureThreshold). Actor-wide sharing is
       // enforced separately on the worker before each yield.
@@ -704,6 +712,9 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   for (const auto &execution_signal : callbacks_to_run) {
     execution_signal(Status::OK(), signal_total_consumed);
   }
+  if (consumption_update_callback) {
+    consumption_update_callback(Status::OK(), consumption_total_consumed);
+  }
   return read_status;
 }
 
@@ -735,7 +746,14 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
+    ref_stream_consumption_update_callbacks_.erase(generator_id);
     return true;
+  }
+
+  auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+  if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+    consumption_it->second(Status::NotFound("Stream is deleted."), -1);
+    ref_stream_consumption_update_callbacks_.erase(consumption_it);
   }
 
   // Remove any unconsumed refs from the stream metadata in-memory store.
@@ -808,7 +826,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
-    const ExecutionSignalCallback &execution_signal_callback) {
+    const ExecutionSignalCallback &execution_signal_callback,
+    const ExecutionSignalCallback &consumption_update_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -817,6 +836,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
+  bool has_actor_generator_backpressure = false;
 
   {
     absl::MutexLock lock(&mu_);
@@ -824,6 +844,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (it != submissible_tasks_.end()) {
       backpressure_threshold =
           it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
+      has_actor_generator_backpressure =
+          it->second.spec_.HasActorGeneratorBackpressure();
       if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
@@ -846,6 +868,17 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     // Stream has been already deleted. Do not handle it.
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
+  }
+  if (has_actor_generator_backpressure) {
+    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
+      return false;
+    }
+    if (consumption_update_callback) {
+      ref_stream_consumption_update_callbacks_[generator_id] =
+          consumption_update_callback;
+    }
   }
   size_t num_objects_written = 0;
 
@@ -883,7 +916,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
   if (stream_it->second.IsObjectConsumed(item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
+    if (has_actor_generator_backpressure && consumption_update_callback) {
+      consumption_update_callback(Status::OK(), total_consumed);
+    }
     return false;
+  }
+
+  if (has_actor_generator_backpressure) {
+    execution_signal_callback(Status::OK(), total_consumed);
+    return num_objects_written != 0;
   }
 
   // Otherwise, follow the regular backpressure logic.
