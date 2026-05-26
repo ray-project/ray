@@ -78,7 +78,7 @@ def _use_response_cache(func):
         cached_entry = response_cache.check_cache(thread_id, req_id)
         if cached_entry is not None:
             if isinstance(cached_entry, Exception):
-                # Original call errored, propogate error
+                # Original call errored, propagate error
                 context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
                 context.set_details(str(cached_entry))
                 raise cached_entry
