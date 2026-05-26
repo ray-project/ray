@@ -387,6 +387,9 @@ def test_backpressure_policy_tracking(ray_start_regular_shared):
         def can_add_input(self, op):
             return op is not o2  # Block o2
 
+        def get_block_reason(self, op):
+            return None
+
         def max_task_output_bytes_to_read(self, op):
             return None
 
@@ -398,6 +401,9 @@ def test_backpressure_policy_tracking(ray_start_regular_shared):
         def can_add_input(self, op):
             return True  # Allow all
 
+        def get_block_reason(self, op):
+            return None
+
         def max_task_output_bytes_to_read(self, op):
             return None
 
@@ -408,6 +414,9 @@ def test_backpressure_policy_tracking(ray_start_regular_shared):
 
         def can_add_input(self, op):
             return op is not o2  # Block o2
+
+        def get_block_reason(self, op):
+            return None
 
         def max_task_output_bytes_to_read(self, op):
             return None
