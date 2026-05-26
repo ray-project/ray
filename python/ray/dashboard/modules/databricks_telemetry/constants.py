@@ -73,22 +73,40 @@ class MetricSpec:
             )
 
 
-# CPU + memory + OOM signals for v1. Additions require code review
-# (see module docstring).
+# CPU + memory + GPU + OOM signals for v1, plus per-operator Ray Data
+# resource usage. Additions require code review (see module docstring).
 #
 # Counter-typed metrics ship as ``increase`` (events in the window) and
 # ``rate`` (events per second). Gauges ship as min/max/avg/p95/last
 # depending on what makes sense for the metric.
+#
+# Series cardinality: node-level metrics are emitted one series per
+# (instance, RayNodeType) by ReporterAgent; GPU metrics add a GpuIndex
+# label; Ray Data metrics carry (dataset, operator). All labels survive
+# ``avg_over_time``/``max_over_time`` aggregation and reach the
+# downstream consumer in ``samples[].attrs``.
 METRIC_ALLOWLIST: List[MetricSpec] = [
-    # CPU
-    MetricSpec("ray_node_cpu_utilization", "gauge", ("avg", "max", "p95")),
+    # --- Node CPU ----------------------------------------------------
+    MetricSpec("ray_node_cpu_utilization", "gauge", ("avg", "max", "min", "p95")),
     MetricSpec("ray_node_cpu_count", "gauge", ("last",)),
-    # Memory
-    MetricSpec("ray_node_mem_used", "gauge", ("avg", "max")),
-    MetricSpec("ray_node_mem_available", "gauge", ("avg", "min")),
+    # --- Node memory -------------------------------------------------
+    # Utilization % is derived downstream from used / (used + available).
+    # Ray does not export a single ``ray_node_mem_utilization`` gauge.
+    MetricSpec("ray_node_mem_used", "gauge", ("avg", "max", "min")),
+    MetricSpec("ray_node_mem_available", "gauge", ("avg", "max", "min")),
     MetricSpec("ray_node_mem_total", "gauge", ("last",)),
-    # OOMs — Ray's memory monitor proactively evicts workers when the node
-    # is above the memory threshold (src/ray/raylet/node_manager.cc:3160).
+    # --- Node GPU ----------------------------------------------------
+    # One series per (instance, GpuIndex, GpuDeviceName). Cluster-wide
+    # GPU utilization is recovered by averaging across the GpuIndex
+    # dimension downstream.
+    MetricSpec("ray_node_gpus_utilization", "gauge", ("avg", "max", "min")),
+    # GPU memory utilization % is derived downstream from
+    # gram_used / (gram_used + gram_available).
+    MetricSpec("ray_node_gram_used", "gauge", ("avg", "max", "min")),
+    MetricSpec("ray_node_gram_available", "gauge", ("avg", "max", "min")),
+    # --- OOMs --------------------------------------------------------
+    # Ray's memory monitor proactively evicts workers when the node is
+    # above the memory threshold (src/ray/raylet/node_manager.cc:3160).
     # ``Type`` label distinguishes Driver / Actor / Task / IdleWorker
     # evictions.
     MetricSpec("ray_memory_manager_worker_eviction", "counter", ("increase", "rate")),
@@ -100,4 +118,17 @@ METRIC_ALLOWLIST: List[MetricSpec] = [
         "counter",
         ("increase", "rate"),
     ),
+    # --- Ray Data per-operator resource usage ------------------------
+    # Source: python/ray/data/_internal/stats.py:294-303,289-293. Tag
+    # keys: ``(dataset, operator)``.
+    #
+    # GPU memory per operator is *not* exported to Prometheus by Ray
+    # Data — only in-process via ``DatasetStats``. Listed in the PR
+    # description as a known gap.
+    MetricSpec("ray_data_cpu_usage_cores", "gauge", ("avg", "max", "min")),
+    MetricSpec("ray_data_gpu_usage_cores", "gauge", ("avg", "max", "min")),
+    # Object-store bytes held per operator. This is the closest
+    # Prometheus proxy for per-operator memory; per-operator process
+    # RSS is not exported.
+    MetricSpec("ray_data_current_bytes", "gauge", ("avg", "max", "min")),
 ]
