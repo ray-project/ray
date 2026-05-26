@@ -1421,9 +1421,19 @@ void WorkerPool::StartNewWorker(
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info_.serialized_runtime_env();
 
-  if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+  // If the request has allocated instances or resource requirements, we need to
+  // start a new worker even if the runtime env is empty. This is to inject allocated
+  // accelerators IDs to worker processes.
+  if (!IsRuntimeEnvEmpty(serialized_runtime_env) ||
+      (pop_worker_request->allocated_instances_ &&
+       !pop_worker_request->allocated_instances_->IsEmpty()) ||
+      !pop_worker_request->resource_requirements_.IsEmpty()) {
+    std::string env_to_use = serialized_runtime_env;
+    if (IsRuntimeEnvEmpty(env_to_use)) {
+      env_to_use = "{}";
+    }
     GetOrCreateRuntimeEnv(
-        serialized_runtime_env,
+        env_to_use,
         pop_worker_request->runtime_env_info_.runtime_env_config(),
         pop_worker_request->job_id_,
         pop_worker_request->resource_requirements_,
