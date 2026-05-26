@@ -112,6 +112,15 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
+    # Map outputs are pipeline-internal shuffle shards: they will be
+    # consumed by the immediately-downstream ShuffleReduceOp and spill
+    # cleanly to disk if plasma fills up.  Excluding them from the
+    # framework's plasma budget prevents downstream ops (Reduce, Write)
+    # from being starved by transient shuffle intermediates — matching
+    # the actor-pool shuffle's behavior where shards live in process
+    # memory and never appear in plasma accounting.
+    exclude_from_plasma_accounting: bool = True
+
     def __init__(
         self,
         input_op: PhysicalOperator,

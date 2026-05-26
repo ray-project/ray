@@ -173,6 +173,17 @@ class ResourceManager:
                 return self._external_consumer_bytes
             return 0
 
+        # Opt-out for ops whose outputs are transient pipeline-internal
+        # intermediates (e.g. shuffle map shards).  Those outputs will be
+        # consumed by the immediately-downstream op within the same logical
+        # stage, and spill cleanly to disk if plasma fills up.  Counting
+        # them against the plasma budget would starve downstream ops (e.g.
+        # Write) that actually need to produce real outputs.
+        if getattr(op, "exclude_from_plasma_accounting", False):
+            self._mem_op_internal[op] = 0
+            self._mem_op_outputs[op] = 0
+            return 0
+
         # Operator's internal Object Store usage
         mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
 
