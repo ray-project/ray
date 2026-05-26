@@ -178,7 +178,7 @@ requests are routed in arrival order.
 Use the round-robin router when you want a predictable, even distribution
 across replicas and don't need queue-length or locality-aware decisions. It
 fits stateless workloads with roughly uniform per-request latency. Unlike
-the default power-of-two-chocies router, the round-robin routeer doesn't react
+the default power-of-two-choices router, the round-robin router doesn't react
 to queue depth and can pile up requests behind a slow replica before falling back.
 
 ### Example
@@ -201,7 +201,7 @@ read from the HTTP header named by `RAY_SERVE_SESSION_ID_HEADER_KEY` (default
 `x-session-id`), so the same session ID consistently maps to the same
 replica. Requests without that header fall back to a per-request internal ID
 and spread uniformly across replicas. If the chosen replica rejects (for
-example, due to backpressure from number of ongoing request), the router
+example, due to backpressure from the number of ongoing request), the router
 walks up to `num_fallback_replicas` clockwise successors on the ring. If
 those are also at capacity, the router sleeps with exponential backoff and
 retries the same primary and fallbacks until one accepts. When the replica
