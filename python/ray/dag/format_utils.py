@@ -26,38 +26,78 @@ def _get_indentation(num_spaces=4):
     return " " * num_spaces
 
 
+def _format_value(val) -> str:
+    if isinstance(val, DAGNode):
+        return str(val)
+    elif isinstance(val, dict):
+        if not val:
+            return "{}"
+        lines = []
+        indent = _get_indentation()
+        for k, v in val.items():
+            formatted_v = _format_value(v)
+            v_lines = formatted_v.split("\n")
+            if len(v_lines) == 1:
+                lines.append(f"{k}: {v_lines[0]},")
+            else:
+                lines.append(f"{k}: {v_lines[0]}")
+                for line in v_lines[1:]:
+                    lines.append(line)
+                lines[-1] += ","
+        indented_lines = [indent + line for line in lines]
+        return "{\n" + "\n".join(indented_lines) + "\n}"
+    elif isinstance(val, (list, tuple, set)):
+        # 1. Determine the brackets based on the type
+        if isinstance(val, list):
+            empty_val, open_b, close_b = "[]", "[", "]"
+        elif isinstance(val, tuple):
+            empty_val, open_b, close_b = "()", "(", ")"
+        else:  # set
+            empty_val, open_b, close_b = "set()", "{", "}"
+
+        # 2. Handle empty containers
+        if not val:
+            return empty_val
+
+        # 3. The unified formatting logic (only written once!)
+        lines = []
+        indent = _get_indentation()
+        for ele in val:
+            formatted_ele = _format_value(ele)
+            ele_lines = formatted_ele.split("\n")
+            for i, line in enumerate(ele_lines):
+                if i == len(ele_lines) - 1:
+                    lines.append(line + ",")
+                else:
+                    lines.append(line)
+
+        indented_lines = [indent + line for line in lines]
+        return f"{open_b}\n" + "\n".join(indented_lines) + f"\n{close_b}"
+    else:
+        return str(val)
+
+
 def _get_args_lines(bound_args):
     """Pretty prints bounded args of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
+    if not bound_args:
+        return "[]"
     indent = _get_indentation()
     lines = []
     for arg in bound_args:
-        if isinstance(arg, DAGNode):
-            node_repr_lines = str(arg).split("\n")
-            for node_repr_line in node_repr_lines:
-                lines.append(f"{indent}" + node_repr_line)
-        elif isinstance(arg, list):
-            for ele in arg:
-                node_repr_lines = str(ele).split("\n")
-                for node_repr_line in node_repr_lines:
-                    lines.append(f"{indent}" + node_repr_line)
-        elif isinstance(arg, dict):
-            for _, val in arg.items():
-                node_repr_lines = str(val).split("\n")
-                for node_repr_line in node_repr_lines:
-                    lines.append(f"{indent}" + node_repr_line)
-        # TODO: (jiaodong) Handle nested containers and other obj types
-        else:
-            lines.append(f"{indent}" + str(arg) + ", ")
+        formatted_arg = _format_value(arg)
+        arg_lines = formatted_arg.split("\n")
+        for i, line in enumerate(arg_lines):
+            if i == len(arg_lines) - 1:
+                lines.append(f"{indent}{line},")
+            else:
+                lines.append(f"{indent}{line}")
 
-    if len(lines) == 0:
-        args_line = "[]"
-    else:
-        args_line = "["
-        for args in lines:
-            args_line += f"\n{indent}{args}"
-        args_line += f"\n{indent}]"
+    args_line = "["
+    for line in lines:
+        args_line += f"\n{indent}{line}"
+    args_line += f"\n{indent}]"
 
     return args_line
 
@@ -66,43 +106,25 @@ def _get_kwargs_lines(bound_kwargs):
     """Pretty prints bounded kwargs of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
-    # TODO: (jiaodong) Nits, we're missing keys and indentation was a bit off.
     if not bound_kwargs:
         return "{}"
     indent = _get_indentation()
     kwargs_lines = []
     for key, val in bound_kwargs.items():
-        if isinstance(val, DAGNode):
-            node_repr_lines = str(val).split("\n")
-            for index, node_repr_line in enumerate(node_repr_lines):
-                if index == 0:
-                    kwargs_lines.append(
-                        f"{indent}{key}:" + f"{indent}" + node_repr_line
-                    )
-                else:
-                    kwargs_lines.append(f"{indent}{indent}" + node_repr_line)
-
-        elif isinstance(val, list):
-            for ele in val:
-                node_repr_lines = str(ele).split("\n")
-                for node_repr_line in node_repr_lines:
-                    kwargs_lines.append(f"{indent}" + node_repr_line)
-        elif isinstance(val, dict):
-            for _, inner_val in val.items():
-                node_repr_lines = str(inner_val).split("\n")
-                for node_repr_line in node_repr_lines:
-                    kwargs_lines.append(f"{indent}" + node_repr_line)
-        # TODO: (jiaodong) Handle nested containers and other obj types
+        formatted_val = _format_value(val)
+        val_lines = formatted_val.split("\n")
+        if len(val_lines) == 1:
+            kwargs_lines.append(f"{indent}{key}: {val_lines[0]},")
         else:
-            kwargs_lines.append(val)
+            kwargs_lines.append(f"{indent}{key}: {val_lines[0]}")
+            for line in val_lines[1:]:
+                kwargs_lines.append(f"{indent}{line}")
+            kwargs_lines[-1] += ","
 
-    if len(kwargs_lines) > 0:
-        kwargs_line = "{"
-        for line in kwargs_lines:
-            kwargs_line += f"\n{indent}{line}"
-        kwargs_line += f"\n{indent}}}"
-    else:
-        kwargs_line = "{}"
+    kwargs_line = "{"
+    for line in kwargs_lines:
+        kwargs_line += f"\n{indent}{line}"
+    kwargs_line += f"\n{indent}}}"
 
     return kwargs_line
 
