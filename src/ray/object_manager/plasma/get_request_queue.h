@@ -20,7 +20,7 @@
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/connection.h"
-#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
 struct GetRequest;
@@ -72,11 +72,11 @@ struct GetRequest {
 class GetRequestQueue {
  public:
   GetRequestQueue(instrumented_io_context &io_context,
-                  IObjectLifecycleManager &object_lifecycle_mgr,
+                  IObjectLifecycleManager &object_lifecycle_manager,
                   ObjectReadyCallback object_callback,
                   AllObjectReadyCallback all_objects_callback)
       : io_context_(io_context),
-        object_lifecycle_mgr_(object_lifecycle_mgr),
+        object_lifecycle_manager_(object_lifecycle_manager),
         object_satisfied_callback_(object_callback),
         all_objects_satisfied_callback_(all_objects_callback) {}
 
@@ -126,7 +126,7 @@ class GetRequestQueue {
   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_;
 
-  IObjectLifecycleManager &object_lifecycle_mgr_;
+  IObjectLifecycleManager &object_lifecycle_manager_;
 
   ObjectReadyCallback object_satisfied_callback_;
   AllObjectReadyCallback all_objects_satisfied_callback_;

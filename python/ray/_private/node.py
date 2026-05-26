@@ -586,11 +586,14 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
-                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
-            ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
+            ).resolve(
+                is_head=self.head,
+                node_ip_address=self.node_ip_address,
+                resource_isolation_config=self.resource_isolation_config,
+            )
         return self._resource_and_label_spec
 
     @property
