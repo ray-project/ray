@@ -22,16 +22,14 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.serve.config import RequestRouterConfig
+from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 
 logger = get_logger(__name__)
 
 
-def _get_dynamo_direct_streaming_router_config(
-    llm_config: LLMConfig,
-) -> Optional[RequestRouterConfig]:
+def _get_dynamo_direct_streaming_actor_config(llm_config: LLMConfig) -> Optional[dict]:
     kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config") or {}
     if kv_transfer_config.get("kv_connector") != "DynamoConnector":
         return None
@@ -42,7 +40,7 @@ def _get_dynamo_direct_streaming_router_config(
         return None
 
     from ray.llm._internal.serve.routing_policies.dynamo_kv import (
-        DynamoKVRequestRouter,
+        DYNAMO_KV_ROUTER_DEPLOYMENT_ACTOR_NAME,
     )
 
     model_loading_config = llm_config.model_loading_config
@@ -50,23 +48,67 @@ def _get_dynamo_direct_streaming_router_config(
     if not isinstance(model_source, str):
         model_source = llm_config.model_id
 
-    router_kwargs = {
+    deployment_actor_name = dynamo_config.get(
+        "deployment_actor_name", DYNAMO_KV_ROUTER_DEPLOYMENT_ACTOR_NAME
+    )
+    dynamo_config["deployment_actor_name"] = deployment_actor_name
+
+    actor_config = {
         **dynamo_config,
         "model_id": llm_config.model_id,
         "model_source": model_source,
         "tokenizer_source": model_loading_config.tokenizer_source,
         "trust_remote_code": llm_config.engine_kwargs.get("trust_remote_code", False),
     }
-    actor_name = router_kwargs.get("actor_name")
-    if actor_name is None:
-        actor_name = f"serve-dynamo-kv-router:{llm_config.model_id}"
-        router_kwargs["actor_name"] = actor_name
-        dynamo_config["actor_name"] = actor_name
+    actor_config.pop("actor_name", None)
+    return actor_config
+
+
+def _get_dynamo_direct_streaming_router_config(
+    llm_config: LLMConfig,
+) -> Optional[RequestRouterConfig]:
+    actor_config = _get_dynamo_direct_streaming_actor_config(llm_config)
+    if actor_config is None:
+        return None
+
+    from ray.llm._internal.serve.routing_policies.dynamo_kv import (
+        DynamoKVRequestRouter,
+    )
 
     return RequestRouterConfig(
         request_router_class=DynamoKVRequestRouter,
-        request_router_kwargs=router_kwargs,
+        request_router_kwargs={
+            "deployment_actor_name": actor_config["deployment_actor_name"],
+        },
     )
+
+
+def _get_dynamo_direct_streaming_deployment_actor(
+    llm_config: LLMConfig,
+) -> Optional[DeploymentActorConfig]:
+    actor_config = _get_dynamo_direct_streaming_actor_config(llm_config)
+    if actor_config is None:
+        return None
+
+    from ray.llm._internal.serve.routing_policies.dynamo_kv import (
+        DynamoKVRouterActor,
+    )
+
+    actor_options = {"num_cpus": 0}
+    actor_options.update(actor_config.pop("deployment_actor_options", {}))
+
+    return DeploymentActorConfig(
+        name=actor_config["deployment_actor_name"],
+        actor_class=DynamoKVRouterActor,
+        init_args=(actor_config,),
+        actor_options=actor_options,
+    )
+
+
+def _deployment_actor_name(actor_config: Union[dict, DeploymentActorConfig]) -> str:
+    if isinstance(actor_config, dict):
+        return actor_config["name"]
+    return actor_config.name
 
 
 def _get_direct_streaming_serve_options(
@@ -74,6 +116,7 @@ def _get_direct_streaming_serve_options(
     override_serve_options: Optional[dict] = None,
 ) -> dict:
     override_serve_options = dict(override_serve_options or {})
+    dynamo_deployment_actor = _get_dynamo_direct_streaming_deployment_actor(llm_config)
     if (
         "request_router_config" not in llm_config.deployment_config
         and "request_router_config" not in override_serve_options
@@ -85,6 +128,19 @@ def _get_direct_streaming_serve_options(
                 request_router_class=RoundRobinRouter,
             )
         )
+    if dynamo_deployment_actor is not None:
+        deployment_actors = list(
+            override_serve_options.get(
+                "deployment_actors",
+                llm_config.deployment_config.get("deployment_actors") or [],
+            )
+        )
+        if not any(
+            _deployment_actor_name(actor) == dynamo_deployment_actor.name
+            for actor in deployment_actors
+        ):
+            deployment_actors.append(dynamo_deployment_actor)
+        override_serve_options["deployment_actors"] = deployment_actors
     return override_serve_options
 
 

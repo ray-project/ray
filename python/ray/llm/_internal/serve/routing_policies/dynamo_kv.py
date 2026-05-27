@@ -6,8 +6,12 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import ray
+from ray import serve
 from ray.serve._private.common import DeploymentID, ReplicaID
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
@@ -18,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 _DYNAMO_ROUTE_TOKEN_HEADER = "x-ray-serve-dynamo-route-token"
+DYNAMO_KV_ROUTER_DEPLOYMENT_ACTOR_NAME = "dynamo_kv_router"
 
 
 def _maybe_remote_call(actor: Any, method_name: str, *args, **kwargs):
@@ -224,23 +229,47 @@ class DynamoKVRequestRouter(PowerOfTwoChoicesRequestRouter):
     def initialize_state(self, **kwargs):
         self._selection_metadata: Dict[str, Dict[ReplicaID, Dict[str, Any]]] = {}
         self._actor = kwargs.get("actor")
-        if self._actor is None:
-            actor_name = kwargs.get("actor_name") or self._default_actor_name(
-                self._deployment_id
-            )
-            try:
-                self._actor = ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                self._actor = DynamoKVRouterActor.options(
-                    name=actor_name,
-                    namespace=SERVE_NAMESPACE,
-                    lifetime="detached",
-                ).remote(kwargs)
+        self._deployment_actor_name = kwargs.get(
+            "deployment_actor_name", DYNAMO_KV_ROUTER_DEPLOYMENT_ACTOR_NAME
+        )
+        self._deployment_actor_full_name: Optional[str] = None
 
-    @staticmethod
-    def _default_actor_name(deployment_id: DeploymentID) -> str:
-        app = deployment_id.app_name or "default"
-        return f"serve-dynamo-kv-router:{app}:{deployment_id.name}"
+    def _try_discover_deployment_actor(self) -> bool:
+        if self._actor is not None:
+            return True
+
+        if self._deployment_actor_full_name is not None:
+            try:
+                self._actor = ray.get_actor(
+                    self._deployment_actor_full_name, namespace=SERVE_NAMESPACE
+                )
+                return True
+            except Exception:
+                self._deployment_actor_full_name = None
+
+        prefix = (
+            f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}"
+            f"{self._deployment_id.app_name}::"
+            f"{self._deployment_id.name}::"
+        )
+        suffix = f"::{self._deployment_actor_name}"
+
+        try:
+            actors = ray.util.list_named_actors(all_namespaces=True)
+            for actor_info in actors:
+                if actor_info["namespace"] != SERVE_NAMESPACE:
+                    continue
+                name = actor_info["name"]
+                if name.startswith(prefix) and name.endswith(suffix):
+                    self._actor = ray.get_actor(name, namespace=SERVE_NAMESPACE)
+                    self._deployment_actor_full_name = name
+                    return True
+        except Exception:
+            logger.exception(
+                "Failed to discover Dynamo KV deployment actor "
+                f"{self._deployment_actor_name!r}."
+            )
+        return False
 
     async def choose_replicas(
         self,
@@ -265,6 +294,8 @@ class DynamoKVRequestRouter(PowerOfTwoChoicesRequestRouter):
             return await super().choose_replicas(candidate_replicas, pending_request)
 
         try:
+            if not self._try_discover_deployment_actor():
+                return await super().choose_replicas(candidate_replicas, pending_request)
             rankings = await _resolve_maybe_ref(
                 _maybe_remote_call(
                     self._actor,
@@ -317,15 +348,15 @@ class DynamoKVRequestRouter(PowerOfTwoChoicesRequestRouter):
 
 
 class DynamoDirectStreamingLifecycleMiddleware:
-    def __init__(self, app, actor_name: str):
+    def __init__(self, app, actor_name: str, actor: Any = None):
         self._app = app
         self._actor_name = actor_name
-        self._actor = None
+        self._actor = actor
 
     def _get_actor(self):
-        if self._actor is None:
-            self._actor = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-        return self._actor
+        if self._actor is not None:
+            return self._actor
+        return serve.get_deployment_actor(self._actor_name)
 
     @staticmethod
     def _route_token_from_scope(scope: Dict[str, Any]) -> Optional[str]:

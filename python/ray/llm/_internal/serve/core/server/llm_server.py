@@ -230,20 +230,17 @@ class LLMServer(LLMServerProtocol):
 
         extra_config = kv_transfer_config.get("kv_connector_extra_config", {})
         dynamo_config = extra_config.get("ray_serve_dynamo", {})
-        actor_name = dynamo_config.get("actor_name")
-        if actor_name is None:
-            try:
-                ctx = serve.get_replica_context()
-                actor_name = (
-                    f"serve-dynamo-kv-router:{ctx.app_name}:{ctx.deployment}"
-                )
-            except Exception:
-                actor_name = None
+        if not dynamo_config.get("endpoint"):
+            return app
 
         from ray.llm._internal.serve.routing_policies.dynamo_kv import (
+            DYNAMO_KV_ROUTER_DEPLOYMENT_ACTOR_NAME,
             wrap_with_dynamo_direct_streaming_lifecycle,
         )
 
+        actor_name = dynamo_config.get(
+            "deployment_actor_name", DYNAMO_KV_ROUTER_DEPLOYMENT_ACTOR_NAME
+        )
         return wrap_with_dynamo_direct_streaming_lifecycle(app, actor_name)
 
     def _init_multiplex_loader(
