@@ -53,7 +53,7 @@ class MockWorker : public WorkerInterface {
 
   void GrantLease(const RayLease &granted_lease) override {
     lease_ = granted_lease;
-    lease_grant_time_ = absl::Now();
+    last_lease_grant_time_ = absl::Now();
     root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
@@ -66,7 +66,9 @@ class MockWorker : public WorkerInterface {
 
   const RayLease &GetGrantedLease() const override { return lease_.value(); }
 
-  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return last_lease_grant_time_;
+  };
 
   std::optional<bool> GetIsGpu() const override { return is_gpu_; }
 
@@ -198,7 +200,7 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   std::optional<RayLease> lease_;
-  absl::Time lease_grant_time_;
+  std::optional<absl::Time> last_lease_grant_time_;
   int runtime_env_hash_;
   LeaseID lease_id_;
   JobID job_id_;

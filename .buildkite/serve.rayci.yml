@@ -303,4 +303,21 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
         --python-version 3.10 --build-name servebuild-py3.10
+        --except-tags gpu
     depends_on: servebuild-multipy(python=3.10)
+
+  - label: ":ray-serve: serve: flaky gpu tests"
+    key: serve_flaky_gpu_tests
+    tags:
+      - serve
+      - python
+      - gpu
+      - flaky
+      - skip-on-premerge
+    instance_type: gpu
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests
+        --python-version 3.10 --build-name docgpubuild-py3.10
+        --only-tags gpu
+    depends_on: docgpubuild
