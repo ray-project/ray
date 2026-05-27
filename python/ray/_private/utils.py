@@ -293,7 +293,6 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
-
     return original_visible_accelerator_env_vars
 
 
