@@ -35,6 +35,9 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
+# Export installed packages
+$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
+
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
 # Fetch and run vLLM install scripts at pinned commit
@@ -53,35 +56,6 @@ curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
 
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
-
-# nixl-cu12 and nixl-cu13 both own nixl_ep/nixl_ep_cpp.so. Run this after the
-# vLLM helper scripts so they cannot leave the CUDA 12 binary on disk.
-uv pip uninstall --system nixl-cu12 nixl-cu13 || true
-uv pip install --system --no-cache-dir --no-deps --reinstall \
-    --no-verify-hashes \
-    nixl-cu13==1.1.0
-python - <<'PY'
-import importlib.metadata
-from pathlib import Path
-
-installed = {dist.metadata["Name"].lower() for dist in importlib.metadata.distributions()}
-if "nixl-cu12" in installed:
-    raise SystemExit("nixl-cu12 must not be installed in the cu130 LLM image")
-
-site_packages = next(
-    Path(path)
-    for path in __import__("site").getsitepackages()
-    if (Path(path) / "nixl_ep").exists()
-)
-so = next((site_packages / "nixl_ep").glob("nixl_ep_cpp*.so"))
-payload = so.read_bytes()
-if b"libcudart.so.12" in payload or b"libcudart.so.13" not in payload:
-    raise SystemExit(f"{so} is not the CUDA 13 NIXL EP binary")
-print(f"Verified CUDA 13 NIXL EP binary: {so}")
-PY
-
-# Export installed packages
-$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean

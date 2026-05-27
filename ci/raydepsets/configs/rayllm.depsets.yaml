@@ -13,11 +13,15 @@ build_arg_sets:
   append_flags:
     - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
-    # Omit nixl-cu12 from the compiled lockfiles. nixl-cu12 and nixl-cu13 1.x
-    # wheels both install a top-level nixl_ep/ package with an identically
-    # named nixl_ep_cpp.so but different libcudart requirements; installing
-    # both lets the cu12 binary win the file race and breaks vLLM's eager
-    # `import nixl_ep` on the cu130 image.
+    # Omit the nixl meta-package and the nixl-cu12 binary wheel from the
+    # compiled lockfiles. nixl-cu12 and nixl-cu13 1.x wheels both install a
+    # top-level nixl_ep/ package with an identically named nixl_ep_cpp.so but
+    # different libcudart requirements; if both wheels are present the cu12
+    # binary wins the file race and breaks vLLM's eager `import nixl_ep` on
+    # the cu130 image. The nixl meta-package's METADATA requires both cu12
+    # and cu13 variants, so excluding the meta keeps the resolver from
+    # reintroducing nixl-cu12 transitively.
+    - --unsafe-package nixl
     - --unsafe-package nixl-cu12
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${CUDA_CODE}
