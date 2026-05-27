@@ -1,13 +1,11 @@
 # flake8: noqa
 
 # __begin_deploy_app_with_uniform_request_router__
-import requests
 from ray import serve
 from ray.serve.request_router import ReplicaID
 import time
 from collections import defaultdict
 from ray.serve.context import _get_internal_replica_context
-from starlette.requests import Request
 from typing import Any, Dict
 from ray.serve.config import RequestRouterConfig
 
@@ -126,6 +124,9 @@ print(f"Response from RoundRobinRouterApp: {response}")
 
 
 # __begin_deploy_app_with_consistent_hash_router__
+import requests
+from starlette.requests import Request
+
 @serve.deployment(
     request_router_config=RequestRouterConfig(
         request_router_class=(
