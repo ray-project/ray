@@ -25,6 +25,7 @@ Memory is a limited resource. When a process requests memory and the OS fails to
 by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. This routine is called the `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_.
 
 For Ray, the Linux out-of-memory (OOM) killer kills Ray processes without the control plane noticing it. This can cause the following problems:
+
 1. The Linux OOM killer indiscriminately kills processes based on memory footprint.
    To Ray, this behavior can result in the significant loss of progress and in some scenarios, the death of critical 
    Ray components, leading to node deaths.
@@ -40,8 +41,10 @@ Out of memory errors can be monitored on the Ray Dashboard via the Ray OOM Kills
 The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer.
 The Unexpected System Level Worker Failures panel shows the number of workers that unexpectedly failed. These are typically
 caused by the Linux out-of-memory killer (correlate with memory usage metrics to confirm).
+
 .. image:: ../../images/ray-oom-kills.png
     :align: center
+
 .. image:: ../../images/unexpected-system-level-worker-failures.png
     :align: center
 
@@ -76,6 +79,7 @@ Note that the log's new lines are delimited by ``;`` instead of ``\n`` to make g
 The example log below has ``;`` replaced with ``\n`` for readability.
 
 .. code-block:: bash
+
   Task hungry_hippo failed due to oom. There are infinite oom retries remaining, so the task will be retried. Error: 2 worker(s) were killed due to the node running low on memory. Memory on the node (IP: <ip address>, ID: 92edc4e97e4dac3cee61126133ee7ab6d0a2ee73803623d24a02979d) was 110.69GB / 124.35GB (0.890161)
   OOM kill reason: user cgroup memory upper bound was met or exceeded
   Object store memory usage: [- objects spillable: 0

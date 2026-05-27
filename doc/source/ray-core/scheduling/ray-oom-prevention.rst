@@ -89,12 +89,14 @@ As represented in the diagram above, the worker killing policy is as follows:
 Idle workers are prioritized for killing over active workers.
 
 **Idle Worker Policy:**
+
 1. Idle workers are prioritized for killing over workers running tasks or actors. Note that workers that have never executed any tasks or actors (i.e., cold start idle workers) are only considered for killing if their memory footprint exceeds the idle worker killing memory threshold. 
    Notice that we expect cold start idle workers to have a small memory footprint. If idle workers are observed to have a large per-worker memory footprint in the OOM logs, it likely indicates that the inherited dependencies from simply starting a new process within 
    Ray's userspace are too expensive. In this case, consider reducing the memory footprint of simply starting a new process within Ray's userspace.
 2. Finally, the worker with the largest memory footprint is prioritized for killing.
 
 **Workers with Lease Policy:**
+
 1. For workers running tasks or actors (i.e., active workers), retriable tasks are first prioritized (to maximize retry opportunities)
 2. Among the active workers with the same retriability, most recent workers are selected next (newest granted lease time)
 
