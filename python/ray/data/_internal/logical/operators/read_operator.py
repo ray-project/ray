@@ -270,6 +270,16 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
+    # Driver-time estimate of the total in-memory dataset size, in bytes.
+    # Populated by ``_read_datasource_v2`` from the planning-time file
+    # sample (no per-path listing — extrapolated as
+    # ``avg_in_memory_per_sampled_file * num_buckets``). Surfaced via
+    # :meth:`infer_metadata` so hash-shuffle aggregator memory sizing
+    # (``HashShufflingOperatorBase._get_default_aggregator_ray_remote_args``)
+    # sees a non-None ``size_bytes`` and avoids its conservative
+    # ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` (1 GiB)
+    # fallback that OOMs big joins.
+    estimated_size_bytes: Optional[int] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -316,15 +326,12 @@ class ReadFiles(
         return schema
 
     def infer_metadata(self) -> BlockMetadata:
-        """Return empty metadata; downstream callers fall back to materialization.
-
-        Prior ``ReadFiles`` versions reached into a driver-side file cache to
-        compute size hints. With listing owned by an upstream
-        ``ListFiles`` op, metadata-for-sizing is computed from the
-        materialized manifest at execution time — the logical op doesn't
-        try to pre-estimate.
-        """
-        return BlockMetadata(None, None, None, None)
+        return BlockMetadata(
+            num_rows=None,
+            size_bytes=self.estimated_size_bytes,
+            input_files=None,
+            exec_stats=None,
+        )
 
     def supports_projection_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (

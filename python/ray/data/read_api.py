@@ -618,6 +618,35 @@ def _read_datasource_v2(
             else shuffle
         )
 
+    # Sample-based dataset-size estimate. Surfaced via
+    # ``ReadFiles.infer_metadata`` so downstream consumers
+    # (notably ``HashShufflingOperatorBase._get_default_aggregator_ray_remote_args``,
+    # which currently caps aggregator memory at 1 GiB when ``size_bytes`` is
+    # missing) can budget for actual data volume instead of falling through
+    # to the "no estimate" path and OOMing on big joins.
+    #
+    # The estimate avoids per-path stat()s on huge datasets: we extrapolate
+    # from the already-collected ``sample`` (up to 16 files) using
+    #
+    #     avg_in_memory_per_file = (sum(sample.file_sizes) / len(sample))
+    #                              * encoding_ratio
+    #     estimated_size_bytes   = avg_in_memory_per_file * num_buckets
+    #
+    # ``num_buckets`` is the framework's target output parallelism
+    # (``override_num_blocks`` if set, else ``read_op_min_num_blocks``).
+    # It serves as a proxy for the number of read tasks the partitioner
+    # will create, so the formula reads as "typical file in-memory size
+    # × expected number of read tasks". Coarse, but an order-of-magnitude
+    # estimate is enough to unblock the shuffle path.
+    estimated_size_bytes: Optional[int] = None
+    if encoding_ratio is not None and len(sample) > 0:
+        sample_on_disk_total = int(sample.file_sizes.sum())
+        if sample_on_disk_total > 0:
+            avg_in_memory_per_file = (
+                sample_on_disk_total / len(sample)
+            ) * encoding_ratio
+            estimated_size_bytes = int(avg_in_memory_per_file * num_buckets)
+
     list_files_op = ListFiles(
         paths=list(datasource.paths),
         file_indexer=indexer,
@@ -639,6 +668,7 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        estimated_size_bytes=estimated_size_bytes,
         input_dependencies=[list_files_op],
     )
 

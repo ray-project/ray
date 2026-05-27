@@ -150,6 +150,30 @@ def test_read_parquet_v2_max_bucket_size_scales_with_num_blocks_per_read_task(
     )
 
 
+def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
+    """``ReadFiles.estimated_size_bytes`` is the sample-extrapolated total
+    in-memory size, and ``ReadFiles.infer_metadata().size_bytes`` surfaces
+    it so the hash-shuffle aggregator-memory path
+    (``_try_estimate_output_bytes`` -> ``_get_default_aggregator_ray_remote_args``)
+    sees a non-None ``size_bytes`` and skips the 1 GiB-per-aggregator fallback.
+    """
+    # A row count large enough that the Parquet encoding ratio sample
+    # returns a real ratio (not the default fallback). One file is enough —
+    # the estimator extrapolates via ``num_buckets``.
+    _write(tmp_path / "data.parquet", pa.table({"a": list(range(1024))}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=4)
+
+    read_files_op = ds._logical_plan.dag
+    assert isinstance(read_files_op, ReadFiles)
+    assert read_files_op.estimated_size_bytes is not None
+    assert read_files_op.estimated_size_bytes > 0
+    assert (
+        read_files_op.infer_metadata().size_bytes == read_files_op.estimated_size_bytes
+    )
+
+
 def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
