@@ -152,8 +152,12 @@ serve.run(ConsistentHashRouterApp.bind())
 
 # Clients pin a session to a replica by sending the same `x-session-id`
 # on every request.
-requests.get(
+response = requests.get(
     "http://localhost:8000/",
     headers={"x-session-id": "example-session-id"},
 )
+print(f"Response from ConsistentHashRouterApp: {response.text}")
+# Example output:
+#   Response from ConsistentHashRouterApp:
+#   Replica(id='...', deployment='ConsistentHashRouterApp', app='default')
 # __end_deploy_app_with_consistent_hash_router__
