@@ -771,6 +771,38 @@ def test_ingress_request_router_forward_body_gate_renders(
             assert "local FORWARD_BODY = false" in lua, lua
 
 
+def test_ingress_request_router_lua_forwards_dynamo_route_token(
+    haproxy_api_cleanup,
+):
+    backends = {
+        "llm": BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.1", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router", host="10.0.0.10", port=9000)
+            ],
+        ),
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+            backend_configs=backends,
+        )
+        lua_path = api._write_ingress_request_router_lua(list(backends.values()))
+        with open(lua_path) as f:
+            lua = f.read()
+
+    assert 'extract_string_field(response_body, "dynamo_route_token")' in lua
+    assert "x-ray-serve-dynamo-route-token" in lua
+    assert "req_set_header" in lua
+
+
 def _create_replica_server(port: int, replica_id_header: str):
     """Fake data-plane replica that echoes its identity in a response header."""
     app = FastAPI()
