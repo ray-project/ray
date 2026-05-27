@@ -28,7 +28,7 @@ from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
-from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
@@ -53,14 +53,7 @@ def _session_id_from_raw_request(
     if raw_request_info is None:
         return None
 
-    return next(
-        (
-            value
-            for key, value in raw_request_info.headers.items()
-            if _matches_session_id_header(key)
-        ),
-        None,
-    )
+    return session_id_from_headers(raw_request_info.headers)
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +188,7 @@ class PDOrchestratorMixin:
                 call_method: str,
                 raw_request: Optional[Request] = None,
             ) -> AsyncGenerator[Any, None]:
-                await self._get_model_id(body.model)
+                body.model = await self._get_model_id(body.model)
 
                 if isinstance(body, ChatCompletionRequest):
                     body = _sanitize_chat_completion_request(body)

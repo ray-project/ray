@@ -4,13 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from ray.llm._internal.serve.core.configs.openai_api_models import (
-    ChatCompletionRequest,
-    CompletionRequest,
-)
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ChatCompletionRequest,
+    CompletionRequest,
 )
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
@@ -334,9 +334,8 @@ class TestPDOrchestratorMixin:
         )
 
         prefill_request = PDOrchestratorMixin._prepare_prefill_request(request)
-        prefill_request_dict = prefill_request.model_dump()
 
-        assert prefill_request_dict["max_tokens"] == 1
+        assert prefill_request.max_tokens == 1
         assert prefill_request.max_completion_tokens == 1
         assert prefill_request.stream is False
         assert prefill_request.stream_options is None
@@ -344,19 +343,28 @@ class TestPDOrchestratorMixin:
         assert request.stream is True
 
     @pytest.mark.asyncio
-    async def test_decode_to_prefill_hop_preserves_session_id(self):
+    @pytest.mark.parametrize("method", ["completions", "chat"])
+    async def test_decode_to_prefill_hop_preserves_session_id(self, method):
         server = PDDecodeServer.__new__(PDDecodeServer)
-        server._prefill_handle = _FakePrefillHandle().options(stream=True)
+        server._prefill_handle = _FakePrefillHandle()
         server.engine = _FakeEngine()
         server._llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model")
         )
-        request = CompletionRequest(
-            model="test-model",
-            prompt="hello",
-            max_tokens=16,
-            stream=True,
-        )
+        if method == "chat":
+            request = ChatCompletionRequest(
+                model="test-model",
+                messages=[{"role": "user", "content": "hello"}],
+                max_completion_tokens=16,
+                stream=True,
+            )
+        else:
+            request = CompletionRequest(
+                model="test-model",
+                prompt="hello",
+                max_tokens=16,
+                stream=True,
+            )
         raw_request_info = RawRequestInfo(headers={SERVE_SESSION_ID: "session-a"})
 
         chunks = [
@@ -365,6 +373,7 @@ class TestPDOrchestratorMixin:
         ]
 
         assert chunks == ["decode-chunk"]
+        assert server._prefill_handle.calls[0]["method"] == method
         assert server._prefill_handle.calls[0]["session_id"] == "session-a"
         assert (
             server._prefill_handle.calls[0]["request"].kv_transfer_params[
@@ -389,6 +398,7 @@ class TestPDOrchestratorMixin:
         assert "/v1/chat/completions" in route_paths
         assert "/v1/completions" in route_paths
         assert "/v1/models" in route_paths
+        assert "/v1/models/{model:path}" in route_paths
         assert "/health" in route_paths
 
 

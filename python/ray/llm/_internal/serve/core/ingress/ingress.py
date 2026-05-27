@@ -76,7 +76,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
     get_lora_model_metadata,
 )
 from ray.llm._internal.serve.utils.server_utils import replace_prefix
-from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
@@ -528,14 +528,7 @@ class OpenAiIngress(DeploymentProtocol):
         # proxy.py so a `-`/`_` rewrite by an intermediate proxy doesn't
         # silently drop session affinity on this second hop.
         if raw_request is not None:
-            session_id = next(
-                (
-                    v
-                    for k, v in raw_request.headers.items()
-                    if _matches_session_id_header(k)
-                ),
-                None,
-            )
+            session_id = session_id_from_headers(raw_request.headers)
             if session_id:
                 model_handle = model_handle.options(session_id=session_id)
 
