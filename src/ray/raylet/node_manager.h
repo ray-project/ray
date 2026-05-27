@@ -786,6 +786,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ReleaseKillWorkerInProgress();
 
   /**
+   * @param process_memory_snapshot The snapshot of per-process memory usage
+   * for fetching the memory usage of the worker.
+   * @param worker The worker to create the kill details for.
+   * @return The detail message for the worker's memory usage.
+   */
+  std::string CreateWorkerMemoryUsageDetails(
+      const ProcessesMemorySnapshot &process_memory_snapshot,
+      const std::shared_ptr<WorkerInterface> &worker) const;
+
+  /**
    * @param workers_to_kill The workers to print the kill details for.
    * @param node_id The ID of the node.
    * @param system_memory_snapshot The snapshot of the system memory.
@@ -796,6 +806,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::string CreateOomKillMessageDetails(
       const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
           &workers_to_kill,
+      const std::vector<std::shared_ptr<WorkerInterface>> &all_workers,
       const NodeID &node_id,
       const MemoryUsageSnapshot &system_memory_snapshot,
       const std::string &object_store_memory_usage,

@@ -451,6 +451,90 @@ def test_filter_expression_display_names(ray_start_regular_shared):
     )
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "compute,concurrency,expected_size",
+    [
+        (None, None, None),
+        (None, 4, 4),
+    ],
+)
+def test_filter_expr_compute_resolution(
+    ray_start_regular_shared, compute, concurrency, expected_size
+):
+    """`filter(expr=...)` must honor `compute` and accept `concurrency` as
+    a deprecated legacy fallback, matching every other operator.
+
+    Before this fix, the expr branch silently dropped `compute=` and only
+    looked at `concurrency=`, which broke fusion with downstream operators
+    that set their compute strategy explicitly."""
+    from ray.data._internal.compute import TaskPoolStrategy
+
+    ds = ray.data.range(10)
+    filtered = ds.filter(expr=col("id") > 5, compute=compute, concurrency=concurrency)
+    filter_op = filtered._logical_plan.dag
+    assert isinstance(filter_op.compute, TaskPoolStrategy)
+    assert filter_op.compute.size == expected_size
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expr_compute_honors_taskpoolstrategy(ray_start_regular_shared):
+    """Passing a concrete TaskPoolStrategy through `compute=` must round-trip."""
+    from ray.data._internal.compute import TaskPoolStrategy
+
+    ds = ray.data.range(10)
+    filtered = ds.filter(expr=col("id") > 5, compute=TaskPoolStrategy(size=20))
+    filter_op = filtered._logical_plan.dag
+    assert isinstance(filter_op.compute, TaskPoolStrategy)
+    assert filter_op.compute.size == 20
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expr_concurrency_is_deprecated(ray_start_regular_shared, caplog):
+    """The legacy `concurrency=` argument still works on `filter(expr=...)`,
+    but must emit the deprecation warning like every other operator."""
+    import logging
+
+    # `ray.data` configures `propagate=False`, so caplog (which hooks the root
+    # logger) won't see the warning unless we attach its handler directly to
+    # the emitter.
+    util_logger = logging.getLogger("ray.data._internal.util")
+    util_logger.addHandler(caplog.handler)
+    prev_level = util_logger.level
+    util_logger.setLevel(logging.WARNING)
+    try:
+        ds = ray.data.range(10)
+        ds.filter(expr=col("id") > 5, concurrency=4)
+    finally:
+        util_logger.removeHandler(caplog.handler)
+        util_logger.setLevel(prev_level)
+
+    assert "``concurrency`` is deprecated" in caplog.text
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
+    """An ActorPoolStrategy with a predicate expression is misuse — there's
+    no state to maintain — and must raise a clear error."""
+    from ray.data._internal.compute import ActorPoolStrategy
+
+    ds = ray.data.range(10)
+    with pytest.raises(ValueError):
+        ds.filter(expr=col("id") > 5, compute=ActorPoolStrategy(size=2))
+
+
 if __name__ == "__main__":
     import sys
 
