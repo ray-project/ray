@@ -30,6 +30,7 @@ It also aims to preserve as much application progress as possible compared to th
 based on the time since the task started executing. However, the default memory monitoring system makes no promises.
 
 Starting from Ray 2.56, the memory monitoring system paired with resource isolation enabled will provide the following:
+
 - 0 kernel OOM kills (worker preserving) when resource isolation is enabled and system reserved memory is correctly configured to encompass the memory footprint of critical Ray system processes and other system overheads.
 - 0 Ray OOM kills under the above configuration and when good logical memory request is provided for tasks and actors.
 - 0 Node deaths due to memory contention when resource isolation is enabled and system reserved memory is correctly configured.
