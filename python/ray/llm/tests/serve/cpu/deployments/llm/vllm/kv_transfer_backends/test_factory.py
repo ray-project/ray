@@ -100,7 +100,7 @@ class TestKVConnectorBackendFactory:
 
     @pytest.mark.parametrize(
         "connector_name",
-        ["LMCacheConnectorV1", "NixlConnector", "MultiConnector"],
+        ["LMCacheConnectorV1", "NixlConnector", "MultiConnector", "DynamoConnector"],
     )
     def test_all_registered_backends_can_be_loaded(self, connector_name):
         """Test that all pre-registered backends can be loaded."""
