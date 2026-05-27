@@ -5,21 +5,28 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
 )
 
+_DEFAULT_SIDE_CHANNEL_PORT_START = 20000
+
 
 class NixlConnectorBackend(BaseConnectorBackend):
     def _set_side_channel_port(self):
         from vllm import envs as vllm_envs
-        from vllm.utils.network_utils import get_open_port
 
-        if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-            base_port: int = int(
-                self.llm_config.experimental_configs.get(
-                    "NIXL_SIDE_CHANNEL_PORT_BASE", get_open_port()
-                )
+        if vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+            return
+
+        # _compute_port_offset() is deterministic per replica (DP rank if set,
+        # else Serve replica rank * num_devices), so replicas within one
+        # deployment land on non-colliding ports. Operators running multiple
+        # PD deployments on a single node should set NIXL_SIDE_CHANNEL_PORT_BASE
+        # to non-overlapping ranges per deployment.
+        base_port = int(
+            self.llm_config.experimental_configs.get(
+                "NIXL_SIDE_CHANNEL_PORT_BASE", _DEFAULT_SIDE_CHANNEL_PORT_START
             )
-            # Use a deterministic rank-based offset (DP rank if set; else replica hash)
-            port = base_port + self._compute_port_offset()
-            os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+        )
+        port = base_port + self._compute_port_offset()
+        os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
     def _set_side_channel_host(self):
         from vllm import envs as vllm_envs
@@ -56,8 +63,8 @@ class NixlConnectorBackend(BaseConnectorBackend):
                 "that you are using an older version of vLLM."
             )
 
-        self._set_side_channel_port()
         self._set_side_channel_host()
+        self._set_side_channel_port()
 
         # We need to overwrite the engine_id to make it unique across replicas.
         engine_id = self.kv_transfer_config.get("engine_id", self._get_unique_suffix())
