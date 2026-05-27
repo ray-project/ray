@@ -1,0 +1,17 @@
+group: Post-release
+steps:
+  - block: "Trigger Cursor template upgrade workflow"
+    key: block-trigger-cursor-template-upgrade
+    depends_on: []
+
+  - label: "Trigger Cursor template upgrade workflow"
+    key: trigger-cursor-template-upgrade
+    depends_on:
+      - block-trigger-cursor-template-upgrade
+    instance_type: small_branch
+    commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
+      - export CURSOR_WEBHOOK_URL=$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-webhook-url --query SecretString --output text)
+      - curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"ray_version\":\"$$RAY_VERSION\",\"ray_commit\":\"$$RAY_COMMIT\"}"
