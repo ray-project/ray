@@ -618,7 +618,7 @@
 # 200 float32[32]) modeled after production reference data. Stresses
 # per-block BlockMetadataWithSchema propagation on the driver, which
 # dominates large-schema production workloads.
-- name: worker_scaling_{{num_workers}}_{{worker_type}}
+- name: worker_scaling_{{num_workers}}_{{worker_type}}_{{num_operators}}ops
   python: "3.10"
   frequency: weekly
   cluster:
@@ -640,6 +640,12 @@
     setup:
       num_workers: [500, 1000, 2000, 5000]
       worker_type: [actors, tasks]
+      # 1op: the original single-operator workload. 15ops: 15 chained
+      # map_batches operators sharing the worker pool (each gets
+      # num_workers // 15 workers). Exercises the per-iteration
+      # update_usages / _update_allocated_budgets cost which scales
+      # with N_ops.
+      num_operators: [1, 15]
 
   run:
     timeout: 2700
@@ -650,6 +656,7 @@
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
+      --num-operators {{num_operators}}
       --num-scalar-cols 200
       --num-array-cols 400
 
