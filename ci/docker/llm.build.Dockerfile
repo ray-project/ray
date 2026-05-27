@@ -20,11 +20,32 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
-# Force-reinstall nixl-cu13 so its nixl_ep/nixl_ep_cpp.so (linked against
-# libcudart.so.13) is the one on disk. nixl-cu12 and nixl-cu13 both ship a
-# top-level nixl_ep/ package with identically named binaries; if any prior
-# layer left the cu12 binary in site-packages, vLLM's `import nixl_ep` would
-# fail with `libcudart.so.12: cannot open shared object file` on cu130.
-pip install --no-deps --force-reinstall nixl-cu13==1.1.0
+if [[ "${RAY_CUDA_CODE}" == "cu130" ]]; then
+    # nixl-cu12 and nixl-cu13 both own nixl_ep/nixl_ep_cpp.so. Make the CUDA
+    # variant deterministic and fail the image build if the cu12 binary is left
+    # on disk.
+    pip uninstall -y nixl-cu12 nixl-cu13 || true
+    pip install --no-cache-dir --no-deps --force-reinstall nixl-cu13==1.1.0
+    python - <<'PY'
+import importlib.metadata
+from pathlib import Path
 
+installed = {dist.metadata["Name"].lower() for dist in importlib.metadata.distributions()}
+if "nixl-cu12" in installed:
+    raise SystemExit("nixl-cu12 must not be installed in the cu130 LLM image")
+
+site_packages = next(
+    Path(path)
+    for path in __import__("site").getsitepackages()
+    if (Path(path) / "nixl_ep").exists()
+)
+so = next((site_packages / "nixl_ep").glob("nixl_ep_cpp*.so"))
+payload = so.read_bytes()
+if b"libcudart.so.12" in payload or b"libcudart.so.13" not in payload:
+    raise SystemExit(f"{so} is not the CUDA 13 NIXL EP binary")
+print(f"Verified CUDA 13 NIXL EP binary: {so}")
+PY
+fi
+
+ENV VLLM_USE_FLASHINFER_SAMPLER=0
 EOF
