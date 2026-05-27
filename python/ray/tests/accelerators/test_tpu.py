@@ -342,5 +342,20 @@ def test_get_num_tpu_visible_chips_per_host():
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
 
 
+@pytest.mark.parametrize(
+    "visible_chips, accelerator_type, expected_limit",
+    [
+        (["0", "1"], "v6e-8", 2),          # v6e has 1 core per chip (2 chips -> 2 cores)
+        (["0", "1", "2", "3"], "tpu7x-16", 8), # tpu7x has 2 cores per chip (4 chips -> 8 cores)
+        (["0", "1"], "v4-8", 4),           # v4 has 2 cores per chip (2 chips -> 4 cores)
+        (["0", "1"], None, 4),             # fallback default (2 cores per chip)
+        ([], "tpu7x-16", 0),               # empty visible chips list
+    ],
+)
+def test_get_visible_accelerator_resource_limit(visible_chips, accelerator_type, expected_limit):
+    with patch("ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_pod_type", return_value=accelerator_type):
+        assert TPUAcceleratorManager.get_visible_accelerator_resource_limit(visible_chips, accelerator_type) == expected_limit
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

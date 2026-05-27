@@ -156,3 +156,22 @@ class AcceleratorManager(ABC):
             A dictionary mapping accelerator related label keys to values.
         """
         return None
+
+    @staticmethod
+    def get_visible_accelerator_resource_limit(
+        visible_ids: List[str],
+        accelerator_type: Optional[str] = None,
+    ) -> int:
+        """Get the logical resource limit based on visible IDs.
+
+        Examples where resource limit is not simply the length of visible IDs:
+        - For TPUs, one visible ID might represent multiple logical cores.
+
+        Args:
+            visible_ids: List of strings representing visible accelerator IDs.
+            accelerator_type: Optional string representing the accelerator type.
+
+        Returns:
+            The logical resource limit (e.g., number of logical cores).
+        """
+        return len(visible_ids)

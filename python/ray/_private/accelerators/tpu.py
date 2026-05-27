@@ -764,3 +764,36 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
         return tpu_labels
+
+    @staticmethod
+    def get_visible_accelerator_resource_limit(
+        visible_tpu_chips: List[str],
+        accelerator_type: Optional[str] = None,
+    ) -> int:
+        """For TPUs, each visible ID in TPU_VISIBLE_CHIPS represents a physical chip.
+        The logical TPU resource count (TensorCores) is:
+        len(visible_tpu_chips) * cores_per_chip.
+
+        Args:
+            visible_tpu_chips: List of strings representing visible TPU chips.
+            accelerator_type: Optional string representing the accelerator type.
+
+        Returns:
+            The logical TPU resource limit (TensorCores).
+        """
+        if not visible_tpu_chips:
+            return 0
+
+        if accelerator_type is None:
+            accelerator_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
+
+        if not accelerator_type:
+            return len(visible_tpu_chips) * DEFAULT_TPU_NUM_CORES_PER_CHIP
+
+        try:
+            cores_per_chip = get_tpu_cores_per_chip(accelerator_type)
+            return len(visible_tpu_chips) * cores_per_chip
+        except Exception:
+            return len(visible_tpu_chips) * DEFAULT_TPU_NUM_CORES_PER_CHIP
+
+

@@ -346,19 +346,26 @@ class ResourceAndLabelSpec:
         visible_accelerator_ids = (
             accelerator_manager.get_current_process_visible_accelerator_ids()
         )
+        accelerator_type = accelerator_manager.get_current_node_accelerator_type()
+
+        visible_limit = None
+        if visible_accelerator_ids is not None:
+            visible_limit = accelerator_manager.get_visible_accelerator_resource_limit(
+                visible_accelerator_ids, accelerator_type
+            )
 
         # Check that the number of accelerators that the raylet wants doesn't
         # exceed the amount allowed by visible accelerator ids.
         if (
             num_accelerators is not None
-            and visible_accelerator_ids is not None
-            and num_accelerators > len(visible_accelerator_ids)
+            and visible_limit is not None
+            and num_accelerators > visible_limit
         ):
             raise ValueError(
                 f"Attempting to start raylet with {num_accelerators} "
                 f"{accelerator_resource_name}, "
                 f"but {accelerator_manager.get_visible_accelerator_ids_env_var()} "
-                f"contains {visible_accelerator_ids}."
+                f"allows only up to {visible_limit} (parsed from visible IDs: {visible_accelerator_ids})."
             )
 
         if accelerator_resource_name == "GPU":
@@ -366,7 +373,6 @@ class ResourceAndLabelSpec:
         else:
             self.resources[accelerator_resource_name] = num_accelerators
 
-        accelerator_type = accelerator_manager.get_current_node_accelerator_type()
         if accelerator_type:
             self.resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 1
         additional_resources = (
@@ -405,7 +411,6 @@ class ResourceAndLabelSpec:
             self.object_store_memory = ray._private.utils.resolve_object_store_memory(
                 available_memory_bytes
             )
-
         memory = self.memory
         if memory is None:
             memory = available_memory_bytes - self.object_store_memory
@@ -420,7 +425,6 @@ class ResourceAndLabelSpec:
                         round(memory / 1e9, 2), int(100 * (memory / system_memory))
                     )
                 )
-
         self.memory = memory
 
     @staticmethod
@@ -463,11 +467,15 @@ class ResourceAndLabelSpec:
                     accelerator_manager.get_current_process_visible_accelerator_ids()
                 )
                 if visible_accelerator_ids is not None:
-                    num_accelerators = min(
-                        num_accelerators, len(visible_accelerator_ids)
+                    accelerator_type = accelerator_manager.get_current_node_accelerator_type()
+                    visible_limit = accelerator_manager.get_visible_accelerator_resource_limit(
+                        visible_accelerator_ids, accelerator_type
                     )
-
+                    num_accelerators = min(
+                        num_accelerators, visible_limit
+                    )
             if num_accelerators > 0:
                 return accelerator_manager, num_accelerators
-
         return None, 0
+
+
