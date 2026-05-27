@@ -446,6 +446,15 @@ class ResourceManager:
         )
 
     def get_eligible_ops(self) -> List[PhysicalOperator]:
+        """Ops currently receiving budget allocation.
+
+        Delegates to the active ``OpResourceAllocator``, which filters out
+        operators downstream of any unfinished blocking-materializing op
+        (e.g. shuffle map).  Falls back to a basic ``is_op_eligible`` check
+        when no allocator is configured.
+        """
+        if self._op_resource_allocator is not None:
+            return self._op_resource_allocator.get_eligible_ops()
         return [op for op in self._topology if self.is_op_eligible(op)]
 
     def _get_downstream_ineligible_ops(
@@ -609,7 +618,7 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
-    def _get_eligible_ops(self) -> List[PhysicalOperator]:
+    def get_eligible_ops(self) -> List[PhysicalOperator]:
         """Returns a list of operators eligible for allocation.
 
         Only operators upstream of the first non-completed *materializing* Operator,
@@ -697,7 +706,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
     def _update_reservation(self, limits: ExecutionResources):
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self.get_eligible_ops()
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
@@ -832,7 +841,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._update_reservation(limits)
 
         self._op_budgets.clear()
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
