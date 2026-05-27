@@ -2,8 +2,8 @@
 
 # KubeRay In-Place Pod Resizing (IPPR)
 
-This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.33+.
-IPPR allows the Ray Autoscaler to vertically resize running worker Pods (CPU and memory) without needing to restart them or launch new Pods, avoiding application disruption.
+This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.35+.
+IPPR allows the Ray Autoscaler to vertically resize running Pods (CPU and memory) to change the cluster capacity.
 
 ```{admonition} Alpha feature
 :class: warning
@@ -40,7 +40,7 @@ The Autoscaler's high-level behavior with IPPR enabled is:
 
 ## Prerequisites
 
-* **Kubernetes 1.33 or later.** In-Place Pod Resize is enabled by default starting in Kubernetes 1.33 ([beta](https://kubernetes.io/blog/2025/05/16/kubernetes-v1-33-in-place-pod-resize-beta/)) and graduated to GA in Kubernetes 1.35 ([blog post](https://kubernetes.io/blog/2025/12/19/kubernetes-v1-35-in-place-pod-resize-ga/)).
+* **Kubernetes 1.35 or later.** In-Place Pod Resize graduated to GA in Kubernetes 1.35 ([blog post](https://kubernetes.io/blog/2025/12/19/kubernetes-v1-35-in-place-pod-resize-ga/)).
 * **KubeRay v1.5.0 or later.**
 * **Ray Autoscaler V2** enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
 
@@ -68,7 +68,7 @@ Enable IPPR by setting the `ray.io/ippr` annotation on the RayCluster custom res
 
 ### Validation rules
 
-In addition to the schema above, the Ray Autoscaler validates the following requirements when IPPR is enabled for a worker group. If validation fails, the Autoscaler raises an error during reconciliation (visible in the head Pod logs and via `ray status`) and will refuse to launch worker Pods for the misconfigured group until the RayCluster is updated accordingly.
+In addition to the schema above, the Ray Autoscaler validates the following requirements when IPPR is enabled for a worker group. If validation fails, the Autoscaler raises an error during reconciliation (visible in the autoscaler logs in the head Pod) and will refuse to launch worker Pods for the misconfigured group until the RayCluster is updated accordingly.
 
 1. **No CPU/memory in `rayStartParams`.** The corresponding worker group must not set `num-cpus` or `memory` in `rayStartParams`. Hard-coding logical resources there would cause Ray's view of the node's capacity to drift from the Pod's physical resources after a resize.
 2. **CPU and memory requests are required.** The Ray container in the worker group must specify both `cpu` and `memory` under `resources.requests`.
