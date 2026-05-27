@@ -49,6 +49,25 @@ class PowerOfTwoChoicesRequestRouter(
     capped at (2 * num_replicas).
     """
 
+    def _choose_two_replicas_from_list(
+        self, candidates: List[RunningReplica]
+    ) -> List[List[RunningReplica]]:
+        n = len(candidates)
+        if n == 0:
+            return []
+        if n == 1:
+            return [[candidates[0]]]
+        if n == 2:
+            if random.getrandbits(1):
+                return [[candidates[0], candidates[1]]]
+            return [[candidates[1], candidates[0]]]
+
+        i = random.randrange(n)
+        j = random.randrange(n - 1)
+        if j >= i:
+            j += 1
+        return [[candidates[i], candidates[j]]]
+
     async def choose_replicas(
         self,
         candidate_replicas: List[RunningReplica],
@@ -70,14 +89,22 @@ class PowerOfTwoChoicesRequestRouter(
             candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request,
             )
-        else:
+        elif self._prefer_local_node_routing or self._prefer_local_az_routing:
             # Get candidates for locality preference.
             candidate_replica_ids = self.apply_locality_routing(
                 pending_request=pending_request,
             )
+        else:
+            if pending_request is not None:
+                pending_request.routing_context.should_backoff = True
+
+            return self._choose_two_replicas_from_list(candidate_replicas)
 
         if not candidate_replica_ids:
             return []
+
+        if candidate_replica_ids is self._replica_id_set:
+            return self._choose_two_replicas_from_list(candidate_replicas)
 
         # Optimized selection: use direct randrange for k=2 instead of random.sample.
         # This is ~1.9x faster for the common case of selecting 2 replicas.
