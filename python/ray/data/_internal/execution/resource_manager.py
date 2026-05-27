@@ -188,6 +188,10 @@ class ResourceManager:
         # held by any running task), as tracked by the block reference counter.
         mem_op_outputs = self._block_ref_counter.get_object_store_memory_usage(op.id)
 
+        # Attribute iterator / streaming_split prefetch to the executor sink only.
+        if op is self._output_operator:
+            mem_op_outputs += self._external_consumer_bytes
+
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = mem_op_outputs
         return mem_op_internal + mem_op_outputs
