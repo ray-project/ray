@@ -147,13 +147,15 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
 
-    reference_counter_ =
-        std::make_shared<ReferenceCounter>(rpc_address_,
-                                           object_info_publisher.get(),
-                                           fake_object_info_subscriber.get(),
-                                           fake_owned_object_count_gauge_,
-                                           fake_owned_object_size_gauge_,
-                                           false);
+    reference_counter_ = std::make_shared<ReferenceCounter>(
+        rpc_address_,
+        object_info_publisher.get(),
+        fake_object_info_subscriber.get(),
+        [](const NodeID &) { return false; },
+        [](const ObjectID &, const std::vector<NodeID> &) {},
+        fake_owned_object_count_gauge_,
+        fake_owned_object_size_gauge_,
+        false);
 
     // Mock reference counter as enabled
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
@@ -648,9 +650,13 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   // Build a ReferenceCounter with minimal dependencies.
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
+  auto is_node_dead = [](const NodeID &) { return false; };
+  auto spread_free_local_objects = [](const ObjectID &, const std::vector<NodeID> &) {};
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
+                               is_node_dead,
+                               spread_free_local_objects,
                                *std::make_shared<ray::observability::FakeGauge>(),
                                *std::make_shared<ray::observability::FakeGauge>());
 

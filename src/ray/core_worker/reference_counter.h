@@ -48,12 +48,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
       rpc::Address rpc_address,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
+      std::function<bool(const NodeID &node_id)> is_node_dead,
+      std::function<void(const ObjectID &object_id, const std::vector<NodeID> &locations)>
+          spread_free_local_objects,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
-      bool lineage_pinning_enabled = false,
-      std::function<bool(const NodeID &node_id)> is_node_dead = nullptr,
-      std::function<void(const ObjectID &object_id, const std::vector<NodeID> &locations)>
-          spread_free_local_objects = nullptr)
+      bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
