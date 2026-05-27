@@ -216,16 +216,10 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
-        # Resolve the filesystem exactly once before spawning workers. Without
-        # this, each of 16 make_async_gen worker threads independently
-        # constructs a pyarrow.fs.S3FileSystem on its first URI, triggering an
-        # IMDS credential fetch. With N concurrent Download tasks on an EC2
-        # node that's 16*N near-simultaneous IMDS calls — enough to trip the
-        # per-instance rate limit and produce intermittent NoCredentialsError.
-        #
-        # Normalize a user-supplied fsspec FS to PyFileSystem(FSSpecHandler) so
-        # RetryingPyFileSystem.wrap (which forwards open_input_stream to the
-        # inner FS) doesn't end up calling a method fsspec filesystems lack.
+        # Resolve the filesystem once before spawning workers; otherwise each
+        # worker infers its own S3FileSystem and fires a duplicate IMDS
+        # credential fetch. Normalize fsspec inputs so RetryingPyFileSystem.wrap
+        # can forward open_input_stream.
         resolved_fs = _validate_and_wrap_filesystem(filesystem)
         if resolved_fs is None:
             for probe_uri in uris:
@@ -236,19 +230,14 @@ def download_bytes_threaded(
                 except Exception as e:
                     logger.debug(f"Could not infer filesystem from '{probe_uri}': {e}")
                     continue
-                # _resolve_paths_and_filesystem can silently drop unresolvable
-                # URIs (returning ([], ...)) or yield no filesystem. Only accept
-                # a result we can actually use.
+                # Skip results that drop the URI (([], ...)) or yield no FS.
                 if paths and candidate_fs is not None:
                     resolved_fs = candidate_fs
                     break
 
         if resolved_fs is None:
-            # Probe iterated every URI and could not infer a filesystem. Workers
-            # would just retry the same URIs with the same filesystem=None and
-            # hit the same failure — while reintroducing per-worker FS
-            # construction (the IMDS herd this PR exists to prevent). Yield
-            # None for every URI and skip the worker pool entirely.
+            # No URI resolved a filesystem; workers would only repeat the same
+            # failed inference. Yield None for every row and skip the pool.
             logger.warning(
                 "Could not resolve a filesystem from any URI in column "
                 f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
@@ -277,8 +266,7 @@ def download_bytes_threaded(
                 try:
                     if uri is None:
                         continue
-                    # Path normalization only — _resolve_paths_and_filesystem
-                    # short-circuits when filesystem is supplied (no network).
+                    # Normalize the path only; FS is supplied so no network I/O.
                     resolved_paths, _ = _resolve_paths_and_filesystem(
                         uri, filesystem=resolved_fs
                     )

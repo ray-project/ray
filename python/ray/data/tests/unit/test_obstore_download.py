@@ -543,13 +543,9 @@ class TestPlanObstoreRouting:
 
 # TestThreadedDownloadPreResolve
 def _spy_resolve(fake_fn=None):
-    """Wrap _resolve_paths_and_filesystem with a call counter.
-
-    Returns ``(patch_cm, probe_calls, normalize_calls)``. Wrap the ``with``
-    around the body; the two lists get appended as calls arrive. If
-    ``fake_fn`` is given, it replaces the real function; otherwise the real
-    one runs and gets observed.
-    """
+    """Patch _resolve_paths_and_filesystem, returning (patch_cm, probe_calls,
+    normalize_calls). Probe calls pass filesystem=None; normalize calls supply
+    one. ``fake_fn`` replaces the real function when given."""
     from ray.data._internal.planner import plan_download_op as pdo
 
     probe_calls: list = []
@@ -570,14 +566,8 @@ def _spy_resolve(fake_fn=None):
 
 
 class TestThreadedDownloadPreResolve:
-    """``download_bytes_threaded`` resolves the filesystem once per block/column.
-
-    Regression coverage for the IMDS thundering-herd: each of the 16
-    ``make_async_gen`` workers used to call ``_resolve_paths_and_filesystem``
-    independently on its first URI, triggering an IMDS credential fetch per
-    worker per task. The fix probes exactly once up-front and shares the
-    pre-resolved filesystem across all workers.
-    """
+    """``download_bytes_threaded`` probes the filesystem once and shares it
+    across workers, instead of each worker inferring it (the IMDS herd)."""
 
     def test_probe_once_across_workers(self, tmp_path):
         for i in range(10):
@@ -593,9 +583,7 @@ class TestThreadedDownloadPreResolve:
                 )
             )
 
-        # Exactly one probe (filesystem=None) regardless of worker count.
-        # Normalize-only calls (one per URI) short-circuit in path_util
-        # without any network I/O.
+        # One probe regardless of worker count; one normalize per URI.
         assert len(probes) == 1
         assert len(normalizes) == 10
         assert [b.as_py() for b in results[0].column("bytes")] == [
@@ -606,9 +594,8 @@ class TestThreadedDownloadPreResolve:
         "fs_factory",
         [
             pytest.param(lambda: pafs.LocalFileSystem(), id="pyarrow-local"),
-            # fsspec.filesystem objects lack ``open_input_stream`` and must be
-            # normalized to PyFileSystem(FSSpecHandler) before RetryingPyFileSystem
-            # wraps them, otherwise reading raises AttributeError mid-flight.
+            # fsspec FS lacks open_input_stream and must be normalized before
+            # wrapping, else reads raise AttributeError mid-flight.
             pytest.param(
                 lambda: pytest.importorskip("fsspec").filesystem("file"),
                 id="fsspec-local",
@@ -646,10 +633,8 @@ class TestThreadedDownloadPreResolve:
     def test_probe_loop_skips_unusable(
         self, tmp_path, first_uri, probe_returns_for_first
     ):
-        # Regression: the probe must keep going past (a) None URIs and
-        # (b) ([], fs) / (paths, None) returns — both leave workers with no
-        # usable filesystem and would recreate the IMDS herd if the loop
-        # broke out prematurely.
+        # Probe must skip None URIs and ([], fs)/(paths, None) returns rather
+        # than break early with no usable filesystem.
         from ray.data._internal.planner import plan_download_op as pdo
 
         (tmp_path / "good.bin").write_bytes(b"good")
@@ -675,11 +660,8 @@ class TestThreadedDownloadPreResolve:
         assert results[0].column("bytes")[-1].as_py() == b"good"
 
     def test_all_probes_fail_yields_none(self):
-        # When the probe iterates every URI and can't resolve a filesystem,
-        # workers would just retry the same URIs with the same filesystem=None
-        # and hit the same failure — while reintroducing per-worker FS
-        # construction (the IMDS herd this PR exists to prevent). Instead, we
-        # short-circuit: yield None for every URI and skip the worker pool.
+        # No URI resolves; we short-circuit to None for every row instead of
+        # letting workers repeat the failed inference.
         from ray.data._internal.planner import plan_download_op as pdo
 
         resolve_calls: list = []
