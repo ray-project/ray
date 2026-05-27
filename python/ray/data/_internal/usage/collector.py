@@ -24,7 +24,7 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import AbstractUDFMap
 from ray.data._internal.logical.util import anonymize_op_name
-from ray.data.block import VALID_BATCH_FORMATS
+from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -201,11 +201,13 @@ def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
     config: Optional[_OpConfig] = None
     if isinstance(op, AbstractUDFMap):
         batch_format = getattr(op, "batch_format", None)
+        if batch_format == "default":
+            batch_format = _apply_batch_format(batch_format)
         if batch_format in VALID_BATCH_FORMATS:
             config = _OpConfig(batch_format=batch_format)
         else:
-            batch_format = "unknown"
             logger.debug(f"Unexpected batch format: {batch_format!r}")
+            config = _OpConfig(batch_format="unknown")
     ops.append(_Op(name=name, config=config))
     return _PlanNode(op=name, inputs=child_plans), ops
 
