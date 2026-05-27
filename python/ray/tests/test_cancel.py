@@ -653,5 +653,83 @@ def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
         ray.get(signal_actor.send.remote())
 
 
+def test_rapid_double_cancel_does_not_crash_worker(shutdown_only):
+    """Regression test for CORE-2834.
+
+    A second ray.cancel() arriving while the worker is in the
+    ``except KeyboardInterrupt`` handler (during ``store_task_errors``) could
+    raise a KeyboardInterrupt inside the error-storage path. That
+    KeyboardInterrupt would escape past ``task_execution_handler``'s
+    ``except Exception`` and ``except SystemExit`` clauses (KeyboardInterrupt
+    is a BaseException, sibling of Exception), and Cython would silently swallow
+    it on the cdef boundary and return a default-constructed ``CRayStatus``
+    (== OK). The C++ TaskReceiver would then see ``status=OK`` with an
+    unpopulated return slot and trip ``RAY_CHECK(objects_valid)``, aborting the
+    worker.
+
+    The fixes in _raylet.pyx (clearing ``current_task_id`` early in the
+    KeyboardInterrupt handler, and catching ``BaseException`` in
+    ``task_execution_handler``) should prevent the worker from crashing. The
+    caller should consistently observe ``TaskCancelledError`` instead of
+    ``WorkerCrashedError`` even under rapid back-to-back cancels.
+    """
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def busy_task():
+        # Busy loop with sleep so Python regains control regularly and signals
+        # can be delivered promptly. Returns 42 if not cancelled in time.
+        end = time.monotonic() + 30
+        while time.monotonic() < end:
+            time.sleep(0.01)
+        return 42
+
+    # Run several iterations to broaden the chance of landing the second
+    # cancel inside the worker's error-storage window. Without the fix the
+    # worker would CHECK-abort and the caller would see WorkerCrashedError.
+    for _ in range(20):
+        ref = busy_task.remote()
+        # Let the task start executing.
+        time.sleep(0.2)
+        ray.cancel(ref)
+        # Second cancel races with the worker's KeyboardInterrupt handler.
+        ray.cancel(ref)
+        with pytest.raises(TaskCancelledError):
+            ray.get(ref, timeout=10)
+
+
+def test_concurrent_cancels_do_not_crash_worker(shutdown_only):
+    """Regression test for CORE-2834 (parallel cancellation variant).
+
+    Same bug as ``test_rapid_double_cancel_does_not_crash_worker`` but exercises
+    the race from a different angle: multiple driver threads issue cancels on
+    the same task in parallel.
+    """
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def busy_task():
+        end = time.monotonic() + 30
+        while time.monotonic() < end:
+            time.sleep(0.01)
+        return 42
+
+    for _ in range(10):
+        ref = busy_task.remote()
+        time.sleep(0.2)
+
+        def issue_cancel():
+            ray.cancel(ref)
+
+        threads = [threading.Thread(target=issue_cancel) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        with pytest.raises(TaskCancelledError):
+            ray.get(ref, timeout=10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -2169,6 +2169,19 @@ cdef execute_task_with_cancellation_handler(
     except KeyboardInterrupt as e:
         # Catch and handle task cancellation, which will result in an interrupt being
         # raised.
+        #
+        # Immediately clear current_task_id to prevent further cancellation
+        # interrupts from arriving during error storage. kill_main_task
+        # checks current_task_id under the lock before sending
+        # _thread.interrupt_main(). Without this, a second ray.cancel()
+        # could interrupt store_task_errors, causing a KeyboardInterrupt to
+        # escape task_execution_handler entirely.
+        # TODO(karticam): putting this here, its still prone to race condition
+        # right.. like what if the second keyboard interrupt comes before the
+        # next line?? it still goes through the same issue...
+        with current_task_id_lock:
+            current_task_id = None
+
         e = TaskCancelledError(
             core_worker.get_current_task_id()).with_traceback(e.__traceback__)
 
@@ -2361,6 +2374,21 @@ cdef CRayStatus task_execution_handler(
                 return CRayStatus.UnexpectedSystemExit(msg)
         except Exception as e:
             msg = "Unexpected exception raised in task execution handler: {}".format(e)
+            logger.error(msg)
+            return CRayStatus.UnexpectedSystemExit(msg)
+        except BaseException as e:
+            # Safety net: any BaseException that is not Exception or SystemExit
+            # (e.g. KeyboardInterrupt, GeneratorExit) would otherwise escape this
+            # cdef function. Without this, Cython silently returns
+            # CRayStatus.OK() for unhandled non-Exception/non-SystemExit
+            # exceptions, causing a CHECK failure in HandleTaskExecutionResult
+            # when return objects are not populated.
+            # Convert to UnexpectedSystemExit so the C++ side
+            # treats this as a clean worker-exiting task failure (CORE-2834).
+            msg = (
+                "BaseException escaped task execution handlers: "
+                f"{type(e).__name__}: {e}"
+            )
             logger.error(msg)
             return CRayStatus.UnexpectedSystemExit(msg)
 
