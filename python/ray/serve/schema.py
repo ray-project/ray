@@ -1395,9 +1395,8 @@ class DeploymentDetails(BaseModel):
     dead_replicas: List[ReplicaDetails] = Field(
         default_factory=list,
         description=(
-            "Details about recently-stopped replicas of this deployment, retained "
-            "so their logs remain accessible in the dashboard after they die. Not "
-            "included in `replicas` and not counted toward the live replica count."
+            "Recently-stopped replicas, retained so their logs stay accessible in "
+            "the dashboard after they die. Not part of `replicas` or the live count."
         ),
     )
 

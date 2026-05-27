@@ -5,6 +5,7 @@ import {
   MultiTabLogViewer,
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
+import { ServeReplicaState } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
@@ -290,5 +291,58 @@ describe("ServeEntityLogViewer", () => {
     expect(screen.queryByText("HTTP Proxy")).not.toBeInTheDocument();
     expect(screen.getByText("Deployment replica")).toBeVisible();
     expect(screen.getByTestId("replicas-select")).toBeVisible();
+  });
+
+  it("shows recently-stopped replicas in the dropdown, labeled (stopped)", async () => {
+    expect.assertions(3);
+
+    render(
+      <ServeEntityLogViewer
+        deployments={
+          [
+            {
+              name: "test-deployment",
+              replicas: [
+                {
+                  replica_id: "live-replica",
+                  actor_id: "live-actor",
+                  node_id: "live-node",
+                  log_file_path: "live-log",
+                },
+              ],
+              dead_replicas: [
+                {
+                  replica_id: "dead-replica",
+                  state: ServeReplicaState.STOPPED,
+                  actor_id: "dead-actor",
+                  node_id: "dead-node",
+                  log_file_path: "dead-log",
+                },
+              ],
+            },
+          ] as any
+        }
+      />,
+      { wrapper: TEST_APP_WRAPPER },
+    );
+
+    await screen.findByText("Deployment replica");
+    const user = userEvent.setup();
+
+    // The stopped replica is selectable and labeled.
+    await user.click(
+      within(screen.getByTestId("replicas-select")).getByRole("combobox"),
+    );
+    expect(
+      screen.getByRole("option", { name: "dead-replica (stopped)" }),
+    ).toBeVisible();
+
+    // Selecting it loads the stopped replica's on-disk log.
+    await user.click(
+      screen.getByRole("option", { name: "dead-replica (stopped)" }),
+    );
+    await screen.findByText("nodeId: dead-node");
+    expect(screen.getByText("nodeId: dead-node")).toBeVisible();
+    expect(screen.getByText("filename: dead-log")).toBeVisible();
   });
 });

@@ -619,8 +619,7 @@ class MockReplicaActorWrapper:
 
     def set_ready(self, version: DeploymentVersion = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
-        # A started replica reports its (relative) log file path, mirroring the
-        # real actor's is_allocated() return.
+        # Mirror the real actor: a started replica has allocated a log file.
         self._log_file_path = "serve/replica.log"
         if version:
             self.version_to_be_fetched_from_actor = version

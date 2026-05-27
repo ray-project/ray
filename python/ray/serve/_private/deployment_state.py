@@ -2836,9 +2836,6 @@ class DeploymentState:
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
-        # Ring buffer of details for recently-stopped replicas. Surfaced in the
-        # dashboard so their (disk-backed) logs remain accessible after death.
-        # maxlen=0 retains nothing (feature disabled); appends are no-ops.
         self._dead_replica_details: Deque[ReplicaDetails] = deque(
             maxlen=RAY_SERVE_RETAINED_DEAD_REPLICAS
         )
@@ -3286,9 +3283,7 @@ class DeploymentState:
         return [replica.actor_details for replica in self._replicas.get()]
 
     def list_dead_replica_details(self) -> List[ReplicaDetails]:
-        # Recently-stopped replicas, retained so their logs remain accessible in
-        # the dashboard after the actor dies. Kept separate from the live list so
-        # they don't pollute replica counts or `serve status`.
+        # Separate from the live list so dead replicas don't affect counts or status.
         return list(self._dead_replica_details)
 
     def broadcast_running_replicas_if_changed(self) -> None:
@@ -4721,10 +4716,8 @@ class DeploymentState:
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
 
-                # Retain the replica's details (node id + log file path) so its
-                # logs stay accessible in the dashboard after the actor dies. Skip
-                # replicas that never allocated a log file (e.g. died before
-                # starting); they have nothing to show.
+                # Retain replicas that allocated a log file so the dashboard can
+                # still show their logs after the actor is gone.
                 if replica.actor_details.log_file_path is not None:
                     self._dead_replica_details.append(
                         replica.actor_details.model_copy(

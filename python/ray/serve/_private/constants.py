@@ -675,8 +675,7 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
-# Number of recently-stopped replicas to retain per deployment so their logs
-# remain accessible in the dashboard after the replica dies. Set to 0 to disable.
+# Stopped replicas to retain per deployment for dashboard log access. 0 disables.
 RAY_SERVE_RETAINED_DEAD_REPLICAS = get_env_int_non_negative(
     "RAY_SERVE_RETAINED_DEAD_REPLICAS", 10
 )

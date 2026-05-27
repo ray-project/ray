@@ -56,8 +56,6 @@ export const ServeEntityLogViewer = ({
 
   const allReplicas = deployments.flatMap(
     ({ name: deploymentName, replicas, dead_replicas }) =>
-      // Include recently-stopped replicas so their logs stay viewable after the
-      // actor dies; mark them so they're distinguishable in the dropdown.
       [...replicas, ...(dead_replicas ?? [])].map((replica) => {
         const baseName = showDeploymentName
           ? `${deploymentName}#${replica.replica_id}`
