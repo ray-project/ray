@@ -57,6 +57,26 @@ class AbstractOneToOne(LogicalOperator):
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
 
+    def infer_metadata(self) -> BlockMetadata:
+        """Forward ``size_bytes`` and ``input_files`` from the input op.
+
+        Map ops can only shrink data (Filter) or leave size roughly
+        unchanged (Project, with_column), so the input estimate is a
+        safe upper bound for downstream consumers like hash-shuffle
+        aggregator memory sizing. ``num_rows`` is nulled because most
+        map ops can change row count; subclasses with stronger
+        guarantees (e.g. ``Limit``'s known row cap) override this.
+        """
+        if not self.input_dependencies:
+            return BlockMetadata(None, None, None, None)
+        src = self.input_dependencies[0].infer_metadata()
+        return BlockMetadata(
+            num_rows=None,
+            size_bytes=src.size_bytes,
+            input_files=src.input_files,
+            exec_stats=None,
+        )
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):

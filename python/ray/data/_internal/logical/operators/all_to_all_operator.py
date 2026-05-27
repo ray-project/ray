@@ -68,6 +68,26 @@ class AbstractAllToAll(LogicalOperator):
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
 
+    def infer_metadata(self) -> "BlockMetadata":
+        """Forward ``size_bytes`` and ``input_files`` from the input op.
+
+        All-to-all ops reshape but don't grow the dataset, so the input
+        estimate is a safe upper bound. Concrete subclasses (Aggregate,
+        Sort, Repartition, …) inherit this so downstream hash-shuffle
+        aggregator memory sizing keeps propagating size estimates past
+        a group-by / sort. ``num_rows`` is nulled — Aggregate collapses
+        rows by an unknown factor.
+        """
+        if not self.input_dependencies:
+            return BlockMetadata(None, None, None, None)
+        src = self.input_dependencies[0].infer_metadata()
+        return BlockMetadata(
+            num_rows=None,
+            size_bytes=src.size_bytes,
+            input_files=src.input_files,
+            exec_stats=None,
+        )
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):

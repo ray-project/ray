@@ -174,6 +174,56 @@ def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
     )
 
 
+def test_read_parquet_v2_size_bytes_propagates_through_chain(tmp_path, restore_ctx):
+    """``size_bytes`` from ``ReadFiles.infer_metadata`` must propagate through
+    map ops (Filter/Project) and shuffles (Join, Aggregate) so each
+    downstream hash-shuffle sees a non-None size estimate and avoids the
+    1 GiB-per-aggregator fallback.
+
+    Q9-shaped chain: ``read_parquet → join → filter → aggregate``.
+    """
+    from ray.data.expressions import col
+
+    _write(
+        tmp_path / "left.parquet",
+        pa.table({"k": list(range(1024)), "v": list(range(1024))}),
+    )
+    right_dir = tmp_path / "right"
+    right_dir.mkdir()
+    _write(right_dir / "right.parquet", pa.table({"k": list(range(64))}))
+
+    restore_ctx.use_datasource_v2 = True
+    left = ray.data.read_parquet(str(tmp_path / "left.parquet"))
+    right = ray.data.read_parquet(str(right_dir))
+
+    # Read estimates exist (from the previous test's path) -- propagate
+    # through join (NAry default), filter (AbstractOneToOne default), and
+    # group-by aggregate (AbstractAllToAll default).
+    joined = left.join(right, num_partitions=4, join_type="inner", on=("k",))
+    filtered = joined.filter(expr=col("v") > 0)
+    aggregated = filtered.groupby("k").count()
+
+    dag = aggregated._logical_plan.dag
+    # Walk the chain top-down through every logical op above the read,
+    # asserting size_bytes is non-None at each level. Stop at ReadFiles —
+    # its upstream ``ListFiles`` is a pure source (no size to report) and
+    # isn't a hash-shuffle input.
+    seen_ops = []
+    cursor = dag
+    while True:
+        seen_ops.append(type(cursor).__name__)
+        assert (
+            cursor.infer_metadata().size_bytes is not None
+        ), f"size_bytes is None at {type(cursor).__name__} in chain {seen_ops}"
+        if isinstance(cursor, ReadFiles):
+            break
+        deps = cursor.input_dependencies
+        assert deps, f"unexpected leaf at {type(cursor).__name__}"
+        cursor = deps[0]
+    # Confirm we actually traversed all the op types we care about.
+    assert {"Aggregate", "Filter", "Join", "ReadFiles"}.issubset(set(seen_ops))
+
+
 def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
