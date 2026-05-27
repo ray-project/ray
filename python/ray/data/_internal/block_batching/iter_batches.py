@@ -343,12 +343,8 @@ def _format_in_threadpool(
         return formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        # Run format + collate across `num_threadpool_workers` threads sharing
-        # `batch_iter`, funneling results through a single bounded queue
-        # (maxsize=1). Ordering is not preserved here; it is restored downstream
-        # by `restore_original_order`. Unlike `make_async_gen`, this bounds the
-        # in-flight (and hence pinned) batches to ~num_workers + 1 rather than
-        # buffering ~2 * num_workers across per-worker input/output queues.
+        # Output order is non-deterministic across workers and is restored
+        # downstream by `restore_original_order`.
         collated_iter = iter_threaded(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
