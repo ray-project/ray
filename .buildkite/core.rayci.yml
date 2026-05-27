@@ -111,11 +111,13 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
         --only-tags ray_client
 
+  # Conditionally runs on premerge via the `redis_tests` tag (see
+  # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ is
+  # modified. Always runs on postmerge.
   - label: ":ray: core: redis tests"
     tags:
-      - python
+      - redis_tests
       - oss
-      - skip-on-premerge
     instance_type: large
     parallelism: 4
     commands:
@@ -128,12 +130,14 @@ steps:
 
   # REP-64 GCS FT with the embedded RocksDB backend. Mirrors the redis
   # tests above but selects rocksdb-mode via TEST_GCS_ROCKSDB=1 (see
-  # python/ray/tests/conftest.py::_setup_rocksdb_gcs).
+  # python/ray/tests/conftest.py::_setup_rocksdb_gcs). Conditionally
+  # runs on premerge via the `rocksdb_tests` tag (see
+  # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ or the
+  # rocksdb build config is modified. Always runs on postmerge.
   - label: ":ray: core: rocksdb tests"
     tags:
-      - python
+      - rocksdb_tests
       - oss
-      - skip-on-premerge
     instance_type: large
     parallelism: 4
     commands:
@@ -170,9 +174,8 @@ steps:
 
   - label: ":ray: core: out of disk redis tests"
     tags:
-      - python
+      - redis_tests
       - oss
-      - skip-on-premerge
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
@@ -182,9 +185,8 @@ steps:
 
   - label: ":ray: core: out of disk rocksdb tests"
     tags:
-      - python
+      - rocksdb_tests
       - oss
-      - skip-on-premerge
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core

@@ -55,6 +55,19 @@ spec:
 GCS metadata is small (typically 10–100 MB across all column families
 in steady state); 1 GiB is ample headroom.
 
+:::{note}
+On most cloud block-storage classes, baseline IOPS scale with the
+provisioned volume size, so sizing for capacity alone can throttle
+RocksDB's per-write fsync. For example, AWS `gp2` provides 3 IOPS per
+GiB (so a 1 GiB volume gets the 100 IOPS floor); GCE `pd-balanced`
+provides 6 read + 12 write IOPS per GiB; Azure Premium SSD v1 buckets
+IOPS by tier (P1 = 120 IOPS at 4 GiB). AWS `gp3` and Azure Premium SSD
+v2 let you provision IOPS independently of size and are the better fit
+when the volume only needs to hold a small amount of state. Size — or
+provision IOPS — for the write rate your cluster generates, not just
+the metadata footprint.
+:::
+
 ### Step 2: Mount the PVC and set the env vars on the head pod
 
 In the `RayCluster` (or `RayService` / `RayJob`) spec, configure the

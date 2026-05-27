@@ -474,15 +474,23 @@ class Node:
         # through to the Redis path below for non-rocksdb deployments.
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
-            if rocksdb_storage_path:
-                session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
-                try:
-                    with open(session_name_file, "rb") as f:
-                        persisted = f.read().strip()
-                        return persisted if persisted else None
-                except FileNotFoundError:
-                    return None
-            return None
+            if not rocksdb_storage_path:
+                # Mirrors the C++ RAY_CHECK in
+                # gcs_server.cc::GetStorageType(); fail loudly rather
+                # than silently skipping recovery, which would
+                # generate a fresh session_name and trip the assert
+                # at the persisted-value check below.
+                raise ValueError(
+                    "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
+                    "to be set to a writable directory."
+                )
+            session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
+            try:
+                with open(session_name_file, "rb") as f:
+                    persisted = f.read().strip()
+                    return persisted if persisted else None
+            except FileNotFoundError:
+                return None
 
         if self._ray_params.external_addresses is None:
             return None
@@ -1383,11 +1391,20 @@ class Node:
         # GCS can't function regardless.
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
-            if rocksdb_storage_path:
-                session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
-                os.makedirs(rocksdb_storage_path, exist_ok=True)
-                with open(session_name_file, "wb") as f:
-                    f.write(self._session_name.encode("utf-8"))
+            if not rocksdb_storage_path:
+                # Symmetric with check_persisted_session_name(); see
+                # there for the rationale. Without the sidecar, the
+                # internal_kv_put below would persist a session_name
+                # in rocksdb with no companion file, breaking restart
+                # recovery.
+                raise ValueError(
+                    "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
+                    "to be set to a writable directory."
+                )
+            session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
+            os.makedirs(rocksdb_storage_path, exist_ok=True)
+            with open(session_name_file, "wb") as f:
+                f.write(self._session_name.encode("utf-8"))
 
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
