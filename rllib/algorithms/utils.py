@@ -1,5 +1,6 @@
+import logging
 import platform
-from typing import List
+from typing import List, Tuple
 
 import tree  # pip install dm_tree
 
@@ -18,6 +19,69 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Histogram
 
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
+
+# Timeouts for `ray.get` on episode refs inside `AggregatorActor.get_batch`.
+# Without a timeout, a wedged ref can block the aggregator forever — e.g. when
+# the producing EnvRunner is preempted and restarted on a spot node, the
+# owner-death notification can be lost (the GCS drops the producer task's
+# status), so `OwnerDiedError` is never raised and the plasma Pull retries
+# indefinitely. The bulk timeout bounds the common-case fetch; the per-ref
+# timeout bounds the fallback so a single wedged ref cannot stall the others.
+GET_BATCH_BULK_TIMEOUT_S = 600.0
+GET_BATCH_PER_REF_TIMEOUT_S = 60.0
+
+# Exceptions that mean an episode ref is permanently unfetchable and should be
+# dropped rather than retried.
+_UNFETCHABLE_REF_EXCEPTIONS = (
+    ray.exceptions.GetTimeoutError,
+    ray.exceptions.OwnerDiedError,
+    ray.exceptions.ObjectLostError,
+    ray.exceptions.ObjectFetchTimedOutError,
+    ray.exceptions.RayActorError,
+    ray.exceptions.WorkerCrashedError,
+    ray.exceptions.NodeDiedError,
+)
+
+
+def _collect_episodes(
+    episode_refs: List[ray.ObjectRef],
+    bulk_timeout_s: float = GET_BATCH_BULK_TIMEOUT_S,
+    per_ref_timeout_s: float = GET_BATCH_PER_REF_TIMEOUT_S,
+) -> Tuple[List[EpisodeType], int]:
+    """Resolve a list of episode refs with bounded waits.
+
+    Tries one bulk ``ray.get`` first; on failure, falls back to fetching each
+    ref individually and drops the unfetchable ones. See the module-level
+    comment on ``GET_BATCH_BULK_TIMEOUT_S`` for why the timeouts are needed.
+
+    Returns ``(episodes, num_dropped)``.
+    """
+    try:
+        return tree.flatten(ray.get(episode_refs, timeout=bulk_timeout_s)), 0
+    except _UNFETCHABLE_REF_EXCEPTIONS as bulk_err:
+        logger.warning(
+            "Bulk ray.get on %d episode refs failed (%s); falling back to "
+            "per-ref fetch.",
+            len(episode_refs),
+            type(bulk_err).__name__,
+        )
+
+    episodes: List[EpisodeType] = []
+    dropped = 0
+    for ref in episode_refs:
+        try:
+            episodes.extend(ray.get(ref, timeout=per_ref_timeout_s))
+        except _UNFETCHABLE_REF_EXCEPTIONS:
+            dropped += 1
+    if dropped:
+        logger.warning(
+            "Dropped %d/%d unfetchable episode refs after per-ref fallback.",
+            dropped,
+            len(episode_refs),
+        )
+    return episodes, dropped
 
 
 @DeveloperAPI(stability="alpha")
@@ -118,18 +182,10 @@ class AggregatorActor(FaultAwareApply):
             if len(episode_refs) > 0:
                 self._metrics_get_batch_input_episode_refs.inc(value=len(episode_refs))
 
-            episodes: List[EpisodeType] = []
-            # It's possible that individual refs are invalid due to the EnvRunner
-            # that produced the ref has crashed or had its entire node go down.
-            # In this case, try each ref individually and collect only valid results.
-            try:
-                episodes = tree.flatten(ray.get(episode_refs))
-            except ray.exceptions.OwnerDiedError:
-                for ref in episode_refs:
-                    try:
-                        episodes.extend(ray.get(ref))
-                    except ray.exceptions.OwnerDiedError:
-                        self._metrics_episode_owner_died.inc(value=1)
+            # Resolve refs with bounded waits
+            episodes, dropped = _collect_episodes(episode_refs)
+            if dropped:
+                self._metrics_episode_owner_died.inc(value=dropped)
 
             env_steps = sum(len(e) for e in episodes)
 

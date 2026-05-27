@@ -1697,6 +1697,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_aggregator_actor",
+    size = "small",
+    srcs = ["algorithms/tests/test_aggregator_actor.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Specific Algorithms
 
 # APPO
