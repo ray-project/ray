@@ -172,12 +172,19 @@ class PDOrchestratorMixin:
 
         model_id = self._llm_config.model_id
         model_cards = {model_id: to_model_metadata(model_id, self._llm_config)}
+        lora_config = self._llm_config.lora_config
+        lora_paths = (
+            {model_id: lora_config.dynamic_lora_loading_path}
+            if lora_config is not None
+            else {}
+        )
 
         class _PDDirectStreamingIngress(OpenAiIngress):
             def __init__(self, server: PDOrchestratorMixin):
                 super().__init__(
                     llm_deployments={model_id: None},
                     model_cards=model_cards,
+                    lora_paths=lora_paths,
                 )
                 self._server = server
 
