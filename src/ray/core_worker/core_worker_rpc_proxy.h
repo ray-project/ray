@@ -68,7 +68,6 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(DeleteSpilledObjects)
   RAY_CORE_WORKER_RPC_PROXY(PlasmaObjectReady)
   RAY_CORE_WORKER_RPC_PROXY(Exit)
-  RAY_CORE_WORKER_RPC_PROXY(AssignObjectOwner)
   RAY_CORE_WORKER_RPC_PROXY(NumPendingTasks)
 
   /// Wait until the worker is initialized.

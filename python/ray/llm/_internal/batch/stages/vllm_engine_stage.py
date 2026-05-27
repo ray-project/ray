@@ -230,8 +230,6 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        self._guided_decoding_warning_logged = False
-        self._truncate_prompt_tokens_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -421,26 +419,10 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             structured_outputs_config = None
-            # Handle new structured_outputs parameter (preferred)
             if "structured_outputs" in sampling_params:
                 structured_outputs_config = maybe_convert_ndarray_to_list(
                     sampling_params.pop("structured_outputs")
                 )
-                # Remove guided_decoding if present to avoid passing it to SamplingParams
-                sampling_params.pop("guided_decoding", None)
-            # Handle legacy guided_decoding parameter for backward compatibility
-            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
-            elif "guided_decoding" in sampling_params:
-                structured_outputs_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("guided_decoding")
-                )
-                # Log deprecation warning only once to avoid log spam
-                if not self._guided_decoding_warning_logged:
-                    logger.warning(
-                        "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_outputs' in sampling_params instead."
-                    )
-                    self._guided_decoding_warning_logged = True
 
             if structured_outputs_config:
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
@@ -460,27 +442,6 @@ class vLLMEngineWrapper:
             pooling_params = maybe_convert_ndarray_to_list(
                 row.pop("pooling_params", {})
             )
-
-            # vLLM 0.16.0 deprecates truncate_prompt_tokens in PoolingParams.
-            # truncate_prompt_tokens must be passed via tokenization_kwargs instead.
-            # TODO (jeffreywang): Remove this in Ray 2.56.0.
-            if "truncate_prompt_tokens" in pooling_params:
-                truncate_value = pooling_params.pop("truncate_prompt_tokens")
-                if not self._truncate_prompt_tokens_warning_logged:
-                    logger.warning(
-                        "Setting truncate_prompt_tokens in pooling_params is "
-                        "deprecated. Please pass "
-                        "tokenization_kwargs={'truncation': True, "
-                        "'max_length': N} via the tokenization_kwargs column instead."
-                    )
-                    self._truncate_prompt_tokens_warning_logged = True
-                if truncate_value == -1:
-                    truncate_value = self._vllm_config.model_config.max_model_len
-
-                if tokenization_kwargs is None:
-                    tokenization_kwargs = {}
-                tokenization_kwargs.setdefault("truncation", True)
-                tokenization_kwargs.setdefault("max_length", truncate_value)
 
             params = vllm.PoolingParams(
                 **pooling_params,

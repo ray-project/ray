@@ -110,9 +110,17 @@ class LLMRouter:
         body-aware policy can score replicas against the request's prompt /
         messages without changing the /internal/route contract or the call
         site.
+
+        ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
+        actor RPC and the rejection-retry loop: the real request goes out via
+        HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
+        the extra RPC + retry introduced burstiness compared to the prior
+        local round-robin implementation.
         """
         async with handle.choose_replica(
-            request_body=request_body, body_truncated=body_truncated
+            request_body=request_body,
+            body_truncated=body_truncated,
+            _reserve=False,
         ) as selection:
             replica = selection._replica
             endpoint = replica.backend_http_endpoint
