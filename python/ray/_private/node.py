@@ -1362,6 +1362,36 @@ class Node:
         ray_usage_lib.put_cluster_metadata(
             self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
         )
+        # Persist session_name to a sidecar file when using the RocksDB
+        # GCS backend, so check_persisted_session_name() can find it on
+        # head process restart. The rocksdb-backed internal_kv requires
+        # GCS to be up, but check_persisted_session_name() runs before
+        # GCS comes up on restart; the sidecar bridges that gap. Gated
+        # on RAY_gcs_storage=rocksdb so non-rocksdb deployments are
+        # unaffected.
+        #
+        # Write the sidecar BEFORE internal_kv_put. If we crash between
+        # the two, the next restart adopts the sidecar's name and the
+        # internal_kv_put below inserts cleanly (overwrite=False sees no
+        # prior value). The reverse ordering would leave a persisted
+        # session_name in rocksdb with no sidecar, causing the next
+        # head to generate a fresh name and trip the assertion below.
+        if os.environ.get("RAY_gcs_storage") == "rocksdb":
+            rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
+            if rocksdb_storage_path:
+                session_name_file = os.path.join(
+                    rocksdb_storage_path, ".session_name"
+                )
+                try:
+                    os.makedirs(rocksdb_storage_path, exist_ok=True)
+                    with open(session_name_file, "wb") as f:
+                        f.write(self._session_name.encode("utf-8"))
+                except OSError as e:
+                    logger.warning(
+                        f"Failed to persist session_name sidecar to "
+                        f"{session_name_file}: {e}"
+                    )
+
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
             b"session_name",
@@ -1378,29 +1408,6 @@ class Node:
                 f"persisted value {curr_val}. Perhaps there was an "
                 f"error connecting to Redis."
             )
-
-        # Persist session_name to a sidecar file when using the RocksDB
-        # GCS backend, so check_persisted_session_name() can find it on
-        # head process restart. The rocksdb-backed internal_kv requires
-        # GCS to be up, but check_persisted_session_name() runs before
-        # GCS comes up on restart; the sidecar bridges that gap. Gated
-        # on RAY_gcs_storage=rocksdb so non-rocksdb deployments are
-        # unaffected.
-        if os.environ.get("RAY_gcs_storage") == "rocksdb":
-            rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
-            if rocksdb_storage_path:
-                session_name_file = os.path.join(
-                    rocksdb_storage_path, ".session_name"
-                )
-                try:
-                    os.makedirs(rocksdb_storage_path, exist_ok=True)
-                    with open(session_name_file, "wb") as f:
-                        f.write(self._session_name.encode("utf-8"))
-                except OSError as e:
-                    logger.warning(
-                        f"Failed to persist session_name sidecar to "
-                        f"{session_name_file}: {e}"
-                    )
 
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.

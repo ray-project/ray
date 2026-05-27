@@ -171,9 +171,11 @@ class RocksDbStoreClient : public StoreClient {
 
  private:
   /// Look up the column family for \p table_name, creating it lazily on
-  /// first use. The cf_mutex_ is held across the create call so two
-  /// concurrent first-touches of the same table do not both attempt to
-  /// create it (RocksDB rejects duplicate creates on the same name).
+  /// first use. Steady-state lookups take only a shared reader lock so
+  /// they don't serialize against each other. Creation upgrades to an
+  /// exclusive lock and re-checks to defeat the race where two
+  /// concurrent first-touches both miss the cache (RocksDB rejects
+  /// duplicate creates on the same name).
   rocksdb::ColumnFamilyHandle *GetOrCreateColumnFamily(const std::string &table_name)
       ABSL_LOCKS_EXCLUDED(cf_mutex_);
 

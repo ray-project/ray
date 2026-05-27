@@ -253,10 +253,18 @@ void RocksDbStoreClient::ValidateOrWriteClusterIdMarker(
 
 rocksdb::ColumnFamilyHandle *RocksDbStoreClient::GetOrCreateColumnFamily(
     const std::string &table_name) {
-  // Hold cf_mutex_ across CreateColumnFamily so concurrent first-touches
-  // of the same table don't both call into rocksdb (which would reject
-  // the second create as InvalidArgument). Steady-state lookups hit the
-  // cache fast-path before the create is needed.
+  // Fast path: steady-state lookups (every Get/Put/Delete) take only a
+  // shared reader lock so they can proceed concurrently. Column-family
+  // creation is rare (first touch of each table) and serializes through
+  // the exclusive lock below; the second find() after upgrading
+  // re-checks in case another writer raced ahead.
+  {
+    absl::ReaderMutexLock lock(&cf_mutex_);
+    auto it = cf_handles_.find(table_name);
+    if (it != cf_handles_.end()) {
+      return it->second;
+    }
+  }
   absl::MutexLock lock(&cf_mutex_);
   auto it = cf_handles_.find(table_name);
   if (it != cf_handles_.end()) {
