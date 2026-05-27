@@ -169,7 +169,7 @@ at an arbitrary replica so routers spun up together don't synchronize on the
 same first replica. If the chosen replica is at capacity, the router falls back
 to the next replica in order and wraps around the candidate list. Each
 router instance keeps its own cursor, so with multiple routers (for example,
-one per HTTP proxy) the fan-out is round-robin per router and approximately
+one per Ray Serve proxy) the fan-out is round-robin per router and approximately
 uniform across replicas in aggregate. The router mixes in
 [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued
 requests are routed in arrival order.
@@ -227,8 +227,8 @@ mixing them in would break determinism and therefore break affinity.
 
 ### Example
 Configure the router via
-[`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst)
-and pass tuning parameters through `request_router_kwargs`:
+[`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst),
+pass tuning parameters through `request_router_kwargs`:
 
 ```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_consistent_hash_router__

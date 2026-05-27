@@ -1,11 +1,13 @@
 # flake8: noqa
 
 # __begin_deploy_app_with_uniform_request_router__
+import requests
 from ray import serve
 from ray.serve.request_router import ReplicaID
 import time
 from collections import defaultdict
 from ray.serve.context import _get_internal_replica_context
+from starlette.requests import Request
 from typing import Any, Dict
 from ray.serve.config import RequestRouterConfig
 
@@ -142,11 +144,16 @@ class ConsistentHashRouterApp:
         context = _get_internal_replica_context()
         self.replica_id: ReplicaID = context.replica_id
 
-    async def __call__(self):
-        return self.replica_id
+    async def __call__(self, request: Request) -> str:
+        return str(self.replica_id)
 
 
-handle = serve.run(ConsistentHashRouterApp.bind())
-response = handle.remote().result()
-print(f"Response from ConsistentHashRouterApp: {response}")
+serve.run(ConsistentHashRouterApp.bind())
+
+# Clients pin a session to a replica by sending the same `x-session-id`
+# on every request.
+requests.get(
+    "http://localhost:8000/",
+    headers={"x-session-id": "example-session-id"},
+)
 # __end_deploy_app_with_consistent_hash_router__
