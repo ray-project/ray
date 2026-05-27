@@ -26,11 +26,13 @@ def _write(path, table):
 @pytest.fixture
 def restore_ctx():
     ctx = DataContext.get_current()
-    original = ctx.use_datasource_v2
+    original_v2 = ctx.use_datasource_v2
+    original_blocks_per_task = ctx.num_blocks_per_read_task
     try:
         yield ctx
     finally:
-        ctx.use_datasource_v2 = original
+        ctx.use_datasource_v2 = original_v2
+        ctx.num_blocks_per_read_task = original_blocks_per_task
 
 
 def test_v2_flag_default():
@@ -123,6 +125,29 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
+
+
+def test_read_parquet_v2_max_bucket_size_scales_with_num_blocks_per_read_task(
+    tmp_path, restore_ctx
+):
+    """The V2 listing partitioner's per-bucket cap is
+    ``target_max_block_size * num_blocks_per_read_task``, so each read
+    task emits roughly ``num_blocks_per_read_task`` output blocks (the
+    knob amortizes task-launch overhead and lifts ``avg_outputs_per_task``
+    above 1).
+    """
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    restore_ctx.num_blocks_per_read_task = 4
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
+    assert (
+        list_files_op.file_partitioner._max_bucket_size
+        == restore_ctx.target_max_block_size * 4
+    )
 
 
 def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):

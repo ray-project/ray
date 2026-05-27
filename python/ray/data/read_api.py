@@ -581,9 +581,16 @@ def _read_datasource_v2(
     # into a single bucket.
     import sys
 
+    # Each read task fills a bucket up to
+    # ``target_max_block_size * num_blocks_per_read_task`` of estimated
+    # in-memory data and emits that many ~``target_max_block_size`` output
+    # blocks. Packing multiple blocks per task amortizes task-launch
+    # overhead and lifts ``avg_outputs_per_task`` above 1, doubling the
+    # resource manager's ``min(2, avg_outputs_per_task)`` admission tax
+    # so it stops over-scheduling read tasks against object-store budget.
     min_bucket_size = ctx.target_min_block_size or 0
     max_bucket_size = (
-        ctx.target_max_block_size
+        ctx.target_max_block_size * ctx.num_blocks_per_read_task
         if ctx.target_max_block_size is not None
         else sys.maxsize
     )
