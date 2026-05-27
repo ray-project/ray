@@ -96,12 +96,6 @@ void TaskGeneratorBackpressureWaiter::OnObjectConsumed(int64_t total_objects_con
   }
 }
 
-void TaskGeneratorBackpressureWaiter::HandleObjectReported(
-    int64_t total_objects_consumed) {
-  OnObjectReportAccepted();
-  OnObjectConsumed(total_objects_consumed);
-}
-
 bool TaskGeneratorBackpressureWaiter::NeedsObjectConsumedUpdates() const {
   return backpressure_threshold_ > 0;
 }

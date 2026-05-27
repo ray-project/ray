@@ -46,7 +46,6 @@ struct ActorTaskBackpressureMetadata {
   Status ReserveSlot();
   void ReleaseSlot();
   void OnConsumed(int64_t total);
-  void OnReport(int64_t total) { OnConsumed(total); }
   void Teardown();
 };
 
@@ -65,7 +64,6 @@ class TaskGeneratorBackpressureWaiter {
   void IncrementObjectGenerated();
   void OnObjectReportAccepted();
   void OnObjectConsumed(int64_t total_objects_consumed);
-  void HandleObjectReported(int64_t total_objects_consumed);
 
   bool NeedsObjectConsumedUpdates() const;
   int64_t TotalObjectConsumed() const;
@@ -94,9 +92,6 @@ class ActorWideGeneratorBackpressureWaiter {
   Status ReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata);
   void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata);
   void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);
-  void OnReportForTask(ActorTaskBackpressureMetadata &metadata, int64_t total) {
-    OnConsumedForTask(metadata, total);
-  }
   void TeardownTask(ActorTaskBackpressureMetadata &metadata);
 
   int64_t TotalObjectConsumed() const;

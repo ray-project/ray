@@ -452,9 +452,8 @@ message ReportGeneratorItemReturnsRequest {
 }
 
 message ReportGeneratorItemReturnsReply {
-  // The total number objects consumed from the generator.
-  // -1 means it is not known. The executor side should just
-  // assume everything is consumed if it is -1.
+  // Deprecated. Consumed progress is sent with
+  // UpdateGeneratorBackpressureConsumed.
   int64 total_num_object_consumed = 1;
 }
 

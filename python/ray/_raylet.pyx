@@ -1106,13 +1106,13 @@ cdef class StreamingGeneratorExecutionContext:
         # option `_actor_generator_backpressure_num_objects` is disabled
         # (or this is a non-actor task).
         shared_ptr[CActorTaskBackpressureMetadata] actor_backpressure_metadata
-        c_bool actor_backpressure_state_detached
+        c_bool actor_backpressure_state_owned_by_core_worker
 
     def __dealloc__(self):
         cdef c_bool state_found
         if (
             self.actor_backpressure_metadata.get() != NULL
-            and not self.actor_backpressure_state_detached
+            and not self.actor_backpressure_state_owned_by_core_worker
         ):
             state_found = (
                 CCoreWorkerProcess.GetCoreWorker()
@@ -1173,7 +1173,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
-        self.actor_backpressure_state_detached = False
+        self.actor_backpressure_state_owned_by_core_worker = False
 
         self.waiter = make_shared[CTaskGeneratorBackpressureWaiter](
             generator_backpressure_num_objects,
@@ -1409,7 +1409,9 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         CCoreWorkerProcess.GetCoreWorker().MarkGeneratorBackpressureTaskFinished(
             context.generator_id)
         if completed_normally and context.actor_backpressure_metadata.get() != NULL:
-            context.actor_backpressure_state_detached = True
+            # Streaming execution has completed. The C++ CoreWorker keeps actor-wide state alive until downstream
+            # consumers release the remaining generator items.
+            context.actor_backpressure_state_owned_by_core_worker = True
 
 
 async def execute_streaming_generator_async(
@@ -1537,7 +1539,9 @@ async def execute_streaming_generator_async(
         CCoreWorkerProcess.GetCoreWorker().MarkGeneratorBackpressureTaskFinished(
             context.generator_id)
         if completed_normally and context.actor_backpressure_metadata.get() != NULL:
-            context.actor_backpressure_state_detached = True
+            # Streaming execution has completed. The C++ CoreWorker keeps actor-wide state alive until downstream
+            # consumers release the remaining generator items.
+            context.actor_backpressure_state_owned_by_core_worker = True
 
 
 cdef create_generator_return_obj(

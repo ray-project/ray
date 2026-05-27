@@ -44,17 +44,19 @@ TEST(GeneratorWaiterTest, TestBasic) {
   // 1 generated -> wait -> 1 consumed
   waiter->IncrementObjectGenerated();
   std::thread t2(wait);
-  waiter->HandleObjectReported(1);
+  waiter->OnObjectReportAccepted();
+  waiter->OnObjectConsumed(1);
   t2.join();
 
   // 2 generated -> wait -> 0 consumed (ignored) -> 3 consumed (resume).
   waiter->IncrementObjectGenerated();
   std::thread t3(wait);
+  waiter->OnObjectReportAccepted();
   // If a lower value is given, it should ignore.
-  waiter->HandleObjectReported(0);
+  waiter->OnObjectConsumed(0);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 1);
   // Larger value should resume.
-  waiter->HandleObjectReported(3);
+  waiter->OnObjectConsumed(3);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 3);
   t3.join();
 }
@@ -89,11 +91,11 @@ TEST(GeneratorWaiterTest, TestAllObjectsReported) {
     // Second object report in flight.
     waiter->IncrementObjectGenerated();
     // First object report acked, still blocked.
-    waiter->HandleObjectReported(0);
+    waiter->OnObjectReportAccepted();
     cond_var.WaitWithTimeout(&mutex, absl::Milliseconds(10));
     ASSERT_FALSE(done);
     // Second object report acked, unblocked.
-    waiter->HandleObjectReported(0);
+    waiter->OnObjectReportAccepted();
     cond_var.WaitWithTimeout(&mutex, absl::Milliseconds(10));
     ASSERT_TRUE(done);
   }
@@ -120,7 +122,8 @@ TEST(GeneratorWaiterTest, TestLargerThreshold) {
 
   waiter->IncrementObjectGenerated();
   std::thread t3(wait);
-  waiter->HandleObjectReported(1);
+  waiter->OnObjectReportAccepted();
+  waiter->OnObjectConsumed(1);
   t3.join();
 }
 
@@ -173,14 +176,14 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotBlocksAndAtomicallyIncrements) {
   absl::SleepFor(absl::Milliseconds(50));
   ASSERT_FALSE(third_done.load());
 
-  waiter->OnReportForTask(md, 1);  // delta=1, unconsumed=1 < 2.
+  waiter->OnConsumedForTask(md, 1);  // delta=1, unconsumed=1 < 2.
   t.join();
   ASSERT_TRUE(third_done.load());
   ASSERT_EQ(md.per_task_generated, 3);
   ASSERT_EQ(md.per_task_consumed, 1);
 }
 
-TEST(GeneratorWaiterTest, OnReportForTaskAdvancesByDeltaIgnoresStale) {
+TEST(GeneratorWaiterTest, OnConsumedForTaskAdvancesByDeltaIgnoresStale) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
       10, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
@@ -190,22 +193,22 @@ TEST(GeneratorWaiterTest, OnReportForTaskAdvancesByDeltaIgnoresStale) {
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
   ASSERT_EQ(waiter->TotalObjectGenerated(), 3);
 
-  waiter->OnReportForTask(md, 2);
+  waiter->OnConsumedForTask(md, 2);
   ASSERT_EQ(md.per_task_consumed, 2);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
 
   // Stale / out-of-order reply: no-op.
-  waiter->OnReportForTask(md, 1);
+  waiter->OnConsumedForTask(md, 1);
   ASSERT_EQ(md.per_task_consumed, 2);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
 
-  // Forward report: only the delta lands.
-  waiter->OnReportForTask(md, 3);
+  // Forward update: only the delta lands.
+  waiter->OnConsumedForTask(md, 3);
   ASSERT_EQ(md.per_task_consumed, 3);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 3);
 }
 
-TEST(GeneratorWaiterTest, OnReportForTaskClampsTotalToPerTaskGenerated) {
+TEST(GeneratorWaiterTest, OnConsumedForTaskClampsTotalToPerTaskGenerated) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
       10, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
@@ -214,7 +217,7 @@ TEST(GeneratorWaiterTest, OnReportForTaskClampsTotalToPerTaskGenerated) {
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
   ASSERT_EQ(md.per_task_generated, 2);
 
-  waiter->OnReportForTask(md, 3);
+  waiter->OnConsumedForTask(md, 3);
   ASSERT_EQ(md.per_task_consumed, 2);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
 }
@@ -248,9 +251,9 @@ TEST(GeneratorWaiterTest, TeardownReclaimsOutstandingAndIgnoresLateReports) {
   ASSERT_EQ(md2.per_task_generated, 1);
   ASSERT_EQ(waiter->TotalObjectGenerated(), 1);
 
-  // A late report against the torn-down metadata is a no-op.
+  // A late consumption update against the torn-down metadata is a no-op.
   int64_t consumed_before = waiter->TotalObjectConsumed();
-  waiter->OnReportForTask(md, 5);
+  waiter->OnConsumedForTask(md, 5);
   ASSERT_EQ(waiter->TotalObjectConsumed(), consumed_before);
   ASSERT_EQ(md.per_task_consumed, 0);
 }
@@ -290,7 +293,7 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {
            waiter->TotalObjectConsumed() < kThreads * kPerThread) {
       if (waiter->TotalObjectGenerated() - waiter->TotalObjectConsumed() > 0) {
         per_task_total[idx] += 1;
-        waiter->OnReportForTask(*mds[idx], per_task_total[idx]);
+        waiter->OnConsumedForTask(*mds[idx], per_task_total[idx]);
         idx = (idx + 1) % kThreads;
       } else {
         absl::SleepFor(absl::Microseconds(100));

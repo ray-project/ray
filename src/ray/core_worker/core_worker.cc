@@ -3224,19 +3224,14 @@ Status CoreWorker::ReportGeneratorItemReturns(
   client->ReportGeneratorItemReturns(
       std::move(request),
       [this, waiter, actor_metadata, generator_id, return_id, item_index](
-          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
-                       << "index: " << item_index << ". total_consumed_reported: "
-                       << reply.total_num_object_consumed();
+                       << "index: " << item_index;
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
-        int64_t num_objects_consumed = 0;
-        if (status.ok()) {
-          num_objects_consumed = reply.total_num_object_consumed();
-        } else {
+        if (!status.ok()) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
-          num_objects_consumed = waiter->TotalObjectGenerated();
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
@@ -3244,7 +3239,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
         }
         waiter->OnObjectReportAccepted();
         if (!status.ok()) {
-          waiter->OnObjectConsumed(num_objects_consumed);
+          waiter->OnObjectConsumed(waiter->TotalObjectGenerated());
           if (actor_metadata) {
             actor_metadata->Teardown();
           }
@@ -3316,20 +3311,12 @@ void CoreWorker::HandleReportGeneratorItemReturns(
   task_manager_->HandleReportGeneratorItemReturns(
       request,
       /*execution_signal_callback=*/
-      [reply,
-       worker_id,
+      [worker_id,
        generator_id = reply_generator_id,
-       send_reply_callback = std::move(send_reply_callback)](
-          const Status &status, int64_t total_num_object_consumed) {
+       send_reply_callback = std::move(send_reply_callback)](const Status &status) {
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
                           "executor to resume tasks. "
-                       << generator_id << ". Worker ID: " << worker_id
-                       << ". Total consumed: " << total_num_object_consumed;
-        if (!status.ok()) {
-          RAY_CHECK_EQ(total_num_object_consumed, -1);
-        }
-
-        reply->set_total_num_object_consumed(total_num_object_consumed);
+                       << generator_id << ". Worker ID: " << worker_id;
         send_reply_callback(status, nullptr, nullptr);
       },
       /*consumption_update_callback=*/

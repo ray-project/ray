@@ -636,7 +636,7 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
   Status read_status;
-  ExecutionSignalCallback consumption_update_callback;
+  ConsumptionUpdateCallback consumption_update_callback;
   int64_t consumption_total_consumed = 0;
 
   {
@@ -685,7 +685,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
     RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
                    << generator_id;
     for (const auto &execution_signal : signal_it->second) {
-      execution_signal(Status::NotFound("Stream is deleted."), -1);
+      execution_signal(Status::NotFound("Stream is deleted."));
     }
     // We may still receive more generator return reports in the future, if the
     // generator task is still running or is retried. They will get the
@@ -776,7 +776,7 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
     const ExecutionSignalCallback &execution_signal_callback,
-    const ExecutionSignalCallback &consumption_update_callback) {
+    const ConsumptionUpdateCallback &consumption_update_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -798,7 +798,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
         // second attempt has started. In this case, we should ignore the first
         // attempt.
         execution_signal_callback(
-            Status::NotFound("Stale object reports from the previous attempt."), -1);
+            Status::NotFound("Stale object reports from the previous attempt."));
         return false;
       }
     }
@@ -812,13 +812,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
-    execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
+    execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
   }
   if (backpressure_threshold != -1) {
     auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
     if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
+      execution_signal_callback(Status::NotFound("Stream is deleted."));
       return false;
     }
     if (consumption_update_callback) {
@@ -860,14 +860,14 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
 
   if (stream_it->second.IsObjectConsumed(item_index)) {
-    execution_signal_callback(Status::OK(), total_consumed);
+    execution_signal_callback(Status::OK());
     if (backpressure_threshold != -1 && consumption_update_callback) {
       consumption_update_callback(Status::OK(), total_consumed);
     }
     return false;
   }
 
-  execution_signal_callback(Status::OK(), total_consumed);
+  execution_signal_callback(Status::OK());
   return num_objects_written != 0;
 }
 
