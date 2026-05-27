@@ -223,7 +223,6 @@ class Autoscaler:
                 ray_install_errors=ray_install_errors,
                 ray_stop_errors=ray_stop_errors,
                 autoscaling_config=autoscaling_config,
-                gcs_client=self._gcs_client,
                 metrics_reporter=self._metrics_reporter,
             )
         except AuthenticationError as e:

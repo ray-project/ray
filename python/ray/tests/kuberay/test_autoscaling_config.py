@@ -12,14 +12,11 @@ import yaml
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     GKE_TPU_ACCELERATOR_LABEL,
     GKE_TPU_TOPOLOGY_LABEL,
-    IDLE_SECONDS_KEY,
-    IDLE_TERMINATION_SECONDS_KEY,
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
     _get_num_tpus,
     _get_ray_resources_from_group_spec,
-    _parse_idle_termination_seconds,
     _round_up_k8s_quantity,
 )
 from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
@@ -220,22 +217,18 @@ def _get_autoscaling_config_with_idle_termination_seconds() -> dict:
     return config
 
 
-def _get_ray_cr_with_invalid_idle_termination_seconds() -> dict:
-    """Reversed config: idleTerminationSeconds <= idleTimeoutSeconds. Disabled
-    at parse, downstream sees None."""
+def _get_ray_cr_with_idle_termination_less_than_timeout() -> dict:
     cr = get_basic_ray_cr()
     cr["spec"]["autoscalerOptions"] = {
-        "idleTimeoutSeconds": 300,
-        "idleTerminationSeconds": 100,
+        "idleTimeoutSeconds": 60,
+        "idleTerminationSeconds": 10,
     }
     return cr
 
 
-def _get_autoscaling_config_with_invalid_idle_termination_seconds() -> dict:
-    config = _get_basic_autoscaling_config()
-    config["idle_timeout_minutes"] = 5.0
-    # idle_termination_seconds disabled at parse → stays None.
-    return config
+def _get_autoscaling_config_with_idle_termination_rejected() -> dict:
+    # idleTerminationSeconds < idleTimeoutSeconds → parser rejects, stays None.
+    return _get_basic_autoscaling_config()
 
 
 def _get_ray_cr_with_tpu_custom_resource() -> dict:
@@ -534,12 +527,12 @@ TEST_DATA = (
             id="idle-termination-seconds-valid",
         ),
         pytest.param(
-            _get_ray_cr_with_invalid_idle_termination_seconds(),
-            _get_autoscaling_config_with_invalid_idle_termination_seconds(),
+            _get_ray_cr_with_idle_termination_less_than_timeout(),
+            _get_autoscaling_config_with_idle_termination_rejected(),
             None,
             None,
             None,
-            id="idle-termination-seconds-reversed-disabled",
+            id="idle-termination-seconds-below-timeout-rejected",
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),
@@ -631,46 +624,6 @@ def test_autoscaling_config(
                 mock_logger.warning.assert_called_with(expected_log_warning)
             else:
                 mock_logger.warning.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "options,expected,expect_error_log",
-    [
-        # Unset.
-        ({}, None, False),
-        ({IDLE_SECONDS_KEY: 60}, None, False),
-        # Valid: >= effective idleTimeoutSeconds.
-        ({IDLE_TERMINATION_SECONDS_KEY: 1800}, 1800.0, False),
-        ({IDLE_TERMINATION_SECONDS_KEY: 1800.5}, 1800.5, False),
-        ({IDLE_SECONDS_KEY: 30, IDLE_TERMINATION_SECONDS_KEY: 60}, 60.0, False),
-        ({IDLE_SECONDS_KEY: 600, IDLE_TERMINATION_SECONDS_KEY: 600}, 600.0, False),
-        # Invalid: non-numeric.
-        ({IDLE_TERMINATION_SECONDS_KEY: "1800"}, None, True),
-        ({IDLE_TERMINATION_SECONDS_KEY: None}, None, False),
-        # bool is a subclass of int in Python; rejected explicitly.
-        ({IDLE_TERMINATION_SECONDS_KEY: True}, None, True),
-        # Invalid: < effective idleTimeoutSeconds (default 60 when unset).
-        ({IDLE_TERMINATION_SECONDS_KEY: 30}, None, True),
-        ({IDLE_TERMINATION_SECONDS_KEY: 0}, None, True),
-        ({IDLE_TERMINATION_SECONDS_KEY: -1}, None, True),
-        ({IDLE_SECONDS_KEY: 600, IDLE_TERMINATION_SECONDS_KEY: 100}, None, True),
-    ],
-)
-def test_parse_idle_termination_seconds(options, expected, expect_error_log):
-    with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
-        result = _parse_idle_termination_seconds(options)
-        assert result == expected
-        if expect_error_log:
-            mock_logger.error.assert_called_once()
-        else:
-            mock_logger.error.assert_not_called()
-
-
-def test_parse_idle_termination_seconds_uses_default_timeout():
-    """Boundary against the 60s default when idleTimeoutSeconds is unset."""
-    assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 60}) == 60.0
-    assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 59}) is None
-    assert _parse_idle_termination_seconds({IDLE_TERMINATION_SECONDS_KEY: 61}) == 61.0
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")

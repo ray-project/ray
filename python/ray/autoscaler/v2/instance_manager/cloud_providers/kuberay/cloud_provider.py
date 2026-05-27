@@ -29,6 +29,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
     KubeRayIPPRProvider,
 )
+from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -39,6 +40,8 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
+from ray.autoscaler.v2.utils import is_head_node
+from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +82,16 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
         )
+        self._gcs_client = gcs_client
 
         # Below are states that are cached locally.
         self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
+
+        # Monotonic timestamp of the first reconcile loop where the cluster
+        # currently looks idle. None means the signal is not held this loop.
+        self._cluster_idle_observed_since: Optional[float] = None
 
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
@@ -636,6 +644,106 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
+
+    def evaluate_and_dispatch_cluster_idle(
+        self,
+        ray_state: ClusterResourceState,
+        idle_termination_seconds: Optional[float],
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
+    ) -> None:
+        """Drives the cluster-idle decision for this RayCluster.
+
+        Checks observable conditions, masks the signal if any user driver is
+        attached, and then promotes the signal once it has held for
+        idle_termination_seconds. When promoted, patches the RayCluster CR
+        with the idle-TTL-expired annotation; the KubeRay operator performs
+        the terminal action.
+        """
+        if idle_termination_seconds is None:
+            self._cluster_idle_observed_since = None
+            return
+        if not self._is_cluster_idle_observable(ray_state, node_type_configs):
+            self._cluster_idle_observed_since = None
+            return
+        if self._has_active_user_drivers():
+            self._cluster_idle_observed_since = None
+            return
+
+        now = time.monotonic()
+        if self._cluster_idle_observed_since is None:
+            self._cluster_idle_observed_since = now
+            return
+        if now - self._cluster_idle_observed_since < idle_termination_seconds:
+            return
+        self.set_cluster_idle_annotation()
+
+    @staticmethod
+    def _is_cluster_idle_observable(
+        ray_state: ClusterResourceState,
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
+    ) -> bool:
+        """Returns True when the cluster currently looks idle.
+
+        Conditions: every worker group is at min_worker_nodes, every alive
+        worker reports raylet idle (idle_duration_ms > 0), and the GCS view
+        has no pending resource demand. Head is excluded because Ray-internal
+        actors keep its NODE_WORKERS permanently busy.
+        """
+        worker_count_by_type: Dict[NodeType, int] = defaultdict(int)
+        for node in ray_state.node_states:
+            if node.status == NodeStatus.DEAD:
+                continue
+            if is_head_node(node):
+                continue
+            worker_count_by_type[node.ray_node_type_name] += 1
+
+        for type_name, cfg in node_type_configs.items():
+            if worker_count_by_type.get(type_name, 0) > cfg.min_worker_nodes:
+                return False
+
+        for node in ray_state.node_states:
+            if node.status == NodeStatus.DEAD:
+                continue
+            if is_head_node(node):
+                continue
+            if node.idle_duration_ms == 0:
+                return False
+
+        if (
+            ray_state.pending_resource_requests
+            or ray_state.pending_gang_resource_requests
+            or ray_state.cluster_resource_constraints
+        ):
+            return False
+
+        return True
+
+    def _has_active_user_drivers(self) -> bool:
+        """Returns True when GCS reports any non-dashboard driver still alive.
+
+        Fails closed: a failed GCS query is treated as "drivers present" so
+        we never suspend a cluster whose driver activity we cannot confirm.
+        """
+        try:
+            jobs = self._gcs_client.get_all_job_info(
+                skip_submission_job_info_field=True,
+                skip_is_running_tasks_field=True,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to query GCS job table; treating as drivers attached."
+            )
+            return True
+
+        for job in jobs.values():
+            if job.is_dead:
+                continue
+            entrypoint = job.entrypoint or ""
+            # Dashboard subprocess modules submit jobs with this prefix.
+            if entrypoint.startswith("ray-dashboard-"):
+                continue
+            return True
+        return False
 
     def set_cluster_idle_annotation(self) -> None:
         """Sets `ray.io/idle-ttl-expired=true` on the RayCluster CR.

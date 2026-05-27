@@ -60,8 +60,6 @@ class SchedulingRequest:
     max_num_nodes: Optional[int] = None
     # Idle timeout in seconds.
     idle_timeout_s: Optional[float] = None
-    # Cluster-level idle termination threshold in seconds.
-    idle_termination_seconds: Optional[float] = None
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -103,11 +101,6 @@ class SchedulingReply:
     infeasible_cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
-    # Set by the scheduler when cluster-idle conditions currently hold.
-    cluster_idle_observable: bool = False
-    # Set by the reconciler after cluster_idle_observable has held for
-    # idle_termination_seconds.
-    cluster_idle_termination_expired: bool = False
 
 
 class IResourceScheduler(ABC):
@@ -856,10 +849,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         _max_num_nodes: Optional[int] = None
         # The idle timeout in seconds.
         _idle_timeout_s: Optional[float] = None
-        # Cluster-level idle termination threshold in seconds.
-        _idle_termination_seconds: Optional[float] = None
-        # True when cluster-idle conditions currently hold.
-        _cluster_idle_observable: bool = False
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -883,7 +872,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
-            idle_termination_seconds: Optional[float] = None,
             ippr_specs: Optional[IPPRSpecs] = None,
         ):
             self._nodes = nodes
@@ -893,8 +881,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
-            self._idle_termination_seconds = idle_termination_seconds
-            self._cluster_idle_observable = False
             self._disable_launch_config_check = disable_launch_config_check
             self._ippr_specs = ippr_specs
             self._cloud_resource_availabilities = cloud_resource_availabilities
@@ -943,7 +929,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
-                idle_termination_seconds=req.idle_termination_seconds,
                 ippr_specs=req.ippr_specs,
             )
 
@@ -1023,16 +1008,6 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
-
-        def get_idle_termination_seconds(self) -> Optional[float]:
-            return self._idle_termination_seconds
-
-        def set_cluster_idle_observable(self, reason: str) -> None:
-            self._cluster_idle_observable = True
-            logger.debug("Cluster idle observable: %s", reason)
-
-        def get_cluster_idle_observable(self) -> bool:
-            return self._cluster_idle_observable
 
         def get_cloud_resource_availabilities(self) -> Dict[NodeType, float]:
             return copy.deepcopy(self._cloud_resource_availabilities)
@@ -1163,11 +1138,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         # not needed by min_worker count, etc.)
         ResourceDemandScheduler._enforce_idle_termination(ctx)
 
-        # Evaluate the cluster-level idle predicate. Must run after
-        # _enforce_idle_termination so that workers already scheduled for
-        # termination don't artificially inflate the alive set.
-        ResourceDemandScheduler._check_cluster_idle(ctx, request)
-
         cluster_resources = ctx.get_cluster_resources()
 
         # Compute the number of nodes to launch.
@@ -1179,7 +1149,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             to_ippr=ctx.get_ippr_requests(),
             to_terminate=ctx.get_terminate_requests(),
             cluster_resources=cluster_resources,
-            cluster_idle_observable=ctx.get_cluster_idle_observable(),
         )
 
         if self._event_logger is not None:
@@ -2076,56 +2045,3 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
 
         ctx.update(nodes)
-
-    @staticmethod
-    def _check_cluster_idle(
-        ctx: "ResourceDemandScheduler.ScheduleContext",
-        request: SchedulingRequest,
-    ) -> None:
-        """Sets ctx.cluster_idle_observable when cluster-idle conditions hold.
-
-        Conditions:
-        - every worker group is at min_worker_nodes (per-node idle has done
-          its job);
-        - any remaining worker reports idle_duration_ms > 0;
-        - the scheduler input carries no pending resource demand.
-
-        Head is excluded because Ray-internal actors keep its NODE_WORKERS
-        permanently busy. The wall-clock gate that promotes this signal into
-        a termination action lives in the reconciler.
-        """
-        if ctx.get_idle_termination_seconds() is None:
-            return
-
-        # Every worker group must be at min_worker_nodes.
-        worker_count_by_type: Dict[NodeType, int] = defaultdict(int)
-        for node in ctx.get_nodes():
-            if node.status == SchedulingNodeStatus.TO_TERMINATE:
-                continue
-            if node.node_kind == NodeKind.HEAD:
-                continue
-            worker_count_by_type[node.node_type] += 1
-        for node_type, cfg in ctx.get_node_type_configs().items():
-            if worker_count_by_type.get(node_type, 0) > cfg.min_worker_nodes:
-                return
-
-        # Any remaining alive worker must report raylet idle.
-        for node in ctx.get_nodes():
-            if (
-                node.status == SchedulingNodeStatus.SCHEDULABLE
-                and node.node_kind != NodeKind.HEAD
-                and node.idle_duration_ms == 0
-            ):
-                return
-
-        # No pending demand on the input.
-        if (
-            request.resource_requests
-            or request.gang_resource_requests
-            or request.cluster_resource_constraints
-        ):
-            return
-
-        ctx.set_cluster_idle_observable(
-            reason=("all worker groups at min_worker_nodes; " "no pending demand")
-        )

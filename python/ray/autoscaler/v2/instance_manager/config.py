@@ -399,14 +399,6 @@ class AutoscalingConfig:
         idle_timeout_s = self.get_config("idle_timeout_minutes", None)
         return idle_timeout_s * 60 if idle_timeout_s is not None else None
 
-    def get_idle_termination_seconds(self) -> Optional[float]:
-        """Returns the cluster-level idle termination threshold in seconds.
-
-        None disables the feature. Distinct from get_idle_timeout_s() which
-        is the per-node threshold.
-        """
-        return self.get_config("idle_termination_seconds", None)
-
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
         return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)

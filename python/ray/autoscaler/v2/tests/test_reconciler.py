@@ -83,9 +83,6 @@ class MockAutoscalingConfig:
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
 
-    def get_idle_termination_seconds(self):
-        return self._configs.get("idle_termination_seconds", None)
-
     def get_provider_instance_type(self, ray_node_type):
         return self._configs.get("provider_instance_types", {}).get(ray_node_type, "")
 
@@ -95,9 +92,7 @@ class MockAutoscalingConfig:
 
 
 class MockScheduler(IResourceScheduler):
-    def __init__(
-        self, to_launch=None, to_terminate=None, cluster_idle_observable=False
-    ):
+    def __init__(self, to_launch=None, to_terminate=None):
         if to_launch is None:
             to_launch = []
 
@@ -106,13 +101,11 @@ class MockScheduler(IResourceScheduler):
 
         self.to_launch = to_launch
         self.to_terminate = to_terminate
-        self.cluster_idle_observable = cluster_idle_observable
 
     def schedule(self, req):
         return SchedulingReply(
             to_launch=self.to_launch,
             to_terminate=self.to_terminate,
-            cluster_idle_observable=self.cluster_idle_observable,
         )
 
 
@@ -1994,236 +1987,6 @@ class TestReconciler:
 
         assert instances["i-0"].status == Instance.TERMINATING
         assert instances["i-1"].status == Instance.TERMINATING
-
-
-class TestClusterIdleDriverMask:
-    @staticmethod
-    def _gcs_with_jobs(*is_dead_flags):
-        class _Job:
-            def __init__(self, dead):
-                self.is_dead = dead
-                self.entrypoint = "python user_script.py"
-
-        class _Gcs:
-            def get_all_job_info(self, **_):
-                return {i: _Job(dead) for i, dead in enumerate(is_dead_flags)}
-
-        return _Gcs()
-
-    def test_no_op_when_observable_false(self):
-        reply = SchedulingReply(cluster_idle_observable=False)
-        Reconciler._apply_cluster_idle_driver_mask(
-            reply, gcs_client=self._gcs_with_jobs(False)
-        )
-        assert reply.cluster_idle_observable is False
-
-    def test_preserved_when_no_active_drivers(self):
-        reply = SchedulingReply(cluster_idle_observable=True)
-        Reconciler._apply_cluster_idle_driver_mask(
-            reply, gcs_client=self._gcs_with_jobs(True, True)
-        )
-        assert reply.cluster_idle_observable is True
-
-    def test_masked_when_driver_attached(self):
-        reply = SchedulingReply(cluster_idle_observable=True)
-        Reconciler._apply_cluster_idle_driver_mask(
-            reply, gcs_client=self._gcs_with_jobs(False, True)
-        )
-        assert reply.cluster_idle_observable is False
-
-    def test_masked_when_gcs_client_none(self):
-        reply = SchedulingReply(cluster_idle_observable=True)
-        Reconciler._apply_cluster_idle_driver_mask(reply, gcs_client=None)
-        assert reply.cluster_idle_observable is False
-
-    def test_masked_when_gcs_raises(self):
-        class _FailingGcs:
-            def get_all_job_info(self, **_):
-                raise RuntimeError("gcs unreachable")
-
-        reply = SchedulingReply(cluster_idle_observable=True)
-        Reconciler._apply_cluster_idle_driver_mask(reply, gcs_client=_FailingGcs())
-        assert reply.cluster_idle_observable is False
-
-
-class TestClusterIdleWallClockGate:
-    def setup_method(self, _):
-        Reconciler._cluster_idle_observed_since = None
-
-    def test_no_op_when_threshold_none(self):
-        reply = SchedulingReply(cluster_idle_observable=True)
-        Reconciler._gate_cluster_idle(reply, threshold_s=None)
-        assert reply.cluster_idle_termination_expired is False
-
-    def test_resets_when_signal_clears(self):
-        reply = SchedulingReply(cluster_idle_observable=False)
-        Reconciler._cluster_idle_observed_since = 1.0
-        Reconciler._gate_cluster_idle(reply, threshold_s=100.0)
-        assert Reconciler._cluster_idle_observed_since is None
-
-    def test_records_anchor_on_first_observation(self):
-        with mock.patch("time.monotonic", return_value=10.0):
-            reply = SchedulingReply(cluster_idle_observable=True)
-            Reconciler._gate_cluster_idle(reply, threshold_s=100.0)
-        assert Reconciler._cluster_idle_observed_since == 10.0
-        assert reply.cluster_idle_termination_expired is False
-
-    def test_holds_below_threshold(self):
-        with mock.patch("time.monotonic", return_value=10.0):
-            Reconciler._gate_cluster_idle(
-                SchedulingReply(cluster_idle_observable=True), threshold_s=100.0
-            )
-        with mock.patch("time.monotonic", return_value=50.0):
-            reply = SchedulingReply(cluster_idle_observable=True)
-            Reconciler._gate_cluster_idle(reply, threshold_s=100.0)
-        assert reply.cluster_idle_termination_expired is False
-
-    def test_fires_after_threshold(self):
-        with mock.patch("time.monotonic", return_value=10.0):
-            Reconciler._gate_cluster_idle(
-                SchedulingReply(cluster_idle_observable=True), threshold_s=100.0
-            )
-        with mock.patch("time.monotonic", return_value=110.0):
-            reply = SchedulingReply(cluster_idle_observable=True)
-            Reconciler._gate_cluster_idle(reply, threshold_s=100.0)
-        assert reply.cluster_idle_termination_expired is True
-
-    def test_resets_when_signal_drops_mid_wait(self):
-        with mock.patch("time.monotonic", return_value=10.0):
-            Reconciler._gate_cluster_idle(
-                SchedulingReply(cluster_idle_observable=True), threshold_s=100.0
-            )
-        # Signal drops → anchor cleared.
-        with mock.patch("time.monotonic", return_value=50.0):
-            Reconciler._gate_cluster_idle(
-                SchedulingReply(cluster_idle_observable=False), threshold_s=100.0
-            )
-        assert Reconciler._cluster_idle_observed_since is None
-        # Signal returns → counts from now, not from t=10.
-        with mock.patch("time.monotonic", return_value=60.0):
-            reply = SchedulingReply(cluster_idle_observable=True)
-            Reconciler._gate_cluster_idle(reply, threshold_s=100.0)
-        assert reply.cluster_idle_termination_expired is False
-        assert Reconciler._cluster_idle_observed_since == 60.0
-
-
-class TestClusterIdleDispatch:
-    @staticmethod
-    def _setup_kuberay_provider():
-        from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (  # noqa: E501
-            KubeRayProvider,
-        )
-        from ray.autoscaler.v2.tests.test_node_provider import (
-            MockKubernetesHttpApiClient,
-        )
-        from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
-
-        cr = get_basic_ray_cr()
-        cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
-        cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
-        mock_client = MockKubernetesHttpApiClient(
-            {"items": [], "metadata": {"resourceVersion": "0"}}, cr
-        )
-        provider = KubeRayProvider(
-            cluster_name="test",
-            provider_config={
-                "namespace": "default",
-                "head_node_type": "headgroup",
-            },
-            gcs_client=MagicMock(),
-            k8s_api_client=mock_client,
-        )
-        return provider, mock_client
-
-    def setup_method(self, _):
-        Reconciler._cluster_idle_observed_since = None
-
-    def test_annotation_dispatched_after_threshold_held(self, setup):
-        from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (  # noqa: E501
-            IDLE_TTL_EXPIRED_ANNOTATION,
-        )
-
-        instance_manager, _, _, cloud_resource_monitor = setup
-        provider, mock_client = self._setup_kuberay_provider()
-
-        gcs_client = MagicMock()
-        gcs_client.get_all_job_info.return_value = {}
-
-        config = MockAutoscalingConfig({"idle_termination_seconds": 100.0})
-
-        def reconcile_at(t):
-            with mock.patch("time.monotonic", return_value=t):
-                Reconciler.reconcile(
-                    instance_manager,
-                    scheduler=MockScheduler(cluster_idle_observable=True),
-                    cloud_provider=provider,
-                    cloud_resource_monitor=cloud_resource_monitor,
-                    ray_cluster_resource_state=ClusterResourceState(),
-                    non_terminated_cloud_instances={},
-                    cloud_provider_errors=[],
-                    ray_install_errors=[],
-                    autoscaling_config=config,
-                    gcs_client=gcs_client,
-                )
-
-        reconcile_at(0.0)
-        assert f"rayclusters/{provider._cluster_name}" not in mock_client._patches
-
-        reconcile_at(100.0)
-        patches = mock_client._patches.get(f"rayclusters/{provider._cluster_name}")
-        assert patches == {
-            "metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
-
-    def test_annotation_not_dispatched_when_observable_false(self, setup):
-        instance_manager, _, _, cloud_resource_monitor = setup
-        provider, mock_client = self._setup_kuberay_provider()
-
-        Reconciler.reconcile(
-            instance_manager,
-            scheduler=MockScheduler(cluster_idle_observable=False),
-            cloud_provider=provider,
-            cloud_resource_monitor=cloud_resource_monitor,
-            ray_cluster_resource_state=ClusterResourceState(),
-            non_terminated_cloud_instances={},
-            cloud_provider_errors=[],
-            ray_install_errors=[],
-            autoscaling_config=MockAutoscalingConfig(),
-            gcs_client=MagicMock(),
-        )
-
-        assert f"rayclusters/{provider._cluster_name}" not in mock_client._patches
-
-    def test_annotation_not_dispatched_when_driver_attached(self, setup):
-        instance_manager, _, _, cloud_resource_monitor = setup
-        provider, mock_client = self._setup_kuberay_provider()
-
-        # GCS reports a live user driver → mask drops observable.
-        class _Job:
-            def __init__(self, dead):
-                self.is_dead = dead
-                self.entrypoint = "python user_script.py"
-
-        gcs_client = MagicMock()
-        gcs_client.get_all_job_info.return_value = {0: _Job(False)}
-
-        config = MockAutoscalingConfig({"idle_termination_seconds": 100.0})
-
-        with mock.patch("time.monotonic", return_value=1000.0):
-            Reconciler.reconcile(
-                instance_manager,
-                scheduler=MockScheduler(cluster_idle_observable=True),
-                cloud_provider=provider,
-                cloud_resource_monitor=cloud_resource_monitor,
-                ray_cluster_resource_state=ClusterResourceState(),
-                non_terminated_cloud_instances={},
-                cloud_provider_errors=[],
-                ray_install_errors=[],
-                autoscaling_config=config,
-                gcs_client=gcs_client,
-            )
-
-        assert f"rayclusters/{provider._cluster_name}" not in mock_client._patches
 
 
 if __name__ == "__main__":

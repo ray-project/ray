@@ -93,7 +93,6 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             monitor_ip=head_ip,
         ).run()
     else:
-        _warn_if_v2_only_options_set(autoscaling_config_producer)
         Monitor(
             address=gcs_client.address,
             # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
@@ -105,25 +104,6 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             # Kubernetes will then restart the autoscaler container.
             retry_on_failure=False,
         ).run()
-
-
-def _warn_if_v2_only_options_set(
-    autoscaling_config_producer: AutoscalingConfigProducer,
-) -> None:
-    """Warns once when V2-only fields are set under V1."""
-    try:
-        config = autoscaling_config_producer()
-    except Exception:
-        # Probe is best-effort; Monitor will surface real config errors.
-        logger.exception("Failed to probe autoscaling config for V2-only fields.")
-        return
-
-    if config.get("idle_termination_seconds") is not None:
-        logger.warning(
-            "autoscalerOptions.idleTerminationSeconds is set but autoscaler "
-            "V2 is not enabled. This field is V2-only and will be ignored. "
-            "Set RAY_enable_autoscaler_v2=1 to enable."
-        )
 
 
 def _setup_logging(log_dir: str) -> None:

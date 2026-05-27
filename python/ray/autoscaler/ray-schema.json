@@ -40,7 +40,8 @@
         },
         "idle_termination_seconds": {
             "description": "Cluster-level idle threshold in seconds. When set, the autoscaler V2 reports an annotation on the RayCluster CR after the entire cluster has been idle for this long, signaling KubeRay to terminate the cluster. Null disables the feature. V2 + KubeRay only.",
-            "type": ["number", "null"]
+            "type": ["number", "null"],
+            "minimum": 0
         },
         "provider": {
             "type": "object",
