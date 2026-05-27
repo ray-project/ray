@@ -66,7 +66,10 @@ def test_unknown_operators_anonymized(reset_collector):
         name = "FakeOp"
         input_dependencies = []
 
-    assert collector.anonymize_op_name(FakeOp()) == "Unknown"
+    assert (
+        collector.anonymize_op_name(FakeOp())  # pyrefly: ignore[bad-argument-type]
+        == "Unknown"
+    )
 
     # User-defined Datasource: real class living outside ray.data.* should
     # appear as "ReadCustom", not "FakeDatasource".
