@@ -154,6 +154,12 @@ class DynamoConnectorBackend(BaseConnectorBackend):
 
         engine_id = self.kv_transfer_config.get("engine_id", "ray-serve-dynamo")
         self.kv_transfer_config["engine_id"] = f"{engine_id}-{worker_id}"
+        self.kv_transfer_config["kv_connector_module_path"] = (
+            self.kv_transfer_config.get("kv_connector_module_path")
+            or dynamo_config.get(
+                "kv_connector_module_path", "kvbm.vllm_integration.connector"
+            )
+        )
         dynamo_config["worker_id"] = worker_id
         dynamo_config["block_size"] = block_size
 
