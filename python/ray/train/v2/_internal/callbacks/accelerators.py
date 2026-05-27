@@ -1,3 +1,4 @@
+# python/ray/train/v2/_internal/callbacks/accelerators.py
 import logging
 import os
 from collections import defaultdict
@@ -5,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.amd_gpu import HIP_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
@@ -59,6 +61,10 @@ def _share_cuda_visible_devices(workers: List["Worker"]):
     This allows GPU workers on the same node to communicate with one
     another.
 
+    On AMD/ROCm systems, HIP_VISIBLE_DEVICES supersedes CUDA_VISIBLE_DEVICES.
+    To ensure consistent device visibility, HIP_VISIBLE_DEVICES is also updated
+    with the same shared GPU list when it is present in the worker's environment.
+
     Example:
         Setup:
         - Node1:
@@ -74,7 +80,34 @@ def _share_cuda_visible_devices(workers: List["Worker"]):
     Args:
         workers: List of worker objects.
     """
-    _share_accelerator_ids(workers, ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR)
+    worker_metadatas = [worker.metadata for worker in workers]
+    visible_accelerator_ids_per_worker = _get_visible_accelerator_ids_per_worker(
+        worker_metadatas=worker_metadatas, accelerator_name=ray_constants.GPU
+    )
+
+    _cuda_env = CUDA_VISIBLE_DEVICES_ENV_VAR
+    _hip_env = HIP_VISIBLE_DEVICES_ENV_VAR
+
+    def set_visible_devices(accelerator_ids):
+        os.environ[_cuda_env] = accelerator_ids
+        # On AMD/ROCm systems, HIP_VISIBLE_DEVICES supersedes CUDA_VISIBLE_DEVICES.
+        # Ray's per-worker GPU assignment sets HIP_VISIBLE_DEVICES to a single GPU,
+        # but the shared list must be propagated here too so all workers on the node
+        # see each other's GPUs for RCCL collective communication.
+        # The check is intentionally done inside the worker-side function so that the
+        # presence of HIP_VISIBLE_DEVICES is tested in the worker process (where Ray
+        # has already set it via AMDGPUAcceleratorManager), not in the controller.
+        if _hip_env in os.environ:
+            os.environ[_hip_env] = accelerator_ids
+
+    futures = []
+    for rank, visible_accelerator_ids in enumerate(visible_accelerator_ids_per_worker):
+        futures.append(
+            workers[rank].execute_async(
+                set_visible_devices, accelerator_ids=visible_accelerator_ids
+            )
+        )
+    ray.get(futures)
 
 
 def _share_accelerator_ids(
@@ -128,10 +161,13 @@ def _get_visible_accelerator_ids_per_worker(
     All workers on a node should have the same set of visible accelerators,
     which is the union of accelerator ids of the workers.
 
-    Returns:
-        visible_accelerator_ids_per_worker: A list of comma-separated accelerator ID
-            strings. This list is the same length as the number of workers.
+    Args:
+        worker_metadatas: The actor metadata for each worker.
+        accelerator_name: The name of the accelerator resource to inspect.
 
+    Returns:
+        A list of comma-separated accelerator ID strings. This list is the
+        same length as the number of workers.
     """
     for metadata in worker_metadatas:
         if accelerator_name not in metadata.accelerator_ids:

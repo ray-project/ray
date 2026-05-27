@@ -1,9 +1,11 @@
+# python/ray/air/_internal/device_manager/__init__.py
 import logging
 import threading
 from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.air._internal.device_manager.amd_gpu import AMDGPUTorchDeviceManager
 from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
 from ray.air._internal.device_manager.npu import NPUTorchDeviceManager
@@ -56,6 +58,21 @@ def get_torch_device_manager_by_context() -> TorchDeviceManager:
                             f"for the specified resources {resources}."
                         )
                     else:
+                        # For GPU resources, select AMD-specific manager when
+                        # AMD GPUs are present, since HIP_VISIBLE_DEVICES
+                        # supersedes CUDA_VISIBLE_DEVICES on AMD/ROCm systems.
+                        if resource_type == ray_constants.GPU:
+                            from ray._private.accelerators import (
+                                AMDGPUAcceleratorManager,
+                                get_accelerator_manager_for_resource,
+                            )
+
+                            accel_manager = get_accelerator_manager_for_resource(
+                                ray_constants.GPU
+                            )
+                            if isinstance(accel_manager, AMDGPUAcceleratorManager):
+                                device_manager_cls = AMDGPUTorchDeviceManager
+
                         existing_device_manager_cls = device_manager_cls
 
             device_manager_cls = (
@@ -69,6 +86,14 @@ def get_torch_device_manager_by_context() -> TorchDeviceManager:
 
 def get_torch_device_manager_by_device_type(device_type: str):
     if device_type.lower() == ray_constants.GPU.lower() or device_type == "cuda":
+        from ray._private.accelerators import (
+            AMDGPUAcceleratorManager,
+            get_accelerator_manager_for_resource,
+        )
+
+        accel_manager = get_accelerator_manager_for_resource(ray_constants.GPU)
+        if isinstance(accel_manager, AMDGPUAcceleratorManager):
+            return AMDGPUTorchDeviceManager()
         return CUDATorchDeviceManager()
     elif device_type.lower() == ray_constants.NPU.lower():
         return NPUTorchDeviceManager()
@@ -83,6 +108,7 @@ def get_torch_device_manager_by_device_type(device_type: str):
 __all__ = [
     TorchDeviceManager,
     CPUTorchDeviceManager,
+    AMDGPUTorchDeviceManager,
     CUDATorchDeviceManager,
     HPUTorchDeviceManager,
     NPUTorchDeviceManager,

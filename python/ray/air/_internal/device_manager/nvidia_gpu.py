@@ -44,7 +44,7 @@ class CUDATorchDeviceManager(TorchDeviceManager):
             for gpu_id in gpu_ids:
                 try:
                     device_ids.append(cuda_visible_list.index(gpu_id))
-                except IndexError:
+                except ValueError:
                     raise RuntimeError(
                         "CUDA_VISIBLE_DEVICES set incorrectly. "
                         f"Got {cuda_visible_str}, expected to include {gpu_id}. "

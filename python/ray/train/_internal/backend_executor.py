@@ -1,3 +1,4 @@
+# python/ray/train/_internal/backend_executor.py
 import logging
 import os
 import time
@@ -93,9 +94,9 @@ class BackendExecutor:
     Args:
         backend_config: The configurations for this
             specific backend.
+        trial_info: Information about the current Tune trial, if running under Tune.
         num_workers: Number of workers to use for training.
-        resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_worker: Dictionary specifying the resources that will be
             requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
@@ -301,6 +302,10 @@ class BackendExecutor:
         This allows GPU workers on the same node to communicate with one
         another.
 
+        On AMD/ROCm systems, HIP_VISIBLE_DEVICES supersedes CUDA_VISIBLE_DEVICES.
+        To ensure consistent device visibility, HIP_VISIBLE_DEVICES is also updated
+        with the same shared GPU list when running on AMD hardware.
+
         Example:
 
             Setup:
@@ -317,6 +322,55 @@ class BackendExecutor:
 
         """
         self._share_resource_ids(ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR)
+        # On AMD/ROCm systems, HIP_VISIBLE_DEVICES supersedes CUDA_VISIBLE_DEVICES.
+        # Ray's per-worker GPU assignment sets HIP_VISIBLE_DEVICES to a single GPU,
+        # but the shared list must be propagated here too so all workers on the node
+        # see each other's GPUs for RCCL collective communication.
+        # The check is intentionally done inside the worker-side function so that the
+        # presence of HIP_VISIBLE_DEVICES is tested in the worker process (where Ray
+        # has already set it via AMDGPUAcceleratorManager), not in the controller.
+        self._share_hip_visible_devices_if_present(ray_constants.GPU)
+
+    def _share_hip_visible_devices_if_present(self, resource: str):
+        """Conditionally sets HIP_VISIBLE_DEVICES on workers that already have it set.
+
+        On AMD/ROCm systems, Ray's per-worker GPU assignment sets HIP_VISIBLE_DEVICES
+        to a single GPU. This method updates it to the full shared list (the union of
+        all workers' GPUs on the same node) so that RCCL can communicate across GPUs.
+        The presence check runs inside each worker process, so it correctly detects
+        AMD systems without relying on the controller's environment.
+        """
+        node_ids_and_resource_ids = [
+            (
+                w.metadata.node_id,
+                w.metadata.resource_ids[resource],
+            )
+            for w in self.worker_group.workers
+        ]
+        node_id_to_worker_id = defaultdict(set)
+        node_id_to_resource_ids = defaultdict(set)
+
+        for worker_id, (node_id, resource_ids) in enumerate(node_ids_and_resource_ids):
+            node_id_to_worker_id[node_id].add(worker_id)
+            node_id_to_resource_ids[node_id].update(resource_ids)
+
+        _hip_env = HIP_VISIBLE_DEVICES_ENV_VAR
+        futures = []
+        for node_id, resource_ids in node_id_to_resource_ids.items():
+            resource_ids = sorted(resource_ids)
+            all_resource_ids = ",".join(resource_ids)
+
+            def set_hip_if_present(hip_env=_hip_env, ids=all_resource_ids):
+                if hip_env in os.environ:
+                    os.environ[hip_env] = ids
+
+            for worker_id in node_id_to_worker_id[node_id]:
+                futures.append(
+                    self.worker_group.execute_single_async(
+                        worker_id, set_hip_if_present
+                    )
+                )
+        ray.get(futures)
 
     def _share_resource_ids(self, resource: str, env_var: str):
         """Sets the given env_var on all workers.
@@ -382,14 +436,20 @@ class BackendExecutor:
             resource_name: The name of the resource/accelerator.
             enable_sharing_env: The name of the environment variable
                 to check.
+
+        Returns:
+            True if resource sharing is enabled, False otherwise.
         """
         has_resource_requested = self._resources_per_worker.get(resource_name, 0) > 0
         return has_resource_requested and ray_constants.env_bool(
             enable_sharing_env, True
         )
 
-    def _create_rank_world_size_mappings(self) -> List[Dict]:
+    def _create_rank_world_size_mappings(
+        self,
+    ) -> Tuple[Dict[int, int], Dict[int, int], Dict[int, int]]:
         """Create rank and world size mappings for workers.
+
         There are three maps returned:
             - local_rank_map, which maps from worker world_rank to local_rank.
             - local_world_size_map, which maps from world_rank to local_world_size
@@ -432,6 +492,8 @@ class BackendExecutor:
                 4 -> 1
             }
 
+        Returns:
+            A tuple of (local_rank_map, local_world_size_map, node_rank_map).
         """
         local_rank_map = {}  # map from world rank to local rank
         local_world_size_map = {}  # map from world rank to local world size
@@ -486,7 +548,11 @@ class BackendExecutor:
         Args:
             train_func: The training function to run on each worker.
             datasets: The base datasets.
+            metadata: User-supplied metadata dict propagated to checkpoints
+                created during training.
             data_config: The config object for creating dataset shards for workers.
+            storage: The storage context, providing access to the experiment
+                directory and other persistent storage state.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``session.get_checkpoint()``. If this
@@ -718,7 +784,7 @@ class BackendExecutor:
                 end_time_ms=int(time.time() * 1000),
             )
 
-    def get_with_failure_handling(self, remote_values):
+    def get_with_failure_handling(self, remote_values: List[ray.ObjectRef]):
         """Gets the remote values while handling for worker failures.
 
         This method should be called instead of ``ray.get()`` directly in
