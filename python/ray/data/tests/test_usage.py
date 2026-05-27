@@ -25,6 +25,9 @@ def reset_collector(monkeypatch):
     collector.reset_for_testing()
     monkeypatch.setattr(collector, "_cluster_spilled_bytes", lambda: 0)
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
+    # ``ray.init()`` force-sets # RAY_USAGE_STATS_ENABLED=0 for driver-created clusters, so the env var can't
+    # keep the collector's opt-out gate open. Patch the gate directly instead.
+    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
     yield
     collector.reset_for_testing()
 
@@ -100,6 +103,20 @@ def test_does_not_record_when_disabled_via_env_var(
 ):
     """Privacy gate: RAY_DATA_USAGE_DISABLED=1 must produce zero side effects."""
     monkeypatch.setenv("RAY_DATA_USAGE_DISABLED", "1")
+    ds = ray.data.range(10)
+    collector.record_workload("exec-1", ds._logical_plan)
+    collector.record_execution_result("exec-1")
+
+    assert mock_record == []
+    assert "exec-1" not in collector.get_executions()
+
+
+def test_does_not_record_when_usage_stats_opted_out(
+    reset_collector, mock_record, monkeypatch
+):
+    """Privacy gate: opting out of Ray usage stats (RAY_USAGE_STATS_ENABLED=0,
+    ``ray disable-usage-stats``, etc.) must also disable Ray Data collection."""
+    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: False)
     ds = ray.data.range(10)
     collector.record_workload("exec-1", ds._logical_plan)
     collector.record_execution_result("exec-1")
