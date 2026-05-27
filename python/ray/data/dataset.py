@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import (
@@ -54,13 +55,14 @@ from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasi
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan, SourceOperator
 from ray.data._internal.logical.operators import (
     Count,
     Filter,
@@ -83,8 +85,8 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
+from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -132,10 +134,12 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.data.datatype import DataType
+from ray.data.exceptions import omit_traceback_stdout
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.debug import log_once
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -155,6 +159,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
@@ -305,10 +310,6 @@ class Dataset:
 
         # Bind context to logical plan.
         self._logical_plan.context = context
-
-        # Create execution plan with shared references.
-        # TODO (kyuds): to remove in near future.
-        self._plan = ExecutionPlan(context, self._cache, in_stats, logical_plan)
 
         self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
 
@@ -7515,26 +7516,193 @@ class Dataset:
         self._run_index += 1
         return StreamingExecutor(self._context, self.get_dataset_id())
 
-    def _execute(self, preserve_order: bool = False) -> RefBundle:
-        """Execute this dataset eagerly, returning a RefBundle."""
-        return self._plan.execute(
-            dataset_uuid=self._uuid,
-            create_executor_fn=self._create_executor,
-            preserve_order=preserve_order,
-        )
+    def _initial_stats(self) -> DatasetStats:
+        """The initial stats to seed a fresh executor for this dataset.
 
+        For Datasets created from `read_xxx`, `self._in_stats` is empty/unused and
+        we return a fresh empty stats object — `read_xxx` operators are translated
+        into physical operators that emit their own stats.
+
+        For Datasets created from `from_xxx`, the input data isn't visible to the
+        executor (it's wrapped in `InputDataBuffer`, which is skipped when stats
+        are generated). We must seed `_in_stats` so the from-side metadata isn't
+        lost.
+        """
+        if self._cache.get_bundle(self._logical_plan.dag) is not None:
+            return self._cache.get_stats()
+        if self._logical_plan.has_lazy_input():
+            return DatasetStats(metadata={}, parent=None)
+        return self._in_stats
+
+    def _execute_dag(
+        self,
+        executor: "Executor",
+        preserve_order: bool = False,
+    ) -> "OutputIterator":
+        """Optimize the logical plan and start the executor.
+
+        Returns the executor's output iterator over RefBundles. Used by both
+        `_execute()` (which drains the iterator into a single RefBundle) and
+        `_build_bundle_iterator()` (which streams the iterator to the caller).
+        """
+        from ray.data._internal.logical.optimizers import get_execution_plan
+
+        record_operators_usage(self._logical_plan.dag)
+
+        physical_plan, callbacks = get_execution_plan(self._logical_plan)
+        dag = physical_plan.dag
+        stats = self._initial_stats()
+
+        # Enforce ordering for plans that require it (Zip, Sort).
+        if preserve_order or self._logical_plan.require_preserve_order():
+            executor._options.preserve_order = True
+
+        return executor.execute(dag, initial_stats=stats, callbacks=callbacks)
+
+    def _build_bundle_iterator(
+        self,
+        executor: "Executor",
+        preserve_order: bool = False,
+    ) -> "OutputIterator":
+        """Build a metadata-collecting bundle iterator over `executor`'s output.
+
+        The returned iterator writes num_rows / size_bytes / schema back to
+        `self._cache` once it is fully exhausted. Used by both eager dataset
+        iteration (`_execute_to_iterator`) and streaming-split iteration
+        (`StreamSplitDataIterator`).
+        """
+        bundle_iter = self._execute_dag(executor, preserve_order=preserve_order)
+        return _CacheMetadataIterator(bundle_iter, executor._topology, self)
+
+    @omit_traceback_stdout
+    def _execute(self, preserve_order: bool = False) -> RefBundle:
+        """Execute this dataset eagerly, returning a RefBundle.
+
+        Returns the cached RefBundle if execution has already happened against
+        the current logical plan; otherwise runs the StreamingExecutor end-to-end,
+        captures stats and memory-spill metrics, and writes them back to the cache.
+        """
+        if not ray.available_resources().get("CPU"):
+            if log_once("cpu_warning"):
+                logger.warning(
+                    "Warning: The Ray cluster currently does not have any "
+                    "available CPUs. The Dataset job will hang unless more CPUs "
+                    "are freed up. A common reason is that cluster resources are "
+                    "used by Actors or Tune trials; see the following link for "
+                    "more details: "
+                    "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"
+                )
+
+        if self._cache.get_bundle(self._logical_plan.dag) is None:
+            if (
+                isinstance(self._logical_plan.dag, SourceOperator)
+                and self._logical_plan.dag.output_data() is not None
+            ):
+                # Already-materialized source (e.g., `from_pandas`): skip
+                # execution and return the output data directly. Avoids
+                # recording empty-plan execution metrics.
+                stats = self._initial_stats()
+                output_bundles = self._logical_plan.dag.output_data()
+                owns_blocks = all(b.owns_blocks for b in output_bundles)
+                schema = _take_first_non_empty_schema(b.schema for b in output_bundles)
+                bundle = RefBundle(
+                    [
+                        (block, metadata)
+                        for b in output_bundles
+                        for block, metadata in b.blocks
+                    ],
+                    owns_blocks=owns_blocks,
+                    schema=schema,
+                )
+            else:
+                with self._create_executor() as executor:
+                    bundles = self._execute_dag(executor, preserve_order=preserve_order)
+                    bundle = RefBundle.merge_ref_bundles(list(bundles))
+                    executor.get_stats().set_uuid_recursive(self._uuid)
+                stats = executor.get_stats()
+                stats_summary_string = stats.to_summary().to_string(
+                    include_parent=False
+                )
+                if self._context.enable_auto_log_stats:
+                    logger.info(stats_summary_string)
+
+            # Retrieve cluster-wide memory-spill stats.
+            try:
+                reply = get_memory_info_reply(
+                    get_state_from_address(ray.get_runtime_context().gcs_address)
+                )
+                if reply.store_stats.spill_time_total_s > 0:
+                    stats.global_bytes_spilled = int(
+                        reply.store_stats.spilled_bytes_total
+                    )
+                if reply.store_stats.restore_time_total_s > 0:
+                    stats.global_bytes_restored = int(
+                        reply.store_stats.restored_bytes_total
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Skipping recording memory spilled and restored statistics due "
+                    f"to exception: {e}"
+                )
+
+            stats.dataset_bytes_spilled = 0
+
+            def collect_stats(cur_stats):
+                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                    "obj_store_mem_spilled", 0
+                )
+                for parent in cur_stats.parents:
+                    collect_stats(parent)
+
+            collect_stats(stats)
+
+            stats.dataset_uuid = self._uuid
+            self._cache.set_bundle(self._logical_plan.dag, bundle)
+            self._cache.set_stats(stats)
+
+        bundle = self._cache.get_bundle(self._logical_plan.dag)
+        assert bundle is not None
+        return bundle
+
+    @omit_traceback_stdout
     def _execute_to_iterator(
         self, capture_executor: bool = True
     ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
-        bundle_iter, stats, executor = self._plan.execute_to_iterator(
-            self._create_executor,
-        )
+        """Execute this dataset and return a streaming iterator over RefBundles.
+
+        Args:
+            capture_executor: If True, store the executor on `self._current_executor`
+                so it can be shut down on Dataset GC. Set False when an intermediate
+                Dataset is about to be unreferenced (e.g.,
+                ``ds.map_batches(...).iter_internal_ref_bundles()``).
+
+        Returns:
+            Tuple ``(bundle_iterator, stats, executor)``. Executor is ``None`` on
+            cache-hit.
+        """
+        cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
+        if cached_bundle is not None:
+            return iter([cached_bundle]), self._cache.get_stats(), None
+
+        executor = self._create_executor()
+        bundle_iter = self._build_bundle_iterator(executor)
+
+        # Force execution of the first bundle so executor.get_stats() is populated
+        # before we cache it (executor returns a generator that is lazy until next()).
+        gen = iter(bundle_iter)
+        try:
+            bundle_iter = itertools.chain([next(gen)], gen)
+        except StopIteration:
+            pass
+
+        self._cache.set_stats(executor.get_stats())
+
         if capture_executor:
             # Capture current executor to be able to clean it up properly,
             # once dataset is garbage-collected
             self._current_executor = executor
 
-        return bundle_iter, stats, executor
+        return bundle_iter, self._cache.get_stats(), executor
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
@@ -7556,10 +7724,6 @@ class Dataset:
         self._run_index = -1
         self._current_executor = None
         self._write_ds = None
-        # Reconstruct plan with shared references.
-        self._plan = ExecutionPlan(
-            self._context, self._cache, self._in_stats, self._logical_plan
-        )
 
     def __del__(self):
         if not self._current_executor:
@@ -7747,6 +7911,44 @@ def _block_to_arrow(block: Block):
     return block.to_arrow()
 
 
+class _CacheMetadataIterator(OutputIterator):
+    """Wrap a bundle iterator and write metadata back to the dataset cache.
+
+    Collects num_rows / size_bytes / schema as bundles flow past, and writes
+    them to ``dataset._cache`` once the iterator is fully exhausted
+    (``StopIteration``). Used by both eager dataset iteration and
+    streaming-split iteration.
+    """
+
+    def __init__(
+        self,
+        base_iterator: OutputIterator,
+        topology: "Topology",
+        dataset: "Dataset",
+    ):
+        self._base_iterator = base_iterator
+        self._num_rows = 0
+        self._size_bytes = 0
+        self._topology = topology
+        self._dataset = dataset
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        try:
+            bundle = self._base_iterator.get_next(output_split_idx)
+            self._num_rows += bundle.num_rows()
+            self._size_bytes += bundle.size_bytes()
+            return bundle
+        except StopIteration:
+            # Walk topology backwards to find the first available schema.
+            schema = next(reversed(self._topology.values()))._schema
+
+            dag = self._dataset._logical_plan.dag
+            self._dataset._cache.set_num_rows(dag, self._num_rows)
+            self._dataset._cache.set_size_bytes(dag, self._size_bytes)
+            self._dataset._cache.set_schema(dag, schema)
+            raise
+
+
 class _ExecutionCache:
     """Consolidated cache for Dataset execution results.
 
@@ -7759,7 +7961,7 @@ class _ExecutionCache:
          Valid only when _operator matches the current DAG.
       2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
          Populated when a streaming iterator is fully exhausted
-         (CacheMetadataIterator in legacy_compat.py).
+         (_CacheMetadataIterator, defined above).
 
     Getters check the bundle layer first, then the metadata layer.
     """
