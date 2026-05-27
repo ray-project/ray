@@ -19,6 +19,7 @@ user-guides/configuring-autoscaling
 user-guides/label-based-scheduling
 user-guides/kuberay-gcs-ft
 user-guides/kuberay-gcs-persistent-ft
+user-guides/kuberay-gcs-rocksdb-ft
 user-guides/gke-gcs-bucket
 user-guides/persist-kuberay-custom-resource-logs
 user-guides/persist-kuberay-operator-logs
@@ -59,6 +60,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
 * {ref}`kuberay-gcs-persistent-ft`
+* {ref}`kuberay-gcs-rocksdb-ft`
 * {ref}`persist-kuberay-custom-resource-logs`
 * {ref}`persist-kuberay-operator-logs`
 * {ref}`kuberay-pod-command`

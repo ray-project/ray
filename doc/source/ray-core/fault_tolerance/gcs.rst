@@ -66,6 +66,31 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
   you need to implement additional mechanisms to detect the failure of GCS or the head node
   and restart it.
 
+Embedded RocksDB backend
+------------------------
+
+As an alternative to external Redis, the GCS can persist state to an
+embedded RocksDB database on a local persistent volume. This is the
+backend introduced in
+`REP-64 <https://github.com/ray-project/enhancements/pull/64>`_;
+it removes the operational dependency on Redis at the cost of pinning
+GCS recovery to the availability of the head pod's volume.
+
+The recovery model is identical to Redis-backed FT — GCS restarts,
+reads state, workers reconnect — only the location of persisted state
+differs.
+
+Enable it by setting two environment variables on the head process
+(or head pod):
+
+.. code-block:: shell
+
+  RAY_gcs_storage=rocksdb
+  RAY_gcs_storage_path=/data/gcs-state   # path on a persistent volume
+
+For KubeRay deployments, see :ref:`kuberay-gcs-rocksdb-ft` for the
+full setup guide including PVC configuration and tuning knobs.
+
 .. note::
 
   You can also enable GCS fault tolerance when running Ray on `Anyscale <https://www.anyscale.com/>`_. See the Anyscale `documentation <https://docs.anyscale.com/platform/services/head-node-ft/>`_ for instructions.
