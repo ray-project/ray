@@ -57,6 +57,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         /*is_node_dead=*/[](const NodeID &) { return false; },
         fake_owned_object_count_gauge,
         fake_owned_object_size_gauge,
+        callback_service,
         /*lineage_pinning_enabled=*/false);
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool,
@@ -110,6 +111,8 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::unique_ptr<pubsub::FakeSubscriber> subscriber;
   ray::observability::FakeGauge fake_owned_object_count_gauge;
   ray::observability::FakeGauge fake_owned_object_size_gauge;
+  instrumented_io_context callback_service{/*emit_metrics=*/false,
+                                           /*running_on_single_thread=*/true};
   std::shared_ptr<ReferenceCounterInterface> reference_counter;
 };
 

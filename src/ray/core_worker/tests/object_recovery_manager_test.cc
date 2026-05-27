@@ -146,6 +146,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             /*is_node_dead=*/[](const NodeID &) { return false; },
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
+            callback_service_,
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
@@ -185,6 +186,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
 
   // Used by memory_store_.
   InstrumentedIOContextWithThread io_context_;
+  instrumented_io_context callback_service_{/*emit_metrics=*/false,
+                                            /*running_on_single_thread=*/true};
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;

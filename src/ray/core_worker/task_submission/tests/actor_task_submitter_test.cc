@@ -116,6 +116,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             /*is_node_dead=*/[](const NodeID &) { return false; },
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
+            callback_service_,
             /*lineage_pinning_enabled=*/false)),
         submitter_(
             *client_pool_,
@@ -147,6 +148,8 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
+  instrumented_io_context callback_service_{/*emit_metrics=*/false,
+                                            /*running_on_single_thread=*/true};
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   ActorTaskSubmitter submitter_;
 };

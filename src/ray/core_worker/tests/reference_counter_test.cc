@@ -338,6 +338,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             [](const NodeID &node_id) { return true; },
             *owned_object_count_metric_,
             *owned_object_size_metric_,
+            callback_service_,
             /*lineage_pinning_enabled=*/false) {}
 
   ~MockWorkerClient() override {
@@ -502,6 +503,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   std::shared_ptr<MockDistributedSubscriber> subscriber_;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
+  instrumented_io_context callback_service_{/*emit_metrics=*/false,
+                                            /*running_on_single_thread=*/true};
   // The ReferenceCounter at the "client".
   ReferenceCounter rc_;
   absl::flat_hash_map<int, std::function<void()>> borrower_callbacks_;

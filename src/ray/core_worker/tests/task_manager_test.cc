@@ -156,6 +156,7 @@ class TaskManagerTest : public ::testing::Test {
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
+            callback_service_,
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
@@ -227,6 +228,8 @@ class TaskManagerTest : public ::testing::Test {
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+  instrumented_io_context callback_service_{/*emit_metrics=*/false,
+                                            /*running_on_single_thread=*/true};
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
@@ -1487,6 +1490,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
+      callback_service_,
       lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
@@ -1550,6 +1554,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
+      callback_service_,
       lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager retry_mgr(
@@ -1614,6 +1619,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
+      callback_service_,
       lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager dyn_mgr(
@@ -3111,6 +3117,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
+      callback_service_,
       false);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
@@ -3194,6 +3201,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
+      callback_service_,
       false);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 

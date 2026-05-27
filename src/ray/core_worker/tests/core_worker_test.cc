@@ -154,6 +154,7 @@ class CoreWorkerTest : public ::testing::Test {
         [](const NodeID &) { return false; },
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
+        object_freed_callback_service_,
         false);
 
     // Mock reference counter as enabled
@@ -257,6 +258,7 @@ class CoreWorkerTest : public ::testing::Test {
     core_worker_ = std::make_shared<CoreWorker>(std::move(options),
                                                 std::move(worker_context),
                                                 io_service_,
+                                                object_freed_callback_service_,
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -266,6 +268,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
+                                                object_freed_callback_thread_,
                                                 reference_counter_,
                                                 memory_store_,
                                                 nullptr,  // plasma_store_provider_
@@ -290,11 +293,15 @@ class CoreWorkerTest : public ::testing::Test {
  protected:
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
+  instrumented_io_context object_freed_callback_service_{
+      /*emit_metrics=*/false,
+      /*running_on_single_thread=*/true};
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
 
   boost::thread io_thread_;
+  boost::thread object_freed_callback_thread_;
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -650,12 +657,15 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
   auto is_node_dead = [](const NodeID &) { return false; };
+  instrumented_io_context ref_callback_service{/*emit_metrics=*/false,
+                                               /*running_on_single_thread=*/true};
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
                                is_node_dead,
                                *std::make_shared<ray::observability::FakeGauge>(),
-                               *std::make_shared<ray::observability::FakeGauge>());
+                               *std::make_shared<ray::observability::FakeGauge>(),
+                               ref_callback_service);
 
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
