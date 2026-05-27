@@ -505,7 +505,15 @@ void RocksDbStoreClient::AsyncGetKeys(const std::string &table_name,
     // Byte-ordered prefix scan: Seek to the prefix and walk forward while
     // keys still share the prefix. Once a key fails the prefix check, no
     // later key can pass, so we stop.
-    std::unique_ptr<rocksdb::Iterator> it(db_->NewIterator(rocksdb::ReadOptions(), cf));
+    //
+    // total_order_seek=true mirrors AsyncGetAll above. No-op today (no
+    // prefix extractor is configured in BuildDbOptions), but defends
+    // against a future config where a prefix extractor with a shorter
+    // prefix than ours would let Seek(prefix) land in the wrong
+    // bloom-filter shard and miss keys.
+    rocksdb::ReadOptions read_opts;
+    read_opts.total_order_seek = true;
+    std::unique_ptr<rocksdb::Iterator> it(db_->NewIterator(read_opts, cf));
     std::vector<std::string> result;
     for (it->Seek(prefix); it->Valid(); it->Next()) {
       if (!it->key().starts_with(rocksdb::Slice(prefix))) break;
