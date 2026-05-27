@@ -1998,9 +1998,12 @@ class Node:
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
-            gcs_storage_type = (
-                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
-            )
+            if os.environ.get("RAY_gcs_storage") == "rocksdb":
+                gcs_storage_type = "rocksdb"
+            elif os.environ.get("RAY_REDIS_ADDRESS") is not None:
+                gcs_storage_type = "redis"
+            else:
+                gcs_storage_type = "memory"
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
         cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
         if cpu_model_name:
