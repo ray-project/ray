@@ -1116,7 +1116,7 @@ cdef class StreamingGeneratorExecutionContext:
         ):
             state_found = (
                 CCoreWorkerProcess.GetCoreWorker()
-                .TeardownActorGeneratorBackpressureTask(self.generator_id)
+                .TeardownGeneratorBackpressureTask(self.generator_id)
             )
             if not state_found:
                 self.actor_backpressure_metadata.get().Teardown()
@@ -1405,10 +1405,11 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     with nogil:
         return_status = context.waiter.get().WaitAllObjectsReported()
     check_status(return_status)
-    if completed_normally and context.actor_backpressure_metadata.get() != NULL:
-        CCoreWorkerProcess.GetCoreWorker().MarkActorGeneratorBackpressureTaskFinished(
+    if completed_normally or context.actor_backpressure_metadata.get() == NULL:
+        CCoreWorkerProcess.GetCoreWorker().MarkGeneratorBackpressureTaskFinished(
             context.generator_id)
-        context.actor_backpressure_state_detached = True
+        if completed_normally and context.actor_backpressure_metadata.get() != NULL:
+            context.actor_backpressure_state_detached = True
 
 
 async def execute_streaming_generator_async(
@@ -1532,10 +1533,11 @@ async def execute_streaming_generator_async(
     with nogil:
         return_status = context.waiter.get().WaitAllObjectsReported()
     check_status(return_status)
-    if completed_normally and context.actor_backpressure_metadata.get() != NULL:
-        CCoreWorkerProcess.GetCoreWorker().MarkActorGeneratorBackpressureTaskFinished(
+    if completed_normally or context.actor_backpressure_metadata.get() == NULL:
+        CCoreWorkerProcess.GetCoreWorker().MarkGeneratorBackpressureTaskFinished(
             context.generator_id)
-        context.actor_backpressure_state_detached = True
+        if completed_normally and context.actor_backpressure_metadata.get() != NULL:
+            context.actor_backpressure_state_detached = True
 
 
 cdef create_generator_return_obj(

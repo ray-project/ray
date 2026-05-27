@@ -3212,16 +3212,18 @@ Status CoreWorker::ReportGeneratorItemReturns(
                  << ", id: " << return_id;
 
   waiter->IncrementObjectGenerated();
-  if (actor_metadata) {
+  const bool needs_consumed_updates =
+      waiter->NeedsObjectConsumedUpdates() || actor_metadata != nullptr;
+  if (needs_consumed_updates) {
     absl::MutexLock lock(&mutex_);
-    auto &state = actor_generator_backpressure_states_[generator_id];
+    auto &state = generator_backpressure_states_[generator_id];
     state.waiter = waiter;
     state.actor_metadata = actor_metadata;
   }
 
   client->ReportGeneratorItemReturns(
       std::move(request),
-      [waiter, actor_metadata, generator_id, return_id, item_index](
+      [this, waiter, actor_metadata, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
@@ -3240,14 +3242,14 @@ Status CoreWorker::ReportGeneratorItemReturns(
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
         }
-        if (actor_metadata) {
-          waiter->OnObjectReportAccepted();
-          if (!status.ok()) {
-            waiter->OnObjectConsumed(num_objects_consumed);
+        waiter->OnObjectReportAccepted();
+        if (!status.ok()) {
+          waiter->OnObjectConsumed(num_objects_consumed);
+          if (actor_metadata) {
             actor_metadata->Teardown();
           }
-        } else {
-          waiter->HandleObjectReported(num_objects_consumed);
+          absl::MutexLock lock(&mutex_);
+          generator_backpressure_states_.erase(generator_id);
         }
       });
 
@@ -3256,40 +3258,45 @@ Status CoreWorker::ReportGeneratorItemReturns(
   return waiter->WaitUntilObjectConsumed();
 }
 
-void CoreWorker::MarkActorGeneratorBackpressureTaskFinished(
-    const ObjectID &generator_id) {
+void CoreWorker::MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id) {
   std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+  bool keep_until_consumed = false;
   {
     absl::MutexLock lock(&mutex_);
-    auto it = actor_generator_backpressure_states_.find(generator_id);
-    if (it == actor_generator_backpressure_states_.end()) {
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it == generator_backpressure_states_.end()) {
       return;
     }
     it->second.task_finished = true;
+    keep_until_consumed = it->second.actor_metadata != nullptr;
     waiter = it->second.waiter;
+    if (!keep_until_consumed) {
+      generator_backpressure_states_.erase(it);
+      return;
+    }
   }
 
   if (waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated()) {
     absl::MutexLock lock(&mutex_);
-    auto it = actor_generator_backpressure_states_.find(generator_id);
-    if (it != actor_generator_backpressure_states_.end() && it->second.task_finished &&
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it != generator_backpressure_states_.end() && it->second.task_finished &&
         it->second.waiter->TotalObjectConsumed() >=
             it->second.waiter->TotalObjectGenerated()) {
-      actor_generator_backpressure_states_.erase(it);
+      generator_backpressure_states_.erase(it);
     }
   }
 }
 
-bool CoreWorker::TeardownActorGeneratorBackpressureTask(const ObjectID &generator_id) {
+bool CoreWorker::TeardownGeneratorBackpressureTask(const ObjectID &generator_id) {
   std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
   {
     absl::MutexLock lock(&mutex_);
-    auto it = actor_generator_backpressure_states_.find(generator_id);
-    if (it == actor_generator_backpressure_states_.end()) {
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it == generator_backpressure_states_.end()) {
       return false;
     }
     actor_metadata = it->second.actor_metadata;
-    actor_generator_backpressure_states_.erase(it);
+    generator_backpressure_states_.erase(it);
   }
   if (actor_metadata) {
     actor_metadata->Teardown();
@@ -3357,31 +3364,35 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
   std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
   {
     absl::MutexLock lock(&mutex_);
-    auto it = actor_generator_backpressure_states_.find(generator_id);
-    if (it != actor_generator_backpressure_states_.end()) {
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it != generator_backpressure_states_.end()) {
       waiter = it->second.waiter;
       actor_metadata = it->second.actor_metadata;
     }
   }
 
   const bool teardown = request.total_num_object_consumed() < 0;
-  if (waiter && actor_metadata) {
+  if (waiter) {
     const auto total_num_object_consumed =
         teardown ? waiter->TotalObjectGenerated() : request.total_num_object_consumed();
     waiter->OnObjectConsumed(total_num_object_consumed);
-    if (teardown) {
-      actor_metadata->Teardown();
-    } else {
-      actor_metadata->OnConsumed(total_num_object_consumed);
+    if (actor_metadata) {
+      if (teardown) {
+        actor_metadata->Teardown();
+      } else {
+        actor_metadata->OnConsumed(total_num_object_consumed);
+      }
     }
 
     absl::MutexLock lock(&mutex_);
-    auto it = actor_generator_backpressure_states_.find(generator_id);
-    if (it != actor_generator_backpressure_states_.end() &&
-        (teardown || (it->second.task_finished &&
-                      it->second.waiter->TotalObjectConsumed() >=
-                          it->second.waiter->TotalObjectGenerated()))) {
-      actor_generator_backpressure_states_.erase(it);
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it != generator_backpressure_states_.end() &&
+        (teardown ||
+         (it->second.task_finished &&
+          (it->second.actor_metadata == nullptr ||
+           it->second.waiter->TotalObjectConsumed() >=
+               it->second.waiter->TotalObjectGenerated())))) {
+      generator_backpressure_states_.erase(it);
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);

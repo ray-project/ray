@@ -2688,9 +2688,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
 
 TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   /**
-   * Test the RPC is not replied when backpressured.
-   * Test the RPC is replied when the stream is deleted.
-   * Test the RPC is replied when the data is consumed.
+   * Test report visibility is acknowledged immediately and consumed progress
+   * is reported separately when the data is consumed or the stream is deleted.
    */
   auto spec = CreateTaskHelper(1,
                                {},
@@ -2712,6 +2711,14 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
       /*data*/ data,
       /*set_in_plasma*/ false);
   bool signal_called = false;
+  int consumption_updates = 0;
+  Status last_consumption_status;
+  int64_t last_consumed = -2;
+  auto consumption_update = [&](Status status, int64_t num_objects_consumed) {
+    consumption_updates++;
+    last_consumption_status = status;
+    last_consumed = num_objects_consumed;
+  };
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
       /*execution_signal_callback*/ [&signal_called](Status callback_status,
@@ -2719,10 +2726,12 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
         signal_called = true;
         ASSERT_TRUE(callback_status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
-      }));
+      },
+      consumption_update));
   ASSERT_TRUE(signal_called);
+  ASSERT_EQ(consumption_updates, 0);
 
-  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  /// 2 generated, 0 consumed, 2 threshold -> report is still acknowledged.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -2739,17 +2748,22 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
                                                      int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
-        ASSERT_EQ(num_objects_consumed, 1);
-      }));
-  ASSERT_FALSE(signal_called);
+        ASSERT_EQ(num_objects_consumed, 0);
+      },
+      consumption_update));
+  ASSERT_TRUE(signal_called);
+  ASSERT_EQ(consumption_updates, 0);
 
   ObjectID obj_id;
-  // Read should signal the executor.
+  // Read should send consumed progress to the executor.
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(signal_called);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(consumption_updates, 1);
+  ASSERT_TRUE(last_consumption_status.ok());
+  ASSERT_EQ(last_consumed, 1);
   reference_counter_->RemoveLocalReference(obj_id, nullptr);
 
-  /// 3 generate, 1 consumed, 2 threshold -> backpressured
+  /// 3 generated, 1 consumed, 2 threshold -> report is still acknowledged.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 4);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -2765,23 +2779,27 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
       /*execution_signal_callback*/ [&signal_called](Status status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.IsNotFound());
-        ASSERT_EQ(num_objects_consumed, -1);
-      }));
-  ASSERT_FALSE(signal_called);
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      },
+      consumption_update));
+  ASSERT_TRUE(signal_called);
+  ASSERT_EQ(consumption_updates, 1);
 
-  // Deleting the stream should send a signal.
+  // Deleting the stream should send consumed-progress teardown.
   CompletePendingStreamingTask(spec, caller_address, 2);
   reference_counter_->RemoveLocalReference(generator_id, nullptr);
   ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
-  ASSERT_TRUE(signal_called);
+  ASSERT_EQ(consumption_updates, 2);
+  ASSERT_TRUE(last_consumption_status.IsNotFound());
+  ASSERT_EQ(last_consumed, -1);
 
   /// No need to test out of order case. It won't be different.
 }
 
 TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
-  // Consumed objects should be signaled immediately.
-  // Unconsumed objects should not be.
+  // Report visibility should be acked immediately before and after reconstruction.
+  // Consumed progress is delivered only by the consumption callback.
   auto spec = CreateTaskHelper(1,
                                {},
                                /*dynamic_returns=*/true,
@@ -2802,6 +2820,22 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*data*/ data,
       /*set_in_plasma*/ false);
   bool signal_called = false;
+  int initial_consumption_updates = 0;
+  int retry_consumption_updates = 0;
+  int64_t retry_last_consumed = -1;
+  auto initial_consumption_update =
+      [&initial_consumption_updates](Status status, int64_t num_objects_consumed) {
+        initial_consumption_updates++;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      };
+  auto retry_consumption_update =
+      [&retry_consumption_updates, &retry_last_consumed](
+          Status status, int64_t num_objects_consumed) {
+        retry_consumption_updates++;
+        ASSERT_TRUE(status.ok());
+        retry_last_consumed = num_objects_consumed;
+      };
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
       /*execution_signal_callback*/ [&signal_called](Status status,
@@ -2809,10 +2843,12 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
-      }));
+      },
+      initial_consumption_update));
   ASSERT_TRUE(signal_called);
+  ASSERT_EQ(initial_consumption_updates, 0);
 
-  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  /// 2 generated, 0 consumed, 2 threshold -> report is still acknowledged.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -2829,17 +2865,19 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
                                                      int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
-        ASSERT_EQ(num_objects_consumed, 1);
-      }));
-  ASSERT_FALSE(signal_called);
+        ASSERT_EQ(num_objects_consumed, 0);
+      },
+      initial_consumption_update));
+  ASSERT_TRUE(signal_called);
+  ASSERT_EQ(initial_consumption_updates, 0);
 
   // Worker failure. New worker should start reporting the task.
   auto error = rpc::ErrorType::WORKER_DIED;
   ASSERT_TRUE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
 
-  // Two report will come again. The first one should reply immediately (because)
-  // it is already replied and the second one should be backpressured.
-  /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
+  // Two reports come again. Both are duplicate refs already present in the stream, and
+  // both should still ack report visibility immediately.
+  /// 1 generated, 0 consumed, 2 threshold -> should signal immediately.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
   req = GetIntermediateTaskReturn(
       /*idx*/ 0,
@@ -2856,10 +2894,12 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
         retry_signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
-      }));
+      },
+      retry_consumption_update));
   ASSERT_TRUE(retry_signal_called);
+  ASSERT_EQ(retry_consumption_updates, 0);
 
-  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  /// 2 generated, 0 consumed, 2 threshold -> should signal immediately.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(
@@ -2876,16 +2916,19 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
                                                            int64_t num_objects_consumed) {
         retry_signal_called = true;
         ASSERT_TRUE(status.ok());
-        ASSERT_EQ(num_objects_consumed, 1);
-      }));
-  // Backpressured.
-  ASSERT_FALSE(retry_signal_called);
+        ASSERT_EQ(num_objects_consumed, 0);
+      },
+      retry_consumption_update));
+  ASSERT_TRUE(retry_signal_called);
+  ASSERT_EQ(retry_consumption_updates, 0);
 
   ObjectID obj_id;
-  // Read should signal both executor.
+  // Read should notify the latest executor attempt of consumed progress.
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(signal_called);
-  ASSERT_TRUE(retry_signal_called);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(initial_consumption_updates, 0);
+  ASSERT_EQ(retry_consumption_updates, 1);
+  ASSERT_EQ(retry_last_consumed, 1);
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 

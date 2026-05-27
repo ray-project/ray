@@ -102,6 +102,10 @@ void TaskGeneratorBackpressureWaiter::HandleObjectReported(
   OnObjectConsumed(total_objects_consumed);
 }
 
+bool TaskGeneratorBackpressureWaiter::NeedsObjectConsumedUpdates() const {
+  return backpressure_threshold_ > 0;
+}
+
 int64_t TaskGeneratorBackpressureWaiter::TotalObjectConsumed() const {
   absl::MutexLock lock(&mutex_);
   return total_objects_consumed_;

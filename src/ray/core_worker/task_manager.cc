@@ -635,20 +635,8 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  int64_t backpressure_threshold = -1;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
-    if (it != submissible_tasks_.end()) {
-      backpressure_threshold =
-          it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
-    }
-  }
-
   Status read_status;
-  std::vector<ExecutionSignalCallback> callbacks_to_run;
   ExecutionSignalCallback consumption_update_callback;
-  int64_t signal_total_consumed = 0;
   int64_t consumption_total_consumed = 0;
 
   {
@@ -664,54 +652,16 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     /// If you could read the next item, signal the executor to resume
     /// if necessary.
     if (read_status.ok() && !object_id_out->IsNil()) {
-      auto total_generated = stream_it->second.TotalNumObjectWritten();
       auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-      auto total_unconsumed = total_generated - total_consumed;
       auto consumption_it =
           ref_stream_consumption_update_callbacks_.find(generator_id);
       if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
         consumption_update_callback = consumption_it->second;
         consumption_total_consumed = total_consumed;
       }
-      // Threshold is per-stream only (see TaskSpecification::
-      // EffectiveStreamingGeneratorOwnerBackpressureThreshold). Actor-wide sharing is
-      // enforced separately on the worker before each yield.
-      //
-      // At threshold 1, unconsumed stays >= 1 while several report RPCs are deferred, so
-      // "flush when below threshold only" would deadlock. Signal one deferred reply per
-      // successful read so consumption and acks stay matched; when unconsumed drops
-      // below the threshold, flush any remainder in one batch.
-      //
-      // Run callbacks only after releasing object_ref_stream_ops_mu_: replying may
-      // synchronously re-enter HandleReportGeneratorItemReturns on this worker.
-      if (backpressure_threshold != -1) {
-        auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-        if (it != ref_stream_execution_signal_callbacks_.end() && !it->second.empty()) {
-          const bool below_threshold = total_unconsumed < backpressure_threshold;
-          auto &callbacks = it->second;
-          if (below_threshold) {
-            RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                           << " should resume. total_generated: " << total_generated
-                           << ". total_consumed: " << total_consumed
-                           << ". threshold: " << backpressure_threshold;
-            signal_total_consumed = total_consumed;
-            callbacks_to_run = std::move(callbacks);
-          } else if (backpressure_threshold == 1) {
-            RAY_LOG(DEBUG) << "Resume one deferred report for stream " << generator_id
-                           << ". total_generated: " << total_generated
-                           << ". total_consumed: " << total_consumed;
-            signal_total_consumed = total_consumed;
-            callbacks_to_run.push_back(std::move(callbacks.front()));
-            callbacks.erase(callbacks.begin());
-          }
-        }
-      }
     }
   }
 
-  for (const auto &execution_signal : callbacks_to_run) {
-    execution_signal(Status::OK(), signal_total_consumed);
-  }
   if (consumption_update_callback) {
     consumption_update_callback(Status::OK(), consumption_total_consumed);
   }
@@ -836,7 +786,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
-  bool has_actor_generator_backpressure = false;
 
   {
     absl::MutexLock lock(&mu_);
@@ -844,8 +793,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (it != submissible_tasks_.end()) {
       backpressure_threshold =
           it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
-      has_actor_generator_backpressure =
-          it->second.spec_.HasActorGeneratorBackpressure();
       if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
@@ -869,7 +816,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
-  if (has_actor_generator_backpressure) {
+  if (backpressure_threshold != -1) {
     auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
     if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
       execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
@@ -911,44 +858,17 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Handle backpressure if needed.
-  auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
 
   if (stream_it->second.IsObjectConsumed(item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
-    if (has_actor_generator_backpressure && consumption_update_callback) {
+    if (backpressure_threshold != -1 && consumption_update_callback) {
       consumption_update_callback(Status::OK(), total_consumed);
     }
     return false;
   }
 
-  if (has_actor_generator_backpressure) {
-    execution_signal_callback(Status::OK(), total_consumed);
-    return num_objects_written != 0;
-  }
-
-  // Otherwise, follow the regular backpressure logic.
-  // NOTE: Here we check `item_index - last_consumed_index >= backpressure_threshold`,
-  // instead of the number of unconsumed items, because we may receive the
-  // `HandleReportGeneratorItemReturns` requests out of order. Use
-  // EffectiveStreamingGeneratorOwnerBackpressureThreshold() for the threshold so
-  // actor-wide backpressure maps to owner-side semantics without changing executor caps.
-  if (backpressure_threshold != -1 &&
-      (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
-    RAY_LOG(DEBUG) << "Stream " << generator_id
-                   << " is backpressured. total_generated: " << total_generated
-                   << ". total_consumed: " << total_consumed
-                   << ". threshold: " << backpressure_threshold;
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
-    } else {
-      signal_it->second.push_back(execution_signal_callback);
-    }
-  } else {
-    // No need to backpressure.
-    execution_signal_callback(Status::OK(), total_consumed);
-  }
+  execution_signal_callback(Status::OK(), total_consumed);
   return num_objects_written != 0;
 }
 

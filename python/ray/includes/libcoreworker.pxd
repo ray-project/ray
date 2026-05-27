@@ -335,9 +335,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             uint64_t attempt_number,
             shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
             shared_ptr[CActorTaskBackpressureMetadata] actor_metadata)
-        void MarkActorGeneratorBackpressureTaskFinished(
+        void MarkGeneratorBackpressureTaskFinished(
             const CObjectID &generator_id)
-        c_bool TeardownActorGeneratorBackpressureTask(
+        c_bool TeardownGeneratorBackpressureTask(
             const CObjectID &generator_id)
         shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 

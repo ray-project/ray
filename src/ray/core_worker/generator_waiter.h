@@ -67,6 +67,7 @@ class TaskGeneratorBackpressureWaiter {
   void OnObjectConsumed(int64_t total_objects_consumed);
   void HandleObjectReported(int64_t total_objects_consumed);
 
+  bool NeedsObjectConsumedUpdates() const;
   int64_t TotalObjectConsumed() const;
   int64_t TotalObjectGenerated() const;
 
