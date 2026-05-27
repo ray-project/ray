@@ -1,8 +1,13 @@
 import sys
 import warnings
+from types import SimpleNamespace
 
 import pytest
 
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ChatCompletionRequest,
+    CompletionRequest,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
@@ -11,14 +16,95 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     PDServingArgs,
     build_pd_openai_app,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
+    PDOrchestratorMixin,
     PDPrefillServer,
 )
+from ray.serve._private.http_util import SERVE_SESSION_ID
+
+
+class _AsyncIterator:
+    def __init__(self, items):
+        self._items = iter(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._items)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
+class _FakeHandleMethod:
+    def __init__(self, handle, method_name):
+        self._handle = handle
+        self._method_name = method_name
+
+    def remote(self, request, raw_request_info):
+        self._handle.calls.append(
+            {
+                "method": self._method_name,
+                "request": request,
+                "raw_request_info": raw_request_info,
+                "session_id": self._handle.session_id,
+            }
+        )
+        return _AsyncIterator(
+            [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-1"})]
+        )
+
+
+class _FakePrefillHandle:
+    def __init__(self, calls=None, session_id=None):
+        self.calls = calls if calls is not None else []
+        self.session_id = session_id
+
+    def options(self, **kwargs):
+        return _FakePrefillHandle(
+            calls=self.calls,
+            session_id=kwargs.get("session_id", self.session_id),
+        )
+
+    @property
+    def completions(self):
+        return _FakeHandleMethod(self, "completions")
+
+    @property
+    def chat(self):
+        return _FakeHandleMethod(self, "chat")
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.calls = []
+
+    def completions(self, request, raw_request_info):
+        self.calls.append(
+            {
+                "method": "completions",
+                "request": request,
+                "raw_request_info": raw_request_info,
+            }
+        )
+        return _AsyncIterator(["decode-chunk"])
+
+    def chat(self, request, raw_request_info):
+        self.calls.append(
+            {
+                "method": "chat",
+                "request": request,
+                "raw_request_info": raw_request_info,
+            }
+        )
+        return _AsyncIterator(["decode-chunk"])
 
 
 class TestPDServingArgs:
@@ -235,6 +321,75 @@ class TestServingArgsParsing:
 
         app = build_pd_openai_app(pd_config)
         assert app is not None
+
+
+class TestPDOrchestratorMixin:
+    def test_prepare_prefill_request_limits_chat_to_one_token(self):
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "hello"}],
+            max_completion_tokens=32,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        prefill_request = PDOrchestratorMixin._prepare_prefill_request(request)
+        prefill_request_dict = prefill_request.model_dump()
+
+        assert prefill_request_dict["max_tokens"] == 1
+        assert prefill_request.max_completion_tokens == 1
+        assert prefill_request.stream is False
+        assert prefill_request.stream_options is None
+        assert request.max_completion_tokens == 32
+        assert request.stream is True
+
+    @pytest.mark.asyncio
+    async def test_decode_to_prefill_hop_preserves_session_id(self):
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._prefill_handle = _FakePrefillHandle().options(stream=True)
+        server.engine = _FakeEngine()
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        request = CompletionRequest(
+            model="test-model",
+            prompt="hello",
+            max_tokens=16,
+            stream=True,
+        )
+        raw_request_info = RawRequestInfo(headers={SERVE_SESSION_ID: "session-a"})
+
+        chunks = [
+            chunk
+            async for chunk in server._pd_handle_request(request, raw_request_info)
+        ]
+
+        assert chunks == ["decode-chunk"]
+        assert server._prefill_handle.calls[0]["session_id"] == "session-a"
+        assert (
+            server._prefill_handle.calls[0]["request"].kv_transfer_params[
+                "do_remote_decode"
+            ]
+            is True
+        )
+        assert server.engine.calls[0]["request"].kv_transfer_params == {
+            "remote_engine_id": "prefill-1"
+        }
+
+    @pytest.mark.asyncio
+    async def test_direct_streaming_asgi_routes_are_pd_orchestrator_routes(self):
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+
+        app = await server.__serve_build_asgi_app__()
+
+        route_paths = {getattr(route, "path", None) for route in app.routes}
+        assert "/v1/chat/completions" in route_paths
+        assert "/v1/completions" in route_paths
+        assert "/v1/models" in route_paths
+        assert "/health" in route_paths
 
 
 class TestBuildPDOpenaiApp:

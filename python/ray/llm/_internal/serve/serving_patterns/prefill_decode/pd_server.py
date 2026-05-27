@@ -19,6 +19,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    to_model_metadata,
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
@@ -27,6 +28,7 @@ from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
+from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
@@ -43,6 +45,22 @@ _PREWARM_PROMPT = " x"
 _PREWARM_MAX_TOKENS = 1
 _PREWARM_RETRY_INTERVAL_S = 5.0
 _PREWARM_MAX_RETRIES = 60
+
+
+def _session_id_from_raw_request(
+    raw_request_info: Optional[RawRequestInfo],
+) -> Optional[str]:
+    if raw_request_info is None:
+        return None
+
+    return next(
+        (
+            value
+            for key, value in raw_request_info.headers.items()
+            if _matches_session_id_header(key)
+        ),
+        None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +97,11 @@ class PDOrchestratorMixin:
             "remote_port": None,
         }
         prefill_request.max_tokens = 1
+        if hasattr(prefill_request, "max_completion_tokens"):
+            prefill_request.max_completion_tokens = 1
         prefill_request.stream = False
+        if hasattr(prefill_request, "stream_options"):
+            prefill_request.stream_options = None
         return prefill_request
 
     @staticmethod
@@ -112,7 +134,12 @@ class PDOrchestratorMixin:
 
         # 1. Remote prefill
         prefill_request = self._prepare_prefill_request(request)
-        prefill_gen = getattr(self._prefill_handle, method).remote(
+        prefill_handle = self._prefill_handle
+        session_id = _session_id_from_raw_request(raw_request_info)
+        if session_id:
+            prefill_handle = prefill_handle.options(session_id=session_id)
+
+        prefill_gen = getattr(prefill_handle, method).remote(
             prefill_request, raw_request_info
         )
         prefill_chunk = await prefill_gen.__anext__()
@@ -125,10 +152,74 @@ class PDOrchestratorMixin:
         # 2. Local decode via own engine
         decode_request = self._prepare_decode_request(request, prefill_chunk)
 
-        # Use parent LLMServer's chat/completions which goes through the local engine
-        local_gen = await getattr(super(), method)(decode_request, raw_request_info)
+        await self._maybe_add_request_id_to_request(decode_request)
+        await self._maybe_resolve_lora_from_multiplex()
+        local_gen = getattr(self.engine, method)(decode_request, raw_request_info)
         async for chunk in local_gen:
             yield chunk
+
+    async def __serve_build_asgi_app__(self):
+        """Build an OpenAI ASGI app that routes HTTP through P/D orchestration.
+
+        Direct streaming normally exposes the engine-native ASGI app from
+        ``LLMServer``.  For P/D, that would bypass ``PDDecodeServer.chat`` and
+        ``PDDecodeServer.completions`` and send HTTP traffic straight to the
+        decode engine.  Reuse the standard OpenAI ingress handlers, but have
+        them call this local decode-orchestrator instance directly.
+        """
+        from fastapi import FastAPI
+        from starlette.requests import Request
+
+        from ray.llm._internal.serve.core.ingress.ingress import (
+            DEFAULT_ENDPOINTS,
+            OpenAiIngress,
+            _sanitize_chat_completion_request,
+            init,
+        )
+
+        model_id = self._llm_config.model_id
+        model_cards = {model_id: to_model_metadata(model_id, self._llm_config)}
+
+        class _PDDirectStreamingIngress(OpenAiIngress):
+            def __init__(self, server: PDOrchestratorMixin):
+                super().__init__(
+                    llm_deployments={model_id: None},
+                    model_cards=model_cards,
+                )
+                self._server = server
+
+            async def _get_response(
+                self,
+                *,
+                body: Any,
+                call_method: str,
+                raw_request: Optional[Request] = None,
+            ) -> AsyncGenerator[Any, None]:
+                await self._get_model_id(body.model)
+
+                if isinstance(body, ChatCompletionRequest):
+                    body = _sanitize_chat_completion_request(body)
+
+                raw_request_info = (
+                    RawRequestInfo.from_starlette_request(raw_request)
+                    if raw_request is not None
+                    else None
+                )
+                gen = await getattr(self._server, call_method)(body, raw_request_info)
+                async for response in gen:
+                    yield response
+
+        app: FastAPI = init()
+        ingress = _PDDirectStreamingIngress(self)
+        for method_name, route_factory in DEFAULT_ENDPOINTS.items():
+            route_factory(app)(getattr(ingress, method_name))
+
+        @app.get("/health")
+        async def _health():
+            await self.check_health()
+            return {"status": "ok"}
+
+        return app
 
     # ---- Pre-warm ----
     #
