@@ -24,7 +24,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
     extract_partition_id,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data.block import BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
@@ -118,7 +117,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
-        self._reduce_metrics = OpRuntimeMetrics(self)
 
     # -----------------------------------------------------------------------
     # Input handling: one bundle → one reducer task
@@ -134,7 +132,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         say the op can accept another input.
         """
         assert input_index == 0
-        self._reduce_metrics.on_input_received(input_bundle)
 
         if not input_bundle.block_refs:
             # Defensive: ShuffleMapOp skips empty partitions, but a future
@@ -200,7 +197,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._shuffle_reduce_tasks[partition_id] = data_task
         self._num_reduce_tasks_submitted += 1
-        self._reduce_metrics.on_task_submitted(
+        self._metrics.on_task_submitted(
             partition_id, input_bundle, task_id=data_task.get_task_id()
         )
 
@@ -213,8 +210,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.popleft()
-        self._reduce_metrics.on_output_dequeued(bundle)
-        self._reduce_metrics.on_output_taken(bundle)
+        self._metrics.on_output_dequeued(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
 
@@ -231,14 +227,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
         self._output_queue.append(bundle)
-        self._reduce_metrics.on_output_queued(bundle)
-        self._reduce_metrics.on_task_output_generated(
-            task_index=partition_id, output=bundle
-        )
+        self._metrics.on_output_queued(bundle)
+        self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
             self._num_reduce_tasks_submitted,
             self.upstream_op_num_outputs(),
-            self._reduce_metrics,
+            self._metrics,
             total_num_tasks=self._num_partitions,
         )
         self._estimated_num_output_bundles = num_outputs
@@ -262,7 +256,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if partition_id not in self._shuffle_reduce_tasks:
             return
         self._shuffle_reduce_tasks.pop(partition_id)
-        self._reduce_metrics.on_task_finished(
+        self._metrics.on_task_finished(
             task_index=partition_id,
             exception=exc,
             task_exec_stats=task_exec_stats,
@@ -306,7 +300,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return {self._name: self._output_blocks_stats}
 
     def _extra_metrics(self) -> Dict[str, Any]:
-        return {self._name: self._reduce_metrics.as_dict()}
+        return {self._name: self._metrics.as_dict()}
 
     # -----------------------------------------------------------------------
     # Resource accounting
