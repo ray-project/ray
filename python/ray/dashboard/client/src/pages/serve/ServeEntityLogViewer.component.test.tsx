@@ -310,7 +310,7 @@ describe("ServeEntityLogViewer", () => {
                   log_file_path: "live-log",
                 },
               ],
-              dead_replicas: [
+              recent_dead_replicas: [
                 {
                   replica_id: "dead-replica",
                   state: ServeReplicaState.STOPPED,

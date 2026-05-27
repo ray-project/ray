@@ -37,8 +37,7 @@ export type ServeDeployment = {
   message: string;
   deployment_config: ServeDeploymentConfig;
   replicas: ServeReplica[];
-  // Recently-stopped replicas, retained so their logs stay viewable after death.
-  dead_replicas?: ServeReplica[];
+  recent_dead_replicas?: ServeReplica[];
 };
 
 export type ServeDeploymentConfig = {

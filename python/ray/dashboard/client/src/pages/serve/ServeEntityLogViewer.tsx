@@ -55,8 +55,8 @@ export const ServeEntityLogViewer = ({
   );
 
   const allReplicas = deployments.flatMap(
-    ({ name: deploymentName, replicas, dead_replicas }) =>
-      [...replicas, ...(dead_replicas ?? [])].map((replica) => {
+    ({ name: deploymentName, replicas, recent_dead_replicas }) =>
+      [...replicas, ...(recent_dead_replicas ?? [])].map((replica) => {
         const baseName = showDeploymentName
           ? `${deploymentName}#${replica.replica_id}`
           : replica.replica_id;

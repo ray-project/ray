@@ -2836,7 +2836,7 @@ class DeploymentState:
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
-        self._dead_replica_details: Deque[ReplicaDetails] = deque(
+        self._recent_dead_replicas: Deque[ReplicaDetails] = deque(
             maxlen=RAY_SERVE_RETAINED_DEAD_REPLICAS
         )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
@@ -3282,9 +3282,8 @@ class DeploymentState:
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
-    def list_dead_replica_details(self) -> List[ReplicaDetails]:
-        # Separate from the live list so dead replicas don't affect counts or status.
-        return list(self._dead_replica_details)
+    def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
+        return list(self._recent_dead_replicas)
 
     def broadcast_running_replicas_if_changed(self) -> None:
         """Broadcasts the set of running replicas over long poll if it has changed.
@@ -4719,7 +4718,7 @@ class DeploymentState:
                 # Retain replicas that allocated a log file so the dashboard can
                 # still show their logs after the actor is gone.
                 if replica.actor_details.log_file_path is not None:
-                    self._dead_replica_details.append(
+                    self._recent_dead_replicas.append(
                         replica.actor_details.model_copy(
                             update={"state": ReplicaState.STOPPED}
                         )
@@ -5604,7 +5603,7 @@ class DeploymentStateManager:
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 replicas=deployment_state.list_replica_details(),
-                dead_replicas=deployment_state.list_dead_replica_details(),
+                recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
             )
 
     def get_deployment_statuses(

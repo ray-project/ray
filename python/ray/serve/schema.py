@@ -1392,7 +1392,7 @@ class DeploymentDetails(BaseModel):
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
-    dead_replicas: List[ReplicaDetails] = Field(
+    recent_dead_replicas: List[ReplicaDetails] = Field(
         default_factory=list,
         description=(
             "Recently-stopped replicas, retained so their logs stay accessible in "
