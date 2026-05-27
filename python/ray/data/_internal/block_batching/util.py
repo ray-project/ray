@@ -48,6 +48,10 @@ def iter_in_background(
     overlap: while the consumer processes item N, the producer can prepare
     item N+1.
 
+    When the consumer stops iterating (e.g., ``break``, generator ``.close()``,
+    or GC), the producer thread is signaled to stop via a ``threading.Event``
+    so it does not leak.
+
     Args:
         base_iterator: The iterator to consume in the background thread.
         output_buffer_size: Maximum number of items buffered in the output
@@ -56,28 +60,41 @@ def iter_in_background(
     Yields:
         T: Items from base_iterator, in order.
     """
+    stopped = threading.Event()
     result_queue: queue.Queue = queue.Queue(maxsize=output_buffer_size)
 
     def _producer():
         try:
             for item in base_iterator:
-                result_queue.put(item)
-            result_queue.put(_SENTINEL)
+                while not stopped.is_set():
+                    try:
+                        result_queue.put(item, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+                if stopped.is_set():
+                    break
+            if not stopped.is_set():
+                result_queue.put(_SENTINEL)
         except Exception as e:
-            result_queue.put(e)
+            if not stopped.is_set():
+                result_queue.put(e)
 
     producer_thread = threading.Thread(
         target=_producer, name="iter_in_background", daemon=True
     )
     producer_thread.start()
 
-    while True:
-        item = result_queue.get()
-        if item is _SENTINEL:
-            break
-        if isinstance(item, Exception):
-            raise item
-        yield item
+    try:
+        while True:
+            item = result_queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        stopped.set()
 
 
 class _MappingIterator(Iterator[O], Generic[I, O]):
