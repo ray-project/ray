@@ -72,6 +72,7 @@ SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
 
+
 # This is only used to construct TPU 3D topologies
 def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
     """Returns a set of larger 3D TPU topologies given the max x,y,z value. Using DEFAULT_TPU_NUM_CHIPS_PER_HOST as increment"""
@@ -493,18 +494,18 @@ class TPUAcceleratorManager(AcceleratorManager):
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
             os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
-        os.environ[
-            TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_tpu_chips])
+        os.environ[TPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
+            ",".join([str(i) for i in visible_tpu_chips])
+        )
         if num_visible_tpu_chips == 1:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+            os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = (
+                TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+            )
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
         elif num_visible_tpu_chips == 2:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = (
+                TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            )
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
 
     @staticmethod
@@ -787,6 +788,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         if accelerator_type is None:
             accelerator_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
 
+        if accelerator_type is not None:
+            # Normalize Ray accelerator types: "TPU-V6E" -> "v6e", "TPU-V4" -> "v4"
+            accelerator_type = accelerator_type.lower().replace("tpu-", "")
+            # Normalize "tpu7x-16" -> "v7x-16" to match VALID_TPU_TYPES
+            if accelerator_type.startswith("tpu"):
+                accelerator_type = "v" + accelerator_type[3:]
+
         if not accelerator_type:
             return len(visible_tpu_chips) * DEFAULT_TPU_NUM_CORES_PER_CHIP
 
@@ -795,5 +803,3 @@ class TPUAcceleratorManager(AcceleratorManager):
             return len(visible_tpu_chips) * cores_per_chip
         except Exception:
             return len(visible_tpu_chips) * DEFAULT_TPU_NUM_CORES_PER_CHIP
-
-

@@ -96,9 +96,7 @@ class ResourceAndLabelSpec:
         for resource_label, resource_quantity in resources.items():
             assert isinstance(resource_quantity, int) or isinstance(
                 resource_quantity, float
-            ), (
-                f"{resource_label} ({type(resource_quantity)}): " f"{resource_quantity}"
-            )
+            ), f"{resource_label} ({type(resource_quantity)}): {resource_quantity}"
             if (
                 isinstance(resource_quantity, float)
                 and not resource_quantity.is_integer()
@@ -293,9 +291,9 @@ class ResourceAndLabelSpec:
         if accelerator_manager:
             accelerator_type = accelerator_manager.get_current_node_accelerator_type()
             if accelerator_type:
-                default_labels[
-                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
-                ] = accelerator_type
+                default_labels[ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] = (
+                    accelerator_type
+                )
 
             # Set TPU specific default labels to enable multi-host scheduling.
             if accelerator_manager.get_resource_name() == "TPU":
@@ -467,15 +465,15 @@ class ResourceAndLabelSpec:
                     accelerator_manager.get_current_process_visible_accelerator_ids()
                 )
                 if visible_accelerator_ids is not None:
-                    accelerator_type = accelerator_manager.get_current_node_accelerator_type()
-                    visible_limit = accelerator_manager.get_visible_accelerator_resource_limit(
-                        visible_accelerator_ids, accelerator_type
+                    accelerator_type = (
+                        accelerator_manager.get_current_node_accelerator_type()
                     )
-                    num_accelerators = min(
-                        num_accelerators, visible_limit
+                    visible_limit = (
+                        accelerator_manager.get_visible_accelerator_resource_limit(
+                            visible_accelerator_ids, accelerator_type
+                        )
                     )
+                    num_accelerators = min(num_accelerators, visible_limit)
             if num_accelerators > 0:
                 return accelerator_manager, num_accelerators
         return None, 0
-
-
