@@ -88,11 +88,8 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
-                                                     const Status &) {
-      const auto obj_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedLocalObject(obj_id);
-    };
+    auto owner_dead_callback = [owner_address](const std::string &object_id_binary,
+                                               const Status &) {};
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
@@ -145,6 +142,34 @@ void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
       free_objects_period_ms_ == 0) {
     FlushFreeObjects();
   }
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
+    const WorkerID &worker_id) const {
+  return GetLocalObjectsMatchedBy([&worker_id](const rpc::Address &owner) {
+    return WorkerID::FromBinary(owner.worker_id()) == worker_id;
+  });
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
+    const NodeID &node_id) const {
+  return GetLocalObjectsMatchedBy([&node_id](const rpc::Address &owner) {
+    return NodeID::FromBinary(owner.node_id()) == node_id;
+  });
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsMatchedBy(
+    const std::function<bool(const rpc::Address &)> &matches) const {
+  std::vector<ObjectID> matched;
+  for (const auto &[object_id, info] : local_objects_) {
+    if (info.is_freed_) {
+      continue;
+    }
+    if (matches(info.owner_address_)) {
+      matched.push_back(object_id);
+    }
+  }
+  return matched;
 }
 
 void LocalObjectManager::FlushFreeObjects() {

@@ -214,6 +214,10 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// next FlushFreeObjects batch so plasma can drop the local entry.
   void ReleaseFreedLocalObject(const ObjectID &object_id) override;
 
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const override;
+
   std::string DebugString() const override;
 
  private:
@@ -267,6 +271,10 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// means don't retry.
   void DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
                             int64_t num_retries = kDefaultSpilledObjectDeleteRetries);
+
+  /// Return ids of non-freed local objects whose owner satisfies `matches`.
+  std::vector<ObjectID> GetLocalObjectsMatchedBy(
+      const std::function<bool(const rpc::Address &)> &matches) const;
 
   const NodeID self_node_id_;
   const std::string self_node_address_;
