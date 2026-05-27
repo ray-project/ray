@@ -12,7 +12,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import check_ray_stopped, get_application_url
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
@@ -91,6 +91,10 @@ def ray_instance(request):
 
     serve.shutdown()
     ray.shutdown()
+    # ray.shutdown() doesn't wait for its subprocesses (raylet, GCS, etc.)
+    # to actually exit, which races with the next test's ray.init() on
+    # Windows. Poll the dashboard port to confirm Ray is fully down.
+    wait_for_condition(check_ray_stopped, timeout=60)
 
     os.environ.clear()
     os.environ.update(original_env_vars)

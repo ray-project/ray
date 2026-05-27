@@ -40,15 +40,26 @@ START_AT_10_DEPLOYMENT_MIN_REPLICAS = 0
 START_AT_10_DEPLOYMENT_MAX_REPLICAS = 20
 
 
-@pytest.fixture
-def shutdown_ray_and_serve():
-    serve.shutdown()
+@pytest.fixture(scope="module", autouse=True)
+def shared_ray_instance():
+    # Per-test ray.init/ray.shutdown is flaky on Windows: the next ray.init's
+    # driver can fail to register with the new raylet, because the OS hasn't
+    # fully cleaned up the previous raylet's sockets/subprocesses. Share Ray
+    # across the module; reset Serve between tests for isolation.
     if ray.is_initialized():
         ray.shutdown()
+    ray.init()
     yield
     serve.shutdown()
     if ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_ray_and_serve():
+    serve.shutdown()
+    yield
+    serve.shutdown()
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
