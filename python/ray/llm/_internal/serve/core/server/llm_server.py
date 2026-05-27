@@ -217,7 +217,34 @@ class LLMServer(LLMServerProtocol):
                 raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
             return model_card
 
+        app = self._maybe_wrap_dynamo_direct_streaming_lifecycle(app)
         return app
+
+    def _maybe_wrap_dynamo_direct_streaming_lifecycle(self, app):
+        kv_transfer_config = self._llm_config.engine_kwargs.get("kv_transfer_config")
+        if (
+            not kv_transfer_config
+            or kv_transfer_config.get("kv_connector") != "DynamoConnector"
+        ):
+            return app
+
+        extra_config = kv_transfer_config.get("kv_connector_extra_config", {})
+        dynamo_config = extra_config.get("ray_serve_dynamo", {})
+        actor_name = dynamo_config.get("actor_name")
+        if actor_name is None:
+            try:
+                ctx = serve.get_replica_context()
+                actor_name = (
+                    f"serve-dynamo-kv-router:{ctx.app_name}:{ctx.deployment}"
+                )
+            except Exception:
+                actor_name = None
+
+        from ray.llm._internal.serve.routing_policies.dynamo_kv import (
+            wrap_with_dynamo_direct_streaming_lifecycle,
+        )
+
+        return wrap_with_dynamo_direct_streaming_lifecycle(app, actor_name)
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None

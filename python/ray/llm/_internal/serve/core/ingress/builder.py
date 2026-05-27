@@ -29,6 +29,46 @@ from ray.serve.experimental.round_robin_router import RoundRobinRouter
 logger = get_logger(__name__)
 
 
+def _get_dynamo_direct_streaming_router_config(
+    llm_config: LLMConfig,
+) -> Optional[RequestRouterConfig]:
+    kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config") or {}
+    if kv_transfer_config.get("kv_connector") != "DynamoConnector":
+        return None
+
+    extra_config = kv_transfer_config.setdefault("kv_connector_extra_config", {})
+    dynamo_config = extra_config.setdefault("ray_serve_dynamo", {})
+    if not dynamo_config.get("endpoint"):
+        return None
+
+    from ray.llm._internal.serve.routing_policies.dynamo_kv import (
+        DynamoKVRequestRouter,
+    )
+
+    model_loading_config = llm_config.model_loading_config
+    model_source = model_loading_config.model_source
+    if not isinstance(model_source, str):
+        model_source = llm_config.model_id
+
+    router_kwargs = {
+        **dynamo_config,
+        "model_id": llm_config.model_id,
+        "model_source": model_source,
+        "tokenizer_source": model_loading_config.tokenizer_source,
+        "trust_remote_code": llm_config.engine_kwargs.get("trust_remote_code", False),
+    }
+    actor_name = router_kwargs.get("actor_name")
+    if actor_name is None:
+        actor_name = f"serve-dynamo-kv-router:{llm_config.model_id}"
+        router_kwargs["actor_name"] = actor_name
+        dynamo_config["actor_name"] = actor_name
+
+    return RequestRouterConfig(
+        request_router_class=DynamoKVRequestRouter,
+        request_router_kwargs=router_kwargs,
+    )
+
+
 def _get_direct_streaming_serve_options(
     llm_config: LLMConfig,
     override_serve_options: Optional[dict] = None,
@@ -38,8 +78,12 @@ def _get_direct_streaming_serve_options(
         "request_router_config" not in llm_config.deployment_config
         and "request_router_config" not in override_serve_options
     ):
-        override_serve_options["request_router_config"] = RequestRouterConfig(
-            request_router_class=RoundRobinRouter,
+        dynamo_router_config = _get_dynamo_direct_streaming_router_config(llm_config)
+        override_serve_options["request_router_config"] = (
+            dynamo_router_config
+            or RequestRouterConfig(
+                request_router_class=RoundRobinRouter,
+            )
         )
     return override_serve_options
 
