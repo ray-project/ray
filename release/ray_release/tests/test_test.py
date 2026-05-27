@@ -641,5 +641,16 @@ def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image
     assert dict_hash(custom_info) != dict_hash(custom_info_no_env)
 
 
+def test_uses_anyscale_sdk_2026():
+    assert not Test({"name": "t", "cluster": {}}).uses_anyscale_sdk_2026()
+    assert not Test({"name": "t"}).uses_anyscale_sdk_2026()
+    assert Test(
+        {"name": "t", "cluster": {"anyscale_sdk_2026": True}}
+    ).uses_anyscale_sdk_2026()
+    assert not Test(
+        {"name": "t", "cluster": {"anyscale_sdk_2026": False}}
+    ).uses_anyscale_sdk_2026()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

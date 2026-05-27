@@ -24,6 +24,7 @@
 
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
+#include "ray/util/clock.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -76,10 +77,11 @@ class RedisStoreClientTest : public StoreClientTestBase {
   void InitStoreClient() override {
     auto &io_context = *io_service_pool_->Get();
     RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
-    store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
+    store_client_ = std::make_shared<RedisStoreClient>(io_context, options, clock_);
   }
 
  protected:
+  ray::Clock clock_;
   std::unique_ptr<std::thread> t_;
   std::atomic<bool> stopped_ = false;
 };
@@ -378,20 +380,3 @@ TEST_F(RedisStoreClientTest, Random) {
 }  // namespace gcs
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

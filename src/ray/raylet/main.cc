@@ -26,7 +26,7 @@
 #include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/cgroup2/cgroup_manager_factory.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
@@ -50,8 +50,10 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
@@ -356,6 +358,8 @@ int main(int argc, char *argv[]) {
       spill_manager_throughput_mb_gauge};
   ray::stats::Count memory_manager_worker_eviction_total_count =
       ray::raylet::GetMemoryManagerWorkerEvictionTotalCountMetric();
+  ray::stats::Count node_manager_unexpected_worker_failure_total_count =
+      ray::raylet::GetNodeManagerUnexpectedWorkerFailureTotalCountMetric();
   ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
   ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
       ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
@@ -405,6 +409,7 @@ int main(int argc, char *argv[]) {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// granting leases.
+  ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -646,6 +651,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.resource_dir = resource_dir;
     node_manager_config.ray_debugger_external = ray_debugger_external;
     node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+    node_manager_config.enable_resource_isolation = enable_resource_isolation;
 
     // Configuration for the object manager.
     ray::ObjectManagerConfig object_manager_config;
@@ -907,6 +913,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         resource_usage_gauge,
+        clock,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -1049,7 +1056,8 @@ int main(int argc, char *argv[]) {
         *placement_group_resource_manager,
         std::move(acceptor),
         std::move(socket),
-        memory_manager_worker_eviction_total_count);
+        memory_manager_worker_eviction_total_count,
+        node_manager_unexpected_worker_failure_total_count);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -1066,8 +1074,11 @@ int main(int argc, char *argv[]) {
     // -1 means metrics agent is not available (minimal install).
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
     if (actual_metrics_agent_port > 0) {
-      metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
+      metrics_agent_client =
+          std::make_unique<ray::rpc::MetricsAgentClientImpl>(ray::GetLocalhostIP(),
+                                                             actual_metrics_agent_port,
+                                                             main_service,
+                                                             *client_call_manager);
       metrics_agent_client->WaitForServerReady(
           [actual_metrics_agent_port](const ray::Status &server_status) {
             if (server_status.ok()) {

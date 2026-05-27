@@ -181,7 +181,7 @@ def train_fn(config):
 
 
 # __lightning_save_example_start__
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 from ray import train
 from ray.train.lightning import RayTrainReportCallback
@@ -227,7 +227,7 @@ ray_trainer = TorchTrainer(
 import os
 from tempfile import TemporaryDirectory
 
-from pytorch_lightning.callbacks import Callback
+from lightning.pytorch.callbacks import Callback
 
 import ray
 import ray.train
@@ -530,6 +530,8 @@ def train_fn(config):
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
             checkpoint_upload_fn=wait_async_save,
+            # As uploading into the experiment directory then don't delete the checkpoint after upload is complete
+            delete_local_checkpoint_after_upload=False,
         )
 
 trainer = TorchTrainer(

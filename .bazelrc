@@ -1,3 +1,5 @@
+common --noenable_bzlmod
+
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
@@ -181,6 +183,11 @@ build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
+# Retry on CacheNotFoundException from raw-S3 remote cache (AC/CAS eviction mismatch).
+# Remove once the cache is fronted by a server that coordinates AC/CAS eviction (bazel-remote, Buildbarn, etc.).
+build:ci --experimental_remote_cache_eviction_retries=3
+# Retry repository rule HTTP downloads (e.g. http_archive) on transient failures (502/504).
+build:ci --experimental_repository_downloader_retries=3
 # Disable test result caching because py_test under Bazel can import from outside of sandbox, but Bazel only looks at
 # declared dependencies to determine if a result should be cached. More details at:
 # https://github.com/bazelbuild/bazel/issues/7091, https://github.com/bazelbuild/rules_python/issues/382

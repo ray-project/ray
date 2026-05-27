@@ -28,6 +28,7 @@ export const JobRow = ({ job }: JobRowProps) => {
     start_time,
     end_time,
     entrypoint,
+    metadata,
   } = job;
   const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
 
@@ -63,6 +64,7 @@ export const JobRow = ({ job }: JobRowProps) => {
           "(no ray driver)"
         )}
       </TableCell>
+      <TableCell align="center">{metadata?.job_name ?? "-"}</TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
         <Tooltip title={entrypoint} arrow>

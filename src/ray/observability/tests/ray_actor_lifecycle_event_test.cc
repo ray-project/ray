@@ -42,7 +42,7 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
       data, rpc::events::ActorLifecycleEvent::ALIVE, "sess1");
 
   event1->Merge(std::move(*event2));
-  auto serialized_event = std::move(*event1).Serialize();
+  auto serialized_event = std::move(*event1).Serialize().value();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(serialized_event.session_name(), "sess1");
@@ -97,7 +97,7 @@ TEST_P(RayActorLifecycleEventRestartTest, TestRestartingReason) {
         data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
   }
 
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
   const auto &actor_life = serialized_event.actor_lifecycle_event();
 
   ASSERT_EQ(actor_life.state_transitions_size(), 1);

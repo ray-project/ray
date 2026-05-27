@@ -12,7 +12,7 @@ from ray.util import log_once
 from ray.util.annotations import Deprecated, PublicAPI
 
 try:
-    from lightning import Callback, LightningModule, Trainer
+    from lightning.pytorch import Callback, LightningModule, Trainer
 except ModuleNotFoundError:
     from pytorch_lightning import Callback, LightningModule, Trainer
 
@@ -106,7 +106,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     .. code-block:: python
 
-        import pytorch_lightning as pl
+        import lightning.pytorch as pl
         from ray.tune.integration.pytorch_lightning import (
             TuneReportCheckpointCallback)
 

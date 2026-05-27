@@ -56,6 +56,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
+   serve.handle.DeploymentBroadcastResponse
 ```
 
 ### Running Applications
@@ -93,6 +94,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
+   serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
@@ -157,6 +159,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
    serve.get_replica_context
    serve.get_trace_context
+   serve.get_deployment_actor
    serve.context.ReplicaContext
    serve.context.GangContext
    serve.get_multiplexed_model_id
@@ -169,6 +172,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
 
 
@@ -442,6 +446,8 @@ Content-Type: application/json
    schema.Target
    schema.DeploymentNode
    schema.DeploymentTopology
+   schema.ControllerHealthMetrics
+   schema.DurationStats
 
 .. autosummary::
    :nosignatures:

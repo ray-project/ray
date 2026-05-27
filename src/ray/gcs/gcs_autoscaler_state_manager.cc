@@ -22,7 +22,6 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/string_utils.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -35,7 +34,9 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     rpc::RayletClientPool &raylet_client_pool,
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
-    pubsub::GcsPublisher *gcs_publisher)
+    pubsub::GcsPublisher *gcs_publisher,
+    pubsub::ObservabilityPublisher *observability_publisher,
+    ClockInterface &clock)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
@@ -43,7 +44,9 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
       raylet_client_pool_(raylet_client_pool),
       kv_(kv),
       io_context_(io_context),
-      gcs_publisher_(gcs_publisher) {}
+      gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher),
+      clock_(clock) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -89,11 +92,10 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "This feature will be turned on by default in a future release of Ray.";
       RAY_LOG_EVERY_MS(WARNING, 60000) << error_message;
 
-      if (gcs_publisher_ != nullptr) {
+      if (observability_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data = CreateErrorTableData(
-            error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        gcs_publisher_->PublishError(session_name_, std::move(error_data));
+        auto error_data = CreateErrorTableData(error_type, error_message, clock_.Now());
+        observability_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
@@ -256,6 +258,27 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         bundle_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
       }
     }
+
+    // Populate locality_requirement if this PG uses label-domain scheduling.
+    // TODO(#61777): Add support for multiple tiers of label domains.
+    const auto &label_domain_key = pg_data.label_domain_key();
+    if (!label_domain_key.empty()) {
+      auto *locality_req = bundle_selector->mutable_locality_requirement();
+      auto *locality_constraint = locality_req->mutable_locality_constraint();
+      locality_constraint->set_label_name(label_domain_key);
+      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+
+      // If the PG already has a domain assignment (rescheduling case),
+      // add a label selector to constrain to that specific domain.
+      const auto &assignments = pg_data.label_domain_assignments();
+      if (auto it = assignments.find(label_domain_key); it != assignments.end()) {
+        auto *label_constraint =
+            locality_req->mutable_label_selector()->add_label_constraints();
+        label_constraint->set_label_key(label_domain_key);
+        label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+        label_constraint->add_label_values(it->second);
+      }
+    }
   }
 }
 
@@ -277,7 +300,7 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   }
   auto node_info =
       node_resource_info_
-          .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
+          .emplace(node_id, std::make_pair(clock_.Now(), rpc::ResourcesData()))
           .first;
   // Note: We populate total available resources but not load (which is only received from
   // autoscaler reports). Temporary underreporting when node is added is fine.
@@ -300,7 +323,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
   auto &new_data = iter->second.second;
   new_data = std::move(data);
   // Last update time
-  iter->second.first = absl::Now();
+  iter->second.first = clock_.Now();
 }
 
 absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>
@@ -409,7 +432,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
       // use raylet reported idle timestamp since there might be clock skew.
       node_state_proto->set_idle_duration_ms(
           node_resource_data.idle_duration_ms() +
-          absl::ToInt64Milliseconds(absl::Now() - node_resource_item.first));
+          absl::ToInt64Milliseconds(clock_.Now() - node_resource_item.first));
     } else {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
     }
@@ -457,12 +480,14 @@ void GcsAutoscalerStateManager::GetNodeStates(
 void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::SendReplyCallback send_reply_callback,
+    const std::string &grpc_peer) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id)
       << "HandleDrainNode, reason: " << request.reason_message()
-      << ", deadline: " << request.deadline_timestamp_ms();
+      << ", deadline: " << request.deadline_timestamp_ms()
+      << ", grpc_peer: " << grpc_peer;
 
   int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
   if (draining_deadline_timestamp_ms < 0) {

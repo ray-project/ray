@@ -25,7 +25,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 
 namespace ray {
 
@@ -1013,8 +1013,3 @@ TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusIsFatal) {
 }  // namespace pubsub
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

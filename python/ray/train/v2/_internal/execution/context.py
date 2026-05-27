@@ -4,6 +4,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -16,7 +17,10 @@ from ray.train.v2._internal.constants import (
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
 )
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.checkpoint.sync_actor import (
+    SynchronizationActor,
+    SynchronizationBarrierResetError,
+)
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
@@ -174,11 +178,13 @@ class TrainContext:
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(
                 self.report_call_index,
                 consistency_mode,
+                timeout_s,
             )
         )
 
@@ -362,7 +368,8 @@ class TrainContext:
                 lambda: self.current_report_index == report_call_index - 1
             )
             logger.info(
-                f"Reporting training result {report_call_index}: {training_report}"
+                f"Reporting training result {report_call_index}: {training_report} "
+                f"from rank {self.get_world_rank()}"
             )
             # Update latest checkpoint as the persisted checkpoint.
             if training_report.checkpoint:
@@ -388,16 +395,16 @@ class TrainContext:
         result on the result queue of this worker process.
 
         TODO: the report function should be implemented in the worker instead
-        of in the train context. The train context should only keep the train
-        related information and not the worker related actions. This refactor
-        would also require the `TrainContextCallback` to be updated as well.
+          of in the train context. The train context should only keep the train
+          related information and not the worker related actions. This refactor
+          would also require the `TrainContextCallback` to be updated as well.
         """
         if "torch" in sys.modules:
             from ray.air._internal.torch_utils import contains_tensor
 
             if contains_tensor(metrics):
                 raise ValueError(
-                    "Passing objects containg Torch tensors as metrics "
+                    "Passing objects containing Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
                     "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
@@ -409,6 +416,30 @@ class TrainContext:
                 "`validation_config` was not set on the trainer, but a validation was requested."
             )
 
+        if delete_local_checkpoint_after_upload and checkpoint is not None:
+            experiment_path = Path(self.storage_context.experiment_fs_path)
+            checkpoint_path = Path(checkpoint.path)
+
+            # Resolve symlinks only for local (absolute) paths.
+            # Remote paths (S3, GCS, etc.) are relative after URI and resolve()
+            # would prepend CWD, producing a meaningless local path.
+            # Mixed absolute/relative paths return False
+            if experiment_path.is_absolute():
+                experiment_path = experiment_path.resolve()
+            if checkpoint_path.is_absolute():
+                checkpoint_path = checkpoint_path.resolve()
+
+            if experiment_path.is_relative_to(checkpoint_path):
+                raise ValueError(
+                    f"Ray Train's experiment directory ({self.storage_context.experiment_fs_path}) "
+                    f"is contained within the checkpoint path ({checkpoint.path}) "
+                    f"and `ray.train.report(delete_local_checkpoint_after_upload=True)`. "
+                    "As a result, this would delete the experiment directory. "
+                    "Please write the checkpoint to a temporary directory, "
+                    "a subdirectory of the experiment directory, "
+                    "or use `delete_local_checkpoint_after_upload=False`."
+                )
+
         with invoke_context_managers(
             [
                 callback.on_report
@@ -419,9 +450,20 @@ class TrainContext:
             report_call_index = self.report_call_index
 
             # Sync the checkpoint dir name across ranks.
-            checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
-                checkpoint_dir_name
-            )
+            try:
+                checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
+                    checkpoint_dir_name
+                )
+            except ray.exceptions.RayTaskError as e:
+                if not isinstance(e.cause, SynchronizationBarrierResetError):
+                    raise e
+                logger.warning(
+                    "Synchronization barrier was reset (likely due to a "
+                    "worker failure). Skipping this report."
+                )
+                # Keep report indexes aligned across workers.
+                self.report_call_index -= 1
+                return
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:

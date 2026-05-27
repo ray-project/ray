@@ -358,8 +358,14 @@ def preload_sidebar_nav(
             parent_li = a.find_parent("li")
             parent_li["class"] = parent_li.get("class", []) + ["current-page"]
 
-            # Open the dropdowns of every parent li for the active page
+            # Open the dropdowns of every parent li for the active page.
+            # pydata-sphinx-theme 0.17 replaced the <input class="toctree-checkbox">
+            # toggle with HTML5 <details>; keep <input> as a fallback for 0.14.
             for parent_li in a.find_parents("li", attrs={"class": "has-children"}):
+                details = parent_li.find("details", recursive=False)
+                if details is not None:
+                    details.attrs["open"] = ""
+                    continue
                 el = parent_li.find("input")
                 if el:
                     el.attrs["checked"] = True
@@ -459,6 +465,7 @@ class UseCase(ExampleEnum):
     DATA_INGESTION = "Data Ingestion"
     DATA_WAREHOUSING = "Data Warehousing"
     DOCUMENT_PROCESSING = "Document Processing"
+    REINFORCEMENT_LEARNING = "Reinforcement Learning"
 
     @classmethod
     def formatted_name(cls):
@@ -503,6 +510,7 @@ class Framework(ExampleEnum):
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
     PANDAS = "Pandas"
+    TRL = "TRL"
     ANY = "Any"
     UNSTRUCTURED = "Unstructured"
 

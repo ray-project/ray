@@ -11,6 +11,8 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import (
+    Accumulator,
+    FailedGangReplicaStore,
     check_apps_running,
     check_num_replicas_eq,
 )
@@ -20,36 +22,6 @@ from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
-@ray.remote(num_cpus=0)
-class FailedReplicaStore:
-    """Stores the first replica ID that failed, for gang startup failure tests."""
-
-    def __init__(self):
-        self._failed_replica_id = None
-
-    def set_if_first(self, replica_id: str) -> bool:
-        """Atomically set failed replica if none set. Returns True if we're the first."""
-        if self._failed_replica_id is None:
-            self._failed_replica_id = replica_id
-            return True
-        return False
-
-    def get(self):
-        return self._failed_replica_id
 
 
 class TestGangScheduling:
@@ -719,7 +691,7 @@ class TestGangConstructorFailure:
         ray.init(num_cpus=1)
         serve.start()
 
-        failed_replica_store = FailedReplicaStore.remote()
+        failed_replica_store = FailedGangReplicaStore.remote()
 
         @serve.deployment(
             num_replicas=4,
@@ -728,35 +700,49 @@ class TestGangConstructorFailure:
         )
         class GangPartialConstructorFailure:
             def __init__(self, store):
-                replica_id = serve.get_replica_context().replica_id.unique_id
-                is_first = ray.get(store.set_if_first.remote(replica_id))
-                if is_first:
+                gang_id = serve.get_replica_context().gang_context.gang_id
+                is_first_fail = ray.get(store.mark_first_failing_gang.remote(gang_id))
+                if is_first_fail:
                     raise RuntimeError("Consistently throwing on same replica.")
-                failed_id = ray.get(store.get.remote())
-                if replica_id == failed_id:
-                    raise RuntimeError("Consistently throwing on same replica.")
+                should_fail = ray.get(store.mark_retry_failing_gang.remote(gang_id))
+                if should_fail:
+                    raise RuntimeError("Keep failing the replica")
 
             async def __call__(self, request):
                 return "hi"
 
-        serve.run(GangPartialConstructorFailure.bind(failed_replica_store))
-
-        client = serve.context._get_global_client()
-        deployment_id = DeploymentID(name="GangPartialConstructorFailure")
-        deployment_dict = ray.get(client._controller._all_running_replicas.remote())
-        assert len(deployment_dict[deployment_id]) == 4
-        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-        assert app_status.status == "RUNNING"
-        assert (
-            app_status.deployments["GangPartialConstructorFailure"].status == "HEALTHY"
+        serve._run(
+            GangPartialConstructorFailure.bind(failed_replica_store),
+            _blocking=False,
         )
+
+        deployment_name = "GangPartialConstructorFailure"
+
+        def _one_gang_running_and_updating() -> bool:
+            app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            dep = app_status.deployments[deployment_name]
+            return (
+                dep.replica_states.get("RUNNING", 0) == 2 and dep.status == "UPDATING"
+            )
+
+        wait_for_condition(_one_gang_running_and_updating, timeout=30)
+
+        # Wait well past the failed-to-start threshold
+        # (max(num_replicas * 3, 6) = 12 for 4 replicas) to prove the
+        # deployment stays stuck in UPDATING.
+        def _enough_retries_and_still_stable() -> bool:
+            failed_gangs = ray.get(failed_replica_store.get_failed_gang_count.remote())
+            return failed_gangs >= 15 and _one_gang_running_and_updating()
+
+        wait_for_condition(_enough_retries_and_still_stable, timeout=90)
+        assert serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "DEPLOYING"
 
     def test_transient_constructor_failure(self, ray_shutdown):
         """Validates gang deployment where the first constructor call fails then succeeds."""
         ray.init(num_cpus=1)
         serve.start()
 
-        failed_replica_store = FailedReplicaStore.remote()
+        failed_replica_store = FailedGangReplicaStore.remote()
 
         @serve.deployment(
             num_replicas=4,
@@ -765,9 +751,9 @@ class TestGangConstructorFailure:
         )
         class GangTransientConstructorFailure:
             def __init__(self, store):
-                replica_id = serve.get_replica_context().replica_id.unique_id
-                is_first = ray.get(store.set_if_first.remote(replica_id))
-                if is_first:
+                gang_id = serve.get_replica_context().gang_context.gang_id
+                is_first_fail = ray.get(store.mark_first_failing_gang.remote(gang_id))
+                if is_first_fail:
                     raise RuntimeError("Intentionally throw on first try.")
 
             async def __call__(self, request):
@@ -792,7 +778,7 @@ class TestGangFailureRecovery:
         """Startup failure stops both replicas in the affected gang."""
         ray.init(num_cpus=1)
         serve.start()
-        failed_replica_store = FailedReplicaStore.remote()
+        failed_replica_store = FailedGangReplicaStore.remote()
         recovery_signal = SignalActor.remote()
 
         @serve.deployment(
@@ -802,15 +788,16 @@ class TestGangFailureRecovery:
         )
         class StartupFailureDeployment:
             def __init__(self, failed_replica_store, recovery_signal):
-                replica_id = serve.get_replica_context().replica_id.unique_id
+                gang_id = serve.get_replica_context().gang_context.gang_id
                 is_first_failure = ray.get(
-                    failed_replica_store.set_if_first.remote(replica_id)
+                    failed_replica_store.mark_first_failing_gang.remote(gang_id)
                 )
                 if is_first_failure:
                     raise RuntimeError("Fail one startup to trigger gang cleanup.")
-
-                failed_replica_id = ray.get(failed_replica_store.get.remote())
-                if replica_id == failed_replica_id:
+                should_hold = ray.get(
+                    failed_replica_store.mark_retry_failing_gang.remote(gang_id)
+                )
+                if should_hold:
                     # Hold failed replica retry until the intermediate state is asserted.
                     ray.get(recovery_signal.wait.remote())
 
@@ -870,7 +857,7 @@ class TestGangFailureRecovery:
         """Single health check failure tears down and restarts the entire gang."""
         ray.init(num_cpus=1)
         serve.start()
-        target_replica_collector = Collector.remote()
+        target_replica_collector = Accumulator.remote()
 
         @serve.deployment(
             num_replicas=4,
@@ -1424,7 +1411,12 @@ class TestGangNodeFailure:
         wait_for_condition(fully_recovered, timeout=60)
         recovered.set()
 
-        time.sleep(1)
+        # Wait for at least one post-recovery success
+        successes_at_recovery = len(successes)
+        wait_for_condition(
+            lambda: len(successes) > successes_at_recovery,
+            timeout=10,
+        )
         stop.set()
         sender.join(timeout=5)
 
@@ -1434,15 +1426,6 @@ class TestGangNodeFailure:
         # After full recovery, no errors should occur.
         assert len(errors_after_recovery) == 0
         assert len(successes) > 0
-
-        # Verify no leaked PGs (already checked in fully_recovered, but
-        # assert here for a clear failure message).
-        gang_pg_names = [
-            n
-            for n in get_all_live_placement_group_names()
-            if n.startswith(GANG_PG_NAME_PREFIX)
-        ]
-        assert len(gang_pg_names) == expected_num_pgs
 
         wait_for_condition(check_apps_running, apps=[app_name])
 
@@ -1613,16 +1596,9 @@ class TestGangRollingUpdate:
             def __call__(self):
                 return "v2"
 
-        # Issue the update in a background thread so we can poll
+        # Issue the update without blocking so we can poll
         # intermediate controller state from the main thread.
-        update_done = threading.Event()
-
-        def update():
-            serve.run(V2.bind(), name="app")
-            update_done.set()
-
-        t = threading.Thread(target=update, daemon=True)
-        t.start()
+        serve._run(V2.bind(), name="app", _blocking=False)
 
         # Wait until we observe mixed state: at least one old gang still
         # RUNNING and at least one new gang in STARTING (blocked on signal).
@@ -1673,7 +1649,6 @@ class TestGangRollingUpdate:
             return current_gang_ids and not (current_gang_ids & initial_gang_ids)
 
         wait_for_condition(update_complete, timeout=60)
-        t.join(timeout=10)
 
         # Confirm all replicas serve the new version.
         for _ in range(20):
@@ -1869,7 +1844,9 @@ class TestGangAutoscaling:
                 "initial_replicas": 9,
                 "metrics_interval_s": 0.5,
                 "upscale_delay_s": 5,
-                "downscale_delay_s": 3,
+                # Must be long enough for all 9 gang-scheduled replicas to
+                # start before the autoscaler can trigger a downscale.
+                "downscale_delay_s": 20,
                 "look_back_period_s": 1,
                 "target_ongoing_requests": 2,
             },
@@ -1891,10 +1868,10 @@ class TestGangAutoscaling:
             timeout=60,
         )
 
-        # Send 13 blocking requests. With target_ongoing_requests=2:
-        # desired = ceil(13/2) = 7 (unaligned).
-        # Gang policy rounds down: 7 // 3 * 3 = 6.
-        results = [handle.remote() for _ in range(13)]
+        # Send 10 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(10/2) = 5 (unaligned).
+        # Gang policy rounds up: ceil(5/3)*3 = 6.
+        results = [handle.remote() for _ in range(10)]
 
         # Wait for downscale from 9 to 6.
         def downscaled_and_aligned():

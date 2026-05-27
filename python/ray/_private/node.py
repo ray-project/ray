@@ -586,11 +586,14 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
-                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
-            ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
+            ).resolve(
+                is_head=self.head,
+                node_ip_address=self.node_ip_address,
+                resource_isolation_config=self.resource_isolation_config,
+            )
         return self._resource_and_label_spec
 
     @property
@@ -1182,6 +1185,18 @@ class Node:
             create_err=True,
         )
 
+        dashboard_agent_log_filepath = None
+        if dashboard_agent_stdout_filepath is not None:
+            dashboard_agent_log_filepath = self._get_log_file_name(
+                ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, "log", unique=True
+            )
+
+        runtime_env_agent_log_filepath = None
+        if runtime_env_agent_stdout_filepath is not None:
+            runtime_env_agent_log_filepath = self._get_log_file_name(
+                ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, "log", unique=True
+            )
+
         self.resource_isolation_config.add_system_pids(
             self._get_system_processes_for_resource_isolation()
         )
@@ -1223,8 +1238,10 @@ class Node:
             raylet_stderr_filepath=raylet_stderr_filepath,
             dashboard_agent_stdout_filepath=dashboard_agent_stdout_filepath,
             dashboard_agent_stderr_filepath=dashboard_agent_stderr_filepath,
+            dashboard_agent_log_filepath=dashboard_agent_log_filepath,
             runtime_env_agent_stdout_filepath=runtime_env_agent_stdout_filepath,
             runtime_env_agent_stderr_filepath=runtime_env_agent_stderr_filepath,
+            runtime_env_agent_log_filepath=runtime_env_agent_log_filepath,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,

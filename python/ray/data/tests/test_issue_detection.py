@@ -93,7 +93,7 @@ class TestHangingExecutionIssueDetector:
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
     @patch(
-        "ray.data._internal.execution.interfaces.op_runtime_metrics.TaskDurationStats"
+        "ray.data._internal.execution.interfaces.op_runtime_metrics.DistributionTracker"
     )
     def test_basic_hanging_detection(
         self, mock_stats_cls, ray_start_regular_shared, restore_data_context
@@ -108,12 +108,13 @@ class TestHangingExecutionIssueDetector:
         mocked_mean = 2.0  # Increase from 0.5 to 2.0 seconds
         mocked_stddev = 0.2  # Increase from 0.05 to 0.2 seconds
         mock_stats = mock_stats_cls.return_value
-        mock_stats.count.return_value = 20  # Enough samples
-        mock_stats.mean.return_value = mocked_mean
-        mock_stats.stddev.return_value = mocked_stddev
+        mock_stats.num_samples = 20  # Enough samples
+        mock_stats.mean = mocked_mean
+        mock_stats.stddev = mocked_stddev
 
-        # Set a short issue detection interval for testing
+        # Explicitly enable hanging detection for this test
         ctx = DataContext.get_current()
+        ctx.issue_detectors_config.detectors = [HangingExecutionIssueDetector]
         detector_cfg = ctx.issue_detectors_config.hanging_detector_config
         detector_cfg.detection_time_interval_s = 0.00
 

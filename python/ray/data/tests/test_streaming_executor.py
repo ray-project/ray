@@ -1,4 +1,6 @@
+import logging
 import os
+import pickle
 import random
 import threading
 import time
@@ -9,23 +11,19 @@ from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,
 )
-from ray.data._internal.execution.execution_callback import (
-    EXECUTION_CALLBACKS_ENV_VAR,
-    ExecutionCallback,
-    add_execution_callback,
-    get_execution_callbacks,
-    remove_execution_callback,
-)
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -51,6 +49,7 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
+    OutputBackpressureGuard,
     build_streaming_topology,
     format_op_state_summary,
     get_eligible_operators,
@@ -59,10 +58,16 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators import MapRows, Read, Write
+from ray.data._internal.logical.operators import (
+    ListFiles,
+    MapRows,
+    Read,
+    ReadFiles,
+    Write,
+)
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
-from ray.data.context import DataContext
+from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -152,6 +157,13 @@ def test_disallow_non_unique_operators(ray_start_regular_shared):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
 
+def _make_disabled_guard() -> MagicMock:
+    """Return a stub guard whose escape hatch never fires."""
+    guard = MagicMock(spec=OutputBackpressureGuard)
+    guard.should_unblock.return_value = False
+    return guard
+
+
 @pytest.fixture
 def sleep_task_ref():
     sleep_task_ref = sleep.remote()
@@ -171,7 +183,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -183,7 +195,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
@@ -198,7 +210,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o1.mark_execution_finished = MagicMock()
     o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -220,7 +232,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
 
@@ -244,7 +256,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     # First, populate the upstream output queues by processing some tasks
-    process_completed_tasks(topo, [], 0)
+    process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
 
     # Verify that o1 (upstream) has output in its queue
@@ -478,16 +490,75 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
 
     # Call process_completed_tasks which tracks output policies
-    process_completed_tasks(topo, policies, max_errored_blocks=0)
+    process_completed_tasks(
+        topo,
+        policies,
+        max_errored_blocks=0,
+        output_backpressure_guard=_make_disabled_guard(),
+    )
 
     # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
     assert o2._task_output_backpressure_policy == "Limiting"
 
     # Now test with no output backpressure
-    process_completed_tasks(topo, [NonLimitingPolicy()], max_errored_blocks=0)
+    process_completed_tasks(
+        topo,
+        [NonLimitingPolicy()],
+        max_errored_blocks=0,
+        output_backpressure_guard=_make_disabled_guard(),
+    )
 
     # Check that o2 is no longer in output backpressure
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
+def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_limit(
+    ray_start_regular_shared,
+):
+    """Test that the escape hatch fires when a non-resource-budget policy drives the aggregated output limit to 0."""
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions())
+
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        DataContext.get_current(),
+    )
+    guard = OutputBackpressureGuard(topo, resource_manager)
+
+    # Fake policy that returns 0 for o2
+    class ZeroLimitPolicy:
+        @property
+        def name(self):
+            return "ZeroLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None
+
+    process_completed_tasks(
+        topo,
+        [ZeroLimitPolicy()],
+        max_errored_blocks=0,
+        output_backpressure_guard=guard,
+    )
+
+    # o2 is terminal with no downstream eligible ops and no external
+    # consumer — the guard's terminal-op branch should unblock, bumping
+    # the limit from 0 to 1, so o2 is NOT flagged as in output backpressure
+    # and the policy attribution should be cleared.
     assert o2._in_task_output_backpressure is False
     assert o2._task_output_backpressure_policy is None
 
@@ -790,6 +861,74 @@ class OpBufferQueueTest(unittest.TestCase):
         assert q.memory_usage == 0
 
 
+class GetOutputBlockingTest(unittest.TestCase):
+    def test_num_waiting_consumers_tracking(self):
+        """num_waiting_consumers is incremented/decremented by get_output_blocking."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        state = topo[o2]
+
+        assert state.num_waiting_consumers == 0
+
+        # Consumer blocks — counter should be 1.
+        t = threading.Thread(target=state.get_output_blocking, args=(None,))
+        t.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock by adding a bundle — counter should go back to 0.
+        bundle = make_ref_bundles([[0]])[0]
+        state.output_queue.append(bundle)
+        t.join()
+        assert state.num_waiting_consumers == 0
+
+        # Counter is decremented after StopIteration.
+        def get_until_stop():
+            with pytest.raises(StopIteration):
+                state.get_output_blocking(None)
+
+        t2 = threading.Thread(target=get_until_stop)
+        t2.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        state.mark_finished()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+    def test_num_waiting_consumers_concurrent(self):
+        """num_waiting_consumers reflects multiple blocked consumers.
+        For example, this happens for multiple streaming_split iterators."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        state = topo[o2]
+
+        def blocking_consumer():
+            try:
+                state.get_output_blocking(None)
+            except StopIteration:
+                pass
+
+        t1 = threading.Thread(target=blocking_consumer)
+        t2 = threading.Thread(target=blocking_consumer)
+        t1.start()
+        t2.start()
+
+        wait_for_condition(lambda: state.num_waiting_consumers == 2)
+
+        # Unblock one consumer.
+        state.output_queue.append(make_ref_bundles([[0]])[0])
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock the other consumer.
+        state.mark_finished()
+        wait_for_condition(lambda: state.num_waiting_consumers == 0)
+
+        t1.join()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+
 def test_exception_concise_stacktrace():
     driver_script = """
 import ray
@@ -814,73 +953,93 @@ def test_streaming_exec_schedule_s(ray_start_regular_shared):
     for _ in ds.iter_batches():
         continue
 
-    ds_stats = ds._plan.stats()
+    ds_stats = ds._raw_stats()
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
-def test_execution_callbacks(ray_start_regular_shared):
-    """Test ExecutionCallback."""
+def test_execution_callbacks_on_success(ray_start_regular_shared):
+    before_execution_starts_called = False
+    after_execution_succeeds_called = False
+    on_execution_step_called = False
+    execution_error = None
 
     class CustomExecutionCallback(ExecutionCallback):
-        def __init__(self):
-            self._before_execution_starts_called = False
-            self._after_execution_succeeds_called = False
-            self._execution_error = None
-            self._on_execution_step_called = False
-
         def before_execution_starts(self, executor: StreamingExecutor):
-            self._before_execution_starts_called = True
+            nonlocal before_execution_starts_called
+            before_execution_starts_called = True
 
         def on_execution_step(self, executor: "StreamingExecutor"):
-            self._on_execution_step_called = True
+            nonlocal on_execution_step_called
+            on_execution_step_called = True
 
         def after_execution_succeeds(self, executor: StreamingExecutor):
-            self._after_execution_succeeds_called = True
+            nonlocal after_execution_succeeds_called
+            after_execution_succeeds_called = True
 
         def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
-            self._execution_error = error
+            nonlocal execution_error
+            execution_error = error
 
-    # Test the success case.
-    ds = ray.data.range(10)
-    ctx = ds.context
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
-    assert callback in get_execution_callbacks(ctx)
+    ctx = DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
-    ds.take_all()
+    ray.data.range(1).take_all()
 
-    assert callback._before_execution_starts_called
-    assert callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    assert callback._execution_error is None
+    assert before_execution_starts_called
+    assert after_execution_succeeds_called
+    assert on_execution_step_called
+    assert execution_error is None
 
-    remove_execution_callback(callback, ctx)
-    assert callback not in get_execution_callbacks(ctx)
 
-    # Test the case where the dataset fails due to an error in the UDF.
-    ds = ray.data.range(10)
-    ctx = ds.context
+def test_execution_callbacks_on_error(ray_start_regular_shared):
+    before_execution_starts_called = False
+    after_execution_succeeds_called = False
+    on_execution_step_called = False
+    execution_error = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def before_execution_starts(self, executor: StreamingExecutor):
+            nonlocal before_execution_starts_called
+            before_execution_starts_called = True
+
+        def on_execution_step(self, executor: "StreamingExecutor"):
+            nonlocal on_execution_step_called
+            on_execution_step_called = True
+
+        def after_execution_succeeds(self, executor: StreamingExecutor):
+            nonlocal after_execution_succeeds_called
+            after_execution_succeeds_called = True
+
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
+            nonlocal execution_error
+            execution_error = error
+
+    ctx = DataContext.get_current()
     ctx.raise_original_map_exception = True
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
     def map_fn(_):
         raise ValueError("")
 
     with pytest.raises(ValueError):
-        ds.map(map_fn).take_all()
+        ray.data.range(1).map(map_fn).take_all()
 
-    assert callback._before_execution_starts_called
-    assert not callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    error = callback._execution_error
-    assert isinstance(error, ValueError), error
+    assert before_execution_starts_called
+    assert not after_execution_succeeds_called
+    assert on_execution_step_called
+    assert isinstance(execution_error, ValueError), execution_error
 
-    # Test the case the dataset is canceled by "ctrl-c".
-    ds = ray.data.range(10)
-    ctx = ds.context
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+
+def test_execution_callbacks_on_cancel(ray_start_regular_shared):
+    execution_error = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
+            nonlocal execution_error
+            execution_error = error
+
+    ctx = DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
     def patched_get_outupt_blocking(*args, **kwargs):
         raise KeyboardInterrupt()
@@ -890,36 +1049,28 @@ def test_execution_callbacks(ray_start_regular_shared):
         new=patched_get_outupt_blocking,
     ):
         with pytest.raises(KeyboardInterrupt):
-            ds.take_all()
+            ray.data.range(1).take_all()
 
-    assert callback._before_execution_starts_called
-    assert not callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    error = callback._execution_error
-    assert isinstance(error, KeyboardInterrupt), error
+    assert isinstance(execution_error, KeyboardInterrupt), execution_error
 
 
 @patch("importlib.import_module")
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "my.module.TestCallback"})
 def test_env_callbacks_loaded(mock_import):
     """Test loading execution callbacks from environment variable."""
-    # Setup mock for importing the module
+
+    class TestCallback(ExecutionCallback):
+        pass
+
     mock_module = MagicMock()
-    mock_callback_cls = MagicMock()
-    mock_callback = MagicMock()
-    mock_callback_cls.return_value = mock_callback
-    mock_module.TestCallback = mock_callback_cls
+    mock_module.TestCallback = TestCallback
     mock_import.return_value = mock_module
 
-    # Get callbacks should initialize from env
     ctx = DataContext.get_current()
-    callbacks = get_execution_callbacks(ctx)
+    callback_classes = ctx.execution_callback_classes
 
-    # Verify the callback was imported and initialized
-    mock_import.assert_called_once_with("my.module")
-    mock_callback_cls.assert_called_once()
-
-    assert len([c for c in callbacks if c is mock_callback]) == 1
+    mock_import.assert_called_with("my.module")
+    assert TestCallback in callback_classes
 
 
 @patch("importlib.import_module")
@@ -928,15 +1079,18 @@ def test_env_callbacks_loaded(mock_import):
 )
 def test_multiple_env_callbacks(mock_import):
     """Test loading multiple callbacks from environment variable."""
-    # Setup mock for importing multiple modules
+
+    class Callback1(ExecutionCallback):
+        pass
+
+    class Callback2(ExecutionCallback):
+        pass
+
     mock_module1 = MagicMock()
     mock_module2 = MagicMock()
-    mock_callback1 = MagicMock()
-    mock_callback2 = MagicMock()
-    mock_module1.Callback1.return_value = mock_callback1
-    mock_module2.Callback2.return_value = mock_callback2
+    mock_module1.Callback1 = Callback1
+    mock_module2.Callback2 = Callback2
 
-    # Return different mock modules depending on the import path
     def side_effect(name):
         if name == "module1":
             return mock_module1
@@ -946,21 +1100,18 @@ def test_multiple_env_callbacks(mock_import):
 
     mock_import.side_effect = side_effect
 
-    # Get callbacks should initialize from env
     ctx = DataContext.get_current()
-    callbacks = get_execution_callbacks(ctx)
+    callback_classes = ctx.execution_callback_classes
 
-    # Verify both callbacks were imported and initialized
-    assert len([c for c in callbacks if c is mock_callback1]) == 1
-    assert len([c for c in callbacks if c is mock_callback2]) == 1
+    assert Callback1 in callback_classes
+    assert Callback2 in callback_classes
 
 
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "invalid_module"})
 def test_invalid_callback_path():
     """Test handling of invalid callback paths in environment variable."""
-    # Should raise ValueError due to missing class name
     with pytest.raises(ValueError):
-        get_execution_callbacks(DataContext.get_current())
+        _ = DataContext.get_current().execution_callback_classes
 
 
 @patch("importlib.import_module")
@@ -969,30 +1120,10 @@ def test_invalid_callback_path():
 )
 def test_import_error_handling(mock_import):
     """Test handling of import errors when loading callbacks."""
-    # Make import fail
     mock_import.side_effect = ImportError("No module named 'nonexistent'")
 
-    # Should re-raise as ValueError with context
     with pytest.raises(ValueError):
-        get_execution_callbacks(DataContext.get_current())
-
-
-def test_callbacks_initialized_once():
-    """Test that environment callbacks are only initialized once per context."""
-    with patch(
-        "ray.data._internal.execution.execution_callback._initialize_env_callbacks"
-    ) as mock_init:
-        # First call should initialize
-        ctx = DataContext.get_current()
-        get_execution_callbacks(ctx)
-        mock_init.assert_called_once_with(ctx)
-
-        # Reset the mock to check if called again
-        mock_init.reset_mock()
-
-        # Second call should not initialize again
-        get_execution_callbacks(ctx)
-        mock_init.assert_not_called()
+        _ = DataContext.get_current().execution_callback_classes
 
 
 def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
@@ -1007,11 +1138,11 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
+    pq.write_table(pa.table({"value": [1]}), input_path / "data.parquet")
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
     ds = ray.data.read_parquet(input_path)
 
     def udf(row):
@@ -1024,25 +1155,48 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     # Test inspecting the metadata of each operator.
     # E.g., the original input and output paths and the UDF.
     assert _executor is not None
-    assert len(_executor._topology) == 2
     physical_ops = list(_executor._topology.keys())
     assert isinstance(physical_ops[0], InputDataBuffer)
-    assert isinstance(physical_ops[1], MapOperator)
-    logical_ops = physical_ops[1]._logical_operators
+    if ctx.use_datasource_v2:
+        # V2 splits read into a ``ListFiles`` source op and a fused
+        # ``ReadFiles->Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
+        assert isinstance(physical_ops[1], MapOperator)
+        assert isinstance(physical_ops[2], MapOperator)
+        list_files_logical_ops = physical_ops[1]._logical_operators
+        assert len(list_files_logical_ops) == 1
+        assert isinstance(list_files_logical_ops[0], ListFiles)
 
-    assert len(logical_ops) == 3
-    assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0].datasource
-    assert isinstance(datasource, ParquetDatasource)
-    assert datasource._source_paths == input_path
+        read_logical_ops = physical_ops[2]._logical_operators
+        assert len(read_logical_ops) == 3
+        assert isinstance(read_logical_ops[0], ReadFiles)
+        assert read_logical_ops[0].datasource_name == "ParquetV2"
 
-    assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1].fn == udf
+        assert isinstance(read_logical_ops[1], MapRows)
+        assert read_logical_ops[1].fn == udf
 
-    assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2].datasink_or_legacy_datasource
-    assert isinstance(datasink, ParquetDatasink)
-    assert datasink.unresolved_path == output_path
+        assert isinstance(read_logical_ops[2], Write)
+        datasink = read_logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
+    else:
+        assert len(_executor._topology) == 2
+        assert isinstance(physical_ops[1], MapOperator)
+        logical_ops = physical_ops[1]._logical_operators
+
+        assert len(logical_ops) == 3
+        assert isinstance(logical_ops[0], Read)
+        datasource = logical_ops[0].datasource
+        assert isinstance(datasource, ParquetDatasource)
+        assert datasource._source_paths == input_path
+
+        assert isinstance(logical_ops[1], MapRows)
+        assert logical_ops[1].fn == udf
+
+        assert isinstance(logical_ops[2], Write)
+        datasink = logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
 
 
 def test_create_topology_metadata():
@@ -1198,8 +1352,10 @@ def create_stub_streaming_gen(
                     task_wall_time_s=_time.perf_counter() - task_start_s,
                 )
             )
-            yield BlockMetadataWithSchema.from_metadata(
-                block_metadata, schema=block_accessor.schema()
+            yield pickle.dumps(
+                BlockMetadataWithSchema.from_metadata(
+                    block_metadata, schema=block_accessor.schema()
+                )
             )
 
     generator_backpressure_num_objects = (
@@ -1444,6 +1600,27 @@ class TestDataOpTask:
         # Total backpressure = 2.5s + 1.5s = 4.0s
         bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
         assert bp_time == pytest.approx(4.0)
+
+
+def test_streaming_executor_logs_relevant_env_vars(
+    monkeypatch, caplog, propagate_logs, ray_start_regular_shared
+):
+    monkeypatch.setenv("RAY_DATA_TEST_FOO", "bar")
+    monkeypatch.setenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.3")
+
+    ctx = DataContext.get_current()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    dag = InputDataBuffer(ctx, inputs)
+
+    executor = StreamingExecutor(ctx)
+    with caplog.at_level(
+        logging.DEBUG,
+        logger="ray.data._internal.execution.streaming_executor",
+    ):
+        executor.execute(dag)
+
+    assert "RAY_DATA_TEST_FOO=bar" in caplog.text
+    assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
 
 
 if __name__ == "__main__":

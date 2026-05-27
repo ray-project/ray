@@ -460,8 +460,7 @@ class IPPRStatus:
         hit a terminal IPPR failure are permanently excluded from future IPPR.
         """
         return (
-            self.raylet_id is not None
-            and self.last_failed_at is None
+            self.last_failed_at is None
             and self.is_k8s_resize_finished()
             and self.is_raylet_synced()
             and (
@@ -478,6 +477,7 @@ class IPPRStatus:
         """
         return (
             self.resizing_at is not None
+            and not self.need_sync_with_raylet()
             and (self.resizing_at + self.spec.resize_timeout) < time.time()
         )
 
