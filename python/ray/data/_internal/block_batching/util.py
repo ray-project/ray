@@ -1,9 +1,20 @@
 import dataclasses
 import functools
 import logging
+import queue
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -20,8 +31,53 @@ from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 I = TypeVar("I")
 O = TypeVar("O")
+
+_SENTINEL = object()
+
+
+def iter_in_background(
+    base_iterator: Iterator[T],
+    output_buffer_size: int = 1,
+) -> Generator[T, None, None]:
+    """Run an iterator in a background thread, yielding items via a bounded queue.
+
+    This decouples the producer (base_iterator) from the consumer so they can
+    overlap: while the consumer processes item N, the producer can prepare
+    item N+1.
+
+    Args:
+        base_iterator: The iterator to consume in the background thread.
+        output_buffer_size: Maximum number of items buffered in the output
+            queue. Defaults to 1 (single-item lookahead).
+
+    Yields:
+        T: Items from base_iterator, in order.
+    """
+    result_queue: queue.Queue = queue.Queue(maxsize=output_buffer_size)
+
+    def _producer():
+        try:
+            for item in base_iterator:
+                result_queue.put(item)
+            result_queue.put(_SENTINEL)
+        except Exception as e:
+            result_queue.put(e)
+
+    producer_thread = threading.Thread(
+        target=_producer, name="iter_in_background", daemon=True
+    )
+    producer_thread.start()
+
+    while True:
+        item = result_queue.get()
+        if item is _SENTINEL:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
 
 
 class _MappingIterator(Iterator[O], Generic[I, O]):
