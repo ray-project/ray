@@ -742,8 +742,8 @@ class TaskManager : public TaskManagerInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Helper method for TryDelObjectRefStream. Fails any pending callbacks,
-  /// sends consumed-progress teardown, and releases unconsumed refs. Return true if it is safe to
-  /// delete the stream and task metadata for the generator.
+  /// sends consumed-progress teardown, and releases unconsumed refs. Return true if it is
+  /// safe to delete the stream and task metadata for the generator.
   bool TryDelObjectRefStreamInternal(const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 

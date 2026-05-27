@@ -2721,8 +2721,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   };
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status callback_status,
-                                                     int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&signal_called](Status callback_status, int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(callback_status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
@@ -2744,8 +2744,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
-                                                     int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&signal_called](Status status, int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
@@ -2776,8 +2776,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
-                                                     int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&signal_called](Status status, int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 1);
@@ -2823,23 +2823,22 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   int initial_consumption_updates = 0;
   int retry_consumption_updates = 0;
   int64_t retry_last_consumed = -1;
-  auto initial_consumption_update =
-      [&initial_consumption_updates](Status status, int64_t num_objects_consumed) {
-        initial_consumption_updates++;
-        ASSERT_TRUE(status.ok());
-        ASSERT_EQ(num_objects_consumed, 1);
-      };
-  auto retry_consumption_update =
-      [&retry_consumption_updates, &retry_last_consumed](
-          Status status, int64_t num_objects_consumed) {
-        retry_consumption_updates++;
-        ASSERT_TRUE(status.ok());
-        retry_last_consumed = num_objects_consumed;
-      };
+  auto initial_consumption_update = [&initial_consumption_updates](
+                                        Status status, int64_t num_objects_consumed) {
+    initial_consumption_updates++;
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(num_objects_consumed, 1);
+  };
+  auto retry_consumption_update = [&retry_consumption_updates, &retry_last_consumed](
+                                      Status status, int64_t num_objects_consumed) {
+    retry_consumption_updates++;
+    ASSERT_TRUE(status.ok());
+    retry_last_consumed = num_objects_consumed;
+  };
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
-                                                     int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&signal_called](Status status, int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
@@ -2861,8 +2860,8 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
-                                                     int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&signal_called](Status status, int64_t num_objects_consumed) {
         signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
@@ -2889,8 +2888,8 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   bool retry_signal_called = false;
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&retry_signal_called](Status status,
-                                                           int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&retry_signal_called](Status status, int64_t num_objects_consumed) {
         retry_signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
@@ -2912,8 +2911,8 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   retry_signal_called = false;
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&retry_signal_called](Status status,
-                                                           int64_t num_objects_consumed) {
+      /*execution_signal_callback*/
+      [&retry_signal_called](Status status, int64_t num_objects_consumed) {
         retry_signal_called = true;
         ASSERT_TRUE(status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
@@ -2952,13 +2951,12 @@ TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumptio
     ASSERT_TRUE(callback_status.ok());
     ack_count++;
   };
-  auto bump_consumption =
-      [&consumption_count, &last_consumed](Status callback_status,
-                                           int64_t num_objects_consumed) {
-        ASSERT_TRUE(callback_status.ok());
-        consumption_count++;
-        last_consumed = num_objects_consumed;
-      };
+  auto bump_consumption = [&consumption_count, &last_consumed](
+                              Status callback_status, int64_t num_objects_consumed) {
+    ASSERT_TRUE(callback_status.ok());
+    consumption_count++;
+    last_consumed = num_objects_consumed;
+  };
 
   auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
   auto req = GetIntermediateTaskReturn(

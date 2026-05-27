@@ -76,7 +76,8 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
 
   void UpdateGeneratorBackpressureConsumed(
       UpdateGeneratorBackpressureConsumedRequest &&request,
-      const ClientCallback<UpdateGeneratorBackpressureConsumedReply> &callback) override {}
+      const ClientCallback<UpdateGeneratorBackpressureConsumedReply> &callback) override {
+  }
 
   void KillActor(const KillActorRequest &request,
                  const ClientCallback<KillActorReply> &callback) override {

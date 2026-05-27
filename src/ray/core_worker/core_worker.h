@@ -1889,8 +1889,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     bool task_finished = false;
   };
 
-  absl::flat_hash_map<ObjectID, GeneratorBackpressureState>
-      generator_backpressure_states_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

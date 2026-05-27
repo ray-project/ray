@@ -3337,19 +3337,16 @@ void CoreWorker::HandleReportGeneratorItemReturns(
           const Status &status, int64_t total_num_object_consumed) {
         rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
         update_request.set_generator_id(generator_id.Binary());
-        update_request.set_total_num_object_consumed(status.ok()
-                                                         ? total_num_object_consumed
-                                                         : -1);
+        update_request.set_total_num_object_consumed(
+            status.ok() ? total_num_object_consumed : -1);
         auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
         client->UpdateGeneratorBackpressureConsumed(
             std::move(update_request),
-            [generator_id](
-                const Status &update_status,
-                const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+            [generator_id](const Status &update_status,
+                           const rpc::UpdateGeneratorBackpressureConsumedReply &) {
               if (!update_status.ok()) {
                 RAY_LOG(DEBUG).WithField(generator_id)
-                    << "Failed to update generator consumed progress: "
-                    << update_status;
+                    << "Failed to update generator consumed progress: " << update_status;
               }
             });
       });
@@ -3388,10 +3385,9 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
     auto it = generator_backpressure_states_.find(generator_id);
     if (it != generator_backpressure_states_.end() &&
         (teardown ||
-         (it->second.task_finished &&
-          (it->second.actor_metadata == nullptr ||
-           it->second.waiter->TotalObjectConsumed() >=
-               it->second.waiter->TotalObjectGenerated())))) {
+         (it->second.task_finished && (it->second.actor_metadata == nullptr ||
+                                       it->second.waiter->TotalObjectConsumed() >=
+                                           it->second.waiter->TotalObjectGenerated())))) {
       generator_backpressure_states_.erase(it);
     }
   }

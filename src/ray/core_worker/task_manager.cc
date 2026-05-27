@@ -653,8 +653,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     /// if necessary.
     if (read_status.ok() && !object_id_out->IsNil()) {
       auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-      auto consumption_it =
-          ref_stream_consumption_update_callbacks_.find(generator_id);
+      auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
       if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
         consumption_update_callback = consumption_it->second;
         consumption_total_consumed = total_consumed;
