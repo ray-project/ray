@@ -2176,9 +2176,8 @@ cdef execute_task_with_cancellation_handler(
         # _thread.interrupt_main(). Without this, a second ray.cancel()
         # could interrupt store_task_errors, causing a KeyboardInterrupt to
         # escape task_execution_handler entirely.
-        # TODO(karticam): putting this here, its still prone to race condition
-        # right.. like what if the second keyboard interrupt comes before the
-        # next line?? it still goes through the same issue...
+        # TODO(karticam): this is still prone to race if the second keyboard
+        # interrupt comes before we reset the current_task_id.
         with current_task_id_lock:
             current_task_id = None
 
