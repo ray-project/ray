@@ -1507,9 +1507,10 @@ def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
             return None
 
     def check_marker_not_set(row):
-        assert (
-            os.environ.get("MARKER") != "1"
-        ), "Expected MARKER to not be set in the map worker. This means the map worker was scheduled on the same worker as the read worker."
+        assert os.environ.get("MARKER") != "1", (
+            "Expected MARKER to not be set in the map worker. This means the map "
+            "worker was scheduled on the same worker as the read worker."
+        )
         return row
 
     ray.data.read_datasource(SetMarkerDatasource()).map(
