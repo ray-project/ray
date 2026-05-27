@@ -10,7 +10,7 @@ from freezegun import freeze_time
 
 import ray
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import BlockEntry, PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -328,8 +328,11 @@ class TestResourceManager:
         input = make_ref_bundles([[x] for x in range(1)])[0]
         # Set block metadata size_bytes to 1 (rather than mocking the method on the
         # instance, which doesn't survive dataclasses.replace in OpBufferQueue.pop).
-        block_ref, block_meta = input.blocks[0]
-        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
+        entry = input.blocks[0]
+        input = replace(
+            input,
+            blocks=[BlockEntry(entry.ref, replace(entry.metadata, size_bytes=1))],
+        )
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)

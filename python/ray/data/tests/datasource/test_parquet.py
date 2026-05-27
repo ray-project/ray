@@ -1275,11 +1275,10 @@ def test_parquet_roundtrip(
 
     # Test metadata ops.
     for entry in ds2._execute().blocks:
-        assert (
-            # pyrefly: ignore[no-matching-overload]
-            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
-            == entry.metadata.size_bytes
-        )
+        # pyrefly: ignore[no-matching-overload]
+        BlockAccessor.for_block(
+            ray.get(entry.ref)
+        ).size_bytes() == entry.metadata.size_bytes
 
     if fs is None:
         shutil.rmtree(path)

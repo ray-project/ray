@@ -31,7 +31,7 @@ class BlockSlice:
         return self.end_offset - self.start_offset
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class BlockEntry:
     """One block delivery: the ref + the block's measured metadata.
 
