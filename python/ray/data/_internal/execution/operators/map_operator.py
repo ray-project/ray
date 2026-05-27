@@ -128,7 +128,7 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     if isinstance(schema, PandasBlockSchema):
         if not bundle.blocks:
             return None
-        block_ref, _ = bundle.blocks[0]
+        block_ref = bundle.blocks[0].ref
         schema_ref = _get_arrow_schema_from_block.remote(block_ref)
         return ray.get(schema_ref)
 

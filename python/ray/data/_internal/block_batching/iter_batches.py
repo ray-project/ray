@@ -412,7 +412,9 @@ def prefetch_batches_locally(
     ):
         try:
             next_ref_bundle = get_next_ref_bundle()
-            sliding_window.extend(next_ref_bundle.blocks)
+            sliding_window.extend(
+                (entry.ref, entry.metadata) for entry in next_ref_bundle.blocks
+            )
             current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
             break
@@ -429,9 +431,9 @@ def prefetch_batches_locally(
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 next_ref_bundle = get_next_ref_bundle()
-                for block_ref_and_md in next_ref_bundle.blocks:
-                    sliding_window.append(block_ref_and_md)
-                    current_window_size += block_ref_and_md[1].num_rows
+                for entry in next_ref_bundle.blocks:
+                    sliding_window.append((entry.ref, entry.metadata))
+                    current_window_size += entry.metadata.num_rows
                 prefetcher.prefetch_blocks(
                     [block_ref for block_ref, _ in list(sliding_window)]
                 )

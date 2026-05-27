@@ -8,7 +8,11 @@ from typing_extensions import override
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -159,12 +163,12 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         """
         left_blocks_with_metadata = []
         for bundle in left_input:
-            for block, meta in bundle.blocks:
-                left_blocks_with_metadata.append((block, meta))
+            for entry in bundle.blocks:
+                left_blocks_with_metadata.append((entry.ref, entry.metadata))
         right_blocks_with_metadata = []
         for bundle in right_input:
-            for block, meta in bundle.blocks:
-                right_blocks_with_metadata.append((block, meta))
+            for entry in bundle.blocks:
+                right_blocks_with_metadata.append((entry.ref, entry.metadata))
 
         left_block_rows, left_block_bytes = self._calculate_blocks_rows_and_bytes(
             left_blocks_with_metadata
@@ -255,12 +259,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(
                 RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
+                    [BlockEntry(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned,
                     schema=meta_with_schema.schema,
                 )

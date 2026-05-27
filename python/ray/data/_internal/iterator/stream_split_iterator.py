@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     NodeIdStr,
     RefBundle,
 )
@@ -374,7 +375,8 @@ class SplitCoordinator:
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             schema = next_bundle.schema
-            block, metadata = next_bundle.blocks[-1]
+            last_entry = next_bundle.blocks[-1]
+            block, metadata = last_entry.ref, last_entry.metadata
             next_bundle = RefBundle(
                 blocks=next_bundle.blocks[:-1],
                 schema=next_bundle.schema,
@@ -409,7 +411,9 @@ class SplitCoordinator:
 
             returned_normally = True
             return RefBundle(
-                [(block, metadata)], schema=schema, owns_blocks=next_bundle.owns_blocks
+                [BlockEntry(block, metadata)],
+                schema=schema,
+                owns_blocks=next_bundle.owns_blocks,
             )
         except StopIteration:
             with self._lock:

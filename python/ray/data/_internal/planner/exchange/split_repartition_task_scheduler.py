@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle, TaskContext
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
@@ -73,7 +73,9 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
 
         blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
         for ref_bundle in refs:
-            blocks_with_metadata.extend(ref_bundle.blocks)
+            blocks_with_metadata.extend(
+                (entry.ref, entry.metadata) for entry in ref_bundle.blocks
+            )
         split_return = _split_at_indices(
             blocks_with_metadata, indices, input_owned_by_consumer
         )
@@ -153,7 +155,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         for block, meta_with_schema in zip(reduce_block_refs, reduce_metadata_schema):
             output.append(
                 RefBundle(
-                    [(block, meta_with_schema.metadata)],
+                    [BlockEntry(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned_by_consumer,
                     schema=meta_with_schema.schema,
                 )
