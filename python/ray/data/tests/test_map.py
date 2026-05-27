@@ -5,7 +5,7 @@ import os
 import random
 import threading
 import time
-from typing import Iterator, Literal
+from typing import Iterable, Iterator, List, Literal, Optional
 from unittest.mock import Mock
 
 import numpy as np
@@ -27,7 +27,9 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _MapActorContext,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datasource import Datasource, ReadTask
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
@@ -1459,6 +1461,60 @@ def test_map_with_max_calls():
             ray_remote_args_fn=lambda: {"max_calls": 1},
         )
         ds.take_all()
+
+
+def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
+    restore_data_context, shutdown_only
+):
+    """Test that downstream operators don't get scheduled on same workers as reads when
+    ``isolate_read_workers`` is ``True``.
+
+    The test works by setting an environment variable in the read worker and checking
+    that it isn't set in the map worker.
+    """
+    ray.data.DataContext.get_current().isolate_read_workers = True
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    # This test assumes that the number of Ray worker processes is equal to the number
+    # of logical CPUs. This is true at the time of writing, but it's an implementation
+    # detail that could change. I'm using this approach since it seems like the most
+    # pragmatic way to test this.
+    ray.init(num_cpus=1)
+
+    class SetMarkerDatasource(Datasource):
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            def read_fn() -> Iterable[Block]:
+                os.environ["MARKER"] = "1"
+                yield pa.Table.from_pydict({"id": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=4, input_files=None, exec_stats=None
+                    ),
+                )
+            ]
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+    def check_marker_not_set(row):
+        assert (
+            os.environ.get("MARKER") != "1"
+        ), "Expected MARKER to not be set in the map worker. This means the map worker was scheduled on the same worker as the read worker."
+        return row
+
+    ray.data.read_datasource(SetMarkerDatasource()).map(
+        check_marker_not_set
+    ).materialize()
 
 
 if __name__ == "__main__":

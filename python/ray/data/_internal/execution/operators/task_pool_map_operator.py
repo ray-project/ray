@@ -71,8 +71,10 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             on_start: Optional callback invoked with the schema from the first input
                 bundle before any tasks are submitted.
-            isolate_workers: If ``True``, workers get their own process pool,
-                preventing side-effects from leaking across operators.
+            isolate_workers: If ``True``, ensure that other operators' tasks don't get
+                scheduled on the same worker processes as this operator's. This flag
+                is useful to prevent side-effects from affecting other operators, like
+                large PyArrow memory allocations.
         """
         super().__init__(
             map_transformer,
@@ -117,6 +119,12 @@ class TaskPoolMapOperator(MapOperator):
 
     @property
     def isolate_workers(self) -> bool:
+        """Return whether this operator launches tasks on isolated worker processes.
+
+        If ``True``, other operators' tasks won't get scheduled on the same worker
+        processes as this operator's. This flag is useful to prevent side-effects
+        from affecting other operators, like large PyArrow memory allocations.
+        """
         return self._isolate_workers
 
     @property

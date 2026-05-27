@@ -659,10 +659,12 @@ class DataContext:
         gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
             communicator setup (actor creation + root/worker init) before raising
             a ``TimeoutError``. Defaults to 120 seconds.
-        isolate_read_workers: When ``True``, each read operator gets its own
-            worker process pool. This prevents large memory allocations by
-            PyArrow during reads from inflating the resident memory of workers
-            that are later reused by subsequent operators. Defaults to ``True``.
+        isolate_read_workers: If ``True``, other operators' tasks don't get scheduled on
+            the same worker processes as the read operators'. This prevents large
+            PyArrow memory allocation during reads from inflating the resident memory of
+            workers that are later reused by downstream operators. Enabling this flag
+            can reduce OOMs but also cause performance regressions. Defaults to
+            ``False``.
     """
 
     # `None` means the block size is infinite.

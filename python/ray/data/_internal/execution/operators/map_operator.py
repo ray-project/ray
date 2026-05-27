@@ -326,9 +326,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 bundle before any tasks are submitted. Used for deferred initialization
                 that requires schema from actual data (e.g., schema evolution for
                 Iceberg writes).
-            isolate_workers: If ``True``, task-pool workers get their own
-                worker process pool, preventing side-effects from leaking across
-                operators.
+            isolate_workers: If ``True``, ensure that other operators' tasks don't get
+                scheduled on the same worker processes as this operator's. This flag
+                is useful to prevent side-effects from affecting other operators, like
+                large PyArrow memory allocations.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -364,19 +365,19 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
-                isolate_workers=isolate_workers,
                 on_start=on_start,
+                isolate_workers=isolate_workers,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
-            if isolate_workers:
-                logger.debug(
-                    "isolate_workers is set but has no effect with "
-                    "ActorPoolStrategy because actors are already isolated."
-                )
-
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
             )
+
+            if isolate_workers:
+                logger.debug(
+                    "`isolate_workers` is set but has no effect with "
+                    "`ActorPoolStrategy` because actors are already isolated."
+                )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
             return ActorPoolMapOperator(
