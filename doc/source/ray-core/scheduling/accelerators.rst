@@ -42,6 +42,9 @@ The accelerators natively supported by Ray Core are:
    * - METAX GPU
      - GPU
      - Experimental, supported by the community
+   * - FuriosaAI
+     - FURIOSA
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -142,6 +145,31 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             to limit the METAX GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
+
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        .. tip::
+
+            You can set the ``FURIOSA_DEVICES`` environment variable before starting a Ray node
+            to limit the FuriosaAI NPUs that are visible to Ray, using ``npu:<id>`` tokens.
+            For example, ``FURIOSA_DEVICES=npu:1,npu:3 ray start --head``
+            lets Ray only see devices 1 and 3 (Ray auto-detects the count).
+            Bare integer IDs (e.g., ``FURIOSA_DEVICES=1,3``) are also accepted on read.
+
+        .. note::
+
+            When using the ``furiosa_llm.LLM`` Python API inside a Ray task or actor,
+            pass the assigned devices explicitly; ``LLM(devices=None)`` would
+            allocate all visible NPUs and bypass Ray's per-worker isolation::
+
+                from furiosa_llm import LLM
+                llm = LLM(model_path, devices=os.environ["FURIOSA_DEVICES"])
+
+            ``furiosa-llm`` also accepts the PE-level form ``npu:X:Y``
+            (e.g., ``npu:0:0-3`` for fused PE 0-3 of NPU 0), but Ray currently
+            treats each NPU as a single resource and does not preserve PE
+            ranges through worker scheduling.
 .. note::
 
   There's nothing preventing you from specifying a larger number of
@@ -508,6 +536,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"FURIOSA": 2})
+
+            @ray.remote(resources={"FURIOSA": 1})
+            class RNGDActor:
+                def ping(self):
+                    print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+                    print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+            @ray.remote(resources={"FURIOSA": 1})
+            def rngd_task():
+                print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+                print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+            rngd_actor = RNGDActor.remote()
+            ray.get(rngd_actor.ping.remote())
+            # The actor uses the first RNGD so the task uses the second one.
+            ray.get(rngd_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (RNGDActor pid=52420) RNGD IDs: ['0']
+            (RNGDActor pid=52420) FURIOSA_DEVICES: npu:0
+            (rngd_task pid=51830) RNGD IDs: ['1']
+            (rngd_task pid=51830) FURIOSA_DEVICES: npu:1
+
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
 Typically, it is not necessary to call ``get_accelerator_ids()`` because Ray
@@ -677,6 +744,11 @@ so multiple tasks and actors can share the same accelerator.
             # The four tasks created here can execute concurrently
             # and share the same GPU.
             ray.get([f.remote() for _ in range(4)])
+
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        FuriosaAI doesn't support fractional resources.
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
