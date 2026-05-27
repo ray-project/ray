@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
 
-from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
@@ -577,28 +576,6 @@ class PrepareImageStageConfig(_PrepareImageStageConfig):
     pass
 
 
-@Deprecated(new="build_processor", error=False)
-def build_llm_processor(
-    config: ProcessorConfig,
-    preprocess: Optional[UserDefinedFunction] = None,
-    postprocess: Optional[UserDefinedFunction] = None,
-    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
-    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
-    builder_kwargs: Optional[Dict[str, Any]] = None,
-) -> Processor:
-    """
-    [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
-    """
-    return build_processor(
-        config,
-        preprocess,
-        postprocess,
-        preprocess_map_kwargs,
-        postprocess_map_kwargs,
-        builder_kwargs,
-    )
-
-
 @PublicAPI(stability="beta")
 def build_processor(
     config: ProcessorConfig,
@@ -781,6 +758,5 @@ __all__ = [
     "TokenizerStageConfig",
     "HttpRequestStageConfig",
     "PrepareImageStageConfig",
-    "build_llm_processor",
     "build_processor",
 ]
