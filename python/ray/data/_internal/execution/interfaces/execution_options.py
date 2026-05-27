@@ -32,12 +32,30 @@ class ExecutionResources:
 
         # Values are stored at native precision; quantization to Ray Core's
         # fractional-resource granularity happens at the `to_resource_dict()`
-        # boundary, and equality/zero/non-negative checks quantize on access.
+        # boundary, and equality/zero/non-negative checks quantize lazily
+        # via `_quantized_key()` (cached per instance after first access).
         # Rounding on every construction was a per-arithmetic-op hotspot.
         self._cpu: Optional[float] = cpu
         self._gpu: Optional[float] = gpu
         self._object_store_memory: Optional[float] = object_store_memory
         self._memory: Optional[float] = memory
+        self._quantized: Optional[tuple] = None
+
+    def _quantized_key(self) -> tuple:
+        """Return the (cpu, gpu, object_store_memory, memory) tuple quantized
+        to Ray Core's fractional-resource granularity. Lazy-cached on the
+        instance after the first call.
+        """
+        key = self._quantized
+        if key is None:
+            key = (
+                safe_round(self.cpu, 5),
+                safe_round(self.gpu, 5),
+                safe_round(self.object_store_memory, 0),
+                safe_round(self.memory, 0),
+            )
+            self._quantized = key
+        return key
 
     @classmethod
     def from_resource_dict(
@@ -59,11 +77,12 @@ class ExecutionResources:
         (5 decimal digits for cpu/gpu, integer bytes for memory) so the
         output is suitable for passing back to Ray Core via ``.options(...)``.
         """
+        cpu, gpu, osm, mem = self._quantized_key()
         return {
-            "CPU": safe_round(self.cpu, 5),
-            "GPU": safe_round(self.gpu, 5),
-            "object_store_memory": safe_round(self.object_store_memory, 0),
-            "memory": safe_round(self.memory, 0),
+            "CPU": cpu,
+            "GPU": gpu,
+            "object_store_memory": osm,
+            "memory": mem,
         }
 
     @classmethod
@@ -115,25 +134,12 @@ class ExecutionResources:
         # Quantize on access to absorb accumulated float drift from chained
         # arithmetic (cpu/gpu: ~1e-15 per op; memory: up to ~1e-4 over 1M ops
         # on byte-magnitude floats). Matches the legacy behavior, just paid
-        # at comparison time rather than per construction.
-        return (
-            safe_round(self.cpu, 5) == safe_round(other.cpu, 5)
-            and safe_round(self.gpu, 5) == safe_round(other.gpu, 5)
-            and safe_round(self.object_store_memory, 0)
-            == safe_round(other.object_store_memory, 0)
-            and safe_round(self.memory, 0) == safe_round(other.memory, 0)
-        )
+        # lazily at comparison time rather than per construction.
+        return self._quantized_key() == other._quantized_key()
 
     def __hash__(self) -> int:
         # Quantize so equal-under-`__eq__` instances hash equally.
-        return hash(
-            (
-                safe_round(self.cpu, 5),
-                safe_round(self.gpu, 5),
-                safe_round(self.object_store_memory, 0),
-                safe_round(self.memory, 0),
-            )
-        )
+        return hash(self._quantized_key())
 
     @classmethod
     def zero(cls) -> "ExecutionResources":
@@ -148,22 +154,14 @@ class ExecutionResources:
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
         # Quantize so accumulated float drift doesn't flip the result.
-        return (
-            safe_round(self.cpu, 5) == 0.0
-            and safe_round(self.gpu, 5) == 0.0
-            and safe_round(self.object_store_memory, 0) == 0.0
-            and safe_round(self.memory, 0) == 0.0
-        )
+        cpu, gpu, osm, mem = self._quantized_key()
+        return cpu == 0.0 and gpu == 0.0 and osm == 0.0 and mem == 0.0
 
     def is_non_negative(self) -> bool:
         """Returns True if all resources are non-negative."""
         # Quantize so accumulated float drift doesn't flip the result.
-        return (
-            safe_round(self.cpu, 5) >= 0
-            and safe_round(self.gpu, 5) >= 0
-            and safe_round(self.object_store_memory, 0) >= 0
-            and safe_round(self.memory, 0) >= 0
-        )
+        cpu, gpu, osm, mem = self._quantized_key()
+        return cpu >= 0 and gpu >= 0 and osm >= 0 and mem >= 0
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
