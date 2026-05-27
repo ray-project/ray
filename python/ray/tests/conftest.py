@@ -44,6 +44,7 @@ from ray._private.test_utils import (
     redis_replicas,
     redis_sentinel_replicas,
     reset_autoscaler_v2_enabled_cache,
+    rocksdb_gcs_test_enabled,
     setup_tls,
     start_redis_instance,
     start_redis_sentinel_instance,
@@ -469,10 +470,41 @@ def _setup_redis(request, with_sentinel=False):
         kill_processes(processes)
 
 
+@contextmanager
+def _setup_rocksdb_gcs(request):
+    """Configure the env so a Ray cluster started inside the fixture uses
+    the RocksDB GCS backend (REP-64). The DB lives in a tempdir scoped
+    to the fixture; nothing persists beyond the test.
+    """
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        old_storage = os.environ.get("RAY_gcs_storage")
+        old_path = os.environ.get("RAY_gcs_storage_path")
+        os.environ["RAY_gcs_storage"] = "rocksdb"
+        os.environ["RAY_gcs_storage_path"] = tmpdirname
+        try:
+            yield
+        finally:
+            if old_storage is not None:
+                os.environ["RAY_gcs_storage"] = old_storage
+            else:
+                del os.environ["RAY_gcs_storage"]
+            if old_path is not None:
+                os.environ["RAY_gcs_storage_path"] = old_path
+            else:
+                del os.environ["RAY_gcs_storage_path"]
+
+
 @pytest.fixture
 def maybe_setup_external_redis(request):
+    # Dispatches the configured GCS storage backend based on CI env
+    # vars. Despite the historical name, this fixture also handles the
+    # RocksDB GCS backend (REP-64) so existing cluster fixtures pick up
+    # rocksdb-mode behavior automatically when TEST_GCS_ROCKSDB=1.
     if external_redis_test_enabled():
         with _setup_redis(request):
+            yield
+    elif rocksdb_gcs_test_enabled():
+        with _setup_rocksdb_gcs(request):
             yield
     else:
         yield
@@ -482,6 +514,9 @@ def maybe_setup_external_redis(request):
 def maybe_setup_external_redis_shared(request):
     if external_redis_test_enabled():
         with _setup_redis(request):
+            yield
+    elif rocksdb_gcs_test_enabled():
+        with _setup_rocksdb_gcs(request):
             yield
     else:
         yield
