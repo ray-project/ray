@@ -384,16 +384,21 @@ class DynamoDirectStreamingLifecycleMiddleware:
         finished = False
         prefill_marked = False
 
+        async def finish_once():
+            nonlocal finished
+            if started and not finished:
+                finished = True
+                await self._call_actor("finish_direct_request", route_token)
+
         async def send_wrapper(message):
-            nonlocal finished, prefill_marked
+            nonlocal prefill_marked
             if message.get("type") == "http.response.body":
                 body = message.get("body", b"")
                 if body and not prefill_marked:
                     prefill_marked = True
                     await self._call_actor("mark_prefill_complete", route_token)
                 if not message.get("more_body", False):
-                    finished = True
-                    await self._call_actor("finish_direct_request", route_token)
+                    await finish_once()
             await send(message)
 
         try:
@@ -401,12 +406,10 @@ class DynamoDirectStreamingLifecycleMiddleware:
             started = True
             await self._app(scope, receive, send_wrapper)
         except BaseException:
-            if started and not finished:
-                await self._call_actor("finish_direct_request", route_token)
+            await finish_once()
             raise
         finally:
-            if started and not finished:
-                await self._call_actor("finish_direct_request", route_token)
+            await finish_once()
 
 
 def wrap_with_dynamo_direct_streaming_lifecycle(app, actor_name: Optional[str]):
