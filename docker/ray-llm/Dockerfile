@@ -86,5 +86,6 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
-ENV VLLM_USE_FLASHINFER_SAMPLER=0
 EOF
+
+ENV VLLM_USE_FLASHINFER_SAMPLER=0
