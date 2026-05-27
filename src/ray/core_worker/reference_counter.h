@@ -26,6 +26,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/lease_policy.h"
@@ -51,6 +52,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       std::function<bool(const NodeID &node_id)> is_node_dead,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
+      instrumented_io_context &object_freed_callback_service,
       bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
@@ -58,7 +60,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
         owned_object_count_by_state_(owned_object_by_state_counter),
-        owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
+        owned_object_sizes_by_state_(owned_object_sizes_by_state_counter),
+        object_freed_callback_service_(object_freed_callback_service) {}
 
   ~ReferenceCounter() override = default;
 
@@ -803,6 +806,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   ray::observability::MetricInterface &owned_object_count_by_state_;
   ray::observability::MetricInterface &owned_object_sizes_by_state_;
+
+  /// Dedicated event loop for object-freed callbacks, keeping them off the
+  /// main IO context thread (which must not acquire the GIL).
+  instrumented_io_context &object_freed_callback_service_;
 };
 
 }  // namespace core

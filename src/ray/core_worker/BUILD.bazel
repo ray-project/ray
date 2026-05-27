@@ -162,6 +162,7 @@ ray_cc_library(
     deps = [
         ":metrics",
         ":reference_counter_interface",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/protobuf:common_cc_proto",

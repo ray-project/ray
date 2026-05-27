@@ -46,6 +46,11 @@ class ReferenceCountTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounterInterface> rc;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
+  // No work guard or thread: tests call DrainCallbacks() to flush posted handlers.
+  instrumented_io_context callback_service_{/*enable_lag_probe=*/false,
+                                            /*running_on_single_thread=*/true};
+
+  void DrainCallbacks() { callback_service_.poll(); }
 
   virtual void SetUp() {
     rpc::Address addr;
@@ -59,7 +64,8 @@ class ReferenceCountTest : public ::testing::Test {
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
         *owned_object_count_metric_,
-        *owned_object_size_metric_);
+        *owned_object_size_metric_,
+        callback_service_);
   }
 
   virtual void TearDown() {
@@ -80,6 +86,10 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounterInterface> rc;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
+  instrumented_io_context callback_service_{/*enable_lag_probe=*/false,
+                                            /*running_on_single_thread=*/true};
+
+  void DrainCallbacks() { callback_service_.poll(); }
 
   virtual void SetUp() {
     rpc::Address addr;
@@ -94,6 +104,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         [](const NodeID &node_id) { return false; },
         *owned_object_count_metric_,
         *owned_object_size_metric_,
+        callback_service_,
         /*lineage_pinning_enabled=*/true);
   }
 
@@ -607,6 +618,7 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_FALSE(*out_of_scope);
   rc->RemoveLocalReference(id, &out);
+  DrainCallbacks();
   ASSERT_TRUE(*out_of_scope);
 
   // Unreconstructable objects go out of scope even if they have a nonzero
@@ -624,6 +636,7 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   rc->UpdateSubmittedTaskReferences({}, {id});
   ASSERT_FALSE(*out_of_scope);
   rc->UpdateFinishedTaskReferences({}, {id}, false, empty_borrower, empty_refs, &out);
+  DrainCallbacks();
   ASSERT_TRUE(*out_of_scope);
 }
 
@@ -885,13 +898,16 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
   auto owned_object_count_metric = std::make_shared<ray::observability::FakeGauge>();
   auto owned_object_size_metric = std::make_shared<ray::observability::FakeGauge>();
+  instrumented_io_context callback_service{/*enable_lag_probe=*/false,
+                                           /*running_on_single_thread=*/true};
   auto rc = std::make_shared<ReferenceCounter>(
       rpc::Address(),
       publisher.get(),
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; },
       *owned_object_count_metric,
-      *owned_object_size_metric);
+      *owned_object_size_metric,
+      callback_service);
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService());
 
@@ -2485,6 +2501,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   ASSERT_FALSE(*out_of_scope);
   ASSERT_FALSE(*out_of_scope);
   rc->RemoveLocalReference(id, &out);
+  DrainCallbacks();
   ASSERT_TRUE(*out_of_scope);
 
   rc->AddLocalReference(return_id, "");
@@ -2517,6 +2534,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   rc->UpdateFinishedTaskReferences(
       {return_id}, {id}, true, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id));
+  DrainCallbacks();
   ASSERT_TRUE(*out_of_scope);
 }
 
@@ -2815,6 +2833,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->FreePlasmaObjects({id});
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
+  DrainCallbacks();
   ASSERT_GT(deleted->count(id), 0);
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
@@ -3260,6 +3279,48 @@ TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
     ASSERT_EQ(refs[0].stored_in_objects()[0].object_id(), object_id_6.Binary());
     ASSERT_FALSE(executor->rc_.HasReference(object_id_5));
   }
+}
+
+// Verify that object-freed callbacks run on the dedicated callback service
+// thread, not on the thread that triggers the ref-count drop.
+TEST_F(ReferenceCountTest, TestObjectFreedCallbackRunsOnDedicatedThread) {
+  // Run the callback service on its own thread so callbacks fire asynchronously.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      callback_service_.get_executor());
+  boost::thread cb_thread([this]() { callback_service_.run(); });
+
+  ObjectID id = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+  rc->AddOwnedObject(id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  boost::thread::id callback_thread_id;
+  absl::Mutex mu;
+  bool fired = false;
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, [&](const ObjectID &) {
+    absl::MutexLock lock(&mu);
+    callback_thread_id = boost::this_thread::get_id();
+    fired = true;
+  }));
+
+  std::vector<ObjectID> out;
+  rc->RemoveLocalReference(id, &out);
+
+  // Wait for callback to fire.
+  absl::MutexLock lock(&mu);
+  mu.Await(absl::Condition(&fired));
+
+  ASSERT_NE(callback_thread_id, boost::this_thread::get_id());
+  ASSERT_EQ(callback_thread_id, cb_thread.get_id());
+
+  work.reset();
+  cb_thread.join();
 }
 
 }  // namespace core

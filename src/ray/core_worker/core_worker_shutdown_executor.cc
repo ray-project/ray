@@ -94,6 +94,12 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     }
   }
 
+  core_worker->object_freed_callback_service_.stop();
+  RAY_LOG(INFO) << "Waiting for joining the object-freed callback thread.";
+  if (core_worker->object_freed_callback_thread_.joinable()) {
+    core_worker->object_freed_callback_thread_.join();
+  }
+
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.
