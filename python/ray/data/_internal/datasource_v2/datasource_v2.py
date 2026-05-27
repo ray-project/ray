@@ -136,10 +136,19 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         return None
 
-    def get_size_estimator(self) -> Optional[InMemorySizeEstimator]:
+    def get_size_estimator(
+        self, encoding_ratio: Optional[float] = None
+    ) -> Optional[InMemorySizeEstimator]:
         """Return size estimator for this datasource.
 
         Override this to provide format-specific size estimation.
+
+        Args:
+            encoding_ratio: Optional driver-sampled in-memory-bytes /
+                on-disk-bytes ratio. Subclasses whose estimator is a
+                simple multiplier (e.g. ``ParquetInMemorySizeEstimator``)
+                use this to override the static default; subclasses whose
+                estimator doesn't take a ratio ignore it.
 
         Returns:
             InMemorySizeEstimator instance, or None if not supported.

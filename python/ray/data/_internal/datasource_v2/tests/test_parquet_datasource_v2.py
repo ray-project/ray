@@ -110,6 +110,99 @@ def test_get_size_estimator_returns_parquet_estimator(tmp_path):
     assert isinstance(datasource.get_size_estimator(), ParquetInMemorySizeEstimator)
 
 
+def test_get_size_estimator_uses_sampled_ratio(tmp_path):
+    """``ParquetDatasourceV2.get_size_estimator`` returns a fixed-ratio
+    estimator parameterized by the caller-provided ``encoding_ratio``, and
+    falls back to the static default when nothing is passed.
+    """
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
+    datasource = ParquetDatasourceV2([str(file_path)])
+
+    # No ratio -> fixed default.
+    est = datasource.get_size_estimator()
+    assert isinstance(est, ParquetInMemorySizeEstimator)
+    assert est._encoding_ratio == 5
+
+    # Sampled ratio -> baked into the estimator.
+    est_sampled = datasource.get_size_estimator(encoding_ratio=12.5)
+    assert isinstance(est_sampled, ParquetInMemorySizeEstimator)
+    assert est_sampled._encoding_ratio == 12.5
+
+
+def test_estimate_batch_size_from_metadata_honors_sampled_ratio(tmp_path):
+    """``_estimate_batch_size_from_metadata`` uses the caller-passed
+    ``encoding_ratio`` instead of the static default. A higher (truer)
+    ratio shrinks ``target_batch_size``, which is what stops the
+    row-group-size clamp from collapsing emission to one batch per file on
+    heavily-dict-encoded inputs.
+    """
+    import pyarrow.dataset as pds
+
+    from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
+        _estimate_batch_size_from_metadata,
+    )
+
+    file_path = str(tmp_path / "data.parquet")
+    # Large file + small target so the metadata-derived batch_size is
+    # well below the row-group cap and the ratio is what actually drives
+    # the computed value.
+    num_rows = 1_000_000
+    table = pa.table({"a": pa.array(range(num_rows), type=pa.int64())})
+    pq.write_table(table, file_path, row_group_size=num_rows)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+
+    target = 1 * 1024 * 1024
+    default_bs = _estimate_batch_size_from_metadata(
+        fragment, columns=None, target_block_size=target
+    )
+    high_ratio_bs = _estimate_batch_size_from_metadata(
+        fragment, columns=None, target_block_size=target, encoding_ratio=20.0
+    )
+
+    # 20x ratio (vs the static 5x default) should make estimated row size
+    # 4x larger, so ``target / row_size`` produces ~4x fewer rows per
+    # batch. Allow some slack for ceiling arithmetic.
+    assert default_bs is not None and high_ratio_bs is not None
+    assert high_ratio_bs < default_bs
+    assert 3 * high_ratio_bs <= default_bs
+
+
+def test_parquet_sampling_size_estimator_measures_real_ratio(tmp_path):
+    """End-to-end: sampling produces a ratio that tracks the actual Arrow
+    in-memory size, not parquet's ``total_uncompressed_size``."""
+    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+        PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        ParquetSamplingInMemorySizeEstimator,
+    )
+
+    # Heavily dict-encoded column -> parquet metadata undercounts the
+    # in-memory size, so the sampler should see a much higher ratio than
+    # the fixed 5x default.
+    file_path = tmp_path / "dict.parquet"
+    num_rows = 50_000
+    table = pa.table(
+        {
+            "shipmode": pa.array(
+                ["AIR", "RAIL", "SHIP", "TRUCK"][i % 4] for i in range(num_rows)
+            ),
+        }
+    )
+    pq.write_table(table, str(file_path), row_group_size=num_rows, use_dictionary=True)
+
+    file_size = os.path.getsize(file_path)
+    manifest = FileManifest.construct_manifest([str(file_path)], [file_size], [None])
+
+    sampler = ParquetSamplingInMemorySizeEstimator()
+    sampled = sampler.estimate_in_memory_sizes(manifest)[0]
+
+    actual_in_memory = pq.read_table(str(file_path)).nbytes
+    # Sampler should land in the right order of magnitude — within 50% of
+    # the actual in-memory size beats the fixed 5x default by a lot here.
+    assert sampled > PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size
+    assert 0.5 * actual_in_memory <= sampled <= 1.5 * actual_in_memory
+
+
 def test_paths_and_filesystem_resolved(tmp_path):
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1]}))

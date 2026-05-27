@@ -83,6 +83,19 @@ DEFAULT_USE_DATASOURCE_V2 = True
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
+# Sampling-based encoding-ratio estimation for the V2 Parquet reader.
+# When True (default), ``ParquetDatasourceV2.get_size_estimator()`` returns a
+# ``ParquetSamplingInMemorySizeEstimator`` that reads one row group (~1024
+# rows) of one sampled file to measure the actual on-disk-to-in-memory
+# expansion ratio — matching V1's ``_estimate_files_encoding_ratio``. When
+# False, falls back to the fixed-5x ``ParquetInMemorySizeEstimator``,
+# which is faster at planning time but undercounts dictionary-encoded
+# columns and feeds the resource manager an inflated admission budget
+# downstream.
+DEFAULT_ENABLE_PARQUET_SAMPLING_SIZE_ESTIMATOR = env_bool(
+    "RAY_DATA_PARQUET_SAMPLING_ENABLED", True
+)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -523,6 +536,13 @@ class DataContext:
             ``ParquetFileChunker`` when splitting large Parquet files into
             multiple read tasks. When ``None``, the chunker's built-in default
             (currently 1 GiB) is used.
+        enable_parquet_sampling_size_estimator: When True (or env
+            ``RAY_DATA_PARQUET_SAMPLING_ENABLED=1``),
+            ``ParquetDatasourceV2.get_size_estimator()`` returns a
+            :class:`SamplingInMemorySizeEstimator` that reads one file on
+            first use to measure the actual on-disk-to-in-memory expansion
+            ratio (rather than relying on the fixed 5× default, which
+            undercounts dictionary-encoded columns). Defaults to False.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -760,6 +780,9 @@ class DataContext:
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
+    enable_parquet_sampling_size_estimator: bool = (
+        DEFAULT_ENABLE_PARQUET_SAMPLING_SIZE_ESTIMATOR
+    )
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

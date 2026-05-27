@@ -132,6 +132,10 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
+    from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -422,6 +426,41 @@ def _resolve_read_remote_args(
     )
 
 
+def _maybe_sample_encoding_ratio(
+    datasource: "DataSourceV2",
+    scanner: "Scanner",
+    sample: "FileManifest",
+) -> Optional[float]:
+    """Sample the in-memory encoding ratio at the driver, if supported.
+
+    Returns ``None`` when:
+      - the datasource isn't ``ParquetDatasourceV2`` (only Parquet sampling
+        is wired in today),
+      - the ``enable_parquet_sampling_size_estimator`` context flag is off,
+      - or the sample read fails (e.g. an empty file) — the caller then
+        falls back to the static ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT``.
+    """
+    from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+        ParquetDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+        ParquetSamplingInMemorySizeEstimator,
+    )
+
+    if not isinstance(datasource, ParquetDatasourceV2):
+        return None
+    if not DataContext.get_current().enable_parquet_sampling_size_estimator:
+        return None
+    if len(sample) == 0:
+        return None
+
+    sampler = ParquetSamplingInMemorySizeEstimator.from_reader(scanner.create_reader())
+    # Triggers a single row-group sample. The result is cached on the
+    # sampler; we read it back via the private attribute below.
+    sampler.estimate_in_memory_sizes(sample)
+    return sampler._encoding_ratio
+
+
 @wrap_auto_init
 def _read_datasource_v2(
     datasource,
@@ -489,7 +528,9 @@ def _read_datasource_v2(
 
     # Sample a few files for schema inference. Listed again (cheaply) during
     # execution inside the ListFiles op — no caching layer needed.
-    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+    sample: FileManifest = sample_files(
+        indexer, datasource.paths, datasource.filesystem, pruners
+    )
     if len(sample) == 0:
         raise ValueError(
             f"no files found under {datasource.paths!r}. Check the path and any "
@@ -513,11 +554,26 @@ def _read_datasource_v2(
         partitioning=resolved_partitioning,
     )
 
+    # Driver-side sample of the encoding ratio (in-memory bytes / on-disk
+    # bytes), when supported. The resulting ratio is threaded into:
+    #  1. the partitioner's ``ParquetInMemorySizeEstimator`` so
+    #     ``BlockMetadata.size_bytes`` matches the actual block size, and
+    #  2. the scanner -> reader pipeline so per-fragment
+    #     ``_estimate_batch_size_from_metadata`` uses the same measured
+    #     ratio when sizing batches.
+    # Sampling once at the driver beats per-worker sampling: one file read
+    # (~10 ms) replaces N ListFiles tasks each doing their own.
+    encoding_ratio = _maybe_sample_encoding_ratio(datasource, scanner, sample)
+    if encoding_ratio is not None:
+        import dataclasses
+
+        scanner = dataclasses.replace(scanner, encoding_ratio=encoding_ratio)
+
     # Size-balanced bucketing for the listing output. The partitioner is
     # captured in a pickled closure and runs inside worker tasks, so its
-    # estimator must be I/O-free and pickle-safe — use the datasource's
-    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
-    # encoding-ratio multiplier). ``num_buckets`` is a hint;
+    # estimator must be I/O-free and pickle-safe — the fixed-ratio
+    # ``ParquetInMemorySizeEstimator`` (with the sampled ratio when
+    # available) satisfies that. ``num_buckets`` is a hint;
     # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
     # first, so the actual bucket count scales with total data size.
     # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
@@ -536,7 +592,9 @@ def _read_datasource_v2(
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
     partitioner = RoundRobinPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
+        in_memory_size_estimator=datasource.get_size_estimator(
+            encoding_ratio=encoding_ratio,
+        ),
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
         num_buckets=num_buckets,

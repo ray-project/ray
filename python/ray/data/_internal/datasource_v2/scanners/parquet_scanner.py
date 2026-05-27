@@ -38,6 +38,14 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+    # Sampled encoding ratio (in-memory bytes / on-disk bytes). ``None`` ==
+    # use the static ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` (5) when
+    # the read driver didn't sample, e.g. with sampling disabled or when a
+    # sample read fails. Set at planning time in ``_read_datasource_v2``;
+    # propagated to ``ParquetFileReader`` so both the partitioner's size
+    # estimator *and* the per-fragment batch-size calculation use the
+    # same measured ratio.
+    encoding_ratio: Optional[float] = None
 
     def read_schema(self) -> pa.Schema:
         """Return schema after column pruning and tensor check.
@@ -85,4 +93,5 @@ class ParquetScanner(ArrowFileScanner):
             include_row_hash=self.include_row_hash,
             schema=self.schema,
             parquet_format_kwargs=dict(self.parquet_format_kwargs),
+            encoding_ratio=self.encoding_ratio,
         )

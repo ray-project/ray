@@ -49,6 +49,7 @@ def _estimate_batch_size_from_metadata(
     fragment: pds.ParquetFileFragment,
     columns: Optional[List[str]],
     target_block_size: int,
+    encoding_ratio: Optional[float] = None,
 ) -> Optional[int]:
     """Estimate batch size from Parquet row group metadata without reading data.
 
@@ -60,10 +61,17 @@ def _estimate_batch_size_from_metadata(
         fragment: A PyArrow Parquet fragment with accessible metadata.
         columns: Columns being read, or None for all columns.
         target_block_size: Target in-memory size per batch in bytes.
+        encoding_ratio: In-memory bytes per on-disk byte. When ``None`` (e.g.
+            sampling disabled or sampling failed), falls back to the static
+            ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` (5). A sampled ratio
+            should be passed here so the batch-size estimate matches the
+            same ratio that drives ``BlockMetadata.size_bytes`` accounting.
 
     Returns:
         Estimated batch size in rows, or None if metadata is unavailable.
     """
+    if encoding_ratio is None:
+        encoding_ratio = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
     try:
         # Accessing `metadata` triggers I/O via `EnsureCompleteMetadata()` to
         # read the Parquet footer. `check_status` maps C++ Status codes to
@@ -112,9 +120,7 @@ def _estimate_batch_size_from_metadata(
         )
 
     # Estimate the in-memory size of the row group
-    estimated_in_mem_row_group_size = (
-        row_group_uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-    )
+    estimated_in_mem_row_group_size = row_group_uncompressed_size * encoding_ratio
 
     estimated_in_mem_row_size = estimated_in_mem_row_group_size / row_group_num_rows
     if estimated_in_mem_row_size == 0:
@@ -163,6 +169,7 @@ class ParquetFileReader(FileReader):
         include_row_hash: bool = False,
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
+        encoding_ratio: Optional[float] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -190,6 +197,13 @@ class ParquetFileReader(FileReader):
                 ``coerce_int96_timestamp_unit``, ``pre_buffer``,
                 ``dictionary_columns``). Used to forward the deprecated
                 ``dataset_kwargs`` arg on the V2 path.
+            encoding_ratio: Pre-sampled in-memory-bytes / on-disk-bytes
+                ratio. Threaded through from
+                ``ParquetScanner.encoding_ratio`` (set at planning time in
+                ``_read_datasource_v2``) so the initial metadata-based
+                batch-size estimate uses the same ratio as the
+                partitioner's size estimator. ``None`` -> the static
+                ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` (5) is used.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -210,6 +224,7 @@ class ParquetFileReader(FileReader):
         )
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
+        self._encoding_ratio = encoding_ratio
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
@@ -240,7 +255,10 @@ class ParquetFileReader(FileReader):
             first_fragment = next(dataset.get_fragments(), None)
             if first_fragment is not None:
                 estimated = _estimate_batch_size_from_metadata(
-                    first_fragment, self._columns, self._target_block_size
+                    first_fragment,
+                    self._columns,
+                    self._target_block_size,
+                    encoding_ratio=self._encoding_ratio,
                 )
                 if estimated is not None:
                     logger.debug(
