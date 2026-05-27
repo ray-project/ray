@@ -23,6 +23,8 @@ from ray.serve._private.request_router.request_router import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+_randbelow = random._inst._randbelow
+
 
 class PowerOfTwoChoicesRequestRouter(
     FIFOMixin, LocalityMixin, MultiplexMixin, RequestRouter
@@ -62,8 +64,8 @@ class PowerOfTwoChoicesRequestRouter(
                 return [[candidates[0], candidates[1]]]
             return [[candidates[1], candidates[0]]]
 
-        i = random.randrange(n)
-        j = random.randrange(n - 1)
+        i = _randbelow(n)
+        j = _randbelow(n - 1)
         if j >= i:
             j += 1
         return [[candidates[i], candidates[j]]]
@@ -124,8 +126,8 @@ class PowerOfTwoChoicesRequestRouter(
             else:
                 chosen_ids = [candidates[1], candidates[0]]
         else:
-            i = random.randrange(n)
-            j = random.randrange(n - 1)
+            i = _randbelow(n)
+            j = _randbelow(n - 1)
             if j >= i:
                 j += 1
             chosen_ids = [candidates[i], candidates[j]]
