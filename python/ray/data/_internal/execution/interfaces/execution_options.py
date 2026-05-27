@@ -30,12 +30,14 @@ class ExecutionResources:
             memory: Amount of logical memory in bytes.
         """
 
-        # NOTE: Ray Core allocates fractional resources in up to 5th decimal
-        #       digit, hence we round the values here up to it
-        self._cpu: Optional[float] = safe_round(cpu, 5)
-        self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
-        self._memory: Optional[float] = safe_round(memory, 0)
+        # Values are stored at native precision; quantization to Ray Core's
+        # fractional-resource granularity happens at the `to_resource_dict()`
+        # boundary, and equality/zero/non-negative checks quantize on access.
+        # Rounding on every construction was a per-arithmetic-op hotspot.
+        self._cpu: Optional[float] = cpu
+        self._gpu: Optional[float] = gpu
+        self._object_store_memory: Optional[float] = object_store_memory
+        self._memory: Optional[float] = memory
 
     @classmethod
     def from_resource_dict(
@@ -51,12 +53,17 @@ class ExecutionResources:
         )
 
     def to_resource_dict(self) -> Dict[str, float]:
-        """Convert this ExecutionResources object to a resource dict."""
+        """Convert this ExecutionResources object to a resource dict.
+
+        Values are quantized to Ray Core's fractional-resource granularity
+        (5 decimal digits for cpu/gpu, integer bytes for memory) so the
+        output is suitable for passing back to Ray Core via ``.options(...)``.
+        """
         return {
-            "CPU": self.cpu,
-            "GPU": self.gpu,
-            "object_store_memory": self.object_store_memory,
-            "memory": self.memory,
+            "CPU": safe_round(self.cpu, 5),
+            "GPU": safe_round(self.gpu, 5),
+            "object_store_memory": safe_round(self.object_store_memory, 0),
+            "memory": safe_round(self.memory, 0),
         }
 
     @classmethod
@@ -105,20 +112,26 @@ class ExecutionResources:
         )
 
     def __eq__(self, other: "ExecutionResources") -> bool:
+        # Quantize on access to absorb accumulated float drift from chained
+        # arithmetic (cpu/gpu: ~1e-15 per op; memory: up to ~1e-4 over 1M ops
+        # on byte-magnitude floats). Matches the legacy behavior, just paid
+        # at comparison time rather than per construction.
         return (
-            self.cpu == other.cpu
-            and self.gpu == other.gpu
-            and self.object_store_memory == other.object_store_memory
-            and self.memory == other.memory
+            safe_round(self.cpu, 5) == safe_round(other.cpu, 5)
+            and safe_round(self.gpu, 5) == safe_round(other.gpu, 5)
+            and safe_round(self.object_store_memory, 0)
+            == safe_round(other.object_store_memory, 0)
+            and safe_round(self.memory, 0) == safe_round(other.memory, 0)
         )
 
     def __hash__(self) -> int:
+        # Quantize so equal-under-`__eq__` instances hash equally.
         return hash(
             (
-                self.cpu,
-                self.gpu,
-                self.object_store_memory,
-                self.memory,
+                safe_round(self.cpu, 5),
+                safe_round(self.gpu, 5),
+                safe_round(self.object_store_memory, 0),
+                safe_round(self.memory, 0),
             )
         )
 
@@ -134,20 +147,22 @@ class ExecutionResources:
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
+        # Quantize so accumulated float drift doesn't flip the result.
         return (
-            self.cpu == 0.0
-            and self.gpu == 0.0
-            and self.object_store_memory == 0.0
-            and self.memory == 0.0
+            safe_round(self.cpu, 5) == 0.0
+            and safe_round(self.gpu, 5) == 0.0
+            and safe_round(self.object_store_memory, 0) == 0.0
+            and safe_round(self.memory, 0) == 0.0
         )
 
     def is_non_negative(self) -> bool:
         """Returns True if all resources are non-negative."""
+        # Quantize so accumulated float drift doesn't flip the result.
         return (
-            self.cpu >= 0
-            and self.gpu >= 0
-            and self.object_store_memory >= 0
-            and self.memory >= 0
+            safe_round(self.cpu, 5) >= 0
+            and safe_round(self.gpu, 5) >= 0
+            and safe_round(self.object_store_memory, 0) >= 0
+            and safe_round(self.memory, 0) >= 0
         )
 
     def object_store_memory_str(self) -> str:
