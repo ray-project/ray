@@ -3,6 +3,15 @@ steps:
   - block: "Trigger Cursor template upgrade workflow"
     key: block-trigger-cursor-template-upgrade
     depends_on: []
+    fields:
+      - text: "Template name"
+        key: "template-name"
+        hint: "Name of the template to upgrade"
+        required: true
+      - text: "Ray version"
+        key: "ray-version"
+        hint: "e.g. 2.45.0"
+        required: true
 
   - label: "Trigger Cursor template upgrade workflow"
     key: trigger-cursor-template-upgrade
@@ -10,8 +19,7 @@ steps:
       - block-trigger-cursor-template-upgrade
     instance_type: small_branch
     commands:
-      - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_COMMIT="$RAY_COMMIT"
-      - source .buildkite/release-automation/set-ray-version.sh
+      - export TEMPLATE_NAME="$(buildkite-agent meta-data get template-name)"
+      - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
       - export CURSOR_WEBHOOK_URL=$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-webhook-url --query SecretString --output text)
-      - curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"ray_version\":\"$$RAY_VERSION\",\"ray_commit\":\"$$RAY_COMMIT\"}"
+      - curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"template_name\":\"$$TEMPLATE_NAME\",\"ray_version\":\"$$RAY_VERSION\"}"
