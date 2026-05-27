@@ -19,13 +19,19 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
-    log 127.0.0.1:{{ config.syslog_port }} local0 debug
+    log {{ config.log_target }} local0 debug
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
+    {%- if has_ingress_request_router %}
+    lua-load-per-thread {{ ingress_request_router_lua_path }}
+    {%- endif %}
+    {%- if has_ingress_request_router and ingress_request_router_forward_body %}
+    tune.bufsize {{ ingress_request_router_bufsize }}
+    {%- else %}
+    tune.bufsize {{ config.bufsize }}
+    {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
     server-state-file {{ config.server_state_file }}
@@ -45,6 +51,8 @@ defaults
     log global
     option httplog
     option abortonclose
+    option splice-request
+    option splice-response
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
@@ -68,6 +76,14 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if ingress_request_router_metrics_enabled and has_ingress_request_router %}
+    log global
+    # Per-request metrics for the ingress request router. Goes only to the
+    # rfc5424 target below; the inherited rfc3164 targets do not include the
+    # SD section, so their byte stream is unchanged.
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
@@ -77,10 +93,37 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
-    # Static routing based on path prefixes in decreasing length then alphabetical order
+    # Per-backend path ACLs (used for both ingress-request-router dispatch
+    # and static use_backend selection below).
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
+{%- endfor %}
+    {%- if has_ingress_request_router %}
+    # Set txn.ingress_request_router_app to the first matching router-bearing
+    # backend. Backends are sorted longest-prefix-first, and the !found guard
+    # ensures only the longest match wins.
+    {%- for backend in backends %}
+    {%- if backend.ingress_request_router_servers %}
+    http-request set-var(txn.ingress_request_router_app) str({{ backend.name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.ingress_request_router_app) -m found }
+    {%- endif %}
+    {%- endfor %}
+    acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    {%- if ingress_request_router_forward_body %}
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    {%- endif %}
+    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    # Fail loudly when the Lua dispatch did not pick a replica. Must appear
+    # before the use_backend rules below so the request never falls back to
+    # the primary backend (which would be a silent bypass of the configured
+    # router policy).
+    http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found }
+    {%- endif %}
+    # Static routing based on path prefixes in decreasing length then alphabetical order
+{%- for backend in backends %}
+    {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
+    use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
+    {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
@@ -131,6 +174,47 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
+{%- if has_ingress_request_router and backend.ingress_request_router_servers %}
+backend {{ backend.name or 'unknown' }}-via-ingress-request-router
+    log global
+    # Keep the pinned data-plane path on the same connection policy as the
+    # primary backend. For streamed responses, forcing server-close can leave
+    # HAProxy holding unread server-side FINs under a burst while worker
+    # threads are still routing other requests.
+    http-reuse always
+    # use-server falls through to LB if the pinned server is DOWN. Combined
+    # with `retry-on` below (when configured), this lets HAProxy redispatch
+    # a slow-first-byte request to a different replica instead of head-of-
+    # line-blocking on the original pick.
+    option redispatch
+    {%- if config.ingress_retry_on %}
+    retry-on {{ config.ingress_retry_on }}
+    {%- endif %}
+    {%- if config.ingress_retries is not none %}
+    retries {{ config.ingress_retries }}
+    {%- endif %}
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if config.ingress_timeout_server_s is not none %}
+    timeout server {{ config.ingress_timeout_server_s }}s
+    {%- elif backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_http_keep_alive_s is not none %}
+    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
+    {%- endif %}
+    {%- for server in backend.servers %}
+    use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
+    {%- endfor %}
+    # `track` allows us to mirror primary-backend health and avoid double-checking.
+    {%- for server in backend.servers %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}
+    {%- endfor %}
+    {%- if backend.fallback_server %}
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} track {{ backend.name or 'unknown' }}/{{ backend.fallback_server.name }} backup
+    {%- endif %}
+{%- endif %}
 {%- endfor %}
 listen stats
   bind *:{{ config.stats_port }}

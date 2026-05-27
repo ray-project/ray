@@ -27,11 +27,12 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
-    OpResourceAllocator,
     ResourceManager,
     create_resource_allocator,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    IdleDetector,
+    OutputBackpressureGuard,
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
@@ -68,8 +69,8 @@ def mock_union_op(input_ops):
 
 
 def mock_join_op(left_input_op, right_input_op):
-    left_input_op._logical_operators = [(MagicMock())]
-    right_input_op._logical_operators = [(MagicMock())]
+    left_input_op._logical_operators = [MagicMock()]
+    right_input_op._logical_operators = [MagicMock()]
 
     with patch(
         "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
@@ -765,11 +766,12 @@ class TestResourceManager:
         ), "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
 
 
-class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
-    """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""
+class TestOutputBackpressureGuard:
+    """Tests for OutputBackpressureGuard.should_unblock."""
 
     def test_unblock_backpressure_terminal_operator(self, restore_data_context):
-        """Terminal operator (no downstream eligible ops) should always unblock."""
+        """Terminal operator (no downstream eligible ops) with no external
+        consumer should always unblock (e.g., write pipeline)."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
@@ -782,11 +784,11 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
             MagicMock(),
             DataContext.get_current(),
         )
-        allocator = resource_manager._op_resource_allocator
+        guard = OutputBackpressureGuard(topo, resource_manager)
 
-        # o2 is terminal (no downstream eligible ops beyond it), should always
-        # unblock
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+        # o2 is terminal (no downstream eligible ops beyond it) and no external
+        # consumer — should unblock (e.g., write pipeline).
+        assert guard.should_unblock(o2) is True
 
         # Add o4 operator - o2 is no longer terminal
         o4 = mock_map_op(o3)
@@ -799,15 +801,52 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
             MagicMock(),
             DataContext.get_current(),
         )
-        allocator = resource_manager._op_resource_allocator
+        guard = OutputBackpressureGuard(topo, resource_manager)
 
         # Mock downstream (o4) having active tasks and input blocks (ie unblocking
         # conditions not met)
         o4.num_active_tasks = MagicMock(return_value=1)
-        allocator._idle_detector.detect_idle = MagicMock(return_value=False)
+        guard._idle_detector.detect_idle = MagicMock(return_value=False)
 
         # o2 is not terminal anymore, falls back to idle detector which returns False
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+        assert guard.should_unblock(o2) is False
+
+    def test_no_unblock_backpressure_terminal_with_external_consumer(
+        self, restore_data_context
+    ):
+        """Terminal operator with an external consumer should only unblock
+        when consumers are starving (blocked waiting for output)."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        guard = OutputBackpressureGuard(topo, resource_manager)
+
+        # Register an external consumer (e.g., iter_batches or streaming_split).
+        resource_manager.set_external_consumer_bytes(0)
+
+        dag_output_state = topo[o3]
+
+        # No consumers waiting — should NOT unblock (prevents pileup).
+        dag_output_state._num_waiting_consumers = 0
+        assert guard.should_unblock(o2) is False
+
+        # Simulate a consumer blocked in get_output_blocking (starving).
+        # The output node is o3 (LimitOperator), which tracks waiting consumers.
+        dag_output_state._num_waiting_consumers = 1
+        assert guard.should_unblock(o2) is True
+
+        # Consumer gets data and stops waiting — should NOT unblock again.
+        dag_output_state._num_waiting_consumers = 0
+        assert guard.should_unblock(o2) is False
 
     def test_unblock_backpressure_downstream_idle(self, restore_data_context):
         """Unblock when downstream is idle (no active tasks) to maintain liveness."""
@@ -823,17 +862,21 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
             MagicMock(),
             DataContext.get_current(),
         )
-        allocator = resource_manager._op_resource_allocator
+        guard = OutputBackpressureGuard(topo, resource_manager)
         o3.num_active_tasks = MagicMock(return_value=0)
 
         # Case 1: Downstream cannot submit (resource constrained) - unblock to free resources
-        allocator.can_submit_new_task = MagicMock(return_value=False)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=False
+        )
+        assert guard.should_unblock(o2) is True
 
         # Case 2: Downstream can submit but has no input blocks - unblock to produce data
-        allocator.can_submit_new_task = MagicMock(return_value=True)
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=True
+        )
         topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+        assert guard.should_unblock(o2) is True
 
     def test_unblock_backpressure_fallback_to_idle_detector(self, restore_data_context):
         """When unblock conditions not met, falls back to idle detector result."""
@@ -849,31 +892,63 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
             MagicMock(),
             DataContext.get_current(),
         )
-        allocator = resource_manager._op_resource_allocator
+        guard = OutputBackpressureGuard(topo, resource_manager)
 
         # Case: Downstream has active tasks - falls back to idle detector
         o3.num_active_tasks = MagicMock(return_value=2)
-        allocator._idle_detector.detect_idle = MagicMock(return_value=False)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+        guard._idle_detector.detect_idle = MagicMock(return_value=False)
+        assert guard.should_unblock(o2) is False
 
         # Case: Idle detector returns True - should unblock
-        allocator._idle_detector.detect_idle = MagicMock(return_value=True)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+        guard._idle_detector.detect_idle = MagicMock(return_value=True)
+        assert guard.should_unblock(o2) is True
 
         # Case: Downstream has no active tasks but has input blocks - falls back to idle detector
-        allocator.can_submit_new_task = MagicMock(return_value=True)
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=True
+        )
         o3.num_active_tasks = MagicMock(return_value=0)
         topo[o3].total_enqueued_input_blocks = MagicMock(return_value=5)
-        allocator._idle_detector.detect_idle = MagicMock(return_value=False)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+        guard._idle_detector.detect_idle = MagicMock(return_value=False)
+        assert guard.should_unblock(o2) is False
+
+    def test_unblock_when_resource_allocator_disabled(self, restore_data_context):
+        """When the op resource allocator is disabled, the guard treats
+        downstream as schedulable (no budget to consult), so
+        "downstream resource constrained" case never fires, but the other
+        liveness conditions still do.
+        """
+        # Disable resource allocator
+        DataContext.get_current().op_resource_reservation_enabled = False
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        assert not resource_manager.op_resource_allocator_enabled()
+
+        guard = OutputBackpressureGuard(topo, resource_manager)
+        o3.num_active_tasks = MagicMock(return_value=0)
+
+        # "Downstream idle with empty input queue" case should fire and unblock.
+        topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
+        assert guard.should_unblock(o2) is True
 
 
 class TestIdleDetector:
-    """Tests for OpResourceAllocator.IdleDetector."""
+    """Tests for IdleDetector."""
 
     def test_idle_detector(self, restore_data_context):
         """Test IdleDetector behavior through its public interface."""
-        idle_detector = OpResourceAllocator.IdleDetector()
+        idle_detector = IdleDetector()
         op = MagicMock()
         op.metrics.num_task_outputs_generated = 0
 

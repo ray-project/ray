@@ -1,88 +1,15 @@
 import asyncio
-import math
 import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional
-
-from pydantic import BaseModel
+from typing import Deque
 
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve.schema import ControllerHealthMetrics, DurationStats
 
 # Number of recent loop iterations to track for rolling averages
 _HEALTH_METRICS_HISTORY_SIZE = 100
-
-
-class DurationStats(BaseModel):
-    """Statistics for a collection of duration/latency measurements."""
-
-    mean: float = 0.0
-    std: float = 0.0
-    min: float = 0.0
-    max: float = 0.0
-
-    @classmethod
-    def from_values(cls, values: List[float]) -> "DurationStats":
-        """Compute statistics from a list of values."""
-        if not values:
-            return cls()
-
-        n = len(values)
-        mean = sum(values) / n
-        min_val = min(values)
-        max_val = max(values)
-
-        # Compute standard deviation
-        if n > 1:
-            variance = sum((x - mean) ** 2 for x in values) / n
-            std = math.sqrt(variance)
-        else:
-            std = 0.0
-
-        return cls(mean=mean, std=std, min=min_val, max=max_val)
-
-
-class ControllerHealthMetrics(BaseModel):
-    """Health metrics for the Ray Serve controller.
-
-    These metrics help diagnose controller performance issues, especially
-    as cluster size increases.
-    """
-
-    # Timestamps
-    timestamp: float = 0.0  # When these metrics were collected
-    controller_start_time: float = 0.0  # When the controller started
-    uptime_s: float = 0.0  # Controller uptime in seconds
-
-    # Control loop metrics
-    num_control_loops: int = 0  # Total number of control loops executed
-    loop_duration_s: Optional[
-        DurationStats
-    ] = None  # Loop duration stats (rolling window)
-    loops_per_second: float = 0.0  # Control loop iterations per second
-
-    # Sleep/scheduling metrics
-    last_sleep_duration_s: float = 0.0  # Actual sleep duration of last iteration
-    expected_sleep_duration_s: float = 0.0  # Expected sleep (CONTROL_LOOP_INTERVAL_S)
-    event_loop_delay_s: float = 0.0  # Delay = actual - expected (positive = overloaded)
-
-    # Event loop health
-    num_asyncio_tasks: int = 0  # Number of pending asyncio tasks
-
-    # Component update durations (rolling window stats)
-    deployment_state_update_duration_s: Optional[DurationStats] = None
-    application_state_update_duration_s: Optional[DurationStats] = None
-    proxy_state_update_duration_s: Optional[DurationStats] = None
-    node_update_duration_s: Optional[DurationStats] = None
-
-    # Autoscaling metrics latency tracking (rolling window stats)
-    # These track the delay between when metrics are generated and when they reach controller
-    handle_metrics_delay_ms: Optional[DurationStats] = None
-    replica_metrics_delay_ms: Optional[DurationStats] = None
-
-    # Memory usage (in MB)
-    process_memory_mb: float = 0.0
 
 
 @dataclass
@@ -121,6 +48,7 @@ class ControllerHealthMetricsTracker:
     # Latest values (used in collect_metrics)
     last_sleep_duration_s: float = 0.0
     num_control_loops: int = 0
+    last_control_loop_time: float = 0.0
 
     def record_loop_duration(self, duration: float):
         self.loop_durations.append(duration)
@@ -201,6 +129,7 @@ class ControllerHealthMetricsTracker:
             timestamp=now,
             controller_start_time=self.controller_start_time,
             uptime_s=uptime,
+            last_control_loop_time=self.last_control_loop_time,
             num_control_loops=self.num_control_loops,
             loop_duration_s=loop_duration_stats,
             loops_per_second=loops_per_second,

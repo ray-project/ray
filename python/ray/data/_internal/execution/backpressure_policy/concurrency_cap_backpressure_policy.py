@@ -1,5 +1,6 @@
 import logging
 import math
+import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
@@ -12,6 +13,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.util.annotations import Deprecated, RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -22,6 +24,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated(
+    message="ConcurrencyCapBackpressurePolicy is deprecated and will be removed "
+    "on or after Ray 2.59.",
+)
 class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy that caps the concurrency of each operator.
     This policy dynamically limits the number of concurrent tasks per operator
@@ -94,6 +100,14 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         self.enable_dynamic_output_queue_size_backpressure = (
             self._data_context.enable_dynamic_output_queue_size_backpressure
         )
+
+        if self.enable_dynamic_output_queue_size_backpressure:
+            warnings.warn(
+                "ConcurrencyCapBackpressurePolicy is deprecated and will be "
+                "removed on or after Ray 2.59.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
 
         dynamic_output_queue_size_backpressure_configs = ""
         if self.enable_dynamic_output_queue_size_backpressure:

@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import sys
 import time
@@ -196,6 +197,10 @@ class TaskExecWorkerStats:
     # Total task's wall-clock time from start to finish (measured on the worker)
     task_wall_time_s: float
 
+    # Peak USS (Unique Set Size) memory in bytes observed during the task,
+    # or None if USS measurement is unavailable (e.g., non-Linux platforms).
+    max_uss_bytes: Optional[int] = None
+
 
 @DeveloperAPI
 @dataclass(frozen=True)
@@ -223,10 +228,6 @@ class BlockExecStats:
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
-
-    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
-    # as estimated by the memory profiler.
-    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -312,6 +313,17 @@ class BlockMetadata(BlockStats):
         )
 
 
+@functools.lru_cache(maxsize=128)
+def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
+    # Hot path on the StreamingExecutor scheduling thread: every completed task
+    # ships a `BlockMetadataWithSchema` whose `schema` is serialized Arrow IPC
+    # bytes. For wide schemas (hundreds of columns, especially with extension
+    # types like ArrowTensorType) `pa.ipc.read_schema` can dominate scheduler
+    # CPU. The same schema bytes recur across tasks of the same operator, so a
+    # small LRU collapses thousands of identical re-parses into one.
+    return pa.ipc.read_schema(pa.BufferReader(schema_bytes))
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
@@ -355,6 +367,26 @@ class BlockMetadataWithSchema(BlockMetadata):
             input_files=self.input_files,
             task_exec_stats=self.task_exec_stats,
         )
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = {f.name: getattr(self, f.name) for f in fields(BlockMetadataWithSchema)}
+
+        if isinstance(self.schema, pa.Schema):
+            state["schema"] = self.schema.serialize().to_pybytes()
+        else:
+            state["schema"] = self.schema
+
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]):
+        schema_val: bytes | bytearray | Schema | None = state["schema"]
+        if isinstance(schema_val, (bytes, bytearray)):
+            # `bytearray` itself is unhashable so it can't key the LRU cache —
+            # coerce to `bytes` first.
+            if isinstance(schema_val, bytearray):
+                schema_val = bytes(schema_val)
+            state["schema"] = _read_arrow_schema_cached(schema_val)
+        self.__dict__.update(state)
 
 
 @DeveloperAPI
