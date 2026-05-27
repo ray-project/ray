@@ -1,6 +1,7 @@
 """Dashboard head module that periodically queries Prometheus for an
-allowlisted set of hourly aggregates and dumps the result to a file in the
-session directory.
+allowlisted set of hourly aggregates, dumps the result to a file in the
+session directory, and optionally POSTs the same batch to a configured
+endpoint.
 
 Lifecycle is modeled on ``UsageStatsHead``: a periodic loop driven by
 ``async_loop_forever`` runs a blocking ``_collect_sync`` in a thread pool.
@@ -10,13 +11,16 @@ On each cycle the module:
      ``(metric, agg)`` pair in the allowlist),
   2. flattens the matrix-of-series response into long-table sample rows,
   3. writes the batch JSON to ``<session_dir>/databricks_telemetry_latest_batch.json``,
-  4. writes a status mirror to ``<session_dir>/databricks_telemetry_status.json``.
+  4. if ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` is set, POSTs the batch JSON
+     to that URL (no auth; the receiver is expected to accept
+     unauthenticated writes the same way ``usage-stats.ray.io`` does),
+  5. writes a status mirror to ``<session_dir>/databricks_telemetry_status.json``.
 
-**Scope note.** v1 only collects locally — no HTTPS POST, no bearer token,
-no endpoint configuration. The forward-to-server piece will be added in a
-follow-up commit once the matching server-side route lands in
-``ray-project/telemetry``. The on-disk batch file is the operator's audit
-trail and the foundation that the future POST will read.
+The local file is always produced regardless of POST outcome — it is the
+operator's audit trail and is intentionally decoupled from network
+reachability of the endpoint. POST failures are tracked separately
+(``total_post_failed`` / ``last_post_error``) so that a transient
+endpoint outage does not look like a collection failure.
 
 Failures on individual PromQL queries are logged at DEBUG and skipped so a
 single missing series does not abort the whole batch. A failed batch
@@ -44,8 +48,10 @@ from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.modules.databricks_telemetry.constants import (
     BATCH_FILE,
     DATABRICKS_TELEMETRY_ENABLED_ENV_VAR,
+    DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR,
     DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR,
     DEFAULT_INTERVAL_S,
+    DEFAULT_POST_TIMEOUT_S,
     DEFAULT_PROMETHEUS_HOST,
     METRIC_ALLOWLIST,
     PROMETHEUS_HOST_ENV_VAR,
@@ -76,6 +82,16 @@ def _collector_interval_s() -> int:
 
 def _prometheus_host() -> str:
     return os.getenv(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST)
+
+
+def _telemetry_endpoint() -> str:
+    """Return the configured POST endpoint, or empty string if unset.
+
+    An empty value disables the POST step; the local audit file is still
+    written. This is the v1 default — operators opt in by setting the
+    env var to a concrete URL.
+    """
+    return os.getenv(DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR, "").strip()
 
 
 # --- PromQL construction --------------------------------------------------
@@ -157,6 +173,55 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
         self.last_error: Optional[str] = None
         self.last_success_ts_ms: Optional[int] = None
         self.last_sample_count: Optional[int] = None
+        # POST-side counters. Kept separate from total_success/total_failed
+        # so a transient endpoint outage does not look like a collection
+        # failure — the local audit file is still produced on every cycle.
+        self.total_post_success = 0
+        self.total_post_failed = 0
+        self.last_post_ts_ms: Optional[int] = None
+        self.last_post_status_code: Optional[int] = None
+        self.last_post_error: Optional[str] = None
+
+    # --- POST --------------------------------------------------------
+
+    def _post_batch(self, batch: Dict[str, Any]) -> None:
+        """POST ``batch`` to ``RAY_DATABRICKS_TELEMETRY_ENDPOINT``.
+
+        No-op when the env var is unset / empty (write-only mode).
+
+        Mirrors ``UsageStatsClient.report_usage_data``: unauthenticated
+        POST, ``Content-Type: application/json``, 10s timeout,
+        ``raise_for_status``. Caller does not raise on failure — the
+        local audit file has already been written and that is the
+        primary cycle outcome.
+        """
+        endpoint = _telemetry_endpoint()
+        if not endpoint:
+            return
+        try:
+            resp = requests.post(
+                endpoint,
+                headers={"Content-Type": "application/json"},
+                json=batch,
+                timeout=DEFAULT_POST_TIMEOUT_S,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            response = getattr(e, "response", None)
+            self.last_post_status_code = getattr(response, "status_code", None)
+            self.last_post_error = str(e)
+            self.total_post_failed += 1
+            logger.info(
+                "Databricks telemetry POST failed (seq=%d, endpoint=%s): %s",
+                self.seq_no,
+                endpoint,
+                e,
+            )
+            return
+        self.last_post_status_code = resp.status_code
+        self.last_post_error = None
+        self.last_post_ts_ms = int(time.time() * 1000)
+        self.total_post_success += 1
 
     # --- Prometheus query --------------------------------------------
 
@@ -262,12 +327,18 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             "enabled": self.enabled,
             "interval_s": _collector_interval_s(),
             "prometheus_host": _prometheus_host(),
+            "endpoint": _telemetry_endpoint() or None,
             "seq_no": self.seq_no,
             "total_success": self.total_success,
             "total_failed": self.total_failed,
             "last_error": self.last_error,
             "last_success_ts_ms": self.last_success_ts_ms,
             "last_sample_count": self.last_sample_count,
+            "total_post_success": self.total_post_success,
+            "total_post_failed": self.total_post_failed,
+            "last_post_status_code": self.last_post_status_code,
+            "last_post_error": self.last_post_error,
+            "last_post_ts_ms": self.last_post_ts_ms,
             "allowlist": [spec.name for spec in METRIC_ALLOWLIST],
         }
 
@@ -294,6 +365,10 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
                 self.seq_no,
                 BATCH_FILE,
             )
+            # POST after the file write succeeds. Tracked independently
+            # so a transient endpoint outage does not flip total_success
+            # back to total_failed — the audit file is on disk regardless.
+            self._post_batch(batch)
         except Exception as e:
             self.last_error = str(e)
             self.total_failed += 1
@@ -326,10 +401,13 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             return
 
         interval_s = _collector_interval_s()
+        endpoint = _telemetry_endpoint()
         logger.info(
-            "Databricks telemetry collector enabled. prometheus=%s interval=%ds",
+            "Databricks telemetry collector enabled. prometheus=%s "
+            "interval=%ds endpoint=%s",
             _prometheus_host(),
             interval_s,
+            endpoint or "(write-only)",
         )
 
         # Same warmup shape as UsageStatsHead: brief sleep so the cluster

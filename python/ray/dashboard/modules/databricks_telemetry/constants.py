@@ -5,12 +5,12 @@ read from Prometheus and write to disk. Reviewers should treat additions to
 ``METRIC_ALLOWLIST`` with the same care as additions to
 ``src/ray/protobuf/usage.proto``'s ``TagKey`` enum.
 
-Scope note: this v1 only **collects** metrics by querying the local
-Prometheus and writing the result to a file in the session directory. It
-does not POST anywhere. The forward-to-endpoint surface (endpoint URL,
-bearer token, server-side schema) is deliberately omitted and will be
-added in a follow-up alongside the server-side route in
-``ray-project/telemetry``.
+The collector writes each batch to the session directory regardless of
+whether ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` is configured. When the
+endpoint env var is set, the same batch JSON is also POSTed there
+without authentication (matching ``UsageStatsHead``'s posture; the data
+sensitivity is the same — anonymous aggregates per cluster). Unsetting
+the env var leaves the cluster in write-only mode.
 """
 
 from dataclasses import dataclass, field
@@ -21,6 +21,10 @@ from typing import List, Tuple
 DATABRICKS_TELEMETRY_ENABLED_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENABLED"
 DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_INTERVAL_S"
 
+# POST destination. Unset / empty disables the POST and leaves the
+# collector in write-only mode (the local audit file is still produced).
+DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENDPOINT"
+
 # Reused from the existing Grafana/Prometheus integration.
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 
@@ -28,6 +32,9 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 
 DEFAULT_INTERVAL_S = 3600
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
+
+# POST timeout. Matches ``UsageStatsClient.report_usage_data``.
+DEFAULT_POST_TIMEOUT_S = 10
 
 # --- Local output files ----------------------------------------------------
 
