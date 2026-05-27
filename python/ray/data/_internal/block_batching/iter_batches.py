@@ -13,7 +13,7 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
-    iter_in_background,
+    iter_threaded,
     resolve_block_refs,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -235,7 +235,7 @@ class BatchIterator:
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
-        batch_iter = iter_in_background(self._pipeline(self._ref_bundles))
+        batch_iter = iter_threaded(self._ref_bundles, fn=self._pipeline)
 
         self.before_epoch_start()
 

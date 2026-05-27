@@ -32,58 +32,90 @@ from ray.types import ObjectRef
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+U = TypeVar("U")
 I = TypeVar("I")
 O = TypeVar("O")
 
 _SENTINEL = object()
 
 
-def iter_in_background(
+def iter_threaded(
     base_iterator: Iterator[T],
+    fn: Callable[[Iterator[T]], Iterator[U]],
+    num_workers: int = 1,
     output_buffer_size: int = 1,
-) -> Generator[T, None, None]:
-    """Run an iterator in a background thread, yielding items via a bounded queue.
+) -> Generator[U, None, None]:
+    """Apply ``fn`` to ``base_iterator`` across ``num_workers`` background
+    threads, yielding results through a single bounded queue.
 
-    This decouples the producer (base_iterator) from the consumer so they can
-    overlap: while the consumer processes item N, the producer can prepare
-    item N+1.
-
-    When the consumer stops iterating (e.g., ``break``, generator ``.close()``,
-    or GC), the producer thread is signaled to stop via a ``threading.Event``
-    so it does not leak.
+    Workers share ``base_iterator`` under a lock (so it may be a stateful,
+    non-thread-safe generator) and run ``fn`` concurrently. With
+    ``num_workers > 1`` the output order is not preserved and must be restored
+    downstream if needed. In-flight items are bounded to roughly
+    ``num_workers + output_buffer_size``, keeping pinned resources small. When
+    the consumer stops early (``break``, ``.close()``, or GC), workers are
+    signaled to stop via an event so they do not leak.
 
     Args:
-        base_iterator: The iterator to consume in the background thread.
-        output_buffer_size: Maximum number of items buffered in the output
-            queue. Defaults to 1 (single-item lookahead).
+        base_iterator: Iterator consumed (under a lock) by the workers.
+        fn: Transform applied by each worker to its view of ``base_iterator``.
+        num_workers: Number of background worker threads.
+        output_buffer_size: Max number of items buffered in the output queue.
 
     Yields:
-        T: Items from base_iterator, in order.
+        U: Items produced by ``fn``.
     """
+    if num_workers < 1:
+        raise ValueError("num_workers must be at least 1.")
+
     stopped = threading.Event()
     result_queue: queue.Queue = queue.Queue(maxsize=output_buffer_size)
+    iter_lock = threading.Lock()
 
-    def _producer():
+    def _locked_next():
+        # Pull the next item under a lock so workers can safely share a
+        # stateful iterator. Returns _SENTINEL once exhausted.
+        with iter_lock:
+            try:
+                return next(base_iterator)
+            except StopIteration:
+                return _SENTINEL
+
+    def _put(item) -> bool:
+        """Put with periodic stop checks. Returns False if interrupted."""
+        while not stopped.is_set():
+            try:
+                result_queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    remaining_workers = num_workers
+    remaining_lock = threading.Lock()
+
+    def _worker():
+        nonlocal remaining_workers
         try:
-            for item in base_iterator:
-                while not stopped.is_set():
-                    try:
-                        result_queue.put(item, timeout=0.1)
-                        break
-                    except queue.Full:
-                        continue
-                if stopped.is_set():
-                    break
-            if not stopped.is_set():
-                result_queue.put(_SENTINEL)
+            for item in fn(iter(_locked_next, _SENTINEL)):
+                if not _put(item):
+                    return
         except Exception as e:
             if not stopped.is_set():
-                result_queue.put(e)
+                _put(e)
+        finally:
+            with remaining_lock:
+                remaining_workers -= 1
+                is_last = remaining_workers == 0
+            if is_last and not stopped.is_set():
+                _put(_SENTINEL)
 
-    producer_thread = threading.Thread(
-        target=_producer, name="iter_in_background", daemon=True
-    )
-    producer_thread.start()
+    worker_threads = [
+        threading.Thread(target=_worker, name="iter_threaded", daemon=True)
+        for _ in range(num_workers)
+    ]
+    for t in worker_threads:
+        t.start()
 
     try:
         while True:
