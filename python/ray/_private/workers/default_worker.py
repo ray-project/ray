@@ -18,7 +18,12 @@ from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
-from ray._raylet import WorkerID
+from ray._raylet import WorkerID, init_setproctitle
+
+# spt_setup walks environ backward to recover argv pointers — it must run
+# before anything else in the worker can mutate the environment, otherwise
+# subsequent setproctitle() calls silently fail.
+init_setproctitle()
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")

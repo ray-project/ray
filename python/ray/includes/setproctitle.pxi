@@ -13,16 +13,30 @@ from ray.includes.setproctitle cimport (
 _current_proctitle = None
 _current_proctitle_lock = threading.Lock()
 _logger = logging.getLogger(__name__)
+_spt_setup_result = None
 _spt_setup_warning_logged = False
-# spt_setup walks environ to recover the original argv memory region; see
-# src/ray/thirdparty/setproctitle/spt_setup.c and spt_status.c.
-_spt_setup_result = spt_setup()
+
+
+def init_setproctitle():
+    """Eagerly initialize setproctitle support.
+
+    Idempotent. Call once early in worker startup so the environ walk in
+    spt_setup() happens before anything else mutates the environment.
+    """
+    global _spt_setup_result
+    with _current_proctitle_lock:
+        if _spt_setup_result is None:
+            _spt_setup_result = spt_setup()
+        return _spt_setup_result
+
 
 def setproctitle(title: str):
-    global _current_proctitle, _spt_setup_warning_logged
+    global _current_proctitle, _spt_setup_result, _spt_setup_warning_logged
     cdef c_string c_title = title.encode("utf-8")
 
     with _current_proctitle_lock:
+        if _spt_setup_result is None:
+            _spt_setup_result = spt_setup()
         if _spt_setup_result < 0:
             if not _spt_setup_warning_logged:
                 _logger.warning(

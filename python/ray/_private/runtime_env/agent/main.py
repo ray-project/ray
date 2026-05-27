@@ -14,10 +14,20 @@ from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
 from ray._private.process_watcher import create_check_raylet_task
-from ray._raylet import RUNTIME_ENV_AGENT_PORT_NAME, GcsClient, persist_port
+from ray._raylet import (
+    RUNTIME_ENV_AGENT_PORT_NAME,
+    GcsClient,
+    init_setproctitle,
+    persist_port,
+)
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
+
+# Eagerly initialize setproctitle so the environ walk runs before agent
+# startup mutates the environment. Required for setproctitle() calls below
+# (and downstream) to land reliably. See python/ray/includes/setproctitle.pxi.
+init_setproctitle()
 
 
 def import_libs():
