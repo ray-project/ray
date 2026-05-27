@@ -42,6 +42,8 @@ class ActorPool:
 
         record_library_usage("util.ActorPool")
 
+        actors = _maybe_optimize_actor_list(actors)
+
         # actors to be used
         self._idle_actors = list(actors)
 
@@ -486,3 +488,33 @@ class ActorPool:
             raise ValueError("Actor already belongs to current ActorPool")
         else:
             self._return_actor(actor)
+
+
+def _maybe_optimize_actor_list(actors: list["ray.actor.ActorHandle"]):
+    """Optimize the actor list by repeating actors according to their
+    concurrency.
+
+    This allows parallel submissions in `ActorPool` to be scheduled on
+    the same actor, which otherwise is blocked by the return calls.
+
+    Arguments:
+        actors: List of Ray actor handles to use in this pool.
+
+    Returns:
+        A list of the same actors as the input, but each actor repeated according to its concurrency
+    """
+
+    # DO NOT SUBMIT: This requires more robustness:
+    # - concurrency may be set per class method, which is not known at this point. Fallback to lowest?
+    # - This introduces blocking ray.get calls on ActorPool init, which may be undesirable, or at the least require a timeout?
+    def _read_max_concurrency(_actor_self):
+        return (
+            ray._private.worker.global_worker.core_worker.current_actor_max_concurrency()
+        )
+
+    unique_actors = list(set(actors))
+    concurrencies = ray.get(
+        [a.__ray_call__.remote(_read_max_concurrency) for a in unique_actors]
+    )
+
+    return [act for act, conc in zip(unique_actors, concurrencies) for _ in range(conc)]

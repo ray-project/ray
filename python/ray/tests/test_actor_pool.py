@@ -11,7 +11,7 @@ from ray.util import ActorPool
 
 @pytest.fixture
 def init():
-    ray.init(num_cpus=4)
+    ray.init(num_cpus=4, include_dashboard=False)
     yield
     ray.shutdown()
 
@@ -271,6 +271,28 @@ def test_push(init):
     pool.push(a3)
     assert pool.has_free() is False  # a3 is used for pending submit
     assert len(pool._pending_submits) == 0
+
+
+# DO NOT SUBMIT: time based tests are fragile, although used in above tests as well. Update?
+def test_concurrency(init):
+    _wait_time = 5
+    _concurrency = 2
+    _n_actors = 3
+    _n_tasks = _n_actors * _concurrency
+
+    @ray.remote(max_concurrency=_concurrency)
+    class MyActor:
+        def process(self, x):
+            time.sleep(_wait_time)
+            return x
+
+    pool = ActorPool([MyActor.remote() for _ in range(_n_actors)])
+
+    start_time = time.time()
+    results = pool.map(lambda a, x: a.process.remote(x), range(_n_tasks))
+    list(results)
+    end_time = time.time()
+    assert end_time - start_time < 1.5 * _wait_time
 
 
 if __name__ == "__main__":
