@@ -1,11 +1,12 @@
 import itertools
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.scheduling_hints import SchedulingHints
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -33,16 +34,19 @@ class BlockSlice:
 
 @dataclass(frozen=True, slots=True)
 class BlockEntry:
-    """One block delivery: the ref + the block's measured metadata.
+    """One block delivery: ref, measured metadata, and producer forecasts.
 
-    Used as the element type of ``RefBundle.blocks`` (replaces the legacy
-    ``(ObjectRef, BlockMetadata)`` 2-tuple shape). Naming the fields makes
-    every call site self-describing and reserves room for the bundle entry
-    to grow without disturbing the surrounding shape.
+    Used as the element type of ``RefBundle.blocks``. ``metadata`` describes
+    the block as it stands (retrospective state). ``scheduling_hints`` is a
+    prospective forecast the producer staged about the *next consumer* (see
+    :mod:`ray.data._internal.scheduling_hints`). The two fields are siblings
+    so the retrospective/prospective split is visible at the type level —
+    callers that don't care about hints just ignore the field.
     """
 
     ref: ObjectRef[Block]
     metadata: BlockMetadata
+    scheduling_hints: Optional[SchedulingHints] = field(default=None)
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,17 @@ class RefBundle:
     def metadata(self) -> List[BlockMetadata]:
         """List of block metadata in this bundle."""
         return [entry.metadata for entry in self.blocks]
+
+    @property
+    def scheduling_hints(self) -> List[Optional[SchedulingHints]]:
+        """Per-block scheduling hints staged by the upstream producer.
+
+        Parallel to :attr:`block_refs` / :attr:`metadata`. Entries are
+        ``None`` when the upstream did not stage hints for that block.
+        Consumers (operator planners) walk this list to size per-task Ray
+        resource requests — see ``ray.data._internal.scheduling_hints``.
+        """
+        return [entry.scheduling_hints for entry in self.blocks]
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known.

@@ -309,7 +309,13 @@ class DataOpTask(OpTask):
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
-                    [BlockEntry(self._pending_block_ref, meta)],
+                    [
+                        BlockEntry(
+                            ref=self._pending_block_ref,
+                            metadata=meta,
+                            scheduling_hints=meta_with_schema.scheduling_hints,
+                        )
+                    ],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),

@@ -7,6 +7,7 @@ import pytest
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
+from ray.data._internal.scheduling_hints import SchedulingHints
 from ray.data.block import BlockMetadata
 
 _TEST_SCHEMA = pa.schema([("col", pa.int64())])
@@ -552,6 +553,34 @@ class TestBlockEntryAndSchedulingHints:
         )
         assert bundle.num_rows() == 8
         assert bundle.size_bytes() == 80
+
+    def test_scheduling_hints_default_none(self):
+        ref = ObjectRef(b"1" * 28)
+        entry = BlockEntry(ref=ref, metadata=self._meta())
+        assert entry.scheduling_hints is None
+
+    def test_scheduling_hints_carried_on_blockentry(self):
+        ref = ObjectRef(b"1" * 28)
+        hints = SchedulingHints(memory=4096)
+        entry = BlockEntry(ref=ref, metadata=self._meta(), scheduling_hints=hints)
+        assert entry.scheduling_hints == hints
+
+    def test_scheduling_hints_accessor_returns_parallel_list(self):
+        ref_a = ObjectRef(b"1" * 28)
+        ref_b = ObjectRef(b"2" * 28)
+        meta = self._meta()
+        hints = SchedulingHints(memory=999)
+
+        bundle = RefBundle(
+            blocks=[
+                BlockEntry(ref=ref_a, metadata=meta),
+                BlockEntry(ref=ref_b, metadata=meta, scheduling_hints=hints),
+            ],
+            owns_blocks=True,
+            schema=None,
+        )
+
+        assert bundle.scheduling_hints == [None, hints]
 
 
 if __name__ == "__main__":

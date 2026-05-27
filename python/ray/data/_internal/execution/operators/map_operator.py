@@ -853,6 +853,10 @@ def _map_task(
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
+                # Capture any per-yield scheduling hints the transform
+                # staged before this yield. Cleared on consume so subsequent
+                # yields are not silently mis-tagged with a stale value.
+                scheduling_hints = ctx.consume_next_block_scheduling_hints()
                 block_meta = BlockAccessor.for_block(block).get_metadata()
                 block_schema = BlockAccessor.for_block(block).schema()
 
@@ -882,6 +886,7 @@ def _map_task(
                             ),
                         ),
                         schema=block_schema if not yielded_schema else None,
+                        scheduling_hints=scheduling_hints,
                     )
 
                 yield from yield_block_with_stats(block, build_metadata)

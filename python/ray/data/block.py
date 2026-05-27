@@ -24,6 +24,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+from ray.data._internal.scheduling_hints import SchedulingHints
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -348,10 +349,18 @@ def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
 @dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
+    # Prospective forecast for the next consumer of this block, set by the
+    # producing transform via ``stage_scheduling_hints`` and lifted into
+    # the next RefBundle's ``BlockEntry.scheduling_hints`` on the driver.
+    # Lives on the wire envelope (BMWS) rather than on ``BlockMetadata``
+    # itself because hints describe the block's *delivery*, not the block.
+    scheduling_hints: Optional[SchedulingHints] = None
 
     @staticmethod
     def from_metadata(
-        metadata: "BlockMetadata", schema: Optional["Schema"] = None
+        metadata: "BlockMetadata",
+        schema: Optional["Schema"] = None,
+        scheduling_hints: Optional[SchedulingHints] = None,
     ) -> "BlockMetadataWithSchema":
         return BlockMetadataWithSchema(
             num_rows=metadata.num_rows,
@@ -360,6 +369,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             task_exec_stats=metadata.task_exec_stats,
             input_files=metadata.input_files,
             schema=schema,
+            scheduling_hints=scheduling_hints,
         )
 
     @staticmethod
@@ -367,6 +377,7 @@ class BlockMetadataWithSchema(BlockMetadata):
         block: Block,
         block_exec_stats: Optional["BlockExecStats"] = None,
         task_exec_stats: Optional["TaskExecWorkerStats"] = None,
+        scheduling_hints: Optional[SchedulingHints] = None,
     ) -> "BlockMetadataWithSchema":
         accessor = BlockAccessor.for_block(block)
 
@@ -376,6 +387,7 @@ class BlockMetadataWithSchema(BlockMetadata):
                 task_exec_stats=task_exec_stats,
             ),
             schema=accessor.schema(),
+            scheduling_hints=scheduling_hints,
         )
 
     @property

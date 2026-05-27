@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
     from ray.data._internal.progress.base_progress import BaseProgressBar
+    from ray.data._internal.scheduling_hints import SchedulingHints
 
 
 _thread_local = threading.local()
@@ -49,6 +50,20 @@ class TaskContext:
 
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    # Scheduling hints to attach to the *next* block this task yields. Read
+    # and cleared by ``_map_task`` after each yield (via
+    # :meth:`consume_next_block_scheduling_hints`), so callers must restage
+    # before every emit — leaving a stale value would silently mis-tag
+    # later blocks. See ``ray.data._internal.scheduling_hints`` for the
+    # producer-side helpers that write to this field.
+    next_block_scheduling_hints: Optional["SchedulingHints"] = None
+
+    def consume_next_block_scheduling_hints(self) -> Optional["SchedulingHints"]:
+        """Return the staged ``next_block_scheduling_hints`` and clear it."""
+        hints = self.next_block_scheduling_hints
+        self.next_block_scheduling_hints = None
+        return hints
 
     @classmethod
     def get_current(cls) -> Optional["TaskContext"]:
