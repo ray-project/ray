@@ -463,8 +463,7 @@ class TrainContext:
                     checkpoint_upload_fn,
                     validation,
                 )
-                if checkpoint is not None:
-                    # check that the checkpoint created if using checkpoint-upload-fn is in band
+                if training_report.checkpoint is not None:
                     check_checkpoint_in_band(
                         self.storage_context, training_report.checkpoint
                     )
@@ -472,7 +471,6 @@ class TrainContext:
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
                 if checkpoint is not None:
-                    # check that the checkpoint created is in band
                     check_checkpoint_in_band(self.storage_context, checkpoint)
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
@@ -499,7 +497,6 @@ class TrainContext:
                             validation,
                         )
                         if training_report.checkpoint is not None:
-                            # check that the checkpoint created if using checkpoint-upload-fn is in band
                             check_checkpoint_in_band(
                                 self.storage_context, training_report.checkpoint
                             )
@@ -571,9 +568,15 @@ def check_checkpoint_in_band(
         raise ValueError(
             f"The saved checkpoint ({checkpoint}) must be saved to the same filesystem as the experiment storage ({storage_context.storage_filesystem})."
         )
-    if not Path(checkpoint.path).is_relative_to(
-        Path(storage_context.experiment_fs_path)
-    ):
+
+    checkpoint_path = Path(checkpoint.path)
+    experiment_path = Path(storage_context.experiment_fs_path)
+    if checkpoint_path.is_absolute():
+        checkpoint_path = checkpoint_path.resolve()
+    if experiment_path.is_absolute():
+        experiment_path = experiment_path.resolve()
+
+    if not checkpoint_path.is_relative_to(experiment_path):
         raise ValueError(
             f"The saved checkpoint ({checkpoint}) must be saved within the experiment storage path ({storage_context.experiment_fs_path})."
         )
