@@ -648,7 +648,11 @@
       num_operators: [1, 15]
 
   run:
-    timeout: 2700
+    # 5400s (90 min) leaves headroom for the 15-op variants. With 15
+    # chained operators the worker pool splits to ~1/15th per op, so
+    # wall-clock at 5000 workers / 15 ops can run several times longer
+    # than the single-op shape. 1-op runs finish well under this cap.
+    timeout: 5400
     # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded by the
     # profiling coordinator and uploaded to PROFILING_S3_BUCKET.
     script: >
