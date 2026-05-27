@@ -4,10 +4,13 @@ import {
   RiBookMarkLine,
   RiFeedbackLine,
   RiMoonLine,
+  RiRefreshLine,
   RiSunLine,
 } from "react-icons/ri/";
 import { Outlet, Link as RouterLink } from "react-router-dom";
+import { useSWRConfig } from "swr";
 import { GlobalContext } from "../../App";
+import { DASHBOARD_DATA_LOADED_EVENT } from "../../common/constants";
 import { SearchTimezone } from "../../components/SearchComponent";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
@@ -173,6 +176,7 @@ const MainNavBar = () => {
         </Typography>
       ))}
       <Box sx={{ flexGrow: 1 }}></Box>
+      <DashboardDataFreshness currentTimeZone={currentTimeZone} />
       <Box sx={{ marginRight: 2 }}>
         {!urlTheme && (
           <Tooltip title={themeMode === "light" ? "Dark mode" : "Light mode"}>
@@ -221,6 +225,142 @@ const MainNavBar = () => {
       </Tooltip>
     </Box>
   );
+};
+
+const DashboardDataFreshness = ({
+  currentTimeZone,
+}: {
+  currentTimeZone: string | undefined;
+}) => {
+  const { mutate } = useSWRConfig();
+  const [lastDataLoadTime, setLastDataLoadTime] = React.useState<number>();
+  const [now, setNow] = React.useState(Date.now());
+  const [isRefreshingData, setIsRefreshingData] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleDashboardDataLoaded = () => {
+      setLastDataLoadTime(Date.now());
+    };
+
+    window.addEventListener(
+      DASHBOARD_DATA_LOADED_EVENT,
+      handleDashboardDataLoaded,
+    );
+
+    return () => {
+      window.removeEventListener(
+        DASHBOARD_DATA_LOADED_EVENT,
+        handleDashboardDataLoaded,
+      );
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 5000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const refreshDashboardData = async () => {
+    setIsRefreshingData(true);
+    try {
+      await mutate(() => true);
+    } finally {
+      setIsRefreshingData(false);
+    }
+  };
+
+  return (
+    <Box
+      sx={{
+        alignItems: "center",
+        display: "flex",
+        flexShrink: 0,
+        gap: 1,
+        marginRight: 1,
+      }}
+    >
+      <Tooltip
+        title={
+          lastDataLoadTime
+            ? `Last successful data load: ${formatLastDataLoadTime(
+                lastDataLoadTime,
+                currentTimeZone,
+              )}`
+            : "No dashboard data has loaded yet."
+        }
+      >
+        <Typography
+          color="text.secondary"
+          sx={{ whiteSpace: "nowrap" }}
+          variant="caption"
+        >
+          {formatFreshnessLabel(lastDataLoadTime, now)}
+        </Typography>
+      </Tooltip>
+      <Tooltip title="Refresh dashboard data">
+        <span>
+          <IconButton
+            aria-label="Refresh dashboard data"
+            disabled={isRefreshingData}
+            onClick={refreshDashboardData}
+            size="large"
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
+          >
+            <RiRefreshLine />
+          </IconButton>
+        </span>
+      </Tooltip>
+    </Box>
+  );
+};
+
+export const formatLastDataLoadTime = (
+  lastDataLoadTime: number,
+  currentTimeZone: string | undefined,
+) => {
+  return new Date(lastDataLoadTime).toLocaleString(
+    undefined,
+    currentTimeZone ? { timeZone: currentTimeZone } : undefined,
+  );
+};
+
+export const formatFreshnessLabel = (
+  lastDataLoadTime: number | undefined,
+  now: number,
+) => {
+  if (!lastDataLoadTime) {
+    return "No data loaded";
+  }
+
+  const ageMs = Math.max(0, now - lastDataLoadTime);
+  const fiveSecondsMs = 5 * 1000;
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+
+  if (ageMs < fiveSecondsMs) {
+    return "Updated just now";
+  }
+
+  if (ageMs < minuteMs) {
+    const ageSeconds = Math.min(55, Math.round(ageMs / fiveSecondsMs) * 5);
+    return `Updated ${ageSeconds}s ago`;
+  }
+
+  if (ageMs < hourMs) {
+    return `Updated ${Math.floor(ageMs / minuteMs)}m ago`;
+  }
+
+  if (ageMs < dayMs) {
+    return `Updated ${Math.floor(ageMs / hourMs)}h ago`;
+  }
+
+  return `Updated ${Math.floor(ageMs / dayMs)}d ago`;
 };
 
 const MainNavBreadcrumbs = () => {

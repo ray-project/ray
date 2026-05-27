@@ -218,6 +218,7 @@ const App = () => {
     useState(false);
   const [authenticationError, setAuthenticationError] =
     useState<string | undefined>();
+
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -381,7 +382,12 @@ const App = () => {
       <ThemeProvider theme={currentTheme}>
         <Suspense fallback={Loading}>
           <GlobalContext.Provider
-            value={{ ...context, currentTimeZone, themeMode, toggleTheme }}
+            value={{
+              ...context,
+              currentTimeZone,
+              themeMode,
+              toggleTheme,
+            }}
           >
             <CssBaseline />
             <TokenAuthenticationDialog

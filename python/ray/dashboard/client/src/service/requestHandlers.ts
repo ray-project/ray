@@ -10,6 +10,7 @@
 
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { AUTHENTICATION_ERROR_EVENT } from "../authentication/constants";
+import { DASHBOARD_DATA_LOADED_EVENT } from "../common/constants";
 
 /**
  * This function formats URLs such that the user's browser
@@ -36,6 +37,7 @@ export { axiosInstance };
 // Response interceptor: Handle 401/403 errors
 axiosInstance.interceptors.response.use(
   (response) => {
+    window.dispatchEvent(new Event(DASHBOARD_DATA_LOADED_EVENT));
     return response;
   },
   (error) => {
