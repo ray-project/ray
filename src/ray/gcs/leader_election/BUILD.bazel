@@ -7,11 +7,13 @@ ray_cc_library(
     srcs = [
         "k8s_lease_client.cc",
         "leader_election_client_factory.cc",
+        "leader_elector.cc",
     ],
     hdrs = [
         "k8s_lease_client.h",
         "leader_election_client_factory.h",
         "leader_election_client_interface.h",
+        "leader_elector.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -27,6 +29,18 @@ ray_cc_test(
     name = "k8s_lease_client_test",
     srcs = [
         "k8s_lease_client_test.cc",
+    ],
+    tags = ["small"],
+    deps = [
+        ":leader_election",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "leader_elector_test",
+    srcs = [
+        "leader_elector_test.cc",
     ],
     tags = ["small"],
     deps = [
