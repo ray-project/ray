@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.dataset as pds
-import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
@@ -25,7 +24,6 @@ from ray.data._internal.datasource.parquet_datasource import (
     _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
     ParquetDatasource,
     _coerce_pyarrow_fragment_batch_size,
-    _infer_schema,
     _read_batches_from,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -1780,6 +1778,7 @@ def test_read_null_data_in_first_file(
         {"data": "ham"},
         {"data": "spam"},
     ]
+
 
 def test_read_parquet_does_not_call_infer_schema(
     tmp_path, monkeypatch, ray_start_regular_shared

@@ -1,12 +1,13 @@
-import pytest
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
 import pyarrow.parquet as pq
+import pytest
 from packaging.version import parse as parse_version
 
 from ray._common.utils import get_pyarrow_version
 from ray.data._internal.datasource.parquet_datasource import _infer_schema
+
 
 def test_read_parquet_memory_growth(tmp_path, monkeypatch):
     """Schema inference should not inspect every fragment on PyArrow >= 22.
@@ -66,3 +67,9 @@ def test_read_parquet_memory_growth(tmp_path, monkeypatch):
         }
     ]
     assert "null_col" in schema.names
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
