@@ -185,6 +185,7 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     # Keep ingress-request-router pins fail-closed. A routed request may carry
     # out-of-band lifecycle metadata for the selected replica, so HAProxy must
     # not silently redispatch it to a different backend server.
+    option persist
     {%- if config.ingress_retry_on %}
     retry-on {{ config.ingress_retry_on }}
     {%- endif %}
