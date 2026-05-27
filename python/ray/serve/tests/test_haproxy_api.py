@@ -701,6 +701,7 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
     # any occurrences of "retry-on" inside template comments.
     assert "\n    retry-on " not in unset
     assert "\n    retries " not in unset
+    assert "\n    option persist\n" in unset
     assert "ingress-request-router" in unset  # backend still rendered
 
     set_cfg = render(
@@ -713,6 +714,7 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
     assert "retry-on conn-failure empty-response response-timeout" in set_cfg
     assert "\n    retries 4\n" in set_cfg
     assert "\n    timeout server 5s\n" in set_cfg
+    assert "\n    option persist\n" in set_cfg
 
 
 @pytest.mark.parametrize("forward_body", [True, False])
