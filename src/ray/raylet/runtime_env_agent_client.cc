@@ -26,7 +26,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/logging.h"
@@ -344,7 +344,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       } else if (current_time_ms() > deadline_ms) {
         RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
                        << "ms. Status: " << status << ", address: " << this->address_
-                       << ", port: " << this->port_str_ << ", existing immediately...";
+                       << ", port: " << this->port_str_ << ", exiting immediately...";
         ExitImmediately();
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status

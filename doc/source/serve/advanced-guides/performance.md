@@ -65,6 +65,32 @@ to retry requests that time out due to transient failures.
 Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
 :::
 
+(serve-performance-per-request-headers)=
+### Override timeout and disconnect behavior per request
+
+Two request headers let callers override the global `request_timeout_s` and client-disconnect policy on a per-request basis.
+
+`x-request-timeout-seconds`
+: Overrides `request_timeout_s` for this single request.
+  - A **positive float** sets the timeout in seconds (for example, `x-request-timeout-seconds: 30`).
+  - A **non-positive value** (for example, `0` or `-1`) disables the timeout for this request regardless of the global setting.
+  - An **absent or non-numeric value** falls back to the global `request_timeout_s`.
+
+`x-request-disconnect-disabled`
+: Controls whether Serve monitors for client disconnects on this request.
+  - `?1` — disables disconnect detection; Serve continues processing even if the client closes the connection.
+  - `?0` or absent — disconnect detection is enabled (default behavior).
+
+**Performance impact of disabling both headers together**
+
+Setting `x-request-timeout-seconds` to a non-positive value *and* `x-request-disconnect-disabled: ?1` on the same request enables a fast path in the direct-ingress handler that yields a meaningful throughput improvement:
+
+- Serve skips wrapping the user handler in an `asyncio.create_task()` call.
+- Serve skips the `asyncio.wait()` call that would otherwise coordinate the handler task, the disconnect-monitoring task, and the timeout watcher.
+- Instead, Serve directly `await`s the user handler, eliminating all per-request event-loop scheduling overhead for monitoring.
+
+In the proxy path the gain is more modest: `asyncio.wait()` is called per response chunk with one fewer task and no timeout handle, which reduces event-loop overhead at high request rates.
+
 
 ### Set backoff time when choosing replica
 
@@ -309,3 +335,5 @@ you can tune the following environment variables:
 - `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: The interval between cycles of the control loop (defaults to `0.1` seconds). Increasing this value gives the Controller more time to process requests and may help alleviate overload.
 - `RAY_SERVE_CONTROLLER_MAX_CONCURRENCY`: The maximum number of concurrent requests the Controller can handle (defaults to `15000`). The Controller accepts one long poll request per handle, so its concurrency needs scale with the number of handles. Increase this value if you have a large number of deployment handles.
 - `RAY_SERVE_MAX_CACHED_HANDLES`: The maximum number of cached deployment handles (defaults to `100`). Each handle maintains a long poll connection to the controller, so limiting the cache size reduces controller overhead. Decrease this value if you're experiencing controller overload due to many handles.
+
+To get a quantitative view of controller health, query the GET `/api/serve/applications/` endpoint and inspect the [`controller_health_metrics`](../api/doc/ray.serve.schema.ControllerHealthMetrics.rst) field on the response. It exposes rolling-window statistics ([`DurationStats`](../api/doc/ray.serve.schema.DurationStats.rst): mean, std, min, max) for control-loop duration and component update latencies (deployment, application, proxy, and node state managers), along with the event-loop delay (actual vs. expected sleep — positive values indicate the loop is falling behind), the count of pending asyncio tasks, and the delay between when autoscaling metrics are generated and when they reach the controller. High `event_loop_delay_s` or growing `loop_duration_s.mean` are the clearest signals that the Controller is overloaded and the tuning knobs above should be applied.

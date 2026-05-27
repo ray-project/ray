@@ -17,7 +17,6 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +363,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
         node_id = ray.get_runtime_context().get_node_id()
         actor_name = f"dataset-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
             name=actor_name,
             namespace=PREFETCHER_ACTOR_NAMESPACE,
             get_if_exists=True,

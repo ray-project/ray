@@ -74,7 +74,6 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 from ray.util.tpu import (
@@ -304,10 +303,9 @@ class WorkerGroup(ExecutionGroup):
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(),
-                    soft=False,
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote(
                 timeout_s=self._collective_timeout_s,
                 warn_interval_s=self._collective_warn_interval_s,
@@ -598,12 +596,26 @@ class WorkerGroup(ExecutionGroup):
                     num_slices=worker_group_context.num_slices,
                     resources_per_bundle=worker_group_context.resources_per_worker,
                     strategy=worker_group_context.placement_strategy,
+                    head_reservation_timeout_s=self._worker_group_start_timeout_s,
                 )
 
                 return SlicePlacementGroupHandle(spg)
 
+            except TimeoutError as e:
+                # Unlike the default placement group path, ``SlicePlacementGroup``
+                # synchronously reserves a TPU head placement group inside its
+                # constructor and raises ``TimeoutError`` when the cluster does
+                # not yet have enough TPU capacity (e.g. autoscaler is still
+                # bringing up nodes). Convert this into the standard
+                # ``WorkerGroupStartupTimeoutError`` so the controller retries
+                # via SCHEDULING -> RESCHEDULING instead of failing the run.
+                raise WorkerGroupStartupTimeoutError(
+                    num_workers=worker_group_context.num_workers
+                ) from e
             except Exception as e:
-                raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
+                raise WorkerGroupStartupFailedError(
+                    f"Failed to reserve TPU slice(s): {e}"
+                ) from e
 
         pg = placement_group(
             # TODO: support heterogeneous workers and placement
@@ -667,6 +679,9 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             timeout: The maximum time to wait for the poll tasks to complete.
+
+        Returns:
+            A ``WorkerGroupPollStatus`` aggregating each worker's status.
         """
         self._assert_active()
 
@@ -704,6 +719,9 @@ class WorkerGroup(ExecutionGroup):
 
         If a worker's poll task fails, a WorkerHealthCheckFailedError is similarly
         propagated in the worker status.
+
+        Args:
+            timeout: The maximum time to wait for the poll tasks to complete.
 
         Returns:
             poll_results: A list of WorkerStatus objects.
@@ -832,6 +850,22 @@ class WorkerGroup(ExecutionGroup):
                 self._world_rank_to_ongoing_poll.pop(
                     w.distributed_context.world_rank, None
                 )
+
+        # Clear result queues on surviving workers to avoid mixed-generation
+        # results (some workers with old report, others with new report).
+        clear_tasks = []
+        for i, rg in enumerate(self._replica_groups):
+            if i != replica_group_index and rg.is_active():
+                for w in rg.get_workers():
+                    clear_tasks.append(w.actor.clear_result_queue.remote())
+        if clear_tasks:
+            ray.get(clear_tasks)
+
+        # Reset the sync actor to unblock surviving workers that may be stuck
+        # at the synchronization barrier. This is a no-op if no workers are
+        # currently at the barrier (e.g., failure occurred after the barrier).
+        sync_actor = self._worker_group_state.sync_actor
+        ray.get(sync_actor.reset.remote())
 
         # Create new workers with old replica group state.
         pg = self._worker_group_state.placement_group_handle.placement_group
@@ -1032,6 +1066,9 @@ class WorkerGroup(ExecutionGroup):
     @staticmethod
     def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
         """Decorate worker log file paths.
+
+        Args:
+            workers: The workers to decorate with log file paths.
 
         Returns:
             workers: Workers with log file paths set.

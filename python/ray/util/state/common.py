@@ -232,16 +232,26 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kwargs):
+def state_column(
+    *,
+    filterable: bool,
+    detail: bool = False,
+    format_fn: Optional[Any] = None,
+    **kwargs: Any,
+):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
     each column.
 
     Args:
-        detail: If True, the column is used when detail == True
         filterable: If True, the column can be used for filtering.
-        kwargs: The same kwargs for the `dataclasses.field` function.
+        detail: If True, the column is used when detail == True
+        format_fn: An optional callable used to humanify the column value.
+        **kwargs: The same kwargs for the `dataclasses.field` function.
+
+    Returns:
+        A ``dataclasses.field`` configured with the state column metadata.
     """
     m = {"detail": detail, "filterable": filterable, "format_fn": format_fn}
     # Default for detail field is None since it could be missing.
@@ -371,6 +381,9 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         data: A single data entry to filter columns.
         state_dataclass: The schema to filter data.
         detail: Whether or not it should include columns for detail output.
+
+    Returns:
+        A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
     columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
@@ -551,6 +564,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
+    #: The node label key used for label-domain scheduling
+    #: (e.g. "ray.io/gpu-domain"). Empty string if the placement group
+    #: does not use label-domain scheduling.
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_key: Optional[str] = state_column(filterable=False, detail=True)
+    #: The selected label domain values for label-domain-aware scheduling.
+    #: Maps the domain label key to the chosen value
+    #: (e.g. {"ray.io/gpu-domain": "rack-1"}).
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_assignments: Optional[dict] = state_column(
+        filterable=False, detail=True
+    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1271,9 +1298,9 @@ class TaskSummaries:
             Args:
                 siblings: A list of NestedTaskSummary's to merge together
 
-            Returns
-                Index 0: A list of NestedTaskSummary's which have been merged
-                Index 1: The smallest timestamp amongst the siblings
+            Returns:
+                A tuple where index 0 is a list of merged NestedTaskSummary's and
+                index 1 is the smallest timestamp amongst the siblings.
             """
             if not len(siblings):
                 return siblings, None
@@ -1572,18 +1599,19 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
 
 
 def protobuf_message_to_dict(
-    message,
+    message: Any,
     fields_to_decode: List[str],
     preserving_proto_field_name: bool = True,
 ) -> dict:
     """Convert a protobuf message to dict
 
     Args:
+        message: The protobuf message to convert.
         fields_to_decode: field names which will be decoded from binary to hex.
         preserving_proto_field_name: a pass-through option for protobuf message
             method. See google.protobuf MessageToDict
 
-    Return:
+    Returns:
         Dictionary of the converted rpc protobuf.
     """
     return dashboard_utils.message_to_dict(

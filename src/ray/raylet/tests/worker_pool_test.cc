@@ -29,8 +29,8 @@
 #include "absl/time/time.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -1596,7 +1596,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
         /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, {}, LeaseID::FromRandom());
     std::shared_ptr<WorkerInterface> worker =
         worker_pool_->PopWorkerSync(lease_spec, false);
-    // Simulate granting the lease and finish. This is to set lease_grant_time_.
+    // Simulate granting the lease and finish. This is to set last_lease_grant_time_.
     RayLease lease(lease_spec);
     worker->GrantLease(lease);
     popped_workers.push_back(worker);

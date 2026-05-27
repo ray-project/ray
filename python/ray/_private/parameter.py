@@ -4,6 +4,7 @@ import pathlib
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import get_localhost_ip
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import get_ray_client_dependency_error
 
@@ -31,7 +32,6 @@ class RayParams:
             of that resource available.
         labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
-        available_memory_bytes: The memory available for use on this node in bytes.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         object_manager_port int: The port to use for the object manager.
@@ -79,10 +79,9 @@ class RayParams:
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        dashboard_host: The host to bind the web UI server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
-            external machines.
+        dashboard_host: The host to bind the dashboard server to. Use localhost
+            (127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all
+            interfaces. Defaults to localhost.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
@@ -136,7 +135,6 @@ class RayParams:
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
-        available_memory_bytes: Optional[int] = None,
         object_store_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
         redis_shard_ports: Optional[List[int]] = None,
@@ -162,7 +160,7 @@ class RayParams:
         setup_worker_path: Optional[str] = None,
         huge_pages: Optional[bool] = False,
         include_dashboard: Optional[bool] = None,
-        dashboard_host: Optional[str] = ray_constants.DEFAULT_DASHBOARD_IP,
+        dashboard_host: Optional[str] = get_localhost_ip(),
         dashboard_port: Optional[bool] = ray_constants.DEFAULT_DASHBOARD_PORT,
         dashboard_agent_listen_port: Optional[
             int
@@ -194,7 +192,6 @@ class RayParams:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
-        self.available_memory_bytes = available_memory_bytes
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.redis_port = redis_port
@@ -252,7 +249,7 @@ class RayParams:
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:
             self.resource_isolation_config = ResourceIsolationConfig(
-                object_store_memory=object_store_memory, enable_resource_isolation=False
+                enable_resource_isolation=False
             )
 
         # Set the internal config options for object reconstruction.

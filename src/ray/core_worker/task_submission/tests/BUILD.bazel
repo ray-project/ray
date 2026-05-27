@@ -20,7 +20,6 @@ ray_cc_test(
     srcs = ["out_of_order_actor_submit_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
         "//src/ray/core_worker/task_submission:out_of_order_actor_submit_queue",
     ],
 )
@@ -45,7 +44,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:reference_counter",

@@ -52,7 +52,6 @@ from ray.core.generated import (
     node_manager_pb2,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -982,7 +981,12 @@ def raw_metric_timeseries(
 
 
 def get_system_metric_for_component(
-    system_metric: str, component: str, prometheus_server_address: str
+    system_metric: str,
+    component: str,
+    prometheus_server_address: str,
+    max_attempts: int = 3,
+    backoff_base_s: float = 1.0,
+    request_timeout_s: float = 30.0,
 ) -> List[float]:
     """Get the system metric for a given component from a Prometheus server address.
     Please note:
@@ -990,18 +994,60 @@ def get_system_metric_for_component(
     requires the server address.
     - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
     process id, so it can be used to uniquely identify the process.
+
+    Retries up to ``max_attempts`` times on connection errors, timeouts, and HTTP 5xx
+    responses, with exponential backoff (``backoff_base_s`` * 2^(attempt-1) seconds).
+    HTTP 4xx responses are not retried — they indicate a bad query.
     """
     session_name = os.path.basename(
         ray._private.worker._global_node.get_session_dir_path()
     )
     query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
-    resp = requests.get(
-        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
-    )
-    if resp.status_code != 200:
-        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
-    result = resp.json()
-    return [float(item["value"][1]) for item in result["data"]["result"]]
+    url = f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+
+    for attempt in range(1, max_attempts + 1):
+        backoff_s = backoff_base_s * (2 ** (attempt - 1))
+        try:
+            resp = requests.get(url, timeout=request_timeout_s)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            # HTTPError from raise_for_status() sets e.response; other
+            # RequestException subclasses (ConnectionError, Timeout, ...) leave it None.
+            err_resp = e.response
+            status_code = err_resp.status_code if err_resp is not None else None
+            body_truncated = (err_resp.text or "")[:500] if err_resp is not None else ""
+            # 4xx indicates a malformed query — don't retry.
+            is_retryable = status_code is None or status_code >= 500
+            if is_retryable and attempt < max_attempts:
+                logger.warning(
+                    "Prometheus query failed (attempt %d/%d), retrying in %.1fs: "
+                    "error=%r, url=%s, query=%s",
+                    attempt,
+                    max_attempts,
+                    backoff_s,
+                    e,
+                    url,
+                    query,
+                )
+                time.sleep(backoff_s)
+                continue
+            if status_code is not None:
+                raise RuntimeError(
+                    f"Failed to query Prometheus after {attempt} attempts: "
+                    f"last_status={status_code}, url={url}, query={query}, "
+                    f"response_body={body_truncated!r}"
+                ) from e
+            raise RuntimeError(
+                f"Failed to query Prometheus after {attempt} attempts: "
+                f"last_error={e!r}, url={url}, query={query}"
+            ) from e
+
+        if attempt > 1:
+            logger.info(
+                "Prometheus query succeeded on attempt %d/%d", attempt, max_attempts
+            )
+        result = resp.json()
+        return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
@@ -1549,13 +1595,8 @@ class WorkerKillerActor(ResourceKillerActor):
             proc = psutil.Process(pid)
             proc.kill()
 
-        scheduling_strategy = (
-            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                node_id=process_to_kill_node_id,
-                soft=False,
-            )
-        )
-        await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+        label_selector = {ray._raylet.RAY_NODE_ID_KEY: process_to_kill_node_id}
+        await kill_process.options(label_selector=label_selector).remote(
             process_to_kill_pid
         )
         return True
@@ -1577,9 +1618,7 @@ def get_and_run_resource_killer(
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     resource_killer = resource_killer_cls.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=head_node_id, soft=False
-        ),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id},
         namespace=namespace,
         name="ResourceKiller",
         lifetime=lifetime,

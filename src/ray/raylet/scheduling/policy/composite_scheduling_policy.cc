@@ -46,12 +46,12 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
 SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   if (options.label_domain_scheduling_strategy_ != LabelDomainSchedulingStrategy::NONE) {
     NodeScheduleFn node_schedule_fn =
         [this](const std::vector<const ResourceRequest *> &reqs,
                SchedulingOptions opts,
-               absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
+               absl::flat_hash_set<scheduling::NodeID> nodes) {
           opts.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::NONE;
           return this->Schedule(reqs, std::move(opts), std::move(nodes));
         };

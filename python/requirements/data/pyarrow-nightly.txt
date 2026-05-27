@@ -1,4 +1,4 @@
-pyarrow
+# not including pyarrow as nightly versions will break depset compilation too frequently
 hudi
 pylance
 modin

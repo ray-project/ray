@@ -398,6 +398,101 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     assert len(ready) == 2
 
 
+def test_streaming_split_early_exit_shuts_down_executor(ray_start_10_cpus_shared):
+    """When every split breaks out of ``iter_batches`` early, the executor
+    on the SplitCoordinator should be shut down promptly — much faster than
+    the dataset would naturally finish.
+
+    The shutdown signal must come from the consumer's thread (via
+    ``_on_iteration_end``), not from the inner ``gen_blocks`` generator's
+    ``finally``: that generator runs inside the async-prefetch filling
+    worker thread, so on early ``break`` its cleanup is GC-bound and may
+    not fire within the test's timeout under load (CI flake)."""
+
+    num_splits = 2
+    # A slow per-block map ensures natural completion is much slower than
+    # our wait_for_condition timeout. If the shutdown were waiting on the
+    # producer to drain naturally, this test would time out.
+    def slow_map(row):
+        time.sleep(0.5)
+        return row
+
+    ds = ray.data.range(1000, override_num_blocks=20).map(slow_map)
+    splits = ds.streaming_split(num_splits, equal=True)
+
+    threads = []
+    for split in splits:
+
+        def consume(it=split):
+            for i, _ in enumerate(it.iter_batches(batch_size=10, prefetch_batches=0)):
+                if i == 0:
+                    break
+
+        t = threading.Thread(target=consume)
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    # Shutdown is fire-and-forget from the iterator; wait for the
+    # coordinator to process the last ``notify_split_finished`` call.
+    # Tight timeout to catch the regression where shutdown waits for the
+    # slow producer to drain naturally.
+    coord = splits[0]._coord_actor
+    wait_for_condition(
+        lambda: ray.get(coord._is_executor_shutdown.remote()),
+        timeout=10,
+    )
+
+
+def test_streaming_split_partial_early_exit_keeps_executor(
+    ray_start_10_cpus_shared,
+):
+    """When only some splits exit early, the executor must stay alive so
+    the remaining splits can continue iterating."""
+
+    num_splits = 2
+    num_blocks_per_split = 20
+    total_rows = num_splits * num_blocks_per_split * 10
+    ds = ray.data.range(
+        total_rows, override_num_blocks=num_splits * num_blocks_per_split
+    )
+    i1, i2 = ds.streaming_split(num_splits, equal=True)
+
+    other_count = [0]
+
+    def break_early():
+        for i, _ in enumerate(i1.iter_batches(batch_size=10, prefetch_batches=0)):
+            if i == 0:
+                break
+
+    def consume_all():
+        for _ in i2.iter_batches(batch_size=10, prefetch_batches=0):
+            other_count[0] += 1
+
+    t1 = threading.Thread(target=break_early)
+    t2 = threading.Thread(target=consume_all)
+    # Both threads must call iter_batches concurrently — streaming_split
+    # has a barrier that requires every split to start an epoch before any
+    # split can pull blocks.
+    t1.start()
+    t2.start()
+    t1.join(timeout=30)
+    t2.join(timeout=30)
+
+    # The remaining split iterated to completion — the executor stayed
+    # alive even after the first split finished.
+    assert other_count[0] == num_blocks_per_split, other_count[0]
+
+    # And once both splits finished, the executor was shut down.
+    coord = i1._coord_actor
+    wait_for_condition(
+        lambda: ray.get(coord._is_executor_shutdown.remote()),
+        timeout=10,
+    )
+
+
 def test_streaming_split_error_propagation(
     ray_start_10_cpus_shared, restore_data_context
 ):
@@ -587,7 +682,9 @@ def test_scheduling_progress_when_output_blocked(
     assert [b["id"] for b in it] == [[x] for x in range(1, 100)]
 
 
-def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
+def test_task_submission_backpressure_from_paused_consumer(
+    ray_start_10_cpus_shared, restore_data_context
+):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
     block_size = 10 * 1024 * 1024
@@ -635,6 +732,60 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     # Check final stats reporting.
     stats = ds.stats()
     assert "100 tasks executed" in stats, stats
+
+
+@pytest.mark.parametrize("streaming_split", [False, True])
+def test_output_backpressure_from_paused_consumer(
+    ray_start_10_cpus_shared, restore_data_context, streaming_split
+):
+    """The terminal operator's output queue should not grow beyond the
+    budget from pulling blocks from in-flight tasks when a consumer is paused."""
+    ctx = DataContext.get_current()
+    block_size = 1024
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=block_size
+    )
+    # Disable downstream capacity backpressure to isolate the test to
+    # the resource budget escape hatch.
+    ctx.downstream_capacity_backpressure_ratio = None
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.n = 0
+
+        def inc(self):
+            self.n += 1
+
+        def get(self):
+            return self.n
+
+    counter = Counter.remote()
+
+    def generate_many_blocks(batch):
+        while True:
+            ray.get(counter.inc.remote())
+            yield {"data": np.zeros((1, block_size), dtype=np.uint8)}
+
+    ds = ray.data.range(1, override_num_blocks=1).map_batches(
+        generate_many_blocks, batch_size=None
+    )
+    if streaming_split:
+        ds = ds.streaming_split(1)[0]
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+
+    # Consume first batch to start the pipeline and get the executor.
+    next(it)
+
+    # Let the pipeline run and fill up the budget.
+    time.sleep(3)
+    count_before = ray.get(counter.get.remote())
+    # Make sure the consumer is not still pulling -- it should have been throttled by the budget.
+    time.sleep(1)
+    count_after = ray.get(counter.get.remote())
+    growth = count_after - count_before
+    assert growth == 0
 
 
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):

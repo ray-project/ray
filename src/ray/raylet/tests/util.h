@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/util/compat.h"
@@ -53,7 +53,7 @@ class MockWorker : public WorkerInterface {
 
   void GrantLease(const RayLease &granted_lease) override {
     lease_ = granted_lease;
-    lease_grant_time_ = absl::Now();
+    last_lease_grant_time_ = absl::Now();
     root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
@@ -64,15 +64,17 @@ class MockWorker : public WorkerInterface {
 
   void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
 
-  const RayLease &GetGrantedLease() const override { return lease_; }
+  const RayLease &GetGrantedLease() const override { return lease_.value(); }
 
-  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return last_lease_grant_time_;
+  };
 
   std::optional<bool> GetIsGpu() const override { return is_gpu_; }
 
   std::optional<bool> GetIsActorWorker() const override { return is_actor_worker_; }
 
-  const std::string IpAddress() const override { return address_.ip_address(); }
+  std::string IpAddress() const override { return address_.ip_address(); }
 
   void AsyncNotifyGCSRestart() override {}
 
@@ -141,7 +143,7 @@ class MockWorker : public WorkerInterface {
   }
 
   bool IsDetachedActor() const override {
-    return lease_.GetLeaseSpecification().IsDetachedActor();
+    return lease_->GetLeaseSpecification().IsDetachedActor();
   }
 
   const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
@@ -166,7 +168,7 @@ class MockWorker : public WorkerInterface {
 
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
 
-  RayLease &GetGrantedLease() override { return lease_; }
+  RayLease &GetGrantedLease() { return lease_.value(); }
 
   bool IsRegistered() override {
     RAY_CHECK(false) << "Method unused";
@@ -197,8 +199,8 @@ class MockWorker : public WorkerInterface {
   std::optional<bool> is_actor_worker_;
   BundleID bundle_id_;
   bool blocked_ = false;
-  RayLease lease_;
-  absl::Time lease_grant_time_;
+  std::optional<RayLease> lease_;
+  std::optional<absl::Time> last_lease_grant_time_;
   int runtime_env_hash_;
   LeaseID lease_id_;
   JobID job_id_;
