@@ -35,6 +35,10 @@ def test_dynamo_connector_backend_sets_worker_id_ports_and_vllm_configs():
     ]
 
     assert kv_transfer_config["engine_id"] == "engine-7"
+    assert (
+        kv_transfer_config["kv_connector_module_path"]
+        == "kvbm.vllm_integration.connector"
+    )
     assert dynamo_config["worker_id"] == 7
     assert dynamo_config["block_size"] == 32
     assert llm_config.engine_kwargs["kv_events_config"] == {
